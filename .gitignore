@@ -1,0 +1,53 @@
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+
+# Django runtime artifacts
+*.sqlite3
+db.sqlite3
+src/db.sqlite3
+/media/
+src/media_uploads/
+staticfiles/
+src/staticfiles/
+src/celerybeat-schedule
+src/celerybeat-schedule.*
+src/celerybeat-schedule-*
+
+# Node / pnpm
+node_modules/
+src/web/ui/node_modules/
+.pnpm-store/
+src/web/.pnpm-store/
+src/web/ui/.pnpm-store/
+
+# Build outputs
+dist/
+build/
+src/web/static/web/.vite/
+src/web/static/web/assets/
+src/web/static/web/index.html
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

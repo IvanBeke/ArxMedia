@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Prepare environment file
+        run: |
+          cp .env.example .env
+          printf '\nDEBUG=True\nALLOWED_HOSTS=localhost,127.0.0.1,app,testserver\n' >> .env
+
+      - name: Build and start services
+        run: docker compose up -d --build
+
+      - name: Apply migrations
+        run: docker compose exec -T app python manage.py migrate --noinput
+
+      - name: Migration status
+        run: docker compose exec -T app python manage.py showmigrations
+
+      - name: App lint (ruff)
+        run: docker compose exec -T app uv run ruff check accounts media tracking social my_calendar web arxmedia
+
+      - name: App tests
+        run: docker compose exec -T app python manage.py test --keepdb
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

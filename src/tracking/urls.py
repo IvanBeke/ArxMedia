@@ -1,0 +1,32 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('history/', views.WatchEntryListCreateView.as_view(), name='watch_history'),
+    path('history/<int:pk>/', views.WatchEntryDetailView.as_view(), name='watch_entry_detail'),
+    path('ratings/', views.RatingListCreateView.as_view(), name='ratings'),
+    path('watchlist/', views.WatchlistListCreateView.as_view(), name='watchlist'),
+    path('watchlist/<int:pk>/', views.WatchlistDetailView.as_view(), name='watchlist_detail'),
+    path('reviews/', views.ReviewListCreateView.as_view(), name='reviews'),
+    path('stats/', views.user_stats, name='user_stats'),
+    path('episodes/watched/', views.watched_episodes, name='watched_episodes'),
+    path('episodes/mark/', views.mark_episode_watched, name='mark_episode_watched'),
+    path('episodes/unmark/', views.unmark_episode_watched, name='unmark_episode_watched'),
+    path('seasons/mark/', views.mark_season_watched, name='mark_season_watched'),
+    path('seasons/unmark/', views.unmark_season_watched, name='unmark_season_watched'),
+    path('up-next/', views.up_next, name='up_next'),
+    path('upcoming/', views.upcoming, name='upcoming'),
+    path('shows/drop/', views.drop_show, name='drop_show'),
+    path('lists/', views.CustomListListCreateView.as_view(), name='custom_lists'),
+    path('lists/<int:pk>/', views.CustomListDetailView.as_view(), name='custom_list_detail'),
+    path('lists/<int:list_id>/items/', views.ListItemListCreateView.as_view(), name='list_items'),
+    path('lists/<int:list_id>/items/<int:pk>/', views.ListItemDetailView.as_view(), name='list_item_detail'),
+    path('lists/<int:list_id>/collaborators/', views.ListCollaboratorCreateView.as_view(), name='list_collaborator_add'),
+    path('lists/<int:list_id>/collaborators/<int:user_id>/', views.ListCollaboratorDeleteView.as_view(), name='list_collaborator_remove'),
+    path('recommendations/', views.recommendations, name='recommendations'),
+    path('data/import/', views.DataImportView.as_view(), name='data_import'),
+    path('data/export/', views.DataExportView.as_view(), name='data_export'),
+    path('data/jobs/', views.DataJobListView.as_view(), name='data_job_list'),
+    path('data/jobs/<int:pk>/', views.DataJobStatusView.as_view(), name='data_job_status'),
+    path('data/jobs/<int:pk>/confirm/', views.DataJobConfirmView.as_view(), name='data_job_confirm'),
+]

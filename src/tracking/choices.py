@@ -1,0 +1,68 @@
+from django.db import models
+
+
+class WatchEntryMediaType(models.TextChoices):
+    MOVIE = 'movie', 'Movie'
+    EPISODE = 'episode', 'Episode'
+
+
+class WatchEntryStatus(models.TextChoices):
+    WATCHED = 'watched', 'Watched'
+    WATCHING = 'watching', 'Watching'
+    PLAN_TO_WATCH = 'plan_to_watch', 'Plan to Watch'
+    ON_HOLD = 'on_hold', 'On Hold'
+    DROPPED = 'dropped', 'Dropped'
+
+
+class TvShowStatus(models.TextChoices):
+    NONE = 'none', 'None'
+    PLAN_TO_WATCH = 'plan_to_watch', 'Plan to Watch'
+    WATCHING = 'watching', 'Watching'
+    WATCHED = 'watched', 'Watched'
+    DROPPED = 'dropped', 'Dropped'
+
+
+class SeasonStatus(models.TextChoices):
+    NONE = 'none', 'None'
+    WATCHING = 'watching', 'Watching'
+    WATCHED = 'watched', 'Watched'
+
+
+class MediaType(models.TextChoices):
+    MOVIE = 'movie', 'Movie'
+    TV = 'tv', 'TV Show'
+
+
+class ListPrivacy(models.TextChoices):
+    PUBLIC = 'public', 'Public'
+    PRIVATE = 'private', 'Private'
+    FOLLOWERS = 'followers', 'Followers Only'
+
+
+class DataTransferSource(models.TextChoices):
+    LOCAL = 'local', 'Local file'
+
+
+class DataTransferJobType(models.TextChoices):
+    IMPORT = 'import', 'Import'
+    EXPORT = 'export', 'Export'
+
+
+class DataTransferFormat(models.TextChoices):
+    JSON = 'json', 'JSON'
+    CSV = 'csv', 'CSV'
+    ZIP = 'zip', 'ZIP'
+
+
+class DataTransferStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending'
+    PROCESSING = 'processing', 'Processing'
+    AWAITING_CONFIRMATION = 'awaiting_confirmation', 'Awaiting confirmation'
+    DONE = 'done', 'Done'
+    FAILED = 'failed', 'Failed'
+
+
+class DataImportMode(models.TextChoices):
+    NEW_ITEMS = 'new_items', 'New Items'
+    UPDATE_EXISTING = 'update_existing', 'Update Existing'
+    MIRROR_IMPORTED_SET = 'mirror_imported_set', 'Mirror Imported Set'

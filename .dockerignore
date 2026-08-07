@@ -1,0 +1,16 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.env
+db.sqlite3
+media/
+staticfiles/
+src/apps/web/ui/node_modules/
+src/apps/web/ui/.pnpm-store/
+.git/
+.gitignore

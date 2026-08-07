@@ -1,0 +1,104 @@
+import { computed } from 'vue'
+import { usePreferencesStore } from '@/stores/preferences'
+
+
+const messages = {
+  en: {
+    nav_dashboard: 'Dashboard',
+    nav_discover: 'Discover',
+    nav_lists: 'Lists',
+    nav_calendar: 'Calendar',
+    nav_data: 'Data',
+    nav_settings: 'Settings',
+    settings_language: 'Language',
+    settings_spoiler_mode: 'Spoiler mode',
+    settings_spoiler_mode_desc: 'Blur unwatched images and descriptions until revealed.',
+    settings_privacy: 'Privacy',
+    settings_profile: 'Profile',
+    tracking_mark_as_watched: 'Mark as watched',
+    tracking_watched: 'Watched',
+    tracking_watched_on: 'Watched on',
+    rating_vote_singular: 'vote',
+    rating_vote_plural: 'votes',
+    nav_open_search: 'Open search',
+    nav_open_user_menu: 'Open user menu',
+    nav_toggle_theme: 'Toggle theme',
+    watch_options: 'Watch options',
+    watch_option_now: 'Just now',
+    watch_option_release: 'Release date',
+    watch_option_date: 'Select date',
+    watchlist_add_movie: 'Add movie to watchlist',
+    watchlist_remove_movie: 'Remove movie from watchlist',
+    watchlist_add_show: 'Add show to watchlist',
+    watchlist_remove_show: 'Remove show from watchlist',
+    rating_group_label: 'Rate from 1 to 10',
+    rating_item_label: 'Rate {value} out of 10',
+  },
+  es: {
+    nav_dashboard: 'Panel',
+    nav_discover: 'Descubrir',
+    nav_lists: 'Listas',
+    nav_calendar: 'Calendario',
+    nav_data: 'Datos',
+    nav_settings: 'Configuracion',
+    settings_language: 'Idioma',
+    settings_spoiler_mode: 'Modo spoilers',
+    settings_spoiler_mode_desc: 'Difumina imagenes y descripciones no vistas hasta revelarlas.',
+    settings_privacy: 'Privacidad',
+    settings_profile: 'Perfil',
+    tracking_mark_as_watched: 'Marcar como visto',
+    tracking_watched: 'Visto',
+    tracking_watched_on: 'Visto el',
+    rating_vote_singular: 'voto',
+    rating_vote_plural: 'votos',
+    nav_open_search: 'Abrir busqueda',
+    nav_open_user_menu: 'Abrir menu de usuario',
+    nav_toggle_theme: 'Cambiar tema',
+    watch_options: 'Opciones de seguimiento',
+    watch_option_now: 'Ahora mismo',
+    watch_option_release: 'Fecha de estreno',
+    watch_option_date: 'Elegir fecha',
+    watchlist_add_movie: 'Agregar pelicula a la lista',
+    watchlist_remove_movie: 'Quitar pelicula de la lista',
+    watchlist_add_show: 'Agregar serie a la lista',
+    watchlist_remove_show: 'Quitar serie de la lista',
+    rating_group_label: 'Calificar de 1 a 10',
+    rating_item_label: 'Calificar {value} de 10',
+  }
+}
+
+
+export function useI18n() {
+  const prefs = usePreferencesStore()
+  const locale = computed(() => prefs.locale)
+  const t = (key, params = {}) => {
+    const template = messages[locale.value]?.[key] ?? messages.en[key] ?? key
+    return template.replace(/\{(\w+)\}/g, (_, token) => {
+      const value = params[token]
+      return value === undefined || value === null ? '' : String(value)
+    })
+  }
+  return { t, locale }
+}
+
+export function formatDateByLocale(value) {
+  if (!value) return ''
+  const prefs = usePreferencesStore()
+  const locale = prefs.locale === 'es' ? 'es-ES' : 'en-US'
+  return new Date(value).toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+export function formatDateTimeByLocale(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const prefs = usePreferencesStore()
+  const locale = prefs.locale === 'es' ? 'es-ES' : 'en-US'
+  return date.toLocaleString(locale, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}

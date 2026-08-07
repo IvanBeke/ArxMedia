@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a focused improvement
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project is maintained for personal self-hosted usage.
+        Requests are welcome, but not all requests will be accepted.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or goal
+      description: What problem does this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Keep scope specific and practical
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact and trade-offs
+      description: Mention migration/API/UI impact if relevant
