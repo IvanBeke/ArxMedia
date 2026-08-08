@@ -44,6 +44,4 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD curl -fsS http://localhost:8000/healthz/ || exit 1
-
 CMD ["/entrypoint.sh"]
