@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
@@ -21,5 +21,5 @@ urlpatterns = [
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 urlpatterns += [
-    path('<path:path>', SPAView.as_view(), name='spa-fallback'),
+    re_path(r'^(?!static/|media/|api/|admin/|healthz/).*$', SPAView.as_view(), name='spa-fallback'),
 ]
