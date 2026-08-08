@@ -33,11 +33,11 @@ RUN npm install -g pnpm@11 && \
     CI=true pnpm install && \
     CI=true pnpm build
 
-RUN mkdir -p /app/media_uploads /app/staticfiles
-
 RUN python manage.py collectstatic --noinput
 
-RUN groupadd -r app && useradd -r -g app -d /app -s /usr/sbin/nologin app
+RUN mkdir -p /app/media_uploads /app/staticfiles && \
+    groupadd -r app && useradd -r -g app -d /app -s /usr/sbin/nologin app && \
+    chown -R app:app /app /app/media_uploads /app/staticfiles
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

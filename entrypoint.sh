@@ -5,10 +5,15 @@ set -e
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
-groupmod -o -g "$PGID" app
-usermod -o -u "$PUID" app
-
-chown -R app:app /app /app/media_uploads /app/staticfiles
+if [ "$(id -u)" -eq 0 ]; then
+    if [ "$(id -g app)" != "$PGID" ]; then
+        groupmod -o -g "$PGID" app
+    fi
+    if [ "$(id -u app)" != "$PUID" ]; then
+        usermod -o -u "$PUID" app
+    fi
+    chown -R app:app /app/media_uploads /app/staticfiles
+fi
 
 python manage.py migrate --noinput
 

@@ -87,6 +87,7 @@ docker run --rm -e CI=true -v "$(pwd)/src/web:/workspace" -w /workspace/ui node:
 ## Production
 
 Use `compose.prod.yaml` directly. It is a complete production stack and pulls the published image.
+Production serves static assets from the image with WhiteNoise (no `static_files` volume mount in prod).
 
 ```bash
 docker compose -f compose.prod.yaml up -d
