@@ -166,8 +166,9 @@ def movie_detail(request, tmdb_id):
     except Movie.DoesNotExist:
         try:
             movie = tmdb.sync_movie(tmdb_id)
-        except Exception as e:
-            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception:
+            logger.warning('Failed to sync movie %s from TMDB', tmdb_id, exc_info=True)
+            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
     data = MovieSerializer(movie).data
     try:
         providers = tmdb.get_movie_watch_providers(tmdb_id)
@@ -204,8 +205,9 @@ def tv_detail(request, tmdb_id):
     except TVShow.DoesNotExist:
         try:
             show = tmdb.sync_tv_show(tmdb_id)
-        except Exception as e:
-            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception:
+            logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
+            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     # Sync seasons that don't exist yet or have no episodes synced
     existing_seasons = Season.objects.filter(show=show)
@@ -247,8 +249,9 @@ def season_detail(request, tmdb_id, season_number):
     # Always fetch fresh from TMDB to get latest data including credits
     try:
         season_data = tmdb.get_season(tmdb_id, season_number)
-    except Exception as e:
-        return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception:
+        logger.warning('Failed to fetch season %s for show %s from TMDB', season_number, tmdb_id, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.user.is_authenticated:
         tmdb_id_int = int(tmdb_id)
@@ -269,8 +272,15 @@ def season_detail(request, tmdb_id, season_number):
 def episode_credits(request, tmdb_id, season_number, episode_number):
     try:
         credits_data = tmdb.get_episode_credits(tmdb_id, season_number, episode_number)
-    except Exception as e:
-        return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception:
+        logger.warning(
+            'Failed to fetch episode credits for show %s season %s episode %s from TMDB',
+            tmdb_id,
+            season_number,
+            episode_number,
+            exc_info=True,
+        )
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     return Response(credits_data)
 
@@ -281,8 +291,9 @@ def tv_credits(request, tmdb_id):
     """Get TV show aggregate credits (cast and crew) from TMDB."""
     try:
         data = tmdb.get_tv_aggregate_credits(tmdb_id)
-    except Exception as e:
-        return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception:
+        logger.warning('Failed to fetch TV aggregate credits for show %s from TMDB', tmdb_id, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     cast = data.get('cast', [])
     crew = data.get('crew', [])
