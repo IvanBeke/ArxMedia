@@ -170,10 +170,12 @@ export const trackingAPI = {
   addCollaborator: (listId, userId) => api.post(`/tracking/lists/${listId}/collaborators/`, { user_id: userId }),
   removeCollaborator: (listId, userId) => api.delete(`/tracking/lists/${listId}/collaborators/${userId}/`),
   getRecommendations: () => api.get('/tracking/recommendations/'),
-  importData: (file, format = DATA_TRANSFER_FORMAT.JSON) => {
+  importData: (file, format = DATA_TRANSFER_FORMAT.JSON, source) => {
     const form = new FormData()
     form.append('file', file)
-    const fullUrl = new URL(baseURL + `/tracking/data/import/?data_format=${format}`, window.location.origin)
+    const fullUrl = new URL(baseURL + '/tracking/data/import/', window.location.origin)
+    fullUrl.searchParams.set('data_format', format)
+    fullUrl.searchParams.set('source', source)
     const token = localStorage.getItem('access_token')
     return fetch(fullUrl.toString(), {
       method: 'POST',

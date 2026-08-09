@@ -2,7 +2,7 @@
   <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <header class="mb-6">
       <h1 class="font-display text-3xl text-primary font-semibold tracking-tight">Import Data</h1>
-      <p class="text-sm text-muted mt-1">Import from Trakt ZIP exports or from JSON backups created by ArxMedia.</p>
+      <p class="text-sm text-muted mt-1">Import from Trakt ZIP exports, Yamtrack CSV exports, or JSON backups created by ArxMedia.</p>
     </header>
 
     <div class="space-y-6">
@@ -13,7 +13,6 @@
           <div class="rounded-lg border border-surface-200 bg-surface-100 p-4">
             <div class="flex items-center justify-between gap-2 mb-2">
               <h3 class="text-primary font-medium">Import Trakt ZIP</h3>
-              <span class="inline-flex items-center rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">ZIP</span>
             </div>
             <input
               ref="zipInput"
@@ -31,8 +30,25 @@
           </div>
           <div class="rounded-lg border border-surface-200 bg-surface-100 p-4">
             <div class="flex items-center justify-between gap-2 mb-2">
+              <h3 class="text-primary font-medium">Import Yamtrack CSV</h3>
+            </div>
+            <input
+              ref="yamtrackInput"
+              type="file"
+              class="input text-sm"
+              accept=".csv,text/csv"
+              aria-label="Import Yamtrack CSV"
+              @change="clearYamtrackError"
+            />
+            <p class="text-xs text-muted mt-2">For Yamtrack CSV exports. Imports TMDB rows only.</p>
+            <p v-if="yamtrackError" class="text-xs text-red-400 mt-2">{{ yamtrackError }}</p>
+            <div class="mt-3">
+              <button class="btn-primary text-sm" @click="startYamtrackImport">Upload CSV</button>
+            </div>
+          </div>
+          <div class="rounded-lg border border-surface-200 bg-surface-100 p-4">
+            <div class="flex items-center justify-between gap-2 mb-2">
               <h3 class="text-primary font-medium">Import ArxMedia JSON</h3>
-              <span class="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">ArxMedia only</span>
             </div>
             <input
               ref="jsonInput"
@@ -108,7 +124,7 @@
         <div v-if="modalIsPreparing" class="rounded-lg border border-surface-200 bg-surface-100 p-6 mb-4 text-center">
           <div class="inline-block h-8 w-8 animate-spin rounded-full border-2 border-surface-300 border-t-brand-500"></div>
           <p class="text-primary font-semibold mt-3">Preparing import summary...</p>
-          <p class="text-sm text-muted mt-1">We are scanning all ZIP files to compute totals.</p>
+          <p class="text-sm text-muted mt-1">We are scanning the uploaded file to compute totals.</p>
         </div>
 
         <div v-else-if="modalCanConfirm" class="rounded-lg border border-surface-200 bg-surface-100 p-3 mb-4">
@@ -156,9 +172,11 @@ import { trackingAPI } from '@/api'
 import { DATA_IMPORT_MODE, DATA_TRANSFER_FORMAT, DATA_TRANSFER_STATUS } from '@/constants/tracking'
 
 const zipInput = ref(null)
+const yamtrackInput = ref(null)
 const jsonInput = ref(null)
 const jobs = ref([])
 const zipError = ref('')
+const yamtrackError = ref('')
 const jsonError = ref('')
 const showImportModeModal = ref(false)
 const modalJobId = ref(null)
@@ -250,7 +268,26 @@ async function startZipImport() {
     zipError.value = 'This import accepts ZIP files only.'
     return
   }
-  const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.ZIP)
+  const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.ZIP, 'trakt')
+  updateJob(created)
+  selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
+  modalJobId.value = created.id
+  showImportModeModal.value = true
+  await pollJob(created.id)
+}
+
+async function startYamtrackImport() {
+  yamtrackError.value = ''
+  const file = yamtrackInput.value?.files?.[0]
+  if (!file) {
+    yamtrackError.value = 'Please choose a Yamtrack CSV file before uploading.'
+    return
+  }
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    yamtrackError.value = 'This import accepts CSV files only.'
+    return
+  }
+  const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.CSV, 'yamtrack')
   updateJob(created)
   selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
   modalJobId.value = created.id
@@ -269,13 +306,17 @@ async function startJsonImport() {
     jsonError.value = 'This import accepts JSON files only.'
     return
   }
-  const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.JSON)
+  const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.JSON, 'arxmedia')
   updateJob(created)
   await pollJob(created.id)
 }
 
 function clearZipError() {
   zipError.value = ''
+}
+
+function clearYamtrackError() {
+  yamtrackError.value = ''
 }
 
 function clearJsonError() {

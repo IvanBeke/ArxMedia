@@ -1,28 +1,34 @@
-from celery import shared_task
 from django.utils import timezone
-from django.core.files.base import ContentFile
 import csv
 import io
 import json
 import logging
 import re
 import zipfile
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime
 from media.tmdb import tmdb
 from media.models import Movie, TVShow, Season
 
-from .choices import (
+from ..choices import (
     DataImportMode,
     DataTransferFormat,
     DataTransferStatus,
     MediaType,
+    TvShowStatus,
     WatchEntryMediaType,
     WatchEntryStatus,
 )
-from .models import DataTransferJob, WatchEntry, Watchlist, Rating, Review
+from ..models import DataTransferJob, WatchEntry, Watchlist, Rating, Review, UserTvShowStatus
+from ..status_sync import refresh_show_and_season_statuses
 
 
 logger = logging.getLogger(__name__)
+
+
+YAMTRACK_IMPORT_SOURCE = 'yamtrack'
+YAMTRACK_ALLOWED_MEDIA_TYPES = {'movie', 'tv', 'season', 'episode'}
+YAMTRACK_ALLOWED_STATUSES = {'Completed', 'In progress', 'Planning', 'Paused', 'Dropped', ''}
 
 
 def _safe_int(value):
@@ -44,6 +50,408 @@ def _parse_watched_at(value: str | None):
     if timezone.is_naive(dt):
         return timezone.make_aware(dt, timezone.get_current_timezone())
     return dt
+
+
+def _parse_yamtrack_score(value) -> int | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        rounded = int(Decimal(raw).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError):
+        return None
+    if rounded <= 0:
+        return None
+    return min(rounded, 10)
+
+
+def _parse_yamtrack_progress(value) -> int | None:
+    parsed = _safe_int(value)
+    if parsed is None or parsed < 0:
+        return None
+    return parsed
+
+
+def _yamtrack_row_timestamp(row: dict, *fields: str):
+    for field in fields:
+        parsed = _parse_watched_at(row.get(field))
+        if parsed:
+            return parsed
+    return None
+
+
+def _yamtrack_watch_entry_status(value: str) -> str | None:
+    mapping = {
+        'Completed': WatchEntryStatus.WATCHED,
+        'In progress': WatchEntryStatus.WATCHING,
+        'Paused': WatchEntryStatus.WATCHING,
+        'Dropped': WatchEntryStatus.DROPPED,
+    }
+    return mapping.get(value)
+
+
+def _yamtrack_tv_status(value: str) -> str | None:
+    mapping = {
+        'Completed': TvShowStatus.WATCHED,
+        'In progress': TvShowStatus.WATCHING,
+        'Paused': TvShowStatus.WATCHING,
+        'Planning': TvShowStatus.PLAN_TO_WATCH,
+        'Dropped': TvShowStatus.DROPPED,
+    }
+    return mapping.get(value)
+
+
+def _import_watch_entry_status_by_mode(
+    user,
+    media_type: str,
+    tmdb_id: int,
+    status_value: str,
+    watched_at,
+    import_mode: str,
+    season_number: int | None = None,
+    episode_number: int | None = None,
+) -> bool:
+    existing = WatchEntry.objects.filter(
+        user=user,
+        media_type=media_type,
+        tmdb_id=tmdb_id,
+        season_number=season_number,
+        episode_number=episode_number,
+    ).first()
+    if existing and import_mode == DataImportMode.NEW_ITEMS:
+        return False
+
+    if not existing:
+        WatchEntry.objects.create(
+            user=user,
+            media_type=media_type,
+            tmdb_id=tmdb_id,
+            season_number=season_number,
+            episode_number=episode_number,
+            status=status_value,
+            watched_at=watched_at,
+        )
+        return True
+
+    update_fields = []
+    if existing.status != status_value:
+        existing.status = status_value
+        update_fields.append('status')
+
+    if watched_at:
+        if status_value == WatchEntryStatus.WATCHED and existing.watched_at:
+            next_watched_at = max(existing.watched_at, watched_at)
+        else:
+            next_watched_at = watched_at
+        if next_watched_at != existing.watched_at:
+            existing.watched_at = next_watched_at
+            update_fields.append('watched_at')
+
+    if not update_fields:
+        return False
+
+    existing.save(update_fields=update_fields)
+    return True
+
+
+def _import_tv_status_by_mode(user, tmdb_id: int, status_value: str, status_at, progress: int | None, import_mode: str) -> bool:
+    existing = UserTvShowStatus.objects.filter(user=user, tmdb_id=tmdb_id).first()
+    if existing and import_mode == DataImportMode.NEW_ITEMS:
+        return False
+
+    payload = {
+        'status': status_value,
+    }
+
+    if status_value == TvShowStatus.WATCHED:
+        payload['completed_at'] = status_at
+    elif status_value == TvShowStatus.PLAN_TO_WATCH:
+        payload['plan_to_watch_at'] = status_at
+    elif status_value == TvShowStatus.DROPPED:
+        payload['dropped_at'] = status_at
+
+    if status_value in (TvShowStatus.WATCHING, TvShowStatus.WATCHED):
+        payload['last_watched_at'] = status_at
+        if existing is None:
+            payload['started_at'] = status_at
+
+    payload['status_changed_at'] = status_at
+    if progress is not None:
+        payload['watched_episodes'] = progress
+
+    if existing is None:
+        defaults = {
+            'status': status_value,
+            'watched_episodes': progress or 0,
+            'total_episodes': 0,
+            'progress_percent': 0,
+            'started_at': status_at if status_value in (TvShowStatus.WATCHING, TvShowStatus.WATCHED) else None,
+            'completed_at': status_at if status_value == TvShowStatus.WATCHED else None,
+            'dropped_at': status_at if status_value == TvShowStatus.DROPPED else None,
+            'plan_to_watch_at': status_at if status_value == TvShowStatus.PLAN_TO_WATCH else None,
+            'last_watched_at': status_at if status_value in (TvShowStatus.WATCHING, TvShowStatus.WATCHED) else None,
+            'status_changed_at': status_at,
+        }
+        UserTvShowStatus.objects.create(user=user, tmdb_id=tmdb_id, **defaults)
+        return True
+
+    changed = False
+    for key, value in payload.items():
+        if getattr(existing, key) != value:
+            setattr(existing, key, value)
+            changed = True
+    if changed:
+        existing.save(update_fields=list(payload.keys()))
+    return changed
+
+
+def _default_yamtrack_report() -> dict:
+    return {
+        'format': DataTransferFormat.CSV,
+        'import_source': YAMTRACK_IMPORT_SOURCE,
+        'records_seen': 0,
+        'records_imported': 0,
+        'records_skipped': 0,
+        'metadata_hits': 0,
+        'metadata_fetches': 0,
+        'metadata_errors': 0,
+        'skipped_non_tmdb': 0,
+        'skipped_unsupported_media_type': 0,
+        'skipped_invalid_status': 0,
+        'skipped_missing_tmdb_id': 0,
+        'summary': {
+            'watch_history': 0,
+            'watchlist': 0,
+            'ratings': 0,
+        },
+        'total_items': 0,
+    }
+
+
+def _yamtrack_collection_from_row(media_type: str, status: str, score: int | None, end_at) -> set[str]:
+    collections = set()
+    if media_type == 'movie':
+        if status in {'Completed', 'In progress', 'Paused', 'Dropped'}:
+            collections.add('watch_history')
+        if status == 'Planning':
+            collections.add('watchlist')
+    elif media_type == 'episode':
+        if status in {'Completed', 'In progress', 'Paused', 'Dropped'}:
+            collections.add('watch_history')
+        elif not status and end_at:
+            collections.add('watch_history')
+    elif media_type == 'tv':
+        if status == 'Planning':
+            collections.add('watchlist')
+
+    if media_type in {'movie', 'tv'} and score:
+        collections.add('ratings')
+    return collections
+
+
+def _analyze_yamtrack_csv(content: bytes) -> dict:
+    report = _default_yamtrack_report()
+    reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig')))
+
+    for row in reader:
+        report['records_seen'] += 1
+        source = (row.get('source') or '').strip().lower()
+        media_type = (row.get('media_type') or '').strip().lower()
+        status = (row.get('status') or '').strip()
+        score = _parse_yamtrack_score(row.get('score'))
+        end_at = _parse_watched_at(row.get('end_date'))
+
+        if source != 'tmdb':
+            report['records_skipped'] += 1
+            report['skipped_non_tmdb'] += 1
+            continue
+        if media_type not in YAMTRACK_ALLOWED_MEDIA_TYPES:
+            report['records_skipped'] += 1
+            report['skipped_unsupported_media_type'] += 1
+            continue
+        if status not in YAMTRACK_ALLOWED_STATUSES:
+            report['records_skipped'] += 1
+            report['skipped_invalid_status'] += 1
+            continue
+        if _safe_int(row.get('media_id')) is None:
+            report['records_skipped'] += 1
+            report['skipped_missing_tmdb_id'] += 1
+            continue
+
+        categories = _yamtrack_collection_from_row(media_type, status, score, end_at)
+        if categories:
+            report['records_imported'] += 1
+            for category in categories:
+                report['summary'][category] += 1
+        else:
+            report['records_skipped'] += 1
+
+    report['total_items'] = report['records_seen']
+    return report
+
+
+def _apply_yamtrack_csv(job: DataTransferJob, content: bytes, import_mode: str):
+    report = _default_yamtrack_report()
+    state = {
+        'metadata_checked': set(),
+        'season_checked': set(),
+        'metadata_hits': 0,
+        'metadata_fetches': 0,
+        'metadata_errors': 0,
+    }
+    imported_keys = {
+        'watch_entries': set(),
+        'watchlist': set(),
+        'ratings': set(),
+    }
+    collections_present = set()
+    explicit_show_status_ids = set()
+    season_numbers_by_show = {}
+
+    reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig')))
+    for row in reader:
+        report['records_seen'] += 1
+        source = (row.get('source') or '').strip().lower()
+        media_type = (row.get('media_type') or '').strip().lower()
+        status = (row.get('status') or '').strip()
+        tmdb_id = _safe_int(row.get('media_id'))
+        season_number = _safe_int(row.get('season_number'))
+        episode_number = _safe_int(row.get('episode_number'))
+        score = _parse_yamtrack_score(row.get('score'))
+        notes = row.get('notes') or ''
+        progress = _parse_yamtrack_progress(row.get('progress'))
+        event_at = _yamtrack_row_timestamp(row, 'end_date', 'progressed_at', 'start_date', 'created_at')
+        end_at = _parse_watched_at(row.get('end_date'))
+
+        row_categories = _yamtrack_collection_from_row(media_type, status, score, end_at)
+        for category in row_categories:
+            collections_present.add(category)
+
+        if source != 'tmdb':
+            report['records_skipped'] += 1
+            report['skipped_non_tmdb'] += 1
+            job.processed_items += 1
+            _update_job_progress(job)
+            continue
+        if media_type not in YAMTRACK_ALLOWED_MEDIA_TYPES:
+            report['records_skipped'] += 1
+            report['skipped_unsupported_media_type'] += 1
+            job.processed_items += 1
+            _update_job_progress(job)
+            continue
+        if status not in YAMTRACK_ALLOWED_STATUSES:
+            report['records_skipped'] += 1
+            report['skipped_invalid_status'] += 1
+            job.processed_items += 1
+            _update_job_progress(job)
+            continue
+        if not tmdb_id:
+            report['records_skipped'] += 1
+            report['skipped_missing_tmdb_id'] += 1
+            job.processed_items += 1
+            _update_job_progress(job)
+            continue
+
+        row_imported = False
+
+        if media_type == 'movie':
+            _ensure_tmdb_metadata_for_import_item(MediaType.MOVIE, tmdb_id, state)
+            if status in {'Completed', 'In progress', 'Paused', 'Dropped'}:
+                imported_keys['watch_entries'].add(_watch_entry_key(WatchEntryMediaType.MOVIE, tmdb_id))
+                entry_status = _yamtrack_watch_entry_status(status)
+                if entry_status and _import_watch_entry_status_by_mode(
+                    job.user,
+                    WatchEntryMediaType.MOVIE,
+                    tmdb_id,
+                    entry_status,
+                    event_at,
+                    import_mode,
+                ):
+                    row_imported = True
+            if status == 'Planning':
+                imported_keys['watchlist'].add(_watchlist_key(MediaType.MOVIE, tmdb_id))
+                if _import_watchlist_by_mode(job.user, MediaType.MOVIE, tmdb_id, notes, import_mode):
+                    row_imported = True
+            if score:
+                imported_keys['ratings'].add(_rating_key(MediaType.MOVIE, tmdb_id))
+                if _import_rating_by_mode(job.user, MediaType.MOVIE, tmdb_id, score, import_mode):
+                    row_imported = True
+
+        elif media_type == 'tv':
+            _ensure_tmdb_metadata_for_import_item(MediaType.TV, tmdb_id, state)
+            tv_status = _yamtrack_tv_status(status)
+            if tv_status:
+                explicit_show_status_ids.add(tmdb_id)
+                if _import_tv_status_by_mode(job.user, tmdb_id, tv_status, event_at, progress, import_mode):
+                    row_imported = True
+            if status == 'Planning':
+                imported_keys['watchlist'].add(_watchlist_key(MediaType.TV, tmdb_id))
+                if _import_watchlist_by_mode(job.user, MediaType.TV, tmdb_id, notes, import_mode):
+                    row_imported = True
+            if score:
+                imported_keys['ratings'].add(_rating_key(MediaType.TV, tmdb_id))
+                if _import_rating_by_mode(job.user, MediaType.TV, tmdb_id, score, import_mode):
+                    row_imported = True
+
+        elif media_type == 'season':
+            _ensure_tmdb_metadata_for_import_item(WatchEntryMediaType.EPISODE, tmdb_id, state, season_number=season_number)
+            tv_status = _yamtrack_tv_status(status)
+            if tv_status:
+                explicit_show_status_ids.add(tmdb_id)
+                if _import_tv_status_by_mode(job.user, tmdb_id, tv_status, event_at, progress, import_mode):
+                    row_imported = True
+
+        elif media_type == 'episode':
+            _ensure_tmdb_metadata_for_import_item(WatchEntryMediaType.EPISODE, tmdb_id, state, season_number=season_number)
+            if season_number is not None:
+                season_numbers_by_show.setdefault(tmdb_id, set()).add(season_number)
+
+            entry_status = _yamtrack_watch_entry_status(status)
+            if not entry_status and end_at:
+                entry_status = WatchEntryStatus.WATCHED
+
+            if entry_status and season_number is not None and episode_number is not None:
+                imported_keys['watch_entries'].add(_watch_entry_key(WatchEntryMediaType.EPISODE, tmdb_id, season_number, episode_number))
+                if _import_watch_entry_status_by_mode(
+                    job.user,
+                    WatchEntryMediaType.EPISODE,
+                    tmdb_id,
+                    entry_status,
+                    event_at,
+                    import_mode,
+                    season_number=season_number,
+                    episode_number=episode_number,
+                ):
+                    row_imported = True
+
+        if row_imported:
+            report['records_imported'] += 1
+        else:
+            report['records_skipped'] += 1
+
+        job.processed_items += 1
+        _update_job_progress(job)
+
+    if import_mode == DataImportMode.MIRROR_IMPORTED_SET:
+        _apply_mirror_deletions(job, imported_keys, collections_present)
+
+    refresh_ids = set(season_numbers_by_show.keys()) - explicit_show_status_ids
+    for tmdb_id in refresh_ids:
+        refresh_show_and_season_statuses(job.user.id, tmdb_id, season_numbers_by_show.get(tmdb_id, set()))
+
+    report['metadata_hits'] = state['metadata_hits']
+    report['metadata_fetches'] = state['metadata_fetches']
+    report['metadata_errors'] = state['metadata_errors']
+    report['summary'] = {
+        'watch_history': len(imported_keys['watch_entries']),
+        'watchlist': len(imported_keys['watchlist']),
+        'ratings': len(imported_keys['ratings']),
+    }
+    report['total_items'] = job.total_items
+    job.metadata = report
+    job.save(update_fields=['total_items', 'processed_items', 'metadata', 'updated_at'])
 
 
 def _zip_json_sort_key(name: str):
@@ -722,250 +1130,6 @@ def _apply_trakt_zip(job: DataTransferJob, content: bytes, import_mode: str):
     report['total_items'] = job.total_items
     job.metadata = report
     job.save(update_fields=['total_items', 'processed_items', 'metadata', 'updated_at'])
-
-
-@shared_task(name="tracking.prepare_trakt_zip_import")
-def prepare_trakt_zip_import(job_id: int) -> dict[str, str]:
-    job = DataTransferJob.objects.get(id=job_id)
-    job.status = DataTransferStatus.PROCESSING
-    job.save(update_fields=['status', 'updated_at'])
-
-    try:
-        content = job.input_file.read() if job.input_file else b''
-        report = _analyze_trakt_zip(job, content)
-        job.total_items = report.get('total_items', 0)
-        job.processed_items = 0
-        job.metadata = report
-        job.status = DataTransferStatus.AWAITING_CONFIRMATION
-        job.error_message = ''
-        job.save(update_fields=['total_items', 'processed_items', 'metadata', 'status', 'error_message', 'updated_at'])
-        return {'status': DataTransferStatus.AWAITING_CONFIRMATION}
-    except Exception as exc:
-        job.status = DataTransferStatus.FAILED
-        job.error_message = str(exc)
-        job.save(update_fields=['status', 'error_message', 'updated_at'])
-        return {'status': DataTransferStatus.FAILED}
-
-
-@shared_task(name="tracking.apply_trakt_zip_import")
-def apply_trakt_zip_import(job_id: int) -> dict[str, str]:
-    job = DataTransferJob.objects.get(id=job_id)
-    try:
-        import_mode = (job.metadata or {}).get('import_mode') or DataImportMode.NEW_ITEMS
-        if import_mode not in DataImportMode.values:
-            import_mode = DataImportMode.NEW_ITEMS
-        content = job.input_file.read() if job.input_file else b''
-        job.processed_items = 0
-        job.total_items = (job.metadata or {}).get('total_items', job.total_items)
-        job.save(update_fields=['processed_items', 'total_items', 'updated_at'])
-
-        _apply_trakt_zip(job, content, import_mode)
-        metadata = dict(job.metadata or {})
-        metadata['import_mode'] = import_mode
-        job.metadata = metadata
-        job.status = DataTransferStatus.DONE
-        job.error_message = ''
-        job.save(update_fields=['status', 'error_message', 'metadata', 'updated_at'])
-        return {'status': DataTransferStatus.DONE}
-    except Exception as exc:
-        job.status = DataTransferStatus.FAILED
-        job.error_message = str(exc)
-        job.save(update_fields=['status', 'error_message', 'updated_at'])
-        return {'status': DataTransferStatus.FAILED}
-
-
-@shared_task(name="tracking.heartbeat")
-def heartbeat() -> dict[str, str]:
-    now = timezone.now().isoformat()
-    return {"status": "ok", "timestamp": now}
-
-
-@shared_task(name="tracking.export_user_data")
-def export_user_data(job_id: int) -> dict[str, str]:
-    job = DataTransferJob.objects.get(id=job_id)
-    job.status = DataTransferStatus.PROCESSING
-    job.save(update_fields=['status', 'updated_at'])
-
-    try:
-        user = job.user
-        payload = {
-            'watch_history': list(WatchEntry.objects.filter(user=user).values()),
-            'watchlist': list(Watchlist.objects.filter(user=user).values()),
-            'ratings': list(Rating.objects.filter(user=user).values()),
-            'reviews': list(Review.objects.filter(user=user).values()),
-        }
-        if job.data_format == DataTransferFormat.CSV:
-            buffer = io.StringIO()
-            writer = csv.writer(buffer)
-            writer.writerow(['collection', 'media_type', 'tmdb_id', 'status', 'season_number', 'episode_number', 'score', 'content'])
-            for item in payload['watch_history']:
-                writer.writerow(['watch_history', item.get('media_type'), item.get('tmdb_id'), item.get('status'), item.get('season_number'), item.get('episode_number'), '', ''])
-            for item in payload['watchlist']:
-                writer.writerow(['watchlist', item.get('media_type'), item.get('tmdb_id'), '', '', '', '', ''])
-            for item in payload['ratings']:
-                writer.writerow(['ratings', item.get('media_type'), item.get('tmdb_id'), '', '', '', item.get('score'), ''])
-            for item in payload['reviews']:
-                writer.writerow(['reviews', item.get('media_type'), item.get('tmdb_id'), '', '', '', '', item.get('content', '')])
-            raw = buffer.getvalue()
-            filename = f'user-{user.id}-export-{job.id}.csv'
-        else:
-            import json
-            raw = json.dumps(payload, default=str, indent=2)
-            filename = f'user-{user.id}-export-{job.id}.json'
-        job.output_file.save(filename, ContentFile(raw.encode('utf-8')), save=False)
-        job.status = DataTransferStatus.DONE
-        job.total_items = sum(len(v) for v in payload.values())
-        job.processed_items = job.total_items
-        job.error_message = ''
-        job.save()
-        return {'status': DataTransferStatus.DONE}
-    except Exception as exc:
-        job.status = DataTransferStatus.FAILED
-        job.error_message = str(exc)
-        job.save(update_fields=['status', 'error_message', 'updated_at'])
-        return {'status': DataTransferStatus.FAILED}
-
-
-@shared_task(name="tracking.import_user_data")
-def import_user_data(job_id: int) -> dict[str, str]:
-    job = DataTransferJob.objects.get(id=job_id)
-    job.status = DataTransferStatus.PROCESSING
-    job.save(update_fields=['status', 'updated_at'])
-
-    try:
-        content = job.input_file.read() if job.input_file else b''
-        job.total_items = 0
-        job.processed_items = 0
-        job.metadata = {}
-        job.save(update_fields=['total_items', 'processed_items', 'metadata', 'updated_at'])
-
-        metadata_state = {
-            'metadata_checked': set(),
-            'season_checked': set(),
-            'metadata_hits': 0,
-            'metadata_fetches': 0,
-            'metadata_errors': 0,
-        }
-
-        history = []
-        watchlist = []
-        ratings = []
-        if job.data_format == DataTransferFormat.CSV:
-            reader = csv.DictReader(io.StringIO(content.decode('utf-8')))
-            for row in reader:
-                if row.get('collection') != 'watch_history':
-                    continue
-                history.append({
-                    'media_type': row.get('media_type') or MediaType.MOVIE,
-                    'tmdb_id': int(row.get('tmdb_id') or 0),
-                    'status': row.get('status') or WatchEntryStatus.WATCHED,
-                    'season_number': int(row['season_number']) if row.get('season_number') else None,
-                    'episode_number': int(row['episode_number']) if row.get('episode_number') else None,
-                    'watched_at': _parse_watched_at(row.get('watched_at')),
-                })
-        elif job.data_format == DataTransferFormat.ZIP:
-            report = _analyze_trakt_zip(job, content)
-            job.total_items = report.get('total_items', 0)
-            job.processed_items = 0
-            job.metadata = report
-            job.save(update_fields=['total_items', 'processed_items', 'metadata', 'updated_at'])
-            _apply_trakt_zip(job, content, DataImportMode.NEW_ITEMS)
-            metadata = dict(job.metadata or {})
-            metadata['import_mode'] = DataImportMode.NEW_ITEMS
-            job.metadata = metadata
-            job.status = DataTransferStatus.DONE
-            job.error_message = ''
-            job.save(update_fields=['status', 'error_message', 'metadata', 'updated_at'])
-            return {'status': DataTransferStatus.DONE}
-        else:
-            data = json.loads(content.decode('utf-8') or '{}')
-            history = data.get('watch_history', [])
-            watchlist = data.get('watchlist', [])
-            ratings = data.get('ratings', [])
-
-        job.total_items = len(history) + len(watchlist) + len(ratings)
-        job.processed_items = 0
-        job.metadata = {'format': job.data_format}
-        job.save(update_fields=['total_items', 'processed_items', 'metadata', 'updated_at'])
-
-        for item in history:
-            media_type = item.get('media_type', MediaType.MOVIE)
-            tmdb_id = _safe_int(item.get('tmdb_id'))
-            season_number = _safe_int(item.get('season_number'))
-            episode_number = _safe_int(item.get('episode_number'))
-            if not tmdb_id:
-                job.processed_items += 1
-                _update_job_progress(job)
-                continue
-
-            _ensure_tmdb_metadata_for_import_item(media_type, tmdb_id, metadata_state, season_number=season_number)
-            _upsert_watch_entry(
-                job.user,
-                media_type,
-                tmdb_id,
-                _parse_watched_at(item.get('watched_at')),
-                season_number=season_number,
-                episode_number=episode_number,
-            )
-            job.processed_items += 1
-            _update_job_progress(job)
-
-        for item in watchlist:
-            media_type = item.get('media_type', MediaType.MOVIE)
-            tmdb_id = _safe_int(item.get('tmdb_id'))
-            if not tmdb_id:
-                job.processed_items += 1
-                _update_job_progress(job)
-                continue
-
-            _ensure_tmdb_metadata_for_import_item(media_type, tmdb_id, metadata_state)
-            Watchlist.objects.update_or_create(
-                user=job.user,
-                media_type=media_type,
-                tmdb_id=tmdb_id,
-                defaults={
-                    'notes': item.get('notes', ''),
-                },
-            )
-            job.processed_items += 1
-            _update_job_progress(job)
-
-        for item in ratings:
-            score = _safe_int(item.get('score'))
-            media_type = item.get('media_type', MediaType.MOVIE)
-            tmdb_id = _safe_int(item.get('tmdb_id'))
-            if not score or not tmdb_id:
-                job.processed_items += 1
-                _update_job_progress(job)
-                continue
-            _ensure_tmdb_metadata_for_import_item(media_type, tmdb_id, metadata_state)
-            Rating.objects.update_or_create(
-                user=job.user,
-                media_type=media_type,
-                tmdb_id=tmdb_id,
-                defaults={
-                    'score': score,
-                },
-            )
-            job.processed_items += 1
-            _update_job_progress(job)
-
-        job.metadata = {
-            'format': job.data_format,
-            'metadata_hits': metadata_state['metadata_hits'],
-            'metadata_fetches': metadata_state['metadata_fetches'],
-            'metadata_errors': metadata_state['metadata_errors'],
-        }
-
-        job.status = DataTransferStatus.DONE
-        job.error_message = ''
-        job.save(update_fields=['status', 'processed_items', 'error_message', 'metadata', 'updated_at'])
-        return {'status': DataTransferStatus.DONE}
-    except Exception as exc:
-        job.status = DataTransferStatus.FAILED
-        job.error_message = str(exc)
-        job.save(update_fields=['status', 'error_message', 'updated_at'])
-        return {'status': DataTransferStatus.FAILED}
 
 
 def _ensure_tmdb_metadata(media_type: str, tmdb_id: int | None) -> bool:

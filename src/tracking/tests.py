@@ -900,6 +900,28 @@ class ListCollaborationTest(BaseTestCase):
 
 
 class DataImportExportTests(BaseTestCase):
+    def _build_yamtrack_csv(self, rows):
+        header = [
+            'source',
+            'media_type',
+            'media_id',
+            'season_number',
+            'episode_number',
+            'status',
+            'score',
+            'progress',
+            'start_date',
+            'end_date',
+            'progressed_at',
+            'created_at',
+            'notes',
+        ]
+        lines = [','.join(header)]
+        for row in rows:
+            values = [str(row.get(key, '')) for key in header]
+            lines.append(','.join(values))
+        return ('\n'.join(lines) + '\n').encode('utf-8')
+
     def test_export_job_creation(self):
         response = self.client.post('/api/tracking/data/export/?format=json', {})
         self.assertEqual(response.status_code, 201)
@@ -907,7 +929,7 @@ class DataImportExportTests(BaseTestCase):
 
     def test_import_job_creation(self):
         file_obj = SimpleUploadedFile('import.json', b'{"watch_history": []}', content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?format=json', {'file': file_obj}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
         self.assertIn('id', response.data)
 
@@ -917,9 +939,30 @@ class DataImportExportTests(BaseTestCase):
             archive.writestr('lists-watchlist.json', '[]')
         file_obj = SimpleUploadedFile('trakt-export.zip', buffer.getvalue(), content_type='application/zip')
 
-        response = self.client.post('/api/tracking/data/import/?data_format=zip', {'file': file_obj}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['data_format'], 'zip')
+
+    def test_import_requires_source(self):
+        file_obj = SimpleUploadedFile('import.csv', b'collection,media_type,tmdb_id\n', content_type='text/csv')
+        response = self.client.post('/api/tracking/data/import/?data_format=csv', {'file': file_obj}, format='multipart')
+        self.assertEqual(response.status_code, 400)
+
+    def test_yamtrack_csv_import_job_creation(self):
+        csv_content = self._build_yamtrack_csv([
+            {'source': 'tmdb', 'media_type': 'movie', 'media_id': 101, 'status': 'Completed'},
+        ])
+        file_obj = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+
+        response = self.client.post('/api/tracking/data/import/?data_format=csv&source=yamtrack', {'file': file_obj}, format='multipart')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['data_format'], 'csv')
+        self.assertEqual(response.data.get('metadata', {}).get('import_source'), 'yamtrack')
+
+    def test_import_rejects_source_format_mismatch(self):
+        file_obj = SimpleUploadedFile('import.json', b'{"watch_history": []}', content_type='application/json')
+        response = self.client.post('/api/tracking/data/import/?data_format=json&source=trakt', {'file': file_obj}, format='multipart')
+        self.assertEqual(response.status_code, 400)
 
     def test_data_jobs_list_scoped_and_ordered(self):
         now = timezone.now()
@@ -948,7 +991,7 @@ class DataImportExportTests(BaseTestCase):
             ]))
 
         upload = SimpleUploadedFile('trakt-export.zip', buffer.getvalue(), content_type='application/zip')
-        response = self.client.post('/api/tracking/data/import/?data_format=zip', {'file': upload}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import prepare_trakt_zip_import
@@ -960,6 +1003,27 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(job.processed_items, 0)
         self.assertEqual(job.metadata.get('summary', {}).get('watch_history'), 1)
         self.assertEqual(job.metadata.get('summary', {}).get('watchlist'), 1)
+
+    def test_prepare_yamtrack_csv_sets_awaiting_confirmation(self):
+        csv_content = self._build_yamtrack_csv([
+            {'source': 'tmdb', 'media_type': 'movie', 'media_id': 100, 'status': 'Completed', 'score': '8.4'},
+            {'source': 'mal', 'media_type': 'anime', 'media_id': 999, 'status': 'Completed'},
+        ])
+        upload = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+        response = self.client.post('/api/tracking/data/import/?data_format=csv&source=yamtrack', {'file': upload}, format='multipart')
+        self.assertEqual(response.status_code, 201)
+
+        from tracking.tasks import prepare_yamtrack_csv_import
+        prepare_yamtrack_csv_import(response.data['id'])
+
+        job = DataTransferJob.objects.get(id=response.data['id'])
+        self.assertEqual(job.status, 'awaiting_confirmation')
+        self.assertEqual(job.total_items, 2)
+        self.assertEqual(job.processed_items, 0)
+        self.assertEqual(job.metadata.get('import_source'), 'yamtrack')
+        self.assertEqual(job.metadata.get('summary', {}).get('watch_history'), 1)
+        self.assertEqual(job.metadata.get('summary', {}).get('ratings'), 1)
+        self.assertEqual(job.metadata.get('skipped_non_tmdb'), 1)
 
     def test_confirm_zip_import_requires_awaiting_confirmation(self):
         job = DataTransferJob.objects.create(
@@ -978,7 +1042,7 @@ class DataImportExportTests(BaseTestCase):
             job_type='import',
             data_format='zip',
             status='awaiting_confirmation',
-            metadata={'total_items': 3, 'summary': {'watch_history': 1, 'watchlist': 1, 'ratings': 1}},
+            metadata={'import_source': 'trakt', 'total_items': 3, 'summary': {'watch_history': 1, 'watchlist': 1, 'ratings': 1}},
         )
         response = self.client.post(
             f'/api/tracking/data/jobs/{job.id}/confirm/',
@@ -991,6 +1055,128 @@ class DataImportExportTests(BaseTestCase):
         self.assertTrue(job.overwrite_existing)
         self.assertEqual(job.metadata.get('import_mode'), 'mirror_imported_set')
         mock_delay.assert_called_once_with(job.id)
+
+    @patch('tracking.tasks.apply_yamtrack_csv_import.delay')
+    def test_confirm_yamtrack_csv_starts_apply_task(self, mock_delay):
+        job = DataTransferJob.objects.create(
+            user=self.user,
+            job_type='import',
+            data_format='csv',
+            status='awaiting_confirmation',
+            metadata={
+                'import_source': 'yamtrack',
+                'total_items': 2,
+                'summary': {'watch_history': 1, 'watchlist': 0, 'ratings': 1},
+            },
+        )
+        response = self.client.post(
+            f'/api/tracking/data/jobs/{job.id}/confirm/',
+            {'import_mode': 'update_existing'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 202)
+        job.refresh_from_db()
+        self.assertEqual(job.status, 'processing')
+        self.assertTrue(job.overwrite_existing)
+        self.assertEqual(job.metadata.get('import_mode'), 'update_existing')
+        mock_delay.assert_called_once_with(job.id)
+
+    def test_confirm_non_yamtrack_csv_is_rejected(self):
+        job = DataTransferJob.objects.create(
+            user=self.user,
+            job_type='import',
+            data_format='csv',
+            status='awaiting_confirmation',
+            metadata={'total_items': 1},
+        )
+        response = self.client.post(
+            f'/api/tracking/data/jobs/{job.id}/confirm/',
+            {'import_mode': 'new_items'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_apply_yamtrack_csv_import_maps_statuses_and_filters_rows(self):
+        TVShow.objects.create(tmdb_id=500, name='Mapped Show')
+        csv_content = self._build_yamtrack_csv([
+            {
+                'source': 'tmdb',
+                'media_type': 'tv',
+                'media_id': 500,
+                'status': 'Paused',
+                'score': '7.6',
+                'progress': '12',
+                'progressed_at': '2026-01-05T10:00:00+00:00',
+            },
+            {
+                'source': 'tmdb',
+                'media_type': 'episode',
+                'media_id': 500,
+                'season_number': 1,
+                'episode_number': 2,
+                'status': '',
+                'end_date': '2026-02-01T12:30:00+00:00',
+            },
+            {
+                'source': 'tmdb',
+                'media_type': 'movie',
+                'media_id': 601,
+                'status': 'Completed',
+                'score': '8.5',
+                'end_date': '2026-02-03T08:00:00+00:00',
+            },
+            {
+                'source': 'tmdb',
+                'media_type': 'movie',
+                'media_id': 602,
+                'status': 'Planning',
+                'score': '0',
+            },
+            {
+                'source': 'mal',
+                'media_type': 'movie',
+                'media_id': 700,
+                'status': 'Completed',
+            },
+        ])
+        upload = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+        job = DataTransferJob.objects.create(
+            user=self.user,
+            job_type='import',
+            data_format='csv',
+            status='processing',
+            input_file=upload,
+            metadata={'import_source': 'yamtrack', 'import_mode': 'new_items', 'total_items': 5},
+            total_items=5,
+        )
+
+        from tracking.tasks import apply_yamtrack_csv_import
+        apply_yamtrack_csv_import(job.id)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, 'done')
+        self.assertEqual(job.processed_items, 5)
+        self.assertEqual(job.metadata.get('skipped_non_tmdb'), 1)
+
+        show_status = UserTvShowStatus.objects.get(user=self.user, tmdb_id=500)
+        self.assertEqual(show_status.status, 'watching')
+
+        episode_entry = WatchEntry.objects.get(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=500,
+            season_number=1,
+            episode_number=2,
+        )
+        self.assertEqual(episode_entry.status, 'watched')
+        self.assertEqual(episode_entry.watched_at.isoformat(), '2026-02-01T12:30:00+00:00')
+
+        self.assertTrue(WatchEntry.objects.filter(user=self.user, media_type='movie', tmdb_id=601, status='watched').exists())
+        self.assertTrue(Rating.objects.filter(user=self.user, media_type='movie', tmdb_id=601, score=9).exists())
+        self.assertTrue(Rating.objects.filter(user=self.user, media_type='tv', tmdb_id=500, score=8).exists())
+        self.assertFalse(Rating.objects.filter(user=self.user, media_type='movie', tmdb_id=602).exists())
+        self.assertTrue(Watchlist.objects.filter(user=self.user, media_type='movie', tmdb_id=602).exists())
+        self.assertFalse(WatchEntry.objects.filter(user=self.user, tmdb_id=700).exists())
 
     def test_zip_import_loads_history_watchlist_and_ratings(self):
         watched_history = [
@@ -1032,7 +1218,7 @@ class DataImportExportTests(BaseTestCase):
             archive.writestr('ratings-shows.json', json.dumps(ratings_shows))
 
         upload = SimpleUploadedFile('trakt-export.zip', buffer.getvalue(), content_type='application/zip')
-        response = self.client.post('/api/tracking/data/import/?data_format=zip', {'file': upload}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import import_user_data
@@ -1076,7 +1262,7 @@ class DataImportExportTests(BaseTestCase):
             archive.writestr('lists-watchlist.json', json.dumps(watchlist_wrapped))
 
         upload = SimpleUploadedFile('trakt-export.zip', buffer.getvalue(), content_type='application/zip')
-        response = self.client.post('/api/tracking/data/import/?data_format=zip', {'file': upload}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import import_user_data
@@ -1117,7 +1303,7 @@ class DataImportExportTests(BaseTestCase):
             archive.writestr('notes-movies.json', json.dumps([]))
 
         upload = SimpleUploadedFile('trakt-export.zip', buffer.getvalue(), content_type='application/zip')
-        response = self.client.post('/api/tracking/data/import/?data_format=zip', {'file': upload}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import import_user_data
@@ -1150,7 +1336,7 @@ class DataImportExportTests(BaseTestCase):
             archive.writestr('watched-history-1.json', json.dumps(watched_history))
 
         upload = SimpleUploadedFile('trakt-export.zip', buffer.getvalue(), content_type='application/zip')
-        response = self.client.post('/api/tracking/data/import/?data_format=zip', {'file': upload}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import import_user_data
@@ -1172,7 +1358,7 @@ class DataImportExportTests(BaseTestCase):
             archive.writestr('hidden-progress-watched.json', json.dumps(hidden_progress))
 
         upload = SimpleUploadedFile('trakt-export.zip', buffer.getvalue(), content_type='application/zip')
-        response = self.client.post('/api/tracking/data/import/?data_format=zip', {'file': upload}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import import_user_data
@@ -1205,7 +1391,7 @@ class DataImportExportTests(BaseTestCase):
             ],
         }
         file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?format=json', {'file': file_obj}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import import_user_data
@@ -1230,7 +1416,7 @@ class DataImportExportTests(BaseTestCase):
             'ratings': [],
         }
         file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?format=json', {'file': file_obj}, format='multipart')
+        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import import_user_data

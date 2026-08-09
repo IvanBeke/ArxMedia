@@ -890,9 +890,22 @@ class DataImportView(generics.CreateAPIView):
         fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.JSON)).lower()
         if fmt not in (DataTransferFormat.JSON, DataTransferFormat.CSV, DataTransferFormat.ZIP):
             raise ValidationError({'format': 'format must be json, csv, or zip'})
+        source = (request.query_params.get('source') or '').strip().lower()
         uploaded = request.FILES.get('file')
         if not uploaded:
             raise ValidationError({'file': 'file is required'})
+
+        source_formats = {
+            'arxmedia': DataTransferFormat.JSON,
+            'trakt': DataTransferFormat.ZIP,
+            'yamtrack': DataTransferFormat.CSV,
+        }
+        if not source:
+            raise ValidationError({'source': 'source is required (arxmedia, trakt, or yamtrack).'})
+        if source not in source_formats:
+            raise ValidationError({'source': 'source must be arxmedia, trakt, or yamtrack'})
+        if fmt != source_formats[source]:
+            raise ValidationError({'format': f'format must be {source_formats[source]} for source={source}.'})
 
         job = DataTransferJob.objects.create(
             user=request.user,
@@ -901,9 +914,18 @@ class DataImportView(generics.CreateAPIView):
             status=DataTransferStatus.PENDING,
             input_file=uploaded,
         )
-        if fmt == DataTransferFormat.ZIP:
+
+        metadata = dict(job.metadata or {})
+        metadata['import_source'] = source
+        job.metadata = metadata
+        job.save(update_fields=['metadata', 'updated_at'])
+
+        if source == 'trakt':
             from .tasks import prepare_trakt_zip_import
             prepare_trakt_zip_import.delay(job.id)
+        elif source == 'yamtrack':
+            from .tasks import prepare_yamtrack_csv_import
+            prepare_yamtrack_csv_import.delay(job.id)
         else:
             from .tasks import import_user_data
             import_user_data.delay(job.id)
@@ -952,8 +974,11 @@ class DataJobConfirmView(generics.GenericAPIView):
         job = DataTransferJob.objects.filter(user=request.user, id=kwargs.get('pk')).first()
         if not job:
             raise ValidationError({'job': 'Import job not found.'})
-        if job.job_type != DataTransferJobType.IMPORT or job.data_format != DataTransferFormat.ZIP:
-            raise ValidationError({'job': 'Only ZIP import jobs can be confirmed.'})
+        import_source = (job.metadata or {}).get('import_source')
+        can_confirm_trakt_zip = job.data_format == DataTransferFormat.ZIP and import_source == 'trakt'
+        can_confirm_yamtrack_csv = job.data_format == DataTransferFormat.CSV and import_source == 'yamtrack'
+        if job.job_type != DataTransferJobType.IMPORT or not (can_confirm_trakt_zip or can_confirm_yamtrack_csv):
+            raise ValidationError({'job': 'Only Trakt ZIP or Yamtrack CSV import jobs can be confirmed.'})
         if job.status != DataTransferStatus.AWAITING_CONFIRMATION:
             raise ValidationError({'job': 'Import job is not ready for confirmation.'})
 
@@ -970,8 +995,12 @@ class DataJobConfirmView(generics.GenericAPIView):
         job.error_message = ''
         job.save(update_fields=['metadata', 'overwrite_existing', 'status', 'processed_items', 'error_message', 'updated_at'])
 
-        from .tasks import apply_trakt_zip_import
-        apply_trakt_zip_import.delay(job.id)
+        if can_confirm_trakt_zip:
+            from .tasks import apply_trakt_zip_import
+            apply_trakt_zip_import.delay(job.id)
+        else:
+            from .tasks import apply_yamtrack_csv_import
+            apply_yamtrack_csv_import.delay(job.id)
         serializer = self.get_serializer(job, context={'request': request})
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
