@@ -20,7 +20,7 @@
         <button
           v-for="t in ['all', MEDIA_TYPE.MOVIE, MEDIA_TYPE.TV]"
           :key="t"
-          @click="filter = t; load()"
+          @click="setFilter(t)"
           class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
           :class="filter === t ? 'bg-brand-500 text-white' : 'text-gray-400 hover:text-primary hover:bg-surface-100'"
         >{{ t === 'all' ? 'All' : t === MEDIA_TYPE.MOVIE ? 'Movies' : 'TV Shows' }}</button>
@@ -31,25 +31,34 @@
       <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
     </div>
 
-    <div v-else-if="items.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-      <MediaCard
-        v-for="item in items"
-        :key="`${item.media_type}-${item.id}`"
-        :item="item"
-        :media-type="item.media_type"
-        :watched="isWatchedStatus(item)"
-        :status="item.user_status?.status || 'none'"
-        :show-quick-action="canToggleWatchlist(item)"
-        :quick-action-active="item.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH"
-        :quick-action-loading="isLoading(item.media_type, item.tmdb_id)"
-        :quick-action-pulsing="isPulsing(item.media_type, item.tmdb_id)"
-        :quick-action-aria-label="getWatchlistAriaLabel(item.media_type, item.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH)"
-        :show-watched-quick-action="true"
-        :watched-quick-action-loading="isWatchedLoading(item.media_type, item.tmdb_id)"
-        :watched-quick-action-pulsing="isWatchedPulsing(item.media_type, item.tmdb_id)"
-        :watched-quick-action-aria-label="t('tracking_mark_as_watched')"
-        @quick-action-watchlist="handleQuickAction(item, item.media_type)"
-        @quick-action-watch-option="handleWatchOption(item, item.media_type, $event)"
+    <div v-else-if="items.length">
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <MediaCard
+          v-for="item in items"
+          :key="`${item.media_type}-${item.id}`"
+          :item="item"
+          :media-type="item.media_type"
+          :watched="isWatchedStatus(item)"
+          :status="item.user_status?.status || 'none'"
+          :show-quick-action="canToggleWatchlist(item)"
+          :quick-action-active="item.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH"
+          :quick-action-loading="isLoading(item.media_type, item.tmdb_id)"
+          :quick-action-pulsing="isPulsing(item.media_type, item.tmdb_id)"
+          :quick-action-aria-label="getWatchlistAriaLabel(item.media_type, item.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH)"
+          :show-watched-quick-action="true"
+          :watched-quick-action-loading="isWatchedLoading(item.media_type, item.tmdb_id)"
+          :watched-quick-action-pulsing="isWatchedPulsing(item.media_type, item.tmdb_id)"
+          :watched-quick-action-aria-label="t('tracking_mark_as_watched')"
+          @quick-action-watchlist="handleQuickAction(item, item.media_type)"
+          @quick-action-watch-option="handleWatchOption(item, item.media_type, $event)"
+        />
+      </div>
+      <PaginationControls
+        :current-page="currentPage"
+        :total-pages="totalPages"
+        :max-visible-pages="10"
+        :disabled="loadingMore"
+        @go="goToPage"
       />
     </div>
 
@@ -61,9 +70,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { trackingAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
+import PaginationControls from '@/components/PaginationControls.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
@@ -74,9 +85,16 @@ import { getApiErrorMessage } from '@/utils/errors'
 
 const items = ref([])
 const loading = ref(true)
+const loadingMore = ref(false)
 const filter = ref('all')
+const currentPage = ref(1)
+const totalPages = ref(1)
+const count = ref(0)
+const pageSize = ref(20)
 const quickActionError = ref('')
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 
 const { showDatePicker, pickerInitialValue, pickWatchedDateTime, handleDatePickerConfirm, handleDatePickerCancel } = useWatchedDateTimePicker()
 const { isLoading, isPulsing, toggleWatchlist } = useWatchlistQuickActions()
@@ -106,17 +124,80 @@ function showQuickActionError(message) {
   }, 3500)
 }
 
-async function load() {
-  loading.value = true
-  const params = filter.value !== 'all' ? { media_type: filter.value } : {}
+async function load(page = 1) {
+  const showFullLoader = page === 1 || items.value.length === 0
+  if (showFullLoader) {
+    loading.value = true
+  } else {
+    loadingMore.value = true
+  }
+  const params = {
+    ...(filter.value !== 'all' ? { media_type: filter.value } : {}),
+    page,
+  }
   try {
     const data = await trackingAPI.getWatchlist(params)
     if (data) {
-      items.value = data.results || data
+      const pageItems = data.results || data
+      if (Array.isArray(data.results)) {
+        count.value = Number.isFinite(data.count) ? data.count : data.results.length
+        if (page === 1 && data.results.length > 0) {
+          pageSize.value = data.results.length
+        }
+        totalPages.value = Math.max(1, Math.ceil(count.value / pageSize.value))
+      } else {
+        count.value = pageItems.length
+        totalPages.value = 1
+      }
+      if (page === 1) {
+        items.value = pageItems
+      } else {
+        items.value = pageItems
+      }
+      currentPage.value = page
+      syncUrlWithState()
     }
   } finally {
-    loading.value = false
+    if (showFullLoader) {
+      loading.value = false
+    } else {
+      loadingMore.value = false
+    }
   }
+}
+
+async function goToPage(page) {
+  if (!Number.isInteger(page) || page < 1 || page > totalPages.value || page === currentPage.value || loading.value || loadingMore.value) {
+    return
+  }
+  await load(page)
+}
+
+async function setFilter(nextFilter) {
+  if (filter.value === nextFilter && currentPage.value === 1) {
+    return
+  }
+  filter.value = nextFilter
+  totalPages.value = 1
+  currentPage.value = 1
+  count.value = 0
+  await load(1)
+}
+
+function parsePage(value) {
+  const page = Number.parseInt(String(value || ''), 10)
+  return Number.isInteger(page) && page > 0 ? page : 1
+}
+
+function syncUrlWithState() {
+  const nextQuery = {
+    ...route.query,
+    page: String(currentPage.value),
+  }
+  if (route.query.page === nextQuery.page) {
+    return
+  }
+  router.replace({ query: nextQuery })
 }
 
 async function handleQuickAction(item, mediaType) {
@@ -171,6 +252,19 @@ async function handleWatchOption(item, mediaType, option) {
 }
 
 onMounted(async () => {
-  await load()
+  currentPage.value = parsePage(route.query.page)
+  await load(currentPage.value)
 })
+
+watch(
+  () => route.query.page,
+  async (nextPageQuery) => {
+    const nextPage = parsePage(nextPageQuery)
+    if (nextPage === currentPage.value) {
+      return
+    }
+    currentPage.value = nextPage
+    await load(currentPage.value)
+  }
+)
 </script>

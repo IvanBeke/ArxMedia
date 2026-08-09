@@ -14,7 +14,7 @@
         <button
           v-for="t in filters"
           :key="t.value"
-          @click="activeFilter = t.value"
+          @click="setFilter(t.value)"
           class="px-3 py-1.5 rounded text-xs font-medium transition-colors"
           :class="activeFilter === t.value ? 'bg-brand-500 text-white' : 'text-muted hover:text-primary'"
         >
@@ -22,7 +22,7 @@
         </button>
       </div>
       <button
-        @click="sortOrder = sortOrder === 'newest' ? 'oldest' : 'newest'"
+        @click="toggleSort"
         class="text-xs text-muted hover:text-primary flex items-center gap-1"
       >
         <span>{{ sortOrder === 'newest' ? 'Newest' : 'Oldest' }} first</span>
@@ -72,6 +72,14 @@
           </div>
         </div>
       </template>
+
+      <PaginationControls
+        :current-page="currentPage"
+        :total-pages="totalPages"
+        :max-visible-pages="10"
+        :disabled="loading"
+        @go="goToPage"
+      />
     </div>
 
     <!-- Empty -->
@@ -93,6 +101,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { trackingAPI } from '@/api'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
+import PaginationControls from '@/components/PaginationControls.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -102,6 +111,10 @@ const stats = ref(null)
 const loading = ref(true)
 const activeFilter = ref('all')
 const sortOrder = ref('newest')
+const currentPage = ref(1)
+const totalPages = ref(1)
+const count = ref(0)
+const pageSize = ref(20)
 
 const filters = [
   { label: 'All', value: 'all' },
@@ -133,12 +146,6 @@ const groupedEntries = computed(() => {
   return grouped
 })
 
-function ratingColor(rating) {
-  if (rating >= 8) return 'text-green-400'
-  if (rating >= 6) return 'text-yellow-400'
-  return 'text-red-400'
-}
-
 function getLink(entry) {
   if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
   if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) return `/tv/${entry.tmdb_id}/season/${entry.season_number}`
@@ -150,6 +157,7 @@ async function loadHistory() {
   try {
     const params = {
       order: sortOrder.value,
+      page: currentPage.value,
     }
     if (activeFilter.value !== 'all') {
       params.media_type = activeFilter.value
@@ -159,6 +167,19 @@ async function loadHistory() {
       trackingAPI.getHistory(params),
       trackingAPI.getStats()
     ])
+
+    if (Array.isArray(historyRes?.results)) {
+      count.value = Number.isFinite(historyRes.count) ? historyRes.count : historyRes.results.length
+      if (historyRes.results.length > 0) {
+        pageSize.value = historyRes.results.length
+      }
+      totalPages.value = Math.max(1, Math.ceil(count.value / pageSize.value))
+    } else {
+      const list = historyRes || []
+      count.value = list.length
+      totalPages.value = 1
+    }
+
     entries.value = historyRes.results || historyRes
     stats.value = statsRes
   } catch (e) {
@@ -171,12 +192,15 @@ async function loadHistory() {
 function queryToState() {
   const mediaType = route.query.media_type
   const order = route.query.order
+  const pageQuery = Number.parseInt(String(route.query.page || ''), 10)
 
   const nextFilter = mediaType === MEDIA_TYPE.MOVIE || mediaType === WATCH_ENTRY_MEDIA_TYPE.EPISODE ? mediaType : 'all'
   const nextOrder = order === 'oldest' ? 'oldest' : 'newest'
+  const nextPage = Number.isInteger(pageQuery) && pageQuery > 0 ? pageQuery : 1
 
   activeFilter.value = nextFilter
   sortOrder.value = nextOrder
+  currentPage.value = nextPage
 }
 
 function stateToQuery() {
@@ -187,6 +211,7 @@ function stateToQuery() {
   if (sortOrder.value !== 'newest') {
     query.order = sortOrder.value
   }
+  query.page = String(currentPage.value)
   return query
 }
 
@@ -194,14 +219,36 @@ function syncUrlWithState() {
   const nextQuery = stateToQuery()
   const currentMediaType = route.query.media_type || undefined
   const currentOrder = route.query.order || undefined
+  const currentPageQuery = route.query.page || undefined
   const nextMediaType = nextQuery.media_type || undefined
   const nextOrder = nextQuery.order || undefined
+  const nextPageQuery = nextQuery.page || undefined
 
-  if (currentMediaType === nextMediaType && currentOrder === nextOrder) {
+  if (currentMediaType === nextMediaType && currentOrder === nextOrder && currentPageQuery === nextPageQuery) {
     return
   }
 
   router.replace({ query: nextQuery })
+}
+
+function setFilter(nextFilter) {
+  if (activeFilter.value === nextFilter && currentPage.value === 1) {
+    return
+  }
+  activeFilter.value = nextFilter
+  currentPage.value = 1
+}
+
+function toggleSort() {
+  sortOrder.value = sortOrder.value === 'newest' ? 'oldest' : 'newest'
+  currentPage.value = 1
+}
+
+function goToPage(page) {
+  if (!Number.isInteger(page) || page < 1 || page > totalPages.value || page === currentPage.value || loading.value) {
+    return
+  }
+  currentPage.value = page
 }
 
 async function deleteEntry(entry) {
@@ -213,7 +260,7 @@ async function deleteEntry(entry) {
   }
 }
 
-watch([activeFilter, sortOrder], syncUrlWithState)
+watch([activeFilter, sortOrder, currentPage], syncUrlWithState)
 
 watch(
   () => route.query,
