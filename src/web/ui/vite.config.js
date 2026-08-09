@@ -9,28 +9,31 @@ export default defineConfig({
     outDir: '../static/web',
     emptyOutDir: true,
     manifest: true,
+    rollupOptions: {
+      input: fileURLToPath(new URL('./src/main.js', import.meta.url)),
+    },
   },
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
   },
   server: {
     port: 5173,
-    host: '0.0.0.0',       // necesario para que Docker exponga el puerto
+    host: '0.0.0.0',
     watch: {
       usePolling: true,
       interval: 300,
     },
     proxy: {
       '/api': {
-        target: 'http://app:8000',   // nombre del servicio en compose, no localhost
-        changeOrigin: true
+        target: 'http://app:8000',
+        changeOrigin: true,
       },
       '/oauth': {
         target: 'http://app:8000',
-        changeOrigin: true
-      }
-    }
-  }
+        changeOrigin: true,
+      },
+    },
+  },
 })
