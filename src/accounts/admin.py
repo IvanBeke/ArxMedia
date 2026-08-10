@@ -6,6 +6,5 @@ from .models import User
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
     list_display = ['username', 'email', 'is_private', 'created_at']
-    fieldsets = UserAdmin.fieldsets + (
-        ('Profile', {'fields': ('bio', 'avatar', 'location', 'website', 'is_private')}),
-    )
+    base_fieldsets = UserAdmin.fieldsets or ()
+    fieldsets = (*base_fieldsets, ('Profile', {'fields': ('bio', 'avatar', 'location', 'website', 'is_private')}))

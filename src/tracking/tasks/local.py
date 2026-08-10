@@ -26,32 +26,21 @@ def export_user_data(job_id: int) -> dict[str, str]:
 
     try:
         user = job.user
+        watch_history = list(WatchEntry.objects.filter(user=user).values())
+        watchlist = list(Watchlist.objects.filter(user=user).values())
+        ratings = list(Rating.objects.filter(user=user).values())
+        reviews = list(Review.objects.filter(user=user).values())
         payload = {
-            'watch_history': list(WatchEntry.objects.filter(user=user).values()),
-            'watchlist': list(Watchlist.objects.filter(user=user).values()),
-            'ratings': list(Rating.objects.filter(user=user).values()),
-            'reviews': list(Review.objects.filter(user=user).values()),
+            'watch_history': watch_history,
+            'watchlist': watchlist,
+            'ratings': ratings,
+            'reviews': reviews,
         }
-        if job.data_format == DataTransferFormat.CSV:
-            buffer = io.StringIO()
-            writer = csv.writer(buffer)
-            writer.writerow(['collection', 'media_type', 'tmdb_id', 'status', 'season_number', 'episode_number', 'score', 'content'])
-            for item in payload['watch_history']:
-                writer.writerow(['watch_history', item.get('media_type'), item.get('tmdb_id'), item.get('status'), item.get('season_number'), item.get('episode_number'), '', ''])
-            for item in payload['watchlist']:
-                writer.writerow(['watchlist', item.get('media_type'), item.get('tmdb_id'), '', '', '', '', ''])
-            for item in payload['ratings']:
-                writer.writerow(['ratings', item.get('media_type'), item.get('tmdb_id'), '', '', '', item.get('score'), ''])
-            for item in payload['reviews']:
-                writer.writerow(['reviews', item.get('media_type'), item.get('tmdb_id'), '', '', '', '', item.get('content', '')])
-            raw = buffer.getvalue()
-            filename = f'user-{user.id}-export-{job.id}.csv'
-        else:
-            raw = json.dumps(payload, default=str, indent=2)
-            filename = f'user-{user.id}-export-{job.id}.json'
+        raw = json.dumps(payload, default=str, indent=2)
+        filename = f'user-{user.id}-export-{job.id}.json'
         job.output_file.save(filename, ContentFile(raw.encode('utf-8')), save=False)
         job.status = DataTransferStatus.DONE
-        job.total_items = sum(len(v) for v in payload.values())
+        job.total_items = len(watch_history) + len(watchlist) + len(ratings) + len(reviews)
         job.processed_items = job.total_items
         job.error_message = ''
         job.save()

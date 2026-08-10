@@ -937,8 +937,8 @@ class DataExportView(generics.CreateAPIView):
 
     def post(self, request, *args, **kwargs):
         fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.JSON)).lower()
-        if fmt not in (DataTransferFormat.JSON, DataTransferFormat.CSV):
-            raise ValidationError({'format': 'format must be json or csv'})
+        if fmt != DataTransferFormat.JSON:
+            raise ValidationError({'format': 'format must be json'})
         job = DataTransferJob.objects.create(
             user=request.user,
             job_type=DataTransferJobType.EXPORT,

@@ -7,7 +7,10 @@ import base64
 import hashlib
 from datetime import timedelta
 import dj_database_url
+import django_stubs_ext
 from django.core.exceptions import ImproperlyConfigured
+
+django_stubs_ext.monkeypatch()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 

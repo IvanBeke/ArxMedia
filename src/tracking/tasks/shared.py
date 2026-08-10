@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import zipfile
+from typing import Any
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime
 from media.tmdb import tmdb
@@ -161,7 +162,7 @@ def _import_tv_status_by_mode(user, tmdb_id: int, status_value: str, status_at, 
     if existing and import_mode == DataImportMode.NEW_ITEMS:
         return False
 
-    payload = {
+    payload: dict[str, Any] = {
         'status': status_value,
     }
 
@@ -301,14 +302,14 @@ def _apply_yamtrack_csv(job: DataTransferJob, content: bytes, import_mode: str):
         'metadata_fetches': 0,
         'metadata_errors': 0,
     }
-    imported_keys = {
+    imported_keys: dict[str, set[tuple[object, ...]]] = {
         'watch_entries': set(),
         'watchlist': set(),
         'ratings': set(),
     }
     collections_present = set()
     explicit_show_status_ids = set()
-    season_numbers_by_show = {}
+    season_numbers_by_show: dict[int, set[int]] = {}
 
     reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig')))
     for row in reader:
@@ -817,7 +818,7 @@ def _normalize_zip_records(file_name: str, parsed):
 
 
 def _analyze_trakt_zip(job: DataTransferJob, content: bytes) -> dict:
-    report = _default_import_report()
+    report: dict[str, Any] = _default_import_report()
     report['summary'] = {
         'watch_history': 0,
         'watchlist': 0,
@@ -829,7 +830,7 @@ def _analyze_trakt_zip(job: DataTransferJob, content: bytes) -> dict:
 
         for name in file_names:
             file_name = name.rsplit('/', 1)[-1]
-            file_report = {
+            file_report: dict[str, Any] = {
                 'file': file_name,
                 'status': 'processed',
                 'records_seen': 0,
@@ -1042,16 +1043,16 @@ def _apply_mirror_deletions(job: DataTransferJob, imported_keys: dict, collectio
 
     if 'ratings' in collections_present:
         delete_ids = []
-        for item in Rating.objects.filter(user=job.user):
-            key = _rating_key(item.media_type, item.tmdb_id)
+        for rating_item in Rating.objects.filter(user=job.user):
+            key = _rating_key(rating_item.media_type, rating_item.tmdb_id)
             if key not in imported_keys['ratings']:
-                delete_ids.append(item.id)
+                delete_ids.append(rating_item.id)
         if delete_ids:
             Rating.objects.filter(id__in=delete_ids).delete()
 
 
 def _apply_trakt_zip(job: DataTransferJob, content: bytes, import_mode: str):
-    report = _default_import_report()
+    report: dict[str, Any] = _default_import_report()
     state = {
         'metadata_checked': set(),
         'season_checked': set(),
@@ -1059,7 +1060,7 @@ def _apply_trakt_zip(job: DataTransferJob, content: bytes, import_mode: str):
         'metadata_fetches': 0,
         'metadata_errors': 0,
     }
-    imported_keys = {
+    imported_keys: dict[str, set[tuple[object, ...]]] = {
         'watch_entries': set(),
         'watchlist': set(),
         'ratings': set(),
@@ -1071,7 +1072,7 @@ def _apply_trakt_zip(job: DataTransferJob, content: bytes, import_mode: str):
 
         for name in file_names:
             file_name = name.rsplit('/', 1)[-1]
-            file_report = {
+            file_report: dict[str, Any] = {
                 'file': file_name,
                 'status': 'processed',
                 'records_seen': 0,

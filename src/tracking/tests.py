@@ -927,6 +927,11 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertIn('id', response.data)
 
+    def test_export_rejects_non_json_format(self):
+        response = self.client.post('/api/tracking/data/export/?data_format=csv', {})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['format'], 'format must be json')
+
     def test_import_job_creation(self):
         file_obj = SimpleUploadedFile('import.json', b'{"watch_history": []}', content_type='application/json')
         response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
