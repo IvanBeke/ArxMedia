@@ -40,6 +40,9 @@ jobs:
       - name: App lint (ruff)
         run: docker compose exec -T app uv run ruff check accounts media tracking social my_calendar web arxmedia
 
+      - name: App lint (mypy)
+        run: docker compose exec -T app uv run mypy accounts media tracking social my_calendar web arxmedia
+
       - name: App tests
         run: docker compose exec -T app python manage.py test --keepdb
 
