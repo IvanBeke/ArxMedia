@@ -15,7 +15,7 @@
         <span class="text-muted text-xs font-mono w-6 text-center">{{ String(ep.episode_number).padStart(2, '0') }}</span>
       </div>
 
-      <div class="flex-shrink-0 w-32 sm:w-40 aspect-video rounded-md bg-surface-200 overflow-hidden mt-1">
+      <RouterLink :to="`/tv/${tmdbId}/season/${seasonNumber}/episode/${ep.episode_number}`" class="flex-shrink-0 w-32 sm:w-40 aspect-video rounded-md bg-surface-200 overflow-hidden mt-1 block">
         <img
           v-if="ep.still_path"
           :src="imgUrl(ep.still_path)"
@@ -26,7 +26,7 @@
         <div v-else class="w-full h-full flex items-center justify-center text-gray-600 text-xl">
           {{ ep.episode_number }}
         </div>
-      </div>
+      </RouterLink>
 
       <div class="flex-1 min-w-0 pt-1">
         <RouterLink :to="`/tv/${tmdbId}/season/${seasonNumber}/episode/${ep.episode_number}`" class="text-primary text-sm font-medium hover:text-brand-400 transition-colors">

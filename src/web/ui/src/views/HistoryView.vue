@@ -148,7 +148,9 @@ const groupedEntries = computed(() => {
 
 function getLink(entry) {
   if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
-  if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) return `/tv/${entry.tmdb_id}/season/${entry.season_number}`
+  if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
+    return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
+  }
   return `/tv/${entry.tmdb_id}`
 }
 

@@ -115,7 +115,7 @@ import { ref, onMounted } from 'vue'
 import { trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { formatDateByLocale } from '@/i18n'
-import { MEDIA_TYPE } from '@/constants/tracking'
+import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
 
@@ -134,6 +134,9 @@ function formatDate(d) {
 
 function getLink(entry) {
   if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
+  if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
+    return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
+  }
   return `/tv/${entry.tmdb_id}`
 }
 

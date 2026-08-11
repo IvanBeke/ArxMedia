@@ -88,7 +88,7 @@
         <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
       </div>
       <div v-else class="space-y-8">
-        <div v-if="trendingMovies.length">
+        <div v-if="(activeFilter === 'multi' || activeFilter === MEDIA_TYPE.MOVIE) && trendingMovies.length">
           <h3 class="section-title mb-4">Movies</h3>
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             <MediaCard
@@ -113,7 +113,7 @@
           </div>
         </div>
 
-        <div v-if="trendingTvShows.length">
+        <div v-if="(activeFilter === 'multi' || activeFilter === MEDIA_TYPE.TV) && trendingTvShows.length">
           <h3 class="section-title mb-4">TV Shows</h3>
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             <MediaCard

@@ -33,11 +33,11 @@
 
       <div
         v-if="showWatchAction"
-        class="absolute inset-0 z-30 flex items-center justify-center opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+        class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
       >
         <button
           type="button"
-          class="w-10 h-10 rounded-full flex items-center justify-center border shadow-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-400 focus-visible:ring-offset-surface bg-brand-500/95 border-brand-400 text-white hover:bg-brand-600"
+          class="pointer-events-auto cursor-pointer w-10 h-10 rounded-full flex items-center justify-center border shadow-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-400 focus-visible:ring-offset-surface bg-brand-500/95 border-brand-400 text-white hover:bg-brand-600"
           :disabled="watchLoading"
           aria-label="Mark next episode watched"
           @click.stop.prevent="$emit('watch')"

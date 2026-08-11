@@ -61,12 +61,12 @@
 
       <div
         v-if="showQuickAction || showWatchedQuickAction"
-        class="absolute inset-0 z-20 flex items-center justify-center gap-3 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+        class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-3 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
       >
         <button
           v-if="showQuickAction"
           type="button"
-          class="w-10 h-10 rounded-full flex items-center justify-center border shadow-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-400 focus-visible:ring-offset-surface bg-indigo-700/90 border-indigo-600 text-white hover:bg-indigo-600"
+          class="pointer-events-auto cursor-pointer w-10 h-10 rounded-full flex items-center justify-center border shadow-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-400 focus-visible:ring-offset-surface bg-indigo-700/90 border-indigo-600 text-white hover:bg-indigo-600"
           :disabled="quickActionLoading"
           :title="quickActionAriaLabel"
           :aria-label="quickActionAriaLabel"
@@ -83,21 +83,22 @@
           </svg>
         </button>
 
-        <WatchMenu
-          v-if="showWatchedQuickAction"
-          :release-date="item.release_date || item.first_air_date || ''"
-          :button-aria-label="watchedQuickActionAriaLabel"
-          :button-title="watchedQuickActionAriaLabel"
-          :disabled="watchedQuickActionLoading"
-          :pulsing="watchedQuickActionPulsing"
-          button-class="w-10 h-10 rounded-full flex items-center justify-center border shadow-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-400 focus-visible:ring-offset-surface bg-emerald-700/90 border-emerald-600 text-white hover:bg-emerald-600"
-          menu-class="left-1/2 -translate-x-1/2 bottom-12 mt-0"
-          @select="selectWatchOption"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-          </svg>
-        </WatchMenu>
+        <div v-if="showWatchedQuickAction" class="pointer-events-auto">
+          <WatchMenu
+            :release-date="item.release_date || item.first_air_date || ''"
+            :button-aria-label="watchedQuickActionAriaLabel"
+            :button-title="watchedQuickActionAriaLabel"
+            :disabled="watchedQuickActionLoading"
+            :pulsing="watchedQuickActionPulsing"
+            button-class="w-10 h-10 rounded-full flex items-center justify-center border shadow-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-400 focus-visible:ring-offset-surface bg-emerald-700/90 border-emerald-600 text-white hover:bg-emerald-600"
+            menu-class="left-1/2 -translate-x-1/2 bottom-12 mt-0"
+            @select="selectWatchOption"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+            </svg>
+          </WatchMenu>
+        </div>
       </div>
 
       <!-- Type badge -->
