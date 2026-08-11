@@ -1,6 +1,7 @@
 from rest_framework import serializers
+
 from .choices import MediaType, WatchEntryMediaType
-from .models import WatchEntry, Rating, Watchlist, Review, CustomList, ListItem, ListCollaborator, DataTransferJob
+from .models import CustomList, DataTransferJob, ListCollaborator, ListItem, Rating, Review, WatchEntry, Watchlist
 
 
 class WatchEntrySerializer(serializers.ModelSerializer):

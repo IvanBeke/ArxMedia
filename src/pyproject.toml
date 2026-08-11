@@ -35,6 +35,12 @@ dev = [
 line-length = 120
 target-version = "py314"
 exclude = ["migrations"]
+src = ["src"]
+
+[tool.ruff.lint]
+extend-select = ["DJ"]
+extend-ignore = ["EXE002", "BLE001"]
+per-file-ignores = { "*/admin.py" = ["RUF012"], "*/models.py" = ["RUF012"], "*/serializers.py" = ["RUF012"], "*/views.py" = ["RUF012"] }
 
 [tool.mypy]
 python_version = "3.14"

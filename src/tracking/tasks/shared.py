@@ -1,15 +1,16 @@
-from django.utils import timezone
 import csv
 import io
 import json
 import logging
 import re
 import zipfile
-from typing import Any
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import Any
+
+from django.utils import timezone
+from media.models import Movie, Season, TVShow
 from media.tmdb import tmdb
-from media.models import Movie, TVShow, Season
 
 from ..choices import (
     DataImportMode,
@@ -20,9 +21,8 @@ from ..choices import (
     WatchEntryMediaType,
     WatchEntryStatus,
 )
-from ..models import DataTransferJob, WatchEntry, Watchlist, Rating, Review, UserTvShowStatus
+from ..models import DataTransferJob, Rating, UserTvShowStatus, WatchEntry, Watchlist
 from ..status_sync import refresh_show_and_season_statuses
-
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,9 @@ def _safe_int(value):
 def _parse_watched_at(value: str | None):
     if not value:
         return None
+    normalized = f'{value[:-1]}+00:00' if value.endswith('Z') else value
     try:
-        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(normalized)
     except Exception:
         return None
     if timezone.is_naive(dt):
@@ -60,7 +61,7 @@ def _parse_yamtrack_score(value) -> int | None:
     if not raw:
         return None
     try:
-        rounded = int(Decimal(raw).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        rounded = int(Decimal(raw).quantize(Decimal(1), rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError):
         return None
     if rounded <= 0:
@@ -239,9 +240,7 @@ def _yamtrack_collection_from_row(media_type: str, status: str, score: int | Non
         if status == 'Planning':
             collections.add('watchlist')
     elif media_type == 'episode':
-        if status in {'Completed', 'In progress', 'Paused', 'Dropped'}:
-            collections.add('watch_history')
-        elif not status and end_at:
+        if status in {'Completed', 'In progress', 'Paused', 'Dropped'} or not status and end_at:
             collections.add('watch_history')
     elif media_type == 'tv':
         if status == 'Planning':
@@ -571,11 +570,9 @@ def _ensure_tmdb_metadata_for_import_item(media_type: str, tmdb_id: int | None, 
 def _is_supported_zip_file(file_name: str) -> bool:
     lower = file_name.lower()
     return (
-        lower.startswith('watched-history-')
-        or lower.startswith('watched-movies-')
+        lower.startswith(('watched-history-', 'watched-movies-', 'ratings-movies-'))
         or lower == 'watched-shows.json'
         or lower == 'lists-watchlist.json'
-        or lower.startswith('ratings-movies-')
         or lower == 'ratings-shows.json'
         or lower in ('hidden-progress-watched.json', 'hidden-progress-watched-reset.json')
     )
@@ -797,7 +794,7 @@ def _handle_hidden_progress_record(record: dict, user, state: dict) -> bool:
 
 def _zip_collection_from_file(file_name: str) -> str | None:
     lower = file_name.lower()
-    if lower.startswith('watched-history-') or lower.startswith('watched-movies-'):
+    if lower.startswith(('watched-history-', 'watched-movies-')):
         return 'watch_history'
     if lower == 'lists-watchlist.json':
         return 'watchlist'

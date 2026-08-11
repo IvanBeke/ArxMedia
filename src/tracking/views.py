@@ -1,13 +1,15 @@
+import logging
+from datetime import timedelta
+
+from django.db.models import Avg, Count, DateTimeField, F, Q
+from django.db.models.functions import Coalesce
+from django.utils import timezone
+from media.tmdb import tmdb
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from django.utils import timezone
-from django.db.models import Count, Avg, Q, F, DateTimeField
-from django.db.models.functions import Coalesce
-from datetime import timedelta
-import logging
-from media.tmdb import tmdb
+from rest_framework.response import Response
+
 from .choices import (
     DataImportMode,
     DataTransferFormat,
@@ -19,20 +21,19 @@ from .choices import (
     WatchEntryMediaType,
     WatchEntryStatus,
 )
-from .models import WatchEntry, Rating, Watchlist, Review, CustomList, ListItem, ListCollaborator, DataTransferJob
-from .status_sync import refresh_season_status, refresh_show_status
-from .status_annotations import annotate_media_user_status
+from .models import CustomList, DataTransferJob, ListCollaborator, ListItem, Rating, Review, WatchEntry, Watchlist
 from .serializers import (
-    WatchEntrySerializer,
-    RatingSerializer,
-    WatchlistSerializer,
-    ReviewSerializer,
     CustomListSerializer,
-    ListItemSerializer,
-    ListCollaboratorSerializer,
     DataTransferJobSerializer,
+    ListCollaboratorSerializer,
+    ListItemSerializer,
+    RatingSerializer,
+    ReviewSerializer,
+    WatchEntrySerializer,
+    WatchlistSerializer,
 )
-
+from .status_annotations import annotate_media_user_status
+from .status_sync import refresh_season_status, refresh_show_status
 
 logger = logging.getLogger(__name__)
 
@@ -273,7 +274,7 @@ def user_stats(request):
     avg_rating = Rating.objects.filter(user=user).aggregate(avg=Avg('score'))['avg']
 
     recent = entries.order_by('-watched_at')[:10]
-    from media.models import Movie, Season, Episode
+    from media.models import Episode, Movie, Season
 
     recent_movie_ids = set()
     recent_tv_ids = set()
@@ -433,7 +434,7 @@ def mark_season_watched(request):
     season_number = _coerce_int(season_number, 'season_number')
 
     # Fetch episode numbers and air dates from the Episode model
-    from media.models import Season, Episode
+    from media.models import Episode, Season
     try:
         season = Season.objects.get(show__tmdb_id=tmdb_id, season_number=season_number)
         episodes = list(Episode.objects.filter(season=season).values('episode_number', 'air_date'))
@@ -515,8 +516,8 @@ def unmark_season_watched(request):
 @permission_classes([permissions.IsAuthenticated])
 def up_next(request):
     """Get next episodes for currently watching shows."""
-    from media.models import TVShow, Season, Episode
     from django.utils import timezone
+    from media.models import Episode, Season, TVShow
 
     today = timezone.now().date()
 
@@ -598,8 +599,8 @@ def up_next(request):
 @permission_classes([permissions.IsAuthenticated])
 def upcoming(request):
     """Get next UPCOMING episode for shows user is watching. Only one per show, max 5."""
-    from media.models import Episode
     from django.utils import timezone
+    from media.models import Episode
 
     from .models import UserTvShowStatus
 

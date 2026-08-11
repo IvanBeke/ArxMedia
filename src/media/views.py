@@ -1,13 +1,15 @@
+import logging
+
+from django.db import models
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.db import models
-from .models import Movie, TVShow, Season
-from .serializers import MovieSerializer, TVShowSerializer, SeasonBriefSerializer
-from .tmdb import tmdb
 from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
-import logging
+
+from .models import Movie, Season, TVShow
+from .serializers import MovieSerializer, SeasonBriefSerializer, TVShowSerializer
+from .tmdb import tmdb
 
 logger = logging.getLogger(__name__)
 

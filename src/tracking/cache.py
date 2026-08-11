@@ -1,6 +1,8 @@
 import json
+
 import redis
 from django.conf import settings
+
 from .choices import WatchEntryMediaType
 from .models import WatchEntry
 
@@ -41,7 +43,7 @@ class TrackingCache:
         return stats
 
     def _compute_user_stats(self, user_id):
-        from media.models import TVShow, Episode
+        from media.models import Episode, TVShow
 
         movies = WatchEntry.objects.filter(user_id=user_id, media_type=WatchEntryMediaType.MOVIE).count()
 
@@ -96,7 +98,7 @@ class TrackingCache:
         return progress
 
     def _compute_show_progress(self, user_id, tmdb_id):
-        from media.models import TVShow, Episode
+        from media.models import Episode, TVShow
 
         watched = list(
             WatchEntry.objects.filter(

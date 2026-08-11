@@ -1,8 +1,7 @@
 from django.db.models import DateTimeField, Max
 from django.db.models.functions import Coalesce
 
-from .choices import MediaType, SeasonStatus, TvShowStatus
-from .choices import WatchEntryMediaType, WatchEntryStatus
+from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType, WatchEntryStatus
 from .models import Rating, UserSeasonStatus, UserTvShowStatus, WatchEntry, Watchlist
 
 

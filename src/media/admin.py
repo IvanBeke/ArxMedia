@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import Movie, TVShow, Season, Episode, Genre
+
+from .models import Episode, Genre, Movie, Season, TVShow
 
 
 @admin.register(Genre)

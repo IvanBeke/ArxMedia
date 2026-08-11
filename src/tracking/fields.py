@@ -1,9 +1,9 @@
+import logging
+
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import models
-import logging
-
 
 logger = logging.getLogger(__name__)
 

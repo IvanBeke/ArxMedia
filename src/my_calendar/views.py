@@ -1,11 +1,11 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
+from django.utils import timezone
 from django.utils.dateparse import parse_date
+from media.models import Episode, Movie
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-
-from media.models import Episode, Movie
 from tracking.choices import MediaType, WatchEntryMediaType, WatchEntryStatus
 from tracking.models import WatchEntry, Watchlist
 
@@ -13,15 +13,13 @@ from tracking.models import WatchEntry, Watchlist
 def _parse_range(request):
     start_param = request.query_params.get('start')
     days_param = request.query_params.get('days', '30')
-    start = parse_date(start_param) if start_param else date.today()
+    start = parse_date(start_param) if start_param else timezone.localdate()
     try:
         days = int(days_param)
     except (TypeError, ValueError):
         days = 30
-    if days < 1:
-        days = 1
-    if days > 90:
-        days = 90
+    days = max(days, 1)
+    days = min(days, 90)
     end = start + timedelta(days=days)
     return start, end
 

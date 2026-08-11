@@ -1,6 +1,7 @@
-from django.db import models
 from django.conf import settings
-from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import models
+
 from .choices import (
     DataTransferFormat,
     DataTransferJobType,
@@ -145,6 +146,9 @@ class ListCollaborator(models.Model):
     class Meta:
         unique_together = ('custom_list', 'user')
 
+    def __str__(self):
+        return f'{self.custom_list.name} collaborator: {self.user.username}'
+
 
 class UserTvShowStatus(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='tv_show_statuses')
@@ -168,6 +172,9 @@ class UserTvShowStatus(models.Model):
             models.Index(fields=['user', 'status']),
             models.Index(fields=['user', 'updated_at']),
         ]
+
+    def __str__(self):
+        return f'{self.user.username} TV {self.tmdb_id}: {self.status}'
 
 
 class UserSeasonStatus(models.Model):
@@ -193,6 +200,9 @@ class UserSeasonStatus(models.Model):
             models.Index(fields=['user', 'updated_at']),
         ]
 
+    def __str__(self):
+        return f'{self.user.username} TV {self.tmdb_id} S{self.season_number}: {self.status}'
+
 
 class DataTransferJob(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='data_jobs')
@@ -216,3 +226,6 @@ class DataTransferJob(models.Model):
             models.Index(fields=['user', 'created_at']),
             models.Index(fields=['user', 'status', 'created_at']),
         ]
+
+    def __str__(self):
+        return f'Job {self.id} {self.job_type}/{self.data_format} {self.status}'

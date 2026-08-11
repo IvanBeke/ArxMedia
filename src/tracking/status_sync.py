@@ -1,11 +1,9 @@
 from django.db.models import Count, DateTimeField, Max, Min
 from django.db.models.functions import Coalesce
-
 from media.models import Episode, TVShow
 
 from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType, WatchEntryStatus
 from .models import UserSeasonStatus, UserTvShowStatus, WatchEntry, Watchlist
-
 
 FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
 
@@ -13,7 +11,7 @@ FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
 def _percent(watched_count: int, total_count: int) -> int:
     if total_count <= 0:
         return 0
-    return int(round((watched_count / total_count) * 100))
+    return round((watched_count / total_count) * 100)
 
 
 def _is_final_tmdb_show_status(tmdb_id: int) -> bool:
@@ -63,13 +61,9 @@ def refresh_show_status(user_id: int, tmdb_id: int):
 
     is_final = _is_final_tmdb_show_status(tmdb_id)
     if watched_episodes > 0:
-        if total_episodes == 0 and is_final:
+        if total_episodes == 0 and is_final or watched_episodes >= total_episodes and is_final:
             candidate_status = TvShowStatus.WATCHED
-        elif watched_episodes >= total_episodes and is_final:
-            candidate_status = TvShowStatus.WATCHED
-        elif total_episodes == 0 and not is_final:
-            candidate_status = TvShowStatus.WATCHING
-        elif watched_episodes >= total_episodes and not is_final:
+        elif total_episodes == 0 and not is_final or watched_episodes >= total_episodes and not is_final:
             candidate_status = TvShowStatus.WATCHING
         else:
             candidate_status = TvShowStatus.WATCHING
@@ -83,9 +77,7 @@ def refresh_show_status(user_id: int, tmdb_id: int):
         status_changed_at = dropped_at
     else:
         status_value = candidate_status
-        if status_value == TvShowStatus.WATCHED:
-            status_changed_at = last_watched_at
-        elif status_value == TvShowStatus.WATCHING:
+        if status_value == TvShowStatus.WATCHED or status_value == TvShowStatus.WATCHING:
             status_changed_at = last_watched_at
         elif status_value == TvShowStatus.PLAN_TO_WATCH:
             status_changed_at = plan_to_watch_at
@@ -139,18 +131,14 @@ def refresh_season_status(user_id: int, tmdb_id: int, season_number: int):
 
     is_final = _is_final_tmdb_show_status(tmdb_id)
     if watched_episodes > 0:
-        if total_episodes == 0 and is_final:
-            status_value = SeasonStatus.WATCHED
-        elif watched_episodes >= total_episodes and is_final:
+        if total_episodes == 0 and is_final or watched_episodes >= total_episodes and is_final:
             status_value = SeasonStatus.WATCHED
         else:
             status_value = SeasonStatus.WATCHING
     else:
         status_value = SeasonStatus.NONE
 
-    if status_value == SeasonStatus.WATCHED:
-        status_changed_at = last_watched_at
-    elif status_value == SeasonStatus.WATCHING:
+    if status_value == SeasonStatus.WATCHED or status_value == SeasonStatus.WATCHING:
         status_changed_at = last_watched_at
     else:
         status_changed_at = None

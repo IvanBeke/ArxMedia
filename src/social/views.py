@@ -1,10 +1,11 @@
+from django.contrib.auth import get_user_model
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.contrib.auth import get_user_model
 from tracking.choices import WatchEntryStatus
 from tracking.models import WatchEntry
 from tracking.serializers import WatchEntrySerializer
+
 from .models import Follow
 
 User = get_user_model()

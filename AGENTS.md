@@ -25,7 +25,7 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 - Start stack: `docker compose up --build -d`
 - Migrations: `docker compose exec app python manage.py migrate`
 - App command: `docker compose exec app python manage.py <command>`
-- App lint: `docker compose exec app uv run ruff check accounts media tracking social my_calendar web arxmedia`
+- App lint: `docker compose exec app uv run ruff check accounts media tracking social my_calendar web arxmedia --fix`
 - App types: `docker compose exec app uv run mypy accounts media tracking social my_calendar web arxmedia`
 - Targeted tests (non-interactive-safe): `docker compose exec app python manage.py test <module_or_class> --keepdb`
 - UI production build (required path):
@@ -37,7 +37,8 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 2. `docker compose ps` (services must be Up)
 3. `docker compose exec app python manage.py showmigrations` (no `[ ]`)
 4. Relevant focused tests
-5. UI build command above if UI touched
+5. Both lint and type checks
+6. UI build command above if UI touched
 
 ## High-signal implementation quirks
 

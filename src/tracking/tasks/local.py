@@ -1,9 +1,9 @@
-from celery import shared_task
-from django.core.files.base import ContentFile
-
 import csv
 import io
 import json
+
+from celery import shared_task
+from django.core.files.base import ContentFile
 
 from ..choices import DataImportMode, DataTransferFormat, DataTransferStatus, MediaType, WatchEntryStatus
 from ..models import DataTransferJob, Rating, Review, WatchEntry, Watchlist

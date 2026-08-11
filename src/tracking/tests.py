@@ -1,26 +1,29 @@
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
-from unittest.mock import patch
-from django.core.files.uploadedfile import SimpleUploadedFile
 import io
 import json
 import zipfile
 from datetime import timedelta
+from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
+from django.utils import timezone
+from media.models import Episode, Movie, Season, TVShow
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from tracking.models import (
-    WatchEntry,
-    Rating,
-    Watchlist,
     CustomList,
-    ListItem,
-    ListCollaborator,
     DataTransferJob,
+    ListCollaborator,
+    ListItem,
+    Rating,
     UserSeasonStatus,
     UserTvShowStatus,
+    WatchEntry,
+    Watchlist,
 )
-from media.models import Movie, TVShow, Season, Episode
+
 User = get_user_model()
 
 
@@ -424,7 +427,7 @@ class UpNextTests(BaseTestCase):
     def setUp(self):
         super().setUp()
         # Create a test show in the database
-        from media.models import TVShow, Season, Episode
+        from media.models import Episode, Season, TVShow
         self.show = TVShow.objects.create(
             tmdb_id=123,
             name='Test Show',
@@ -501,7 +504,7 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(response.data[0]['next_episode']['episode_number'], 1)
 
     def test_up_next_orders_by_most_recent_watch(self):
-        from media.models import TVShow, Season, Episode
+        from media.models import Episode, Season, TVShow
 
         show2 = TVShow.objects.create(tmdb_id=999, name='Another Show')
         season2 = Season.objects.create(show=show2, tmdb_id=9991, season_number=1, name='Season 1')
@@ -534,7 +537,7 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(response.data[1]['tmdb_id'], 123)
 
     def test_up_next_prioritizes_recent_releases_with_new_badge(self):
-        from media.models import TVShow, Season, Episode
+        from media.models import Episode, Season, TVShow
 
         today = timezone.now().date()
 
@@ -578,7 +581,7 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(response.data[2]['is_new'], False)
 
     def test_up_next_ignores_dropped_shows(self):
-        from media.models import TVShow, Season, Episode
+        from media.models import Episode, Season, TVShow
 
         show_dropped = TVShow.objects.create(tmdb_id=2001, name='Dropped Show')
         season_dropped = Season.objects.create(show=show_dropped, tmdb_id=20011, season_number=1, name='Season 1')
@@ -626,7 +629,7 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(len(response.data), 0)
 
     def test_up_next_excludes_season_zero(self):
-        from media.models import TVShow, Season, Episode
+        from media.models import Episode, Season, TVShow
 
         show = TVShow.objects.create(tmdb_id=3001, name='Show With Specials')
         season0 = Season.objects.create(show=show, tmdb_id=30010, season_number=0, name='Specials')
@@ -661,7 +664,7 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(response.data[0]['next_episode']['episode_number'], 2)
 
     def test_upcoming_excludes_season_zero(self):
-        from media.models import TVShow, Season, Episode
+        from media.models import Episode, Season, TVShow
 
         today = timezone.now().date()
         show = TVShow.objects.create(tmdb_id=3002, name='Upcoming Specials')

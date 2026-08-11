@@ -1,11 +1,12 @@
 """
 Django settings for arxmedia project.
 """
-from pathlib import Path
-import os
 import base64
 import hashlib
+import os
 from datetime import timedelta
+from pathlib import Path
+
 import dj_database_url
 import django_stubs_ext
 from django.core.exceptions import ImproperlyConfigured

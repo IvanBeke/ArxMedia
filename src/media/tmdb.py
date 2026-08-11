@@ -1,11 +1,12 @@
 import json
+import logging
+
 import redis
 import requests
 from django.conf import settings
 from django.utils.dateparse import parse_date
-from .models import Movie, TVShow, Season, Episode, Genre
-import logging
 
+from .models import Episode, Genre, Movie, Season, TVShow
 
 logger = logging.getLogger(__name__)
 

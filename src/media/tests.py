@@ -1,11 +1,12 @@
+from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model
-from unittest.mock import patch
+from tracking.models import Rating, WatchEntry, Watchlist
 
 from media.models import TVShow
-from tracking.models import WatchEntry, Watchlist, Rating
 
 User = get_user_model()
 

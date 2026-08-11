@@ -1,13 +1,12 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
+from media.models import Episode, Movie, Season, TVShow
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
-
-from media.models import Movie, TVShow, Season, Episode
 from tracking.models import WatchEntry, Watchlist
-
 
 User = get_user_model()
 
@@ -27,7 +26,7 @@ class CalendarTests(TestCase):
             tmdb_id=202,
             episode_number=1,
             name='Pilot',
-            air_date=date.today() + timedelta(days=1),
+            air_date=timezone.localdate() + timedelta(days=1),
         )
 
         response = self.client.get('/api/calendar/shows/?days=7')
@@ -38,7 +37,7 @@ class CalendarTests(TestCase):
         Movie.objects.create(
             tmdb_id=300,
             title='Calendar Movie',
-            release_date=date.today() + timedelta(days=2),
+            release_date=timezone.localdate() + timedelta(days=2),
         )
         response = self.client.get('/api/calendar/movies/?days=7')
         self.assertEqual(response.status_code, 200)
@@ -48,7 +47,7 @@ class CalendarTests(TestCase):
         movie = Movie.objects.create(
             tmdb_id=301,
             title='My Watchlist Movie',
-            release_date=date.today() + timedelta(days=3),
+            release_date=timezone.localdate() + timedelta(days=3),
         )
         Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=movie.tmdb_id)
 
@@ -66,7 +65,7 @@ class CalendarTests(TestCase):
             tmdb_id=403,
             episode_number=1,
             name='Watched Episode',
-            air_date=date.today() + timedelta(days=4),
+            air_date=timezone.localdate() + timedelta(days=4),
         )
 
         dropped_show = TVShow.objects.create(tmdb_id=501, name='Dropped Show')
@@ -76,7 +75,7 @@ class CalendarTests(TestCase):
             tmdb_id=503,
             episode_number=1,
             name='Dropped Episode',
-            air_date=date.today() + timedelta(days=5),
+            air_date=timezone.localdate() + timedelta(days=5),
         )
 
         WatchEntry.objects.create(

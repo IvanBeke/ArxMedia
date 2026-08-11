@@ -3,6 +3,7 @@ from django.db import models
 from tracking.choices import WatchEntryMediaType
 from tracking.models import WatchEntry
 
+
 class Command(BaseCommand):
     help = 'Clean duplicate WatchEntry rows'
 
