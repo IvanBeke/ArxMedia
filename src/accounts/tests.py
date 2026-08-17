@@ -267,3 +267,27 @@ class AccountTests(TestCase):
         following_response = self.client.get(f'/api/auth/users/{target.username}/following/')
         self.assertEqual(followers_response.status_code, 403)
         self.assertEqual(following_response.status_code, 403)
+
+    def test_user_search_requires_auth(self):
+        self.client.credentials()
+        response = self.client.get('/api/auth/users/search/?q=test')
+        self.assertEqual(response.status_code, 401)
+
+    def test_user_search_requires_three_characters(self):
+        User.objects.create_user(username='alice', email='alice@example.com', password='pass123')
+        self.authenticate()
+
+        response = self.client.get('/api/auth/users/search/?q=al')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+
+    def test_user_search_returns_matching_users_excluding_self(self):
+        User.objects.create_user(username='alice_watcher', email='alice@example.com', password='pass123')
+        User.objects.create_user(username='alice_runner', email='alice2@example.com', password='pass123')
+        self.authenticate()
+
+        response = self.client.get('/api/auth/users/search/?q=alice')
+        self.assertEqual(response.status_code, 200)
+        usernames = [row['username'] for row in response.data]
+        self.assertEqual(usernames, ['alice_runner', 'alice_watcher'])
+        self.assertNotIn(self.user.username, usernames)

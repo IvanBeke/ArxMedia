@@ -109,6 +109,7 @@ export const authAPI = {
   login: (data) => api.post('/auth/login/', data),
   me: () => api.get('/auth/me/'),
   updateProfile: (data) => api.patch('/auth/me/', data),
+  searchUsers: (q) => api.get('/auth/users/search/', { params: { q } }),
   getUser: (username) => api.get(`/auth/users/${username}/`),
   getFollowers: (username, params) => api.get(`/auth/users/${username}/followers/`, { params }),
   getFollowing: (username, params) => api.get(`/auth/users/${username}/following/`, { params }),

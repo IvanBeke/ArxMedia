@@ -196,10 +196,11 @@ class CustomListSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     item_count = serializers.SerializerMethodField()
     collaborators = serializers.SerializerMethodField()
+    collaborator_users = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomList
-        fields = ['id', 'username', 'name', 'description', 'privacy', 'item_count', 'collaborators', 'created_at', 'updated_at']
+        fields = ['id', 'username', 'name', 'description', 'privacy', 'item_count', 'collaborators', 'collaborator_users', 'created_at', 'updated_at']
         read_only_fields = ['id', 'username', 'created_at', 'updated_at']
 
     def get_item_count(self, obj):
@@ -207,6 +208,12 @@ class CustomListSerializer(serializers.ModelSerializer):
 
     def get_collaborators(self, obj):
         return list(obj.collaboratorships.values_list('user__id', flat=True))
+
+    def get_collaborator_users(self, obj):
+        return [
+            {'id': row['user__id'], 'username': row['user__username']}
+            for row in obj.collaboratorships.values('user__id', 'user__username')
+        ]
 
 
 class ListItemSerializer(serializers.ModelSerializer):

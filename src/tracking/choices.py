@@ -36,7 +36,6 @@ class MediaType(models.TextChoices):
 class ListPrivacy(models.TextChoices):
     PUBLIC = 'public', 'Public'
     PRIVATE = 'private', 'Private'
-    FOLLOWERS = 'followers', 'Followers Only'
 
 
 class DataTransferSource(models.TextChoices):

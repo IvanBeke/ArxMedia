@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Q
 from rest_framework import serializers
 from tracking.choices import ListPrivacy, WatchEntryStatus
 from tracking.models import CustomList, Rating, WatchEntry, Watchlist
@@ -127,16 +127,20 @@ class PublicUserSerializer(serializers.ModelSerializer):
         }
 
     def get_visible_lists(self, obj):
-        relationship = self._viewer_relationship(obj)
         if not self._can_view(obj):
             return []
 
+        relationship = self._viewer_relationship(obj)
         qs = CustomList.objects.filter(user=obj)
-        if not relationship['is_self']:
-            allowed_privacies = [ListPrivacy.PUBLIC]
-            if relationship['is_following']:
-                allowed_privacies.append(ListPrivacy.FOLLOWERS)
-            qs = qs.filter(privacy__in=allowed_privacies)
+        if relationship['is_self']:
+            return CustomListSerializer(qs.order_by('-updated_at'), many=True).data
+
+        request = self.context.get('request')
+        viewer = getattr(request, 'user', None)
+        qs = qs.filter(
+            Q(privacy=ListPrivacy.PUBLIC)
+            | Q(privacy=ListPrivacy.PRIVATE, collaboratorships__user=viewer)
+        ).distinct()
 
         return CustomListSerializer(qs.order_by('-updated_at'), many=True).data
 

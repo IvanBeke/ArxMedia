@@ -15,6 +15,7 @@ from django.utils import timezone
 from media.models import Episode, Movie, Season, TVShow
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
+from social.models import Follow
 
 from tracking.models import (
     CustomList,
@@ -787,11 +788,57 @@ class CustomListTests(BaseTestCase):
 
     def test_update_list_as_owner(self):
         lst = CustomList.objects.create(user=self.user, name='Test List')
-        data = {'name': 'Updated List', 'privacy': 'followers'}
+        data = {'name': 'Updated List', 'privacy': 'private'}
         response = self.client.patch(f'/api/tracking/lists/{lst.id}/', data)
         self.assertEqual(response.status_code, 200)
         lst.refresh_from_db()
         self.assertEqual(lst.name, 'Updated List')
+
+    def test_cannot_create_list_with_followers_privacy(self):
+        response = self.client.post('/api/tracking/lists/', {
+            'name': 'Legacy Privacy',
+            'privacy': 'followers',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('privacy', response.data)
+
+    def test_public_list_hidden_when_owner_account_is_private(self):
+        self.user2.account_visibility = 'private'
+        self.user2.save(update_fields=['account_visibility'])
+        CustomList.objects.create(user=self.user2, name='Hidden Public', privacy='public')
+
+        response = self.client.get('/api/tracking/lists/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_public_list_visible_to_mutual_friend_when_owner_friends_only(self):
+        self.user2.account_visibility = 'friends_only'
+        self.user2.save(update_fields=['account_visibility'])
+        target = CustomList.objects.create(user=self.user2, name='Friends Public', privacy='public')
+
+        not_friend = self.client.get('/api/tracking/lists/')
+        self.assertEqual(not_friend.status_code, 200)
+        self.assertEqual(len(not_friend.data['results']), 0)
+
+        Follow.objects.create(follower=self.user, following=self.user2)
+        Follow.objects.create(follower=self.user2, following=self.user)
+
+        as_friend = self.client.get('/api/tracking/lists/')
+        self.assertEqual(as_friend.status_code, 200)
+        self.assertEqual(len(as_friend.data['results']), 1)
+        self.assertEqual(as_friend.data['results'][0]['id'], target.id)
+
+    def test_collaborator_can_access_private_list(self):
+        private_list = CustomList.objects.create(user=self.user2, name='Private Collab', privacy='private')
+        ListCollaborator.objects.create(custom_list=private_list, user=self.user)
+
+        list_response = self.client.get('/api/tracking/lists/')
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(len(list_response.data['results']), 1)
+        self.assertEqual(list_response.data['results'][0]['id'], private_list.id)
+
+        detail_response = self.client.get(f'/api/tracking/lists/{private_list.id}/')
+        self.assertEqual(detail_response.status_code, 200)
 
     def test_cannot_update_others_list(self):
         lst = CustomList.objects.create(user=self.user2, name='Other List')

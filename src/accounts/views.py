@@ -52,6 +52,19 @@ class UserProfileView(generics.RetrieveAPIView):
     lookup_field = 'username'
 
 
+class UserSearchView(generics.ListAPIView):
+    serializer_class = PublicUserCardSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        query = (self.request.query_params.get('q') or '').strip()
+        if len(query) < 3:
+            return User.objects.none()
+
+        return User.objects.filter(username__icontains=query).exclude(id=self.request.user.id).order_by('username')[:10]
+
+
 class UserFollowersView(generics.ListAPIView):
     serializer_class = PublicUserCardSerializer
     permission_classes = [permissions.AllowAny]

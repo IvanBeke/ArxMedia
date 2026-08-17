@@ -19,7 +19,6 @@ export const WATCH_ENTRY_STATUS = Object.freeze({
 export const LIST_PRIVACY = Object.freeze({
   PUBLIC: 'public',
   PRIVATE: 'private',
-  FOLLOWERS: 'followers',
 })
 
 export const ACCOUNT_VISIBILITY = Object.freeze({

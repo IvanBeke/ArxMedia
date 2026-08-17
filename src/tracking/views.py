@@ -1,6 +1,7 @@
 import logging
 from datetime import timedelta
 
+from accounts.privacy import can_view_account_content, get_viewer_relationship
 from django.db.models import Avg, Count, DateTimeField, F, Q
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -65,6 +66,23 @@ def _parse_watched_at(value):
     if timezone.is_naive(dt):
         return timezone.make_aware(dt, timezone.get_current_timezone())
     return dt
+
+
+def _can_view_public_lists(viewer, owner) -> bool:
+    relationship = get_viewer_relationship(viewer, owner)
+    return can_view_account_content(owner.account_visibility, relationship)
+
+
+def _can_access_list(viewer, custom_list) -> bool:
+    if viewer.is_staff:
+        return True
+    if custom_list.user_id == viewer.id:
+        return True
+    if ListCollaborator.objects.filter(custom_list=custom_list, user=viewer).exists():
+        return True
+    if custom_list.privacy == ListPrivacy.PRIVATE:
+        return False
+    return _can_view_public_lists(viewer, custom_list.user)
 
 
 class WatchEntryListCreateView(generics.ListCreateAPIView):
@@ -728,10 +746,20 @@ class CustomListListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         if self.request.user.is_staff:
             return CustomList.objects.all()
+
+        visible_public_lists = Q(privacy=ListPrivacy.PUBLIC) & (
+            Q(user__account_visibility='public') |
+            Q(
+                user__account_visibility='friends_only',
+                user__followers__follower=self.request.user,
+                user__following__following=self.request.user,
+            )
+        )
+
         return CustomList.objects.filter(
             Q(user=self.request.user) |
-            Q(privacy=ListPrivacy.PUBLIC) |
-            Q(privacy=ListPrivacy.FOLLOWERS, user__followers__follower=self.request.user)
+            Q(collaboratorships__user=self.request.user) |
+            visible_public_lists
         ).distinct()
 
     def perform_create(self, serializer):
@@ -743,13 +771,13 @@ class CustomListDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user.is_staff:
-            return CustomList.objects.all()
-        return CustomList.objects.filter(
-            Q(user=self.request.user) |
-            Q(privacy=ListPrivacy.PUBLIC) |
-            Q(privacy=ListPrivacy.FOLLOWERS, user__followers__follower=self.request.user)
-        ).distinct()
+        return CustomList.objects.all()
+
+    def get_object(self):
+        obj = super().get_object()
+        if not _can_access_list(self.request.user, obj):
+            raise PermissionDenied('You do not have permission to access this list.')
+        return obj
 
     def perform_update(self, serializer):
         # Only owner can update
@@ -770,26 +798,14 @@ class ListItemListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         list_id = self.kwargs.get('list_id')
-        # First check if the list exists and user has access
         try:
             custom_list = CustomList.objects.get(id=list_id)
         except CustomList.DoesNotExist:
             raise PermissionDenied('List not found.')
-        
-        # Check if user can access this list
-        if custom_list.user != self.request.user:
-            if custom_list.privacy == ListPrivacy.PRIVATE:
-                raise PermissionDenied('You do not have permission to access this list.')
-            elif custom_list.privacy == ListPrivacy.FOLLOWERS:
-                # Check if user follows the list owner
-                from accounts.models import Follow
-                is_follower = Follow.objects.filter(
-                    follower=self.request.user,
-                    following=custom_list.user
-                ).exists()
-                if not is_follower:
-                    raise PermissionDenied('You do not have permission to access this list.')
-        
+
+        if not _can_access_list(self.request.user, custom_list):
+            raise PermissionDenied('You do not have permission to access this list.')
+
         queryset = ListItem.objects.filter(custom_list=custom_list).select_related('custom_list')
         
         # Sorting
