@@ -15,7 +15,7 @@
       <div class="absolute inset-0 bg-gradient-to-r from-surface/80 to-transparent"></div>
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-20 relative z-10 pb-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-60 md:-mt-96 relative z-10 pb-20">
       <div class="flex flex-col md:flex-row gap-8">
         <!-- Poster -->
         <div class="flex-shrink-0">
