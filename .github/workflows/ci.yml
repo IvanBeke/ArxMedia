@@ -38,10 +38,10 @@ jobs:
         run: docker compose exec -T app python manage.py showmigrations
 
       - name: App lint (ruff)
-        run: docker compose exec -T app uv run ruff check accounts media tracking social my_calendar web arxmedia
+        run: docker compose exec -T app uv run --extra dev ruff check accounts media tracking social my_calendar web arxmedia
 
       - name: App lint (mypy)
-        run: docker compose exec -T app uv run mypy accounts media tracking social my_calendar web arxmedia
+        run: docker compose exec -T app uv run --extra dev mypy accounts media tracking social my_calendar web arxmedia
 
       - name: App tests
         run: docker compose exec -T app python manage.py test --keepdb
