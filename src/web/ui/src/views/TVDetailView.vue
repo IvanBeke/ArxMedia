@@ -135,7 +135,8 @@
 
             <div v-if="auth.isAuthenticated" class="mb-4">
               <p class="text-xs text-gray-500 mb-1.5 uppercase tracking-wider">Your Rating</p>
-              <StarRating v-model="userRating" @update:modelValue="submitRating" />
+              <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
+              <p v-else class="text-xs text-muted">{{ t('rating_show_requires_watching') }}</p>
             </div>
 
             <div v-if="successMsg" class="mb-4 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
@@ -247,7 +248,7 @@ import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
-import { formatDateByLocale, formatDateTimeByLocale } from '@/i18n'
+import { formatDateByLocale, formatDateTimeByLocale, useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
 import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions'
@@ -255,6 +256,7 @@ import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker
 
 const route = useRoute()
 const auth = useAuthStore()
+const { t } = useI18n()
 const tmdbId = computed(() => parseInt(route.params.id))
 
 const show = ref(null)
@@ -301,6 +303,11 @@ const metadataUpdatedAtLabel = computed(() => {
   const value = show.value?.metadata_updated_at
   if (!value) return 'Unknown'
   return formatDateTimeByLocale(value) || 'Unknown'
+})
+
+const canRate = computed(() => {
+  const status = show.value?.user_status?.status
+  return status === WATCH_ENTRY_STATUS.WATCHING || status === WATCH_ENTRY_STATUS.WATCHED || status === WATCH_ENTRY_STATUS.DROPPED
 })
 
 function syncShowStatusFromUserStatus() {
@@ -548,8 +555,12 @@ async function handleWatchlistAction() {
 }
 
 async function submitRating(score) {
-  await trackingAPI.rate({ media_type: MEDIA_TYPE.TV, tmdb_id: tmdbId.value, score })
-  showSuccess(`Rated ${score}/10!`)
+  try {
+    await trackingAPI.rate({ media_type: MEDIA_TYPE.TV, tmdb_id: tmdbId.value, score })
+    showSuccess(`Rated ${score}/10!`)
+  } catch (error) {
+    showError(getApiErrorMessage(error, t('rating_show_requires_watching')))
+  }
 }
 
 async function loadShow() {

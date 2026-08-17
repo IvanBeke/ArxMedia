@@ -122,7 +122,8 @@
 
             <div v-if="auth.isAuthenticated" class="mb-4">
               <p class="text-xs text-gray-500 mb-1.5 uppercase tracking-wider">Your Rating</p>
-              <StarRating v-model="userRating" @update:modelValue="submitRating" />
+              <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
+              <p v-else class="text-xs text-muted">{{ t('rating_movie_requires_watched') }}</p>
             </div>
 
             <Transition name="fade">
@@ -211,6 +212,11 @@ const metadataUpdatedAtLabel = computed(() => {
   const value = movie.value?.metadata_updated_at
   if (!value) return 'Unknown'
   return formatDateTimeByLocale(value) || 'Unknown'
+})
+
+const canRate = computed(() => {
+  const status = movie.value?.user_status?.status
+  return status === WATCH_ENTRY_STATUS.WATCHED || status === WATCH_ENTRY_STATUS.WATCHING || status === WATCH_ENTRY_STATUS.DROPPED
 })
 
 function imgUrl(path, size = 'w500') {
@@ -323,8 +329,12 @@ async function toggleWatchlist() {
 }
 
 async function submitRating(score) {
-  await trackingAPI.rate({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: route.params.id, score })
-  showSuccess(`Rated ${score}/10!`)
+  try {
+    await trackingAPI.rate({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: route.params.id, score })
+    showSuccess(`Rated ${score}/10!`)
+  } catch (error) {
+    showError(getApiErrorMessage(error, t('rating_movie_requires_watched')))
+  }
 }
 
 async function refreshMetadata() {

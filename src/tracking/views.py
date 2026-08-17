@@ -21,7 +21,17 @@ from .choices import (
     WatchEntryMediaType,
     WatchEntryStatus,
 )
-from .models import CustomList, DataTransferJob, ListCollaborator, ListItem, Rating, Review, WatchEntry, Watchlist
+from .models import (
+    CustomList,
+    DataTransferJob,
+    ListCollaborator,
+    ListItem,
+    Rating,
+    Review,
+    UserTvShowStatus,
+    WatchEntry,
+    Watchlist,
+)
 from .serializers import (
     CustomListSerializer,
     DataTransferJobSerializer,
@@ -142,11 +152,33 @@ class RatingListCreateView(generics.ListCreateAPIView):
         return qs.order_by('-updated_at')
 
     def perform_create(self, serializer):
+        media_type = serializer.validated_data['media_type']
+        tmdb_id = serializer.validated_data['tmdb_id']
+
+        if media_type == MediaType.MOVIE:
+            can_rate = WatchEntry.objects.filter(
+                user=self.request.user,
+                media_type=WatchEntryMediaType.MOVIE,
+                tmdb_id=tmdb_id,
+                status=WatchEntryStatus.WATCHED,
+            ).exists()
+        else:
+            can_rate = UserTvShowStatus.objects.filter(
+                user=self.request.user,
+                tmdb_id=tmdb_id,
+                status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED),
+            ).exists()
+
+        if not can_rate:
+            if media_type == MediaType.MOVIE:
+                raise ValidationError({'detail': 'Rate this movie after marking it as watched.'})
+            raise ValidationError({'detail': 'Rate this show after you start watching it.'})
+
         # Upsert rating
         existing = Rating.objects.filter(
             user=self.request.user,
-            media_type=serializer.validated_data['media_type'],
-            tmdb_id=serializer.validated_data['tmdb_id']
+            media_type=media_type,
+            tmdb_id=tmdb_id,
         ).first()
         if existing:
             existing.score = serializer.validated_data['score']

@@ -33,6 +33,8 @@ const messages = {
     watchlist_remove_show: 'Remove show from watchlist',
     rating_group_label: 'Rate from 1 to 10',
     rating_item_label: 'Rate {value} out of 10',
+    rating_movie_requires_watched: 'Rate this movie after marking it as watched.',
+    rating_show_requires_watching: 'Rate this show after you start watching it.',
   },
   es: {
     nav_dashboard: 'Panel',
@@ -64,6 +66,8 @@ const messages = {
     watchlist_remove_show: 'Quitar serie de la lista',
     rating_group_label: 'Calificar de 1 a 10',
     rating_item_label: 'Calificar {value} de 10',
+    rating_movie_requires_watched: 'Califica esta pelicula despues de marcarla como vista.',
+    rating_show_requires_watching: 'Califica esta serie despues de empezar a verla.',
   }
 }
 
