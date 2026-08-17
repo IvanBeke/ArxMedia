@@ -35,11 +35,11 @@
             @select="handleSeasonWatchOption"
           >
             <div class="text-white text-lg font-medium cursor-pointer">
-              {{ seasonProgress }}%
+              {{ seasonProgressFraction }}
             </div>
           </WatchMenu>
           <div v-else>
-            <p class="text-white text-lg font-medium">{{ seasonProgress }}%</p>
+            <p class="text-white text-lg font-medium">{{ seasonProgressFraction }}</p>
           </div>
           <p class="text-muted text-xs">watched</p>
         </div>
@@ -75,6 +75,7 @@ import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
 import { getApiErrorMessage } from '@/utils/errors'
+import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
 
 const route = useRoute()
 const tmdbId = computed(() => parseInt(route.params.id))
@@ -95,8 +96,18 @@ const {
 
 const seasonProgress = computed(() => {
   if (!season.value?.episodes?.length) return 0
-  const watched = season.value.episodes.filter(ep => watchedEps.value.has(ep.episode_number)).length
-  return Math.round((watched / season.value.episodes.length) * 100)
+  return computeProgressPercent(watchedEpisodesCount.value, totalEpisodesCount.value)
+})
+
+const watchedEpisodesCount = computed(() => {
+  if (!season.value?.episodes?.length) return 0
+  return season.value.episodes.filter(ep => watchedEps.value.has(ep.episode_number)).length
+})
+
+const totalEpisodesCount = computed(() => season.value?.episodes?.length || 0)
+
+const seasonProgressFraction = computed(() => {
+  return formatProgressFraction(watchedEpisodesCount.value, totalEpisodesCount.value)
 })
 
 function isEpisodeWatched(epNum) {

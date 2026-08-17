@@ -180,7 +180,7 @@
                   <p class="text-muted text-sm mt-0.5">{{ season.episode_count }} episodes{{ season.air_date ? ` · ${new Date(season.air_date).getFullYear()}` : '' }}</p>
                   <div class="mt-2">
                     <ProgressBar :pct="getSeasonProgress(season.season_number)" />
-                    <p class="text-xs text-muted mt-1">{{ getSeasonProgress(season.season_number) }}% watched</p>
+                    <p class="text-xs text-muted mt-1">{{ formatSeasonProgressFraction(season.season_number) }} watched</p>
                   </div>
                 </div>
               </div>
@@ -235,6 +235,7 @@ import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { formatDateByLocale } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
+import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
 import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions'
 import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
 
@@ -397,6 +398,11 @@ async function loadSeason(sn) {
 }
 
 function getSeasonProgress(sn) {
+  const { watched, total } = getSeasonProgressCounts(sn)
+  return computeProgressPercent(watched, total)
+}
+
+function getSeasonProgressCounts(sn) {
   const season = show.value?.seasons?.find(s => s.season_number === sn)
   const eps = seasonEpisodes.value[sn]
   let total = 0
@@ -407,9 +413,13 @@ function getSeasonProgress(sn) {
   } else {
     total = Array.from(watchedEps.value).filter(k => k.startsWith(`${sn}-`)).length || 0
   }
-  if (total === 0) return 0
   const watched = Array.from(watchedEps.value).filter(k => k.startsWith(`${sn}-`)).length
-  return Math.round((watched / total) * 100)
+  return { watched, total }
+}
+
+function formatSeasonProgressFraction(sn) {
+  const { watched, total } = getSeasonProgressCounts(sn)
+  return formatProgressFraction(watched, total)
 }
 
 async function toggleSeasonWatched(sn) {
