@@ -40,8 +40,21 @@ class WatchEntrySerializer(serializers.ModelSerializer):
 
     def get_title(self, obj):
         if obj.media_type == WatchEntryMediaType.EPISODE:
-            show = self._get_media(obj)
-            return show.name if show else f'Episode {obj.season_number}x{obj.episode_number}'
+            from media.models import Episode, Season
+
+            if obj.season_number and obj.episode_number:
+                season = Season.objects.filter(
+                    show__tmdb_id=obj.tmdb_id,
+                    season_number=obj.season_number,
+                ).first()
+                if season:
+                    episode = Episode.objects.filter(season=season, episode_number=obj.episode_number).first()
+                    if episode and episode.name:
+                        return episode.name
+
+            if obj.episode_number:
+                return f'Episode {obj.episode_number}'
+            return f'Episode #{obj.tmdb_id}'
         media = self._get_media(obj)
         if media:
             if hasattr(media, 'title'):

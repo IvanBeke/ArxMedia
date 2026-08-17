@@ -39,6 +39,26 @@ What "good work" means for this project.
 - OAuth endpoints live under `/oauth/*` and are handled fully in app
 - Routes: `/movies`, `/movies/:id`, `/tv`, `/tv/:id`, `/tv/:id/season/:seasonNumber`, `/search`, `/dashboard`, `/watchlist`, `/history`, `/profile/:username`, `/settings`
 
+## Profile visibility and social graph contract
+
+- Account visibility values are `public`, `private`, and `friends_only`
+- Friendship is defined as a mutual follow (`A follows B` and `B follows A`)
+- Visibility rules for protected profile data:
+  - `public`: everyone can view protected sections
+  - `private`: only the profile owner can view protected sections
+  - `friends_only`: owner + mutual followers can view protected sections
+- `GET /api/auth/users/<username>/` always returns base profile identity fields and includes:
+  - `viewer_relationship`: `is_self`, `is_following`, `follows_you`, `is_friend`
+  - `permissions`: `can_view_activity`, `can_view_lists`
+  - `stats`: `ratings_count`, `watchlist_count`, `average_rating` (null when hidden)
+  - `visible_lists`: filtered by account visibility and list privacy
+  - `recent_activity`: recent watched entries when visible
+- Social graph endpoints:
+  - `GET /api/auth/users/<username>/followers/`
+  - `GET /api/auth/users/<username>/following/`
+  - both use DRF page-number pagination (`count`, `next`, `previous`, `results`)
+  - both return `403` when viewer cannot access protected account content
+
 ## Database
 
 - SQLite for dev (default), PostgreSQL 17 for prod via `dj-database-url`

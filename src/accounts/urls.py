@@ -8,6 +8,8 @@ urlpatterns = [
     path('token/refresh/', views.RefreshTokenView.as_view(), name='token_refresh'),
     path('me/', views.MeView.as_view(), name='me'),
     path('users/<str:username>/', views.UserProfileView.as_view(), name='user_profile'),
+    path('users/<str:username>/followers/', views.UserFollowersView.as_view(), name='user_followers'),
+    path('users/<str:username>/following/', views.UserFollowingView.as_view(), name='user_following'),
     path('users/<str:username>/follow/', views.FollowView.as_view(), name='follow'),
     path('password/change/', views.PasswordChangeView.as_view(), name='password_change'),
 ]

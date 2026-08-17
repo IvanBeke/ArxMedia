@@ -201,6 +201,27 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(data[0]['tmdb_id'], 801)
         self.assertEqual(data[1]['tmdb_id'], 800)
 
+    def test_history_episode_uses_episode_title_and_show_name(self):
+        show = TVShow.objects.create(tmdb_id=1900, name='The Example Show')
+        season = Season.objects.create(show=show, tmdb_id=2901, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=3901, episode_number=3, name='Pilot Episode')
+
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=1900,
+            season_number=1,
+            episode_number=3,
+            status='watched',
+            watched_at=timezone.now(),
+        )
+
+        response = self.client.get('/api/tracking/history/')
+        self.assertEqual(response.status_code, 200)
+        data = response.data.get('results', response.data)
+        self.assertEqual(data[0]['title'], 'Pilot Episode')
+        self.assertEqual(data[0]['show_name'], 'The Example Show')
+
 
 class RatingTests(BaseTestCase):
     def test_create_rating(self):

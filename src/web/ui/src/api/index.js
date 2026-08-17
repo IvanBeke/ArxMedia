@@ -11,9 +11,9 @@ async function parseResponse(response) {
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
     if (payload && typeof payload === 'object') {
-      throw payload
+      throw { ...payload, status: response.status }
     }
-    throw { detail: `Request failed (${response.status})` }
+    throw { detail: `Request failed (${response.status})`, status: response.status }
   }
   return payload
 }
@@ -110,6 +110,8 @@ export const authAPI = {
   me: () => api.get('/auth/me/'),
   updateProfile: (data) => api.patch('/auth/me/', data),
   getUser: (username) => api.get(`/auth/users/${username}/`),
+  getFollowers: (username, params) => api.get(`/auth/users/${username}/followers/`, { params }),
+  getFollowing: (username, params) => api.get(`/auth/users/${username}/following/`, { params }),
   follow: (username) => api.post(`/auth/users/${username}/follow/`),
   changePassword: (data) => api.post('/auth/password/change/', data),
 }

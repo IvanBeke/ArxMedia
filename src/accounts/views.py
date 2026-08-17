@@ -1,11 +1,21 @@
 from django.contrib.auth import get_user_model
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from social.models import Follow
 
-from .serializers import PasswordChangeSerializer, PublicUserSerializer, RegisterSerializer, UserSerializer
+from .privacy import can_view_account_content, get_viewer_relationship
+from .serializers import (
+    PasswordChangeSerializer,
+    PublicUserCardSerializer,
+    PublicUserSerializer,
+    RegisterSerializer,
+    UserSerializer,
+)
 
 User = get_user_model()
 
@@ -42,6 +52,40 @@ class UserProfileView(generics.RetrieveAPIView):
     lookup_field = 'username'
 
 
+class UserFollowersView(generics.ListAPIView):
+    serializer_class = PublicUserCardSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def _target(self):
+        return get_object_or_404(User, username=self.kwargs['username'])
+
+    def get_queryset(self):
+        target = self._target()
+
+        relationship = get_viewer_relationship(self.request.user, target)
+        if not can_view_account_content(target.account_visibility, relationship):
+            raise PermissionDenied('You do not have permission to view followers for this profile.')
+
+        return User.objects.filter(following__following=target).order_by('username')
+
+
+class UserFollowingView(generics.ListAPIView):
+    serializer_class = PublicUserCardSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def _target(self):
+        return get_object_or_404(User, username=self.kwargs['username'])
+
+    def get_queryset(self):
+        target = self._target()
+
+        relationship = get_viewer_relationship(self.request.user, target)
+        if not can_view_account_content(target.account_visibility, relationship):
+            raise PermissionDenied('You do not have permission to view following for this profile.')
+
+        return User.objects.filter(followers__follower=target).order_by('username')
+
+
 class FollowView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -54,12 +98,21 @@ class FollowView(APIView):
         if target == request.user:
             return Response({'detail': 'Cannot follow yourself.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        from social.models import Follow
         follow, created = Follow.objects.get_or_create(follower=request.user, following=target)
         if not created:
             follow.delete()
-            return Response({'following': False})
-        return Response({'following': True})
+            following = False
+        else:
+            following = True
+
+        target_follows_viewer = Follow.objects.filter(follower=target, following=request.user).exists()
+
+        return Response({
+            'following': following,
+            'is_friend': following and target_follows_viewer,
+            'followers_count': target.followers.count(),
+            'following_count': target.following.count(),
+        })
 
 
 class PasswordChangeView(APIView):

@@ -54,19 +54,14 @@
 
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm text-primary">Private Account</p>
-            <p class="text-xs text-gray-500">Only approved followers can see your activity</p>
+            <p class="text-sm text-primary">Account Visibility</p>
+            <p class="text-xs text-gray-500">Choose who can view your profile activity and social graph</p>
           </div>
-          <button
-            @click="togglePrivate"
-            class="relative w-12 h-6 rounded-full transition-colors duration-200"
-            :class="user.is_private ? 'bg-brand-500' : 'bg-surface-200'"
-          >
-            <div
-              class="absolute top-1 w-4 h-4 rounded-full bg-white transition-transform duration-200"
-              :class="user.is_private ? 'left-7' : 'left-1'"
-            ></div>
-          </button>
+          <select v-model="form.account_visibility" @change="updateAccountVisibility" class="input rounded-md text-sm max-w-[220px]">
+            <option :value="ACCOUNT_VISIBILITY.PUBLIC">Public</option>
+            <option :value="ACCOUNT_VISIBILITY.PRIVATE">Private</option>
+            <option :value="ACCOUNT_VISIBILITY.FRIENDS_ONLY">Friends only</option>
+          </select>
         </div>
       </div>
 
@@ -130,7 +125,7 @@ import { authAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useI18n } from '@/i18n'
-import { LIST_PRIVACY } from '@/constants/tracking'
+import { ACCOUNT_VISIBILITY } from '@/constants/tracking'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -149,7 +144,8 @@ const form = ref({
   email: '',
   bio: '',
   location: '',
-  preferred_region: 'US'
+  preferred_region: 'US',
+  account_visibility: ACCOUNT_VISIBILITY.PUBLIC,
 })
 
 const providerRegions = [
@@ -174,7 +170,8 @@ onMounted(async () => {
         email: data.email || '',
         bio: data.bio || '',
         location: data.location || '',
-        preferred_region: data.preferred_region || 'US'
+        preferred_region: data.preferred_region || 'US',
+        account_visibility: data.account_visibility || ACCOUNT_VISIBILITY.PUBLIC,
       }
     }
   } catch (error) {
@@ -204,12 +201,12 @@ async function saveProfile() {
   }
 }
 
-async function togglePrivate() {
+async function updateAccountVisibility() {
   try {
-    const data = await authAPI.updateProfile({ is_private: !user.value.is_private })
-    user.value.is_private = data.is_private
-    auth.user.is_private = data.is_private
-    successMsg.value = `Account is now ${data.is_private ? LIST_PRIVACY.PRIVATE : LIST_PRIVACY.PUBLIC}`
+    const data = await authAPI.updateProfile({ account_visibility: form.value.account_visibility })
+    user.value.account_visibility = data.account_visibility
+    auth.user.account_visibility = data.account_visibility
+    successMsg.value = `Account visibility set to ${data.account_visibility.replace('_', ' ')}`
     setTimeout(() => successMsg.value = '', 3000)
   } catch (error) {
     console.error('Failed to update privacy:', error)

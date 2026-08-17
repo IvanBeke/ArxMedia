@@ -22,6 +22,12 @@ export const LIST_PRIVACY = Object.freeze({
   FOLLOWERS: 'followers',
 })
 
+export const ACCOUNT_VISIBILITY = Object.freeze({
+  PUBLIC: 'public',
+  PRIVATE: 'private',
+  FRIENDS_ONLY: 'friends_only',
+})
+
 export const DATA_TRANSFER_FORMAT = Object.freeze({
   JSON: 'json',
   CSV: 'csv',
