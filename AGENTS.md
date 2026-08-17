@@ -12,6 +12,7 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 - Use Docker for all app/UI operations; do not run host Python/Node tooling.
 - Run commands from repo root.
 - Validate with `./init.sh` before declaring done.
+- Commit messages must follow the existing repository pattern: `<type>(<scope>): <imperative summary>`.
 
 ## Real project shape (verified)
 
@@ -50,6 +51,14 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 ## Simple workflow
 
 - Start from the user task and apply the smallest focused change that solves it.
+- Finish features end-to-end in one pass whenever possible: include connected backend/frontend/tests/verification work that is required for the feature to be truly complete, not just partially implemented.
+- Treat feature completion as cross-layer by default: cover all directly affected logic/API/UI paths and keep parallel surfaces (e.g., movie/TV equivalents) in parity unless the user explicitly scopes otherwise.
+- Include behavioral edge states in the first delivery when applicable: loading, empty, error, and permission-denied flows.
+- If you add or change a mutation path (endpoint/action), update related read paths and UI state in the same change so users see consistent results immediately.
+- API changes must ship contract-complete in one set: auth expectations, validation behavior, response shape, and frontend consumption.
+- Add or update regression tests for touched feature behavior, not only happy-path checks.
+- Do not defer core requested behavior silently: if anything essential is intentionally deferred, explicitly mark it out of scope with a reason before declaring done.
+- Before reporting completion, run a feature-complete check: request fully implemented, edge states handled, focused tests updated, lint/types passing, and user-visible behavior verified.
 - Keep implementation and verification evidence in command output and final report.
 - Define task-specific ad-hoc checks from the request and touched code paths.
 
