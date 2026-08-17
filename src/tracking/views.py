@@ -22,6 +22,8 @@ from .choices import (
     WatchEntryMediaType,
     WatchEntryStatus,
 )
+from .import_config import expected_format_for_source, supported_import_sources
+from .import_errors import ImportDomainError, ImportErrorCode, raise_import_validation_error
 from .models import (
     CustomList,
     DataTransferJob,
@@ -45,8 +47,13 @@ from .serializers import (
 )
 from .status_annotations import annotate_media_user_status
 from .status_sync import refresh_season_status, refresh_show_status
+from .tasks.import_commands import ConfirmImportCommand
 
 logger = logging.getLogger(__name__)
+
+
+def _raise_import_error(code: str, message: str, field: str = 'job'):
+    raise_import_validation_error(ImportDomainError(code=code, message=message, field=field))
 
 
 def _coerce_int(value, field_name: str) -> int:
@@ -944,17 +951,14 @@ class DataImportView(generics.CreateAPIView):
         if not uploaded:
             raise ValidationError({'file': 'file is required'})
 
-        source_formats = {
-            'arxmedia': DataTransferFormat.JSON,
-            'trakt': DataTransferFormat.ZIP,
-            'yamtrack': DataTransferFormat.CSV,
-        }
+        supported_sources = supported_import_sources()
         if not source:
-            raise ValidationError({'source': 'source is required (arxmedia, trakt, or yamtrack).'})
-        if source not in source_formats:
-            raise ValidationError({'source': 'source must be arxmedia, trakt, or yamtrack'})
-        if fmt != source_formats[source]:
-            raise ValidationError({'format': f'format must be {source_formats[source]} for source={source}.'})
+            raise ValidationError({'source': f"source is required ({', '.join(supported_sources)})."})
+        expected_format = expected_format_for_source(source)
+        if expected_format is None:
+            raise ValidationError({'source': f"source must be {', '.join(supported_sources)}"})
+        if fmt != expected_format:
+            raise ValidationError({'format': f'format must be {expected_format} for source={source}.'})
 
         job = DataTransferJob.objects.create(
             user=request.user,
@@ -962,22 +966,24 @@ class DataImportView(generics.CreateAPIView):
             data_format=fmt,
             status=DataTransferStatus.PENDING,
             input_file=uploaded,
+            source=source,
+            import_mode=DataImportMode.NEW_ITEMS,
         )
-
-        metadata = dict(job.metadata or {})
-        metadata['import_source'] = source
-        job.metadata = metadata
-        job.save(update_fields=['metadata', 'updated_at'])
 
         if source == 'trakt':
             from .tasks import prepare_trakt_zip_import
+
             prepare_trakt_zip_import.delay(job.id)
         elif source == 'yamtrack':
             from .tasks import prepare_yamtrack_csv_import
+
             prepare_yamtrack_csv_import.delay(job.id)
+        elif source == 'arxmedia':
+            from .tasks import prepare_arxmedia_json_import
+
+            prepare_arxmedia_json_import.delay(job.id)
         else:
-            from .tasks import import_user_data
-            import_user_data.delay(job.id)
+            _raise_import_error(ImportErrorCode.IMPORT_SOURCE_UNSUPPORTED, 'Unsupported import source configuration.')
         return Response(DataTransferJobSerializer(job, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
@@ -1022,34 +1028,28 @@ class DataJobConfirmView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         job = DataTransferJob.objects.filter(user=request.user, id=kwargs.get('pk')).first()
         if not job:
-            raise ValidationError({'job': 'Import job not found.'})
-        import_source = (job.metadata or {}).get('import_source')
-        can_confirm_trakt_zip = job.data_format == DataTransferFormat.ZIP and import_source == 'trakt'
-        can_confirm_yamtrack_csv = job.data_format == DataTransferFormat.CSV and import_source == 'yamtrack'
-        if job.job_type != DataTransferJobType.IMPORT or not (can_confirm_trakt_zip or can_confirm_yamtrack_csv):
-            raise ValidationError({'job': 'Only Trakt ZIP or Yamtrack CSV import jobs can be confirmed.'})
-        if job.status != DataTransferStatus.AWAITING_CONFIRMATION:
-            raise ValidationError({'job': 'Import job is not ready for confirmation.'})
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
 
         import_mode = (request.data.get('import_mode') or '').strip().lower()
-        if import_mode not in DataImportMode.values:
-            raise ValidationError({'import_mode': 'import_mode must be new_items, update_existing, or mirror_imported_set'})
+        try:
+            ConfirmImportCommand(job, import_mode).execute()
+        except ImportDomainError as exc:
+            raise_import_validation_error(exc)
 
-        metadata = dict(job.metadata or {})
-        metadata['import_mode'] = import_mode
-        job.metadata = metadata
-        job.overwrite_existing = import_mode in (DataImportMode.UPDATE_EXISTING, DataImportMode.MIRROR_IMPORTED_SET)
-        job.status = DataTransferStatus.PROCESSING
-        job.processed_items = 0
-        job.error_message = ''
-        job.save(update_fields=['metadata', 'overwrite_existing', 'status', 'processed_items', 'error_message', 'updated_at'])
-
-        if can_confirm_trakt_zip:
+        if job.source == 'trakt':
             from .tasks import apply_trakt_zip_import
+
             apply_trakt_zip_import.delay(job.id)
-        else:
+        elif job.source == 'yamtrack':
             from .tasks import apply_yamtrack_csv_import
+
             apply_yamtrack_csv_import.delay(job.id)
+        elif job.source == 'arxmedia':
+            from .tasks import apply_arxmedia_json_import
+
+            apply_arxmedia_json_import.delay(job.id)
+        else:
+            _raise_import_error(ImportErrorCode.IMPORT_SOURCE_UNSUPPORTED, 'Unsupported import source configuration.')
         serializer = self.get_serializer(job, context={'request': request})
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 

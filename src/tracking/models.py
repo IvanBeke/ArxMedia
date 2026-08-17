@@ -3,6 +3,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from .choices import (
+    DataImportMode,
     DataTransferFormat,
     DataTransferJobType,
     DataTransferSource,
@@ -214,7 +215,8 @@ class DataTransferJob(models.Model):
     total_items = models.IntegerField(default=0)
     processed_items = models.IntegerField(default=0)
     error_message = models.TextField(blank=True)
-    source = models.CharField(max_length=20, choices=DataTransferSource.choices, default=DataTransferSource.LOCAL)
+    source = models.CharField(max_length=20, choices=DataTransferSource.choices, default=DataTransferSource.ARXMEDIA)
+    import_mode = models.CharField(max_length=32, choices=DataImportMode.choices, default=DataImportMode.NEW_ITEMS)
     overwrite_existing = models.BooleanField(default=False)
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

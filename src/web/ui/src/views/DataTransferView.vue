@@ -137,7 +137,12 @@
 
         <div v-else-if="modalJob?.status === DATA_TRANSFER_STATUS.FAILED" class="rounded-lg border border-red-500/40 bg-red-500/10 p-3 mb-4">
           <p class="text-sm text-red-300">Import analysis failed.</p>
-          <p class="text-xs text-red-200 mt-1">{{ modalJob?.error_message || 'Unknown error while reading ZIP contents.' }}</p>
+          <p class="text-xs text-red-200 mt-1">{{ modalJob?.error_message || 'Unknown error while reading import contents.' }}</p>
+        </div>
+
+        <div v-if="confirmErrorMessage" class="rounded-lg border border-red-500/40 bg-red-500/10 p-3 mb-4">
+          <p class="text-sm text-red-300">Could not start import.</p>
+          <p class="text-xs text-red-200 mt-1">{{ confirmErrorMessage }}</p>
         </div>
 
         <div v-if="modalCanConfirm" class="space-y-3">
@@ -147,7 +152,7 @@
             type="button"
             class="w-full rounded-lg border p-4 text-left transition-colors"
             :class="selectedImportMode === mode.value ? 'border-brand-500 bg-brand-500/10' : 'border-surface-200 bg-surface-100 hover:bg-surface-200'"
-            @click="selectedImportMode = mode.value"
+            @click="selectImportMode(mode.value)"
           >
             <p class="text-xs uppercase tracking-wide text-muted">{{ mode.tag }}</p>
             <p class="text-primary font-semibold mt-1">{{ mode.title }}</p>
@@ -157,7 +162,7 @@
 
         <div class="mt-5 flex justify-end gap-2">
           <button type="button" class="btn-ghost text-sm" @click="closeImportModal">Cancel</button>
-          <button v-if="modalCanConfirm" type="button" class="btn-primary text-sm" :disabled="!modalJobId || confirmingImportMode" @click="confirmZipImportMode">
+          <button v-if="modalCanConfirm" type="button" class="btn-primary text-sm" :disabled="!modalJobId || confirmingImportMode" @click="confirmImportMode">
             {{ confirmingImportMode ? 'Starting import...' : 'Continue import' }}
           </button>
         </div>
@@ -182,6 +187,14 @@ const showImportModeModal = ref(false)
 const modalJobId = ref(null)
 const selectedImportMode = ref(DATA_IMPORT_MODE.NEW_ITEMS)
 const confirmingImportMode = ref(false)
+const confirmErrorCode = ref('')
+
+const confirmErrorMessages = {
+  IMPORT_JOB_NOT_FOUND: 'This import job no longer exists. Please upload the file again.',
+  IMPORT_CONFIRM_NOT_ALLOWED: 'This file type cannot be confirmed for import. Upload a valid file and try again.',
+  IMPORT_NOT_READY: 'Import analysis is still running. Please wait a moment and try again.',
+  IMPORT_MODE_INVALID: 'Please select a valid import mode and try again.',
+}
 
 const importModes = [
   {
@@ -232,6 +245,10 @@ const modalIsPreparing = computed(() => {
   return modalJob.value.status === DATA_TRANSFER_STATUS.PENDING || modalJob.value.status === DATA_TRANSFER_STATUS.PROCESSING
 })
 const modalCanConfirm = computed(() => modalJob.value?.status === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION)
+const confirmErrorMessage = computed(() => {
+  if (!confirmErrorCode.value) return ''
+  return confirmErrorMessages[confirmErrorCode.value] || 'We could not start this import. Please try again.'
+})
 
 let timer = null
 
@@ -259,6 +276,7 @@ async function pollJob(jobId) {
 
 async function startZipImport() {
   zipError.value = ''
+  confirmErrorCode.value = ''
   const file = zipInput.value?.files?.[0]
   if (!file) {
     zipError.value = 'Please choose a Trakt ZIP file before uploading.'
@@ -278,6 +296,7 @@ async function startZipImport() {
 
 async function startYamtrackImport() {
   yamtrackError.value = ''
+  confirmErrorCode.value = ''
   const file = yamtrackInput.value?.files?.[0]
   if (!file) {
     yamtrackError.value = 'Please choose a Yamtrack CSV file before uploading.'
@@ -297,6 +316,7 @@ async function startYamtrackImport() {
 
 async function startJsonImport() {
   jsonError.value = ''
+  confirmErrorCode.value = ''
   const file = jsonInput.value?.files?.[0]
   if (!file) {
     jsonError.value = 'Please choose an ArxMedia JSON backup before uploading.'
@@ -308,6 +328,9 @@ async function startJsonImport() {
   }
   const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.JSON, 'arxmedia')
   updateJob(created)
+  selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
+  modalJobId.value = created.id
+  showImportModeModal.value = true
   await pollJob(created.id)
 }
 
@@ -339,6 +362,11 @@ function updateJob(updatedJob) {
   }
 }
 
+function selectImportMode(mode) {
+  selectedImportMode.value = mode
+  confirmErrorCode.value = ''
+}
+
 async function loadJobs() {
   const data = await trackingAPI.listJobs()
   jobs.value = data.results || data || []
@@ -360,15 +388,18 @@ function formatDateTime(value) {
   return new Date(value).toLocaleString()
 }
 
-async function confirmZipImportMode() {
+async function confirmImportMode() {
   if (!modalJobId.value) return
   confirmingImportMode.value = true
+  confirmErrorCode.value = ''
   try {
     const updated = await trackingAPI.confirmJobImport(modalJobId.value, selectedImportMode.value)
     updateJob(updated)
     showImportModeModal.value = false
     modalJobId.value = null
     await pollJob(updated.id)
+  } catch (error) {
+    confirmErrorCode.value = String(error?.error_code || '').trim() || 'UNKNOWN_CONFIRM_ERROR'
   } finally {
     confirmingImportMode.value = false
   }
@@ -376,6 +407,7 @@ async function confirmZipImportMode() {
 
 function closeImportModal() {
   showImportModeModal.value = false
+  confirmErrorCode.value = ''
   if (!modalCanConfirm.value) {
     modalJobId.value = null
   }
@@ -383,6 +415,7 @@ function closeImportModal() {
 
 function openAwaitingJobModal(job) {
   if (!job || job.status !== DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION) return
+  confirmErrorCode.value = ''
   modalJobId.value = job.id
   showImportModeModal.value = true
 }

@@ -78,3 +78,7 @@ What "good work" means for this project.
 - Tests exist and pass
 - No regressions to existing functionality
 - Changes are minimal and focused
+
+## Feature architecture docs
+
+- Import pipeline architecture (tracking): `docs/import-pipeline.md`

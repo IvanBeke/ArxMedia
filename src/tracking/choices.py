@@ -39,7 +39,9 @@ class ListPrivacy(models.TextChoices):
 
 
 class DataTransferSource(models.TextChoices):
-    LOCAL = 'local', 'Local file'
+    ARXMEDIA = 'arxmedia', 'ArxMedia'
+    TRAKT = 'trakt', 'Trakt'
+    YAMTRACK = 'yamtrack', 'Yamtrack'
 
 
 class DataTransferJobType(models.TextChoices):

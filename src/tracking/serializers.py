@@ -279,7 +279,7 @@ class DataTransferJobSerializer(serializers.ModelSerializer):
     class Meta:
         model = DataTransferJob
         fields = [
-            'id', 'job_type', 'data_format', 'source', 'overwrite_existing', 'status', 'total_items',
+            'id', 'job_type', 'data_format', 'source', 'import_mode', 'overwrite_existing', 'status', 'total_items',
             'processed_items', 'error_message', 'output_url', 'metadata', 'created_at', 'updated_at'
         ]
 
