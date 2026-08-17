@@ -131,14 +131,30 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         show_ids = [entry.tmdb_id for entry in items if entry.media_type == WatchEntryMediaType.EPISODE]
         movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
         tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=show_ids)}
+        rating_rows = Rating.objects.filter(
+            user=request.user,
+        ).filter(
+            Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
+            | Q(media_type=MediaType.TV, tmdb_id__in=show_ids)
+        ).values('media_type', 'tmdb_id', 'score')
+        rating_map = {(row['media_type'], row['tmdb_id']): row['score'] for row in rating_rows}
 
         context = self.get_serializer_context()
         context.update({'movie_map': movie_map, 'tv_map': tv_map})
         serializer = self.get_serializer(items, many=True, context=context)
+        data = serializer.data
+
+        for row in data:
+            if row['media_type'] == WatchEntryMediaType.MOVIE:
+                row['rating'] = rating_map.get((MediaType.MOVIE, row['tmdb_id']))
+            elif row['media_type'] == WatchEntryMediaType.EPISODE:
+                row['rating'] = rating_map.get((MediaType.TV, row['tmdb_id']))
+            else:
+                row['rating'] = None
 
         if page is not None:
-            return self.get_paginated_response(serializer.data)
-        return Response(serializer.data)
+            return self.get_paginated_response(data)
+        return Response(data)
 
     def perform_create(self, serializer):
         watched_at = serializer.validated_data.get('watched_at')
