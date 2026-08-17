@@ -13,13 +13,14 @@ class MovieSerializer(serializers.ModelSerializer):
     genres = GenreSerializer(many=True, read_only=True)
     poster_url = serializers.ReadOnlyField()
     backdrop_url = serializers.ReadOnlyField()
+    metadata_updated_at = serializers.DateTimeField(source='updated_at', read_only=True)
 
     class Meta:
         model = Movie
         fields = [
             'id', 'tmdb_id', 'title', 'overview', 'poster_path', 'backdrop_path',
             'poster_url', 'backdrop_url', 'release_date', 'runtime',
-            'vote_average', 'vote_count', 'genres', 'language', 'tagline', 'status'
+            'vote_average', 'vote_count', 'genres', 'language', 'tagline', 'status', 'metadata_updated_at'
         ]
 
 
@@ -27,6 +28,7 @@ class TVShowSerializer(serializers.ModelSerializer):
     genres = GenreSerializer(many=True, read_only=True)
     poster_url = serializers.ReadOnlyField()
     backdrop_url = serializers.ReadOnlyField()
+    metadata_updated_at = serializers.DateTimeField(source='updated_at', read_only=True)
 
     class Meta:
         model = TVShow
@@ -34,7 +36,7 @@ class TVShowSerializer(serializers.ModelSerializer):
             'id', 'tmdb_id', 'name', 'overview', 'poster_path', 'backdrop_path',
             'poster_url', 'backdrop_url', 'first_air_date', 'last_air_date',
             'number_of_seasons', 'number_of_episodes', 'vote_average', 'vote_count',
-            'genres', 'language', 'status', 'networks'
+            'genres', 'language', 'status', 'networks', 'metadata_updated_at'
         ]
 
 

@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from tracking.models import Rating, WatchEntry, Watchlist
 
-from media.models import TVShow
+from media.models import Movie, TVShow
 
 User = get_user_model()
 
@@ -348,3 +348,49 @@ class MediaTests(TestCase):
         response = self.client.get('/api/media/tv/888/')
         self.assertEqual(response.data['user_status']['status'], 'dropped')
         self.assertIn('status_changed_at', response.data['user_status'])
+
+    @patch('media.views.tmdb.sync_movie')
+    def test_refresh_movie_metadata_requires_auth(self, mock_sync_movie):
+        anon = APIClient()
+        response = anon.post('/api/media/movies/550/refresh/', {}, format='json')
+        self.assertEqual(response.status_code, 401)
+        mock_sync_movie.assert_not_called()
+
+    @patch('media.views.tmdb.sync_movie')
+    def test_refresh_movie_metadata_updates_and_returns_timestamp(self, mock_sync_movie):
+        movie = Movie.objects.create(tmdb_id=550, title='Fight Club')
+        movie.title = 'Fight Club Updated'
+        mock_sync_movie.return_value = movie
+
+        response = self.client.post('/api/media/movies/550/refresh/', {}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['tmdb_id'], 550)
+        self.assertIn('metadata_updated_at', response.data)
+        mock_sync_movie.assert_called_once_with(550)
+
+    @patch('media.views.tmdb.sync_season')
+    @patch('media.views.tmdb.sync_tv_show')
+    def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show, mock_sync_season):
+        show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones', number_of_seasons=2, number_of_episodes=10)
+        show.seasons.create(tmdb_id=139900, season_number=0, name='Specials')
+        mock_sync_tv_show.return_value = show
+
+        response = self.client.post('/api/media/tv/1399/refresh/', {}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['tmdb_id'], 1399)
+        self.assertIn('metadata_updated_at', response.data)
+        mock_sync_tv_show.assert_called_once_with(1399)
+        self.assertEqual(mock_sync_season.call_count, 3)
+
+    def test_movie_and_tv_detail_include_metadata_updated_at(self):
+        Movie.objects.create(tmdb_id=777, title='Movie Detail')
+        show = TVShow.objects.create(tmdb_id=888, name='Show Detail', number_of_seasons=1, number_of_episodes=2)
+        show.seasons.create(tmdb_id=8881, season_number=1, name='Season 1')
+
+        movie_response = self.client.get('/api/media/movies/777/')
+        tv_response = self.client.get('/api/media/tv/888/')
+
+        self.assertEqual(movie_response.status_code, 200)
+        self.assertEqual(tv_response.status_code, 200)
+        self.assertIn('metadata_updated_at', movie_response.data)
+        self.assertIn('metadata_updated_at', tv_response.data)

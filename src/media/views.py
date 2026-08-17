@@ -46,6 +46,15 @@ def _resolve_region(request):
     return 'US'
 
 
+def _serialize_tv_show_detail(show):
+    data = TVShowSerializer(show).data
+    seasons = show.seasons.order_by('season_number').annotate(
+        actual_episode_count=models.Count('episodes')
+    )
+    data['seasons'] = SeasonBriefSerializer(seasons, many=True).data
+    return data
+
+
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def search(request):
@@ -221,11 +230,7 @@ def tv_detail(request, tmdb_id):
             except Exception as exc:
                 logger.warning('Failed to sync season %s for show %s: %s', sn, tmdb_id, exc)
 
-    data = TVShowSerializer(show).data
-    seasons = show.seasons.order_by('season_number').annotate(
-        actual_episode_count=models.Count('episodes')
-    )
-    data['seasons'] = SeasonBriefSerializer(seasons, many=True).data
+    data = _serialize_tv_show_detail(show)
     try:
         providers = tmdb.get_tv_watch_providers(tmdb_id)
         data['watch_providers'] = _providers_for_region(providers, region)
@@ -243,6 +248,44 @@ def tv_detail(request, tmdb_id):
             data['user_status'] = status_map[key]
 
     return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def refresh_movie_metadata(request, tmdb_id):
+    try:
+        movie = tmdb.sync_movie(tmdb_id)
+    except Exception:
+        logger.warning('Failed to refresh movie %s from TMDB', tmdb_id, exc_info=True)
+        return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
+
+    return Response(MovieSerializer(movie).data)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def refresh_tv_metadata(request, tmdb_id):
+    try:
+        show = tmdb.sync_tv_show(tmdb_id)
+    except Exception:
+        logger.warning('Failed to refresh TV show %s from TMDB', tmdb_id, exc_info=True)
+        return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
+
+    season_numbers = set(range(1, max((show.number_of_seasons or 0), 0) + 1))
+    season_numbers.update(show.seasons.values_list('season_number', flat=True))
+    for season_number in sorted(season_numbers):
+        try:
+            tmdb.sync_season(show, season_number)
+        except Exception:
+            logger.warning(
+                'Failed to refresh season %s for show %s from TMDB',
+                season_number,
+                tmdb_id,
+                exc_info=True,
+            )
+
+    show.refresh_from_db()
+    return Response(_serialize_tv_show_detail(show))
 
 
 @api_view(['GET'])

@@ -47,6 +47,20 @@
               <RatingBadge :value="show.vote_average" :votes="show.vote_count" out-of-ten />
             </div>
 
+            <div v-if="auth.isAuthenticated" class="mb-3 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                @click="refreshMetadata"
+                :disabled="refreshingMetadata"
+                class="btn-ghost text-xs"
+              >
+                {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB' }}
+              </button>
+              <span class="text-xs text-muted">
+                Last metadata update: {{ metadataUpdatedAtLabel }}
+              </span>
+            </div>
+
             <p v-if="show.networks" class="text-muted text-sm mb-3">{{ show.networks }}</p>
             <p class="text-secondary leading-relaxed mb-6 max-w-2xl">{{ show.overview }}</p>
 
@@ -233,7 +247,7 @@ import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
-import { formatDateByLocale } from '@/i18n'
+import { formatDateByLocale, formatDateTimeByLocale } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
 import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions'
@@ -250,6 +264,7 @@ const userRating = ref(0)
 const showStatus = ref('none')
 const successMsg = ref('')
 const errorMsg = ref('')
+const refreshingMetadata = ref(false)
 
 const activeTab = ref('seasons')
 const expandedSeason = ref(null)
@@ -280,6 +295,12 @@ const watchButtonLabel = computed(() => {
   if (showStatus.value === WATCH_ENTRY_STATUS.DROPPED) return 'Dropped'
   if (showStatus.value === 'watchlist') return 'Watchlist'
   return 'Watch'
+})
+
+const metadataUpdatedAtLabel = computed(() => {
+  const value = show.value?.metadata_updated_at
+  if (!value) return 'Unknown'
+  return formatDateTimeByLocale(value) || 'Unknown'
 })
 
 function syncShowStatusFromUserStatus() {
@@ -539,6 +560,21 @@ async function loadShow() {
       syncShowStatusFromUserStatus()
     }
   } catch (e) {}
+}
+
+async function refreshMetadata() {
+  if (refreshingMetadata.value) return
+  refreshingMetadata.value = true
+  try {
+    await mediaAPI.refreshTV(tmdbId.value)
+    await loadShow()
+    seasonEpisodes.value = {}
+    showSuccess('Metadata updated from TMDB')
+  } catch (error) {
+    showError(getApiErrorMessage(error, 'Could not refresh metadata.'))
+  } finally {
+    refreshingMetadata.value = false
+  }
 }
 
 onMounted(async () => {

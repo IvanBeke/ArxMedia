@@ -282,6 +282,11 @@ button[data-pulsing='true'] {
   animation: quick-action-pulse 0.5s ease-out;
 }
 
+button,
+[role='button'] {
+  cursor: pointer;
+}
+
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;

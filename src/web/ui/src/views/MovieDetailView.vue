@@ -52,6 +52,21 @@
               <RatingBadge :value="movie.vote_average" :votes="movie.vote_count" out-of-ten />
             </div>
 
+            <div class="mb-3 flex flex-wrap items-center gap-3">
+              <button
+                v-if="auth.isAuthenticated"
+                type="button"
+                @click="refreshMetadata"
+                :disabled="refreshingMetadata"
+                class="btn-ghost text-xs"
+              >
+                {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB' }}
+              </button>
+              <span class="text-xs text-muted">
+                Last metadata update: {{ metadataUpdatedAtLabel }}
+              </span>
+            </div>
+
             <SpoilerBlock :item-key="`movie-overview-${route.params.id}`" :watched="watchedCount > 0" class="mb-6 max-w-2xl">
               <p class="text-secondary leading-relaxed">{{ movie.overview }}</p>
             </SpoilerBlock>
@@ -169,6 +184,7 @@ const latestWatchedAt = ref('')
 const inWatchlist = ref(false)
 const successMsg = ref('')
 const errorMsg = ref('')
+const refreshingMetadata = ref(false)
 const {
   showDatePicker,
   pickerInitialValue,
@@ -189,6 +205,12 @@ const watchedTooltip = computed(() => {
   const formatted = formatDateTimeByLocale(latestWatchedAt.value)
   if (!formatted) return t('tracking_watched')
   return `${t('tracking_watched_on')} ${formatted}`
+})
+
+const metadataUpdatedAtLabel = computed(() => {
+  const value = movie.value?.metadata_updated_at
+  if (!value) return 'Unknown'
+  return formatDateTimeByLocale(value) || 'Unknown'
 })
 
 function imgUrl(path, size = 'w500') {
@@ -303,5 +325,20 @@ async function toggleWatchlist() {
 async function submitRating(score) {
   await trackingAPI.rate({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: route.params.id, score })
   showSuccess(`Rated ${score}/10!`)
+}
+
+async function refreshMetadata() {
+  if (refreshingMetadata.value) return
+  refreshingMetadata.value = true
+  try {
+    await mediaAPI.refreshMovie(route.params.id)
+    movie.value = await mediaAPI.getMovie(route.params.id)
+    inWatchlist.value = movie.value?.user_status?.status === 'plan_to_watch'
+    showSuccess('Metadata updated from TMDB')
+  } catch (error) {
+    showError(getApiErrorMessage(error, 'Could not refresh metadata.'))
+  } finally {
+    refreshingMetadata.value = false
+  }
 }
 </script>
