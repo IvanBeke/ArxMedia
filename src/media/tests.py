@@ -84,7 +84,7 @@ class MediaTests(TestCase):
 
     def test_movie_popular(self):
         response = self.client.get('/api/media/popular/?type=movie')
-        self.assertIn(response.status_code, [200, 401, 404])
+        self.assertEqual(response.status_code, 200)
 
     def test_movie_detail(self):
         response = self.client.get('/api/media/movies/550/')  # Fight Club
@@ -92,7 +92,7 @@ class MediaTests(TestCase):
 
     def test_tv_popular(self):
         response = self.client.get('/api/media/popular/?type=tv')
-        self.assertIn(response.status_code, [200, 401, 404])
+        self.assertEqual(response.status_code, 200)
 
     def test_tv_detail(self):
         response = self.client.get('/api/media/tv/1399/')  # Game of Thrones
@@ -100,19 +100,19 @@ class MediaTests(TestCase):
 
     def test_search(self):
         response = self.client.get('/api/media/search/?q=inception')
-        self.assertIn(response.status_code, [200, 401, 404])
+        self.assertEqual(response.status_code, 200)
 
     def test_trending(self):
         response = self.client.get('/api/media/trending/')
-        self.assertIn(response.status_code, [200, 401, 404])
+        self.assertEqual(response.status_code, 200)
 
     def test_season_detail(self):
         response = self.client.get('/api/media/tv/1399/seasons/1/')
-        self.assertIn(response.status_code, [200, 404])
+        self.assertEqual(response.status_code, 200)
 
     def test_episode_detail(self):
         response = self.client.get('/api/media/tv/1399/seasons/1/episodes/1/credits/')
-        self.assertIn(response.status_code, [200, 404])
+        self.assertEqual(response.status_code, 200)
 
     @patch('media.views.tmdb.sync_season')
     @patch('media.views.tmdb.get_tv_watch_providers')
@@ -295,7 +295,7 @@ class MediaTests(TestCase):
         self.assertEqual(response.data['user_status']['progress']['total_episodes'], 2)
 
     @patch('media.views.tmdb.get_popular_movies')
-    def test_popular_omits_user_status_for_anonymous(self, mock_popular):
+    def test_media_endpoints_require_authentication(self, mock_popular):
         anon = APIClient()
         mock_popular.return_value = {
             'results': [{'id': 555, 'title': 'Anon Movie'}],
@@ -304,9 +304,15 @@ class MediaTests(TestCase):
             'total_results': 1,
         }
 
-        response = anon.get('/api/media/popular/?type=movie')
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn('user_status', response.data['results'][0])
+        self.assertEqual(anon.get('/api/media/search/?q=test').status_code, 401)
+        self.assertEqual(anon.get('/api/media/trending/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/popular/?type=movie').status_code, 401)
+        self.assertEqual(anon.get('/api/media/movies/550/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/movies/550/credits/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/tv/1399/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/tv/1399/credits/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/tv/1399/seasons/1/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/tv/1399/seasons/1/episodes/1/credits/').status_code, 401)
 
     @patch('media.views.tmdb.sync_movie')
     @patch('media.views.tmdb.get_movie_watch_providers')
@@ -355,6 +361,13 @@ class MediaTests(TestCase):
         response = anon.post('/api/media/movies/550/refresh/', {}, format='json')
         self.assertEqual(response.status_code, 401)
         mock_sync_movie.assert_not_called()
+
+    @patch('media.views.tmdb.sync_tv_show')
+    def test_refresh_tv_metadata_requires_auth(self, mock_sync_tv_show):
+        anon = APIClient()
+        response = anon.post('/api/media/tv/1399/refresh/', {}, format='json')
+        self.assertEqual(response.status_code, 401)
+        mock_sync_tv_show.assert_not_called()
 
     @patch('media.views.tmdb.sync_movie')
     def test_refresh_movie_metadata_updates_and_returns_timestamp(self, mock_sync_movie):

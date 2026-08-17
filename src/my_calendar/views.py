@@ -25,7 +25,7 @@ def _parse_range(request):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def shows_calendar(request):
     start, end = _parse_range(request)
     episodes = Episode.objects.select_related('season__show').filter(
@@ -48,7 +48,7 @@ def shows_calendar(request):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def movies_calendar(request):
     start, end = _parse_range(request)
     movies = Movie.objects.filter(

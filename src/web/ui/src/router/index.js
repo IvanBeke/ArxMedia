@@ -71,17 +71,20 @@ const routes = [
   {
     path: '/profile/:username',
     component: () => import('@/views/ProfileView.vue'),
-    name: 'profile'
+    name: 'profile',
+    meta: { requiresAuth: true }
   },
   {
     path: '/profile/:username/followers',
     component: () => import('@/views/ProfileFollowersView.vue'),
-    name: 'profile-followers'
+    name: 'profile-followers',
+    meta: { requiresAuth: true }
   },
   {
     path: '/profile/:username/following',
     component: () => import('@/views/ProfileFollowingView.vue'),
-    name: 'profile-following'
+    name: 'profile-following',
+    meta: { requiresAuth: true }
   },
   {
     path: '/settings',

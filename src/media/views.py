@@ -56,7 +56,7 @@ def _serialize_tv_show_detail(show):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def search(request):
     query = request.query_params.get('q', '')
     media_type = request.query_params.get('type', 'multi')
@@ -100,7 +100,7 @@ def search(request):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def trending(request):
     media_type = request.query_params.get('type', 'all')
     time_window = request.query_params.get('window', 'week')
@@ -130,7 +130,7 @@ def trending(request):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def popular(request):
     media_type = request.query_params.get('type', 'movie')
     page, error = _parse_int_query(request, 'page', 1)
@@ -169,7 +169,7 @@ def popular(request):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def movie_detail(request, tmdb_id):
     region = _resolve_region(request)
     try:
@@ -201,14 +201,14 @@ def movie_detail(request, tmdb_id):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def movie_credits(request, tmdb_id):
     credits_data = tmdb.get_movie_credits(tmdb_id)
     return Response(credits_data)
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def tv_detail(request, tmdb_id):
     region = _resolve_region(request)
     try:
@@ -289,7 +289,7 @@ def refresh_tv_metadata(request, tmdb_id):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def season_detail(request, tmdb_id, season_number):
     # Always fetch fresh from TMDB to get latest data including credits
     try:
@@ -313,7 +313,7 @@ def season_detail(request, tmdb_id, season_number):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def episode_credits(request, tmdb_id, season_number, episode_number):
     try:
         credits_data = tmdb.get_episode_credits(tmdb_id, season_number, episode_number)
@@ -331,7 +331,7 @@ def episode_credits(request, tmdb_id, season_number, episode_number):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def tv_credits(request, tmdb_id):
     """Get TV show aggregate credits (cast and crew) from TMDB."""
     try:

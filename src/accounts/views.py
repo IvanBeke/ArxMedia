@@ -47,7 +47,7 @@ class MeView(generics.RetrieveUpdateAPIView):
 
 class UserProfileView(generics.RetrieveAPIView):
     serializer_class = PublicUserSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
     queryset = User.objects.all()
     lookup_field = 'username'
 
@@ -67,7 +67,7 @@ class UserSearchView(generics.ListAPIView):
 
 class UserFollowersView(generics.ListAPIView):
     serializer_class = PublicUserCardSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def _target(self):
         return get_object_or_404(User, username=self.kwargs['username'])
@@ -84,7 +84,7 @@ class UserFollowersView(generics.ListAPIView):
 
 class UserFollowingView(generics.ListAPIView):
     serializer_class = PublicUserCardSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def _target(self):
         return get_object_or_404(User, username=self.kwargs['username'])

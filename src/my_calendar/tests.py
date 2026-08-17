@@ -33,6 +33,11 @@ class CalendarTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('results', response.data)
 
+    def test_shows_calendar_requires_auth(self):
+        anon = APIClient()
+        response = anon.get('/api/calendar/shows/?days=7')
+        self.assertEqual(response.status_code, 401)
+
     def test_movies_calendar_endpoint(self):
         Movie.objects.create(
             tmdb_id=300,
@@ -42,6 +47,11 @@ class CalendarTests(TestCase):
         response = self.client.get('/api/calendar/movies/?days=7')
         self.assertEqual(response.status_code, 200)
         self.assertIn('results', response.data)
+
+    def test_movies_calendar_requires_auth(self):
+        anon = APIClient()
+        response = anon.get('/api/calendar/movies/?days=7')
+        self.assertEqual(response.status_code, 401)
 
     def test_my_calendar_includes_watchlist_movies(self):
         movie = Movie.objects.create(

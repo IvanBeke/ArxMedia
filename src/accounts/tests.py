@@ -196,12 +196,7 @@ class AccountTests(TestCase):
         )
 
         response = self.client.get(f'/api/auth/users/{target.username}/')
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data['permissions']['can_view_activity'])
-        self.assertFalse(response.data['permissions']['can_view_lists'])
-        self.assertEqual(response.data['stats']['ratings_count'], None)
-        self.assertEqual(response.data['recent_activity'], [])
-        self.assertEqual(response.data['visible_lists'], [])
+        self.assertEqual(response.status_code, 401)
 
     def test_private_profile_visible_for_owner(self):
         self.user.account_visibility = 'private'
@@ -245,6 +240,7 @@ class AccountTests(TestCase):
             )
             Follow.objects.create(follower=follower, following=target)
 
+        self.authenticate()
         response = self.client.get(f'/api/auth/users/{target.username}/followers/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['count'], 25)
@@ -267,6 +263,19 @@ class AccountTests(TestCase):
         following_response = self.client.get(f'/api/auth/users/{target.username}/following/')
         self.assertEqual(followers_response.status_code, 403)
         self.assertEqual(following_response.status_code, 403)
+
+    def test_profile_and_social_graph_endpoints_require_auth(self):
+        target = User.objects.create_user(
+            username='locked_target',
+            email='locked-target@example.com',
+            password='pass123',
+            account_visibility='public',
+        )
+
+        self.client.credentials()
+        self.assertEqual(self.client.get(f'/api/auth/users/{target.username}/').status_code, 401)
+        self.assertEqual(self.client.get(f'/api/auth/users/{target.username}/followers/').status_code, 401)
+        self.assertEqual(self.client.get(f'/api/auth/users/{target.username}/following/').status_code, 401)
 
     def test_user_search_requires_auth(self):
         self.client.credentials()
