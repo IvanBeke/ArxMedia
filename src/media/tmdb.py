@@ -26,14 +26,14 @@ class TMDBService:
                 self._redis = redis.from_url(url, decode_responses=True)
         return self._redis
 
-    def _get(self, endpoint, params=None):
+    def _get(self, endpoint, params=None, *, use_cache=True):
         if params is None:
             params = {}
 
         cache_key = f'tmdb:{endpoint}:{json.dumps(params, sort_keys=True)}'
         r = self._get_redis()
 
-        if r:
+        if r and use_cache:
             cached = r.get(cache_key)
             if cached is not None:
                 return json.loads(cached)
@@ -43,7 +43,7 @@ class TMDBService:
         response.raise_for_status()
         data = response.json()
 
-        if r:
+        if r and use_cache:
             try:
                 r.set(cache_key, json.dumps(data), nx=True, ex=self.CACHE_TTL)
             except redis.exceptions.ConnectionError as exc:
@@ -98,6 +98,20 @@ class TMDBService:
 
     def get_top_rated_tv(self, page=1):
         return self._get('/tv/top_rated', {'page': page})
+
+    def get_movie_changes(self, start_date: str, end_date: str, page: int = 1, *, use_cache: bool = False):
+        return self._get(
+            '/movie/changes',
+            {'start_date': start_date, 'end_date': end_date, 'page': page},
+            use_cache=use_cache,
+        )
+
+    def get_tv_changes(self, start_date: str, end_date: str, page: int = 1, *, use_cache: bool = False):
+        return self._get(
+            '/tv/changes',
+            {'start_date': start_date, 'end_date': end_date, 'page': page},
+            use_cache=use_cache,
+        )
 
     def sync_movie(self, tmdb_id):
         """Fetch movie from TMDB and save/update locally."""

@@ -1,6 +1,6 @@
 from .local import export_user_data, import_user_data
 from .shared import tmdb
-from .system import heartbeat
+from .system import heartbeat, sync_tmdb_changed_items
 from .trakt import apply_trakt_zip_import, prepare_trakt_zip_import
 from .yamtrack import apply_yamtrack_csv_import, prepare_yamtrack_csv_import
 
@@ -12,5 +12,6 @@ __all__ = [
     'import_user_data',
     'prepare_trakt_zip_import',
     'prepare_yamtrack_csv_import',
+    'sync_tmdb_changed_items',
     'tmdb',
 ]
