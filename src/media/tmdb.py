@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class TMDBService:
-    BASE_URL = settings.TMDB_BASE_URL
-    API_KEY = settings.TMDB_API_KEY
+    BASE_URL = getattr(settings, 'TMDB_BASE_URL', 'https://api.themoviedb.org/3')
+    API_KEY = getattr(settings, 'TMDB_API_KEY', '')
     CACHE_TTL = 604800  # 7 days
 
     def __init__(self):
