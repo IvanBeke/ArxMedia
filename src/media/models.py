@@ -115,6 +115,7 @@ class Episode(models.Model):
     air_date = models.DateField(null=True, blank=True)
     runtime = models.IntegerField(null=True, blank=True)
     vote_average = models.FloatField(default=0)
+    vote_count = models.IntegerField(default=0)
 
     class Meta:
         unique_together = ('season', 'episode_number')
@@ -131,3 +132,15 @@ class Episode(models.Model):
         if self.still_path:
             return f'https://image.tmdb.org/t/p/w300{self.still_path}'
         return None
+
+
+class EpisodeCredit(models.Model):
+    episode = models.OneToOneField(Episode, on_delete=models.CASCADE, related_name='credits')
+    cast = models.JSONField(default=list, blank=True)
+    crew = models.JSONField(default=list, blank=True)
+    guest_stars = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'Credits for {self.episode}'

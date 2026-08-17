@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from tracking.models import Rating, WatchEntry, Watchlist
 
-from media.models import Movie, TVShow
+from media.models import EpisodeCredit, Movie, TVShow
 
 User = get_user_model()
 
@@ -264,8 +264,7 @@ class MediaTests(TestCase):
         response = self.client.get('/api/media/popular/?type=tv')
         self.assertEqual(response.data['results'][0]['user_status']['status'], 'watched')
 
-    @patch('media.views.tmdb.get_season')
-    def test_season_detail_includes_season_zero_own_progress(self, mock_get_season):
+    def test_season_detail_includes_season_zero_own_progress(self):
         show = TVShow.objects.create(tmdb_id=404, name='Show B', number_of_seasons=1, number_of_episodes=2)
         season_zero = show.seasons.create(tmdb_id=4040, season_number=0, name='Specials')
         season_zero.episodes.create(tmdb_id=10, episode_number=1, name='S0E1')
@@ -281,18 +280,63 @@ class MediaTests(TestCase):
             watched_at='2026-08-01T10:00:00Z',
         )
 
-        mock_get_season.return_value = {
-            'id': 4040,
-            'season_number': 0,
-            'name': 'Specials',
-            'episodes': [],
-        }
-
         response = self.client.get('/api/media/tv/404/seasons/0/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['user_status']['status'], 'watching')
         self.assertEqual(response.data['user_status']['progress']['watched_episodes'], 1)
         self.assertEqual(response.data['user_status']['progress']['total_episodes'], 2)
+
+    @patch('media.views.tmdb.sync_season')
+    def test_season_detail_uses_db_first_when_season_exists(self, mock_sync_season):
+        show = TVShow.objects.create(tmdb_id=505, name='Show DB First', number_of_seasons=1, number_of_episodes=1)
+        season = show.seasons.create(tmdb_id=5050, season_number=1, name='Season 1')
+        season.episodes.create(tmdb_id=50501, episode_number=1, name='Existing Episode')
+
+        response = self.client.get('/api/media/tv/505/seasons/1/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['season_number'], 1)
+        self.assertEqual(response.data['episodes'][0]['name'], 'Existing Episode')
+        mock_sync_season.assert_not_called()
+
+    @patch('media.views.tmdb.sync_episode_credits')
+    def test_episode_credits_uses_db_first_when_present(self, mock_sync_episode_credits):
+        show = TVShow.objects.create(tmdb_id=606, name='Show Credits', number_of_seasons=1, number_of_episodes=1)
+        season = show.seasons.create(tmdb_id=6060, season_number=1, name='Season 1')
+        episode = season.episodes.create(tmdb_id=60601, episode_number=1, name='Episode 1')
+        EpisodeCredit.objects.create(
+            episode=episode,
+            cast=[{'name': 'DB Cast Member'}],
+            crew=[{'name': 'DB Crew Member', 'job': 'Director'}],
+            guest_stars=[{'name': 'DB Guest'}],
+        )
+
+        response = self.client.get('/api/media/tv/606/seasons/1/episodes/1/credits/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['cast'][0]['name'], 'DB Cast Member')
+        self.assertEqual(response.data['crew'][0]['name'], 'DB Crew Member')
+        self.assertEqual(response.data['guest_stars'][0]['name'], 'DB Guest')
+        mock_sync_episode_credits.assert_not_called()
+
+    def test_episode_credits_fallback_syncs_and_persists(self):
+        show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones', number_of_seasons=1, number_of_episodes=1)
+        season = show.seasons.create(tmdb_id=139901, season_number=1, name='Season 1')
+        season.episodes.create(tmdb_id=13990101, episode_number=1, name='Winter Is Coming')
+
+        response = self.client.get('/api/media/tv/1399/seasons/1/episodes/1/credits/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('cast', response.data)
+        self.assertIn('crew', response.data)
+        self.assertIn('guest_stars', response.data)
+        self.assertTrue(
+            EpisodeCredit.objects.filter(
+                episode__season__show__tmdb_id=1399,
+                episode__season__season_number=1,
+                episode__episode_number=1,
+            ).exists()
+        )
 
     @patch('media.views.tmdb.get_popular_movies')
     def test_media_endpoints_require_authentication(self, mock_popular):

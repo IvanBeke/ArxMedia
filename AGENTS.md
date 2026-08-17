@@ -61,6 +61,8 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 - Before reporting completion, run a feature-complete check: request fully implemented, edge states handled, focused tests updated, lint/types passing, and user-visible behavior verified.
 - Keep implementation and verification evidence in command output and final report.
 - Define task-specific ad-hoc checks from the request and touched code paths.
+- When user input is needed during execution, prefer dedicated interaction tools (for example, `question`) instead of ad-hoc freeform asks, so choices are explicit, traceable, and actionable.
+- Use tool-driven prompts for requirements, decisions, and tradeoffs only when truly blocking after completing non-blocked work.
 
 ## Existing instruction sources worth checking
 

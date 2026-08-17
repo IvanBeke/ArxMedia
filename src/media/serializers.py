@@ -42,7 +42,6 @@ class TVShowSerializer(serializers.ModelSerializer):
 
 class EpisodeSerializer(serializers.ModelSerializer):
     still_url = serializers.ReadOnlyField()
-    vote_count = serializers.SerializerMethodField()
     guest_stars = serializers.SerializerMethodField()
     crew = serializers.SerializerMethodField()
 
@@ -54,17 +53,16 @@ class EpisodeSerializer(serializers.ModelSerializer):
             'vote_average', 'vote_count', 'guest_stars', 'crew'
         ]
 
-    def get_vote_count(self, obj):
-        return getattr(obj, 'vote_count', 0)
-
     def get_guest_stars(self, obj):
-        if hasattr(obj, 'credits') and obj.credits:
-            return obj.credits.get('guest_stars', [])
+        credits = getattr(obj, 'credits', None)
+        if credits:
+            return credits.guest_stars
         return []
 
     def get_crew(self, obj):
-        if hasattr(obj, 'credits') and obj.credits:
-            return obj.credits.get('crew', [])
+        credits = getattr(obj, 'credits', None)
+        if credits:
+            return credits.crew
         return []
 
 

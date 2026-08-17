@@ -211,7 +211,7 @@ const watchedTooltip = computed(() => {
 const metadataUpdatedAtLabel = computed(() => {
   const value = movie.value?.metadata_updated_at
   if (!value) return 'Unknown'
-  return formatDateTimeByLocale(value) || 'Unknown'
+  return formatDateTimeByLocale(value, { hour12: false }) || 'Unknown'
 })
 
 const canRate = computed(() => {

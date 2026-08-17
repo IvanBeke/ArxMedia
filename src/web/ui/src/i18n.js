@@ -148,7 +148,7 @@ export function formatDateByLocale(value) {
   return new Date(value).toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-export function formatDateTimeByLocale(value) {
+export function formatDateTimeByLocale(value, options = {}) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -160,5 +160,6 @@ export function formatDateTimeByLocale(value) {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    ...options,
   })
 }

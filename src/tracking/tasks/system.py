@@ -64,6 +64,8 @@ def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict
     tv_failures = 0
     seasons_synced = 0
     season_failures = 0
+    episode_credits_synced = 0
+    episode_credit_failures = 0
     for tmdb_id in local_tv_ids:
         try:
             show = tmdb.sync_tv_show(tmdb_id)
@@ -76,10 +78,18 @@ def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict
         season_numbers.update(show.seasons.values_list('season_number', flat=True))
         for season_number in sorted(season_numbers):
             try:
-                tmdb.sync_season(show, season_number)
+                season = tmdb.sync_season(show, season_number)
                 seasons_synced += 1
             except Exception:
                 season_failures += 1
+                continue
+
+            for episode_number in season.episodes.values_list('episode_number', flat=True):
+                try:
+                    tmdb.sync_episode_credits(tmdb_id, season_number, int(episode_number), show=show)
+                    episode_credits_synced += 1
+                except Exception:
+                    episode_credit_failures += 1
 
     return {
         'window_start': start_date_str,
@@ -94,4 +104,6 @@ def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict
         'tv_failures': tv_failures,
         'seasons_synced': seasons_synced,
         'season_failures': season_failures,
+        'episode_credits_synced': episode_credits_synced,
+        'episode_credit_failures': episode_credit_failures,
     }

@@ -7,8 +7,8 @@ from rest_framework.response import Response
 from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
 
-from .models import Movie, Season, TVShow
-from .serializers import MovieSerializer, SeasonBriefSerializer, TVShowSerializer
+from .models import EpisodeCredit, Movie, Season, TVShow
+from .serializers import MovieSerializer, SeasonBriefSerializer, SeasonSerializer, TVShowSerializer
 from .tmdb import tmdb
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,14 @@ def _serialize_tv_show_detail(show):
     )
     data['seasons'] = SeasonBriefSerializer(seasons, many=True).data
     return data
+
+
+def _episode_credits_payload(credit):
+    return {
+        'cast': credit.cast,
+        'crew': credit.crew,
+        'guest_stars': credit.guest_stars,
+    }
 
 
 @api_view(['GET'])
@@ -283,6 +291,23 @@ def refresh_tv_metadata(request, tmdb_id):
                 tmdb_id,
                 exc_info=True,
             )
+            continue
+
+        season = show.seasons.filter(season_number=season_number).first()
+        if season is None:
+            continue
+
+        for episode_number in season.episodes.values_list('episode_number', flat=True):
+            try:
+                tmdb.sync_episode_credits(int(tmdb_id), season_number, int(episode_number), show=show)
+            except Exception:
+                logger.warning(
+                    'Failed to refresh episode credits for show %s season %s episode %s from TMDB',
+                    tmdb_id,
+                    season_number,
+                    episode_number,
+                    exc_info=True,
+                )
 
     show.refresh_from_db()
     return Response(_serialize_tv_show_detail(show))
@@ -291,32 +316,83 @@ def refresh_tv_metadata(request, tmdb_id):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def season_detail(request, tmdb_id, season_number):
-    # Always fetch fresh from TMDB to get latest data including credits
+    tmdb_id = int(tmdb_id)
+    season_number = int(season_number)
+
     try:
-        season_data = tmdb.get_season(tmdb_id, season_number)
-    except Exception:
-        logger.warning('Failed to fetch season %s for show %s from TMDB', season_number, tmdb_id, exc_info=True)
+        show = TVShow.objects.get(tmdb_id=tmdb_id)
+    except TVShow.DoesNotExist:
+        try:
+            show = tmdb.sync_tv_show(tmdb_id)
+        except Exception:
+            logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
+            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    season = show.seasons.filter(season_number=season_number).prefetch_related('episodes__credits').first()
+    if season is None or not season.episodes.exists():
+        try:
+            tmdb.sync_season(show, season_number)
+            season = show.seasons.filter(season_number=season_number).prefetch_related('episodes__credits').first()
+        except Exception:
+            logger.warning('Failed to fetch season %s for show %s from TMDB', season_number, tmdb_id, exc_info=True)
+            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if season is None:
         return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    if request.user.is_authenticated:
-        tmdb_id_int = int(tmdb_id)
-        season_number_int = int(season_number)
-        season_status = annotate_season_user_status(
-            request.user,
-            [{'tmdb_id': tmdb_id_int, 'season_number': season_number_int}],
-        ).get((tmdb_id_int, season_number_int))
-        if season_status:
-            season_data['user_status'] = season_status
+    season_data = SeasonSerializer(season).data
 
-    # Return the live TMDB data directly
+    season_status = annotate_season_user_status(
+        request.user,
+        [{'tmdb_id': tmdb_id, 'season_number': season_number}],
+    ).get((tmdb_id, season_number))
+    if season_status:
+        season_data['user_status'] = season_status
+
     return Response(season_data)
 
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def episode_credits(request, tmdb_id, season_number, episode_number):
+    tmdb_id = int(tmdb_id)
+    season_number = int(season_number)
+    episode_number = int(episode_number)
+
     try:
-        credits_data = tmdb.get_episode_credits(tmdb_id, season_number, episode_number)
+        show = TVShow.objects.get(tmdb_id=tmdb_id)
+    except TVShow.DoesNotExist:
+        try:
+            show = tmdb.sync_tv_show(tmdb_id)
+        except Exception:
+            logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
+            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    season = show.seasons.filter(season_number=season_number).first()
+    episode = season.episodes.filter(episode_number=episode_number).first() if season else None
+
+    if episode is None:
+        try:
+            tmdb.sync_season(show, season_number)
+            season = show.seasons.filter(season_number=season_number).first()
+            episode = season.episodes.filter(episode_number=episode_number).first() if season else None
+        except Exception:
+            logger.warning(
+                'Failed to sync season %s for show %s while loading episode credits',
+                season_number,
+                tmdb_id,
+                exc_info=True,
+            )
+
+    if episode is None:
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    credit = EpisodeCredit.objects.filter(episode=episode).first()
+    if credit:
+        return Response(_episode_credits_payload(credit))
+
+    try:
+        credit = tmdb.sync_episode_credits(tmdb_id, season_number, episode_number, show=show)
     except Exception:
         logger.warning(
             'Failed to fetch episode credits for show %s season %s episode %s from TMDB',
@@ -327,7 +403,7 @@ def episode_credits(request, tmdb_id, season_number, episode_number):
         )
         return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    return Response(credits_data)
+    return Response(_episode_credits_payload(credit))
 
 
 @api_view(['GET'])

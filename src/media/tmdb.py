@@ -6,7 +6,7 @@ import requests
 from django.conf import settings
 from django.utils.dateparse import parse_date
 
-from .models import Episode, Genre, Movie, Season, TVShow
+from .models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ class TMDBService:
             }
         )
         for ep_data in data.get('episodes', []):
-            Episode.objects.update_or_create(
+            episode, _ = Episode.objects.update_or_create(
                 season=season,
                 episode_number=ep_data['episode_number'],
                 defaults={
@@ -191,9 +191,47 @@ class TMDBService:
                     'air_date': parse_date(ep_data['air_date']) if ep_data.get('air_date') else None,
                     'runtime': ep_data.get('runtime'),
                     'vote_average': ep_data.get('vote_average', 0),
+                    'vote_count': ep_data.get('vote_count', 0),
                 }
             )
+
+            credit_defaults = {}
+            if 'cast' in ep_data:
+                credit_defaults['cast'] = ep_data.get('cast') or []
+            if 'crew' in ep_data:
+                credit_defaults['crew'] = ep_data.get('crew') or []
+            if 'guest_stars' in ep_data:
+                credit_defaults['guest_stars'] = ep_data.get('guest_stars') or []
+            if credit_defaults:
+                EpisodeCredit.objects.update_or_create(
+                    episode=episode,
+                    defaults=credit_defaults,
+                )
         return season
+
+    def sync_episode_credits(self, show_id, season_number, episode_number, *, show=None):
+        if show is None:
+            show = TVShow.objects.filter(tmdb_id=show_id).first() or self.sync_tv_show(show_id)
+
+        season = show.seasons.filter(season_number=season_number).first()
+        if season is None:
+            season = self.sync_season(show, season_number)
+
+        episode = season.episodes.filter(episode_number=episode_number).first()
+        if episode is None:
+            season = self.sync_season(show, season_number)
+            episode = season.episodes.get(episode_number=episode_number)
+
+        credits = self.get_episode_credits(show_id, season_number, episode_number)
+        episode_credit, _ = EpisodeCredit.objects.update_or_create(
+            episode=episode,
+            defaults={
+                'cast': credits.get('cast') or [],
+                'crew': credits.get('crew') or [],
+                'guest_stars': credits.get('guest_stars') or [],
+            },
+        )
+        return episode_credit
 
 
 tmdb = TMDBService()
