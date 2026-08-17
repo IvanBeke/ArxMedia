@@ -17,6 +17,20 @@ What "good work" means for this project.
 - DRF with `IsAuthenticatedOrReadOnly` and `PageNumberPagination` (PAGE_SIZE=20)
 - All Django code lives under `src/`
 
+## Settings layout
+
+- Django settings are split into `src/arxmedia/settings/` with `DJANGO_SETTINGS_MODULE=arxmedia.settings`
+- `src/arxmedia/settings/__init__.py` loads and exports uppercase settings from all modules in deterministic order
+- `src/arxmedia/settings/base.py` defines bootstrap/core values (`BASE_DIR`, `SECRET_KEY`, `DEBUG`, locale/timezone, auth user model)
+- `src/arxmedia/settings/security.py` contains security flags, cookie/CSRF hardening, and `FERNET_KEY` resolution
+- `src/arxmedia/settings/django_core.py` contains installed apps, middleware, templates, root urls, and WSGI entry
+- `src/arxmedia/settings/database.py` contains `DATABASES` and `dj-database-url` fallback logic
+- `src/arxmedia/settings/static_media.py` contains static/media paths and storages
+- `src/arxmedia/settings/api.py` contains password validators, DRF, JWT, and CORS/CSRF trusted origins
+- `src/arxmedia/settings/integrations.py` contains TMDB and Django Vite integration settings
+- `src/arxmedia/settings/celery.py` contains Redis-derived Celery broker/backend and beat schedules
+- `src/arxmedia/settings/logging_conf.py` contains `LOG_LEVEL` and Django logging configuration
+
 ## UI principles (Vue 3)
 
 - Dark theme, purple brand (#9f42c6), Inter font

@@ -18,6 +18,8 @@ Code style, patterns, and no-gos for this project.
 - Wrap external API calls in try/except with fallback
 - Use Docker Compose: `docker compose exec app ...`
 - Use `uv` for app tooling inside Docker (`docker compose exec app uv ...`)
+- Add new Django settings in `src/arxmedia/settings/` by domain (`base`, `security`, `django_core`, `database`, `static_media`, `api`, `integrations`, `celery`, `logging_conf`), not in a monolithic file
+- Keep `src/arxmedia/settings/__init__.py` as the only aggregation entrypoint that exports uppercase settings loaded from those modules
 
 ### No-gos
 - No bare `except:` — always catch specific exceptions
