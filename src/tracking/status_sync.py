@@ -169,3 +169,27 @@ def refresh_show_and_season_statuses(user_id: int, tmdb_id: int, season_numbers:
                 continue
             refresh_season_status(user_id, tmdb_id, int(season_number))
     refresh_show_status(user_id, tmdb_id)
+
+
+def refresh_all_statuses_for_show(tmdb_id: int):
+    season_numbers = set(
+        Episode.objects.filter(season__show__tmdb_id=tmdb_id, season__season_number__gt=0)
+        .values_list('season__season_number', flat=True)
+        .distinct()
+    )
+
+    status_user_ids = set(
+        UserTvShowStatus.objects.filter(tmdb_id=tmdb_id).values_list('user_id', flat=True)
+    )
+    watch_entry_user_ids = set(
+        WatchEntry.objects.filter(
+            media_type=WatchEntryMediaType.EPISODE,
+            tmdb_id=tmdb_id,
+        ).values_list('user_id', flat=True)
+    )
+    watchlist_user_ids = set(
+        Watchlist.objects.filter(media_type=MediaType.TV, tmdb_id=tmdb_id).values_list('user_id', flat=True)
+    )
+
+    for user_id in sorted(status_user_ids | watch_entry_user_ids | watchlist_user_ids):
+        refresh_show_and_season_statuses(user_id, tmdb_id, season_numbers)

@@ -144,6 +144,8 @@ class TMDBService:
         """Fetch TV show from TMDB and save/update locally."""
         data = self.get_tv_show(tmdb_id)
         networks = ', '.join([n['name'] for n in data.get('networks', [])])
+        runtimes = data.get('episode_run_time') or []
+        episode_runtime = next((int(runtime) for runtime in runtimes if isinstance(runtime, int) and runtime > 0), None)
         show, _ = TVShow.objects.update_or_create(
             tmdb_id=tmdb_id,
             defaults={
@@ -160,6 +162,7 @@ class TMDBService:
                 'language': data.get('original_language', ''),
                 'status': data.get('status', ''),
                 'networks': networks,
+                'episode_runtime': episode_runtime,
             }
         )
         for g in data.get('genres', []):

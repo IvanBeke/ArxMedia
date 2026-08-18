@@ -6,6 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
+from tracking.status_sync import refresh_all_statuses_for_show
 
 from .models import EpisodeCredit, Movie, Season, TVShow
 from .serializers import MovieSerializer, SeasonBriefSerializer, SeasonSerializer, TVShowSerializer
@@ -35,9 +36,9 @@ def _parse_int_query(request, key, default):
 
 def _providers_for_region(raw_data, region):
     results = raw_data.get('results', {}) if isinstance(raw_data, dict) else {}
-    region_data = results.get(region) or results.get('US') or {}
+    region_data = results.get(region) or {}
     return {
-        'region': region if region in results else 'US',
+        'region': region,
         'link': region_data.get('link'),
         'flatrate': region_data.get('flatrate', []),
         'rent': region_data.get('rent', []),
@@ -390,6 +391,7 @@ def refresh_tv_metadata(request, tmdb_id):
                 )
 
     show.refresh_from_db()
+    refresh_all_statuses_for_show(int(tmdb_id))
     return Response(_serialize_tv_show_detail(show))
 
 

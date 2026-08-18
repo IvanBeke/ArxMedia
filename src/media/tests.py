@@ -42,6 +42,7 @@ class MediaTests(TestCase):
                 'first_air_date': '2011-04-17',
                 'number_of_seasons': 1,
                 'number_of_episodes': 1,
+                'episode_run_time': [57],
                 'genres': [],
                 'networks': [],
             }
@@ -97,6 +98,11 @@ class MediaTests(TestCase):
     def test_tv_detail(self):
         response = self.client.get('/api/media/tv/1399/')  # Game of Thrones
         self.assertIn(response.status_code, [200, 404])
+
+    def test_tv_detail_includes_episode_runtime(self):
+        response = self.client.get('/api/media/tv/1399/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['episode_runtime'], 57)
 
     def test_search(self):
         response = self.client.get('/api/media/search/?q=inception')
@@ -494,8 +500,9 @@ class MediaTests(TestCase):
         mock_sync_movie.assert_called_once_with(550)
 
     @patch('media.views.tmdb.sync_season')
+    @patch('media.views.refresh_all_statuses_for_show')
     @patch('media.views.tmdb.sync_tv_show')
-    def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show, mock_sync_season):
+    def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show, mock_refresh_statuses, mock_sync_season):
         show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones', number_of_seasons=2, number_of_episodes=10)
         show.seasons.create(tmdb_id=139900, season_number=0, name='Specials')
         mock_sync_tv_show.return_value = show
@@ -506,6 +513,7 @@ class MediaTests(TestCase):
         self.assertIn('metadata_updated_at', response.data)
         mock_sync_tv_show.assert_called_once_with(1399)
         self.assertEqual(mock_sync_season.call_count, 3)
+        mock_refresh_statuses.assert_called_once_with(1399)
 
     def test_movie_and_tv_detail_include_metadata_updated_at(self):
         Movie.objects.create(tmdb_id=777, title='Movie Detail')
