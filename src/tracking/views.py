@@ -21,7 +21,6 @@ from .choices import (
     MediaType,
     TvShowStatus,
     WatchEntryMediaType,
-    WatchEntryStatus,
 )
 from .import_config import expected_format_for_source, supported_import_sources
 from .import_errors import ImportDomainError, ImportErrorCode, raise_import_validation_error
@@ -116,7 +115,7 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = WatchEntry.objects.filter(user=self.request.user, status=WatchEntryStatus.WATCHED)
+        qs = WatchEntry.objects.filter(user=self.request.user)
         media_type = self.request.query_params.get('media_type')
         if media_type in (WatchEntryMediaType.MOVIE, WatchEntryMediaType.EPISODE):
             qs = qs.filter(media_type=media_type)
@@ -180,13 +179,11 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         if not watched_at:
             watched_at = timezone.now()
         instance = serializer.save(user=self.request.user, watched_at=watched_at)
-        # Remove from watchlist if marked as watched
-        if instance.status == WatchEntryStatus.WATCHED:
-            Watchlist.objects.filter(
-                user=instance.user,
-                media_type=instance.media_type,
-                tmdb_id=instance.tmdb_id
-            ).delete()
+        Watchlist.objects.filter(
+            user=instance.user,
+            media_type=instance.media_type,
+            tmdb_id=instance.tmdb_id
+        ).delete()
 
 
 class WatchEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -220,7 +217,6 @@ class RatingListCreateView(generics.ListCreateAPIView):
                 user=self.request.user,
                 media_type=WatchEntryMediaType.MOVIE,
                 tmdb_id=tmdb_id,
-                status=WatchEntryStatus.WATCHED,
             ).exists()
         else:
             can_rate = UserTvShowStatus.objects.filter(
@@ -294,16 +290,14 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
                 user=self.request.user,
                 media_type=WatchEntryMediaType.MOVIE,
                 tmdb_id=tmdb_id,
-                status=WatchEntryStatus.WATCHED,
             ).exists()
         else:
             # For TV shows, check if any episodes watched
-            watched = WatchEntry.objects.filter(
+            watched = UserTvShowStatus.objects.filter(
                 user=self.request.user,
-                media_type=WatchEntryMediaType.EPISODE,
                 tmdb_id=tmdb_id,
-                status=WatchEntryStatus.WATCHED,
-                season_number__gt=0,
+                status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED),
+                watched_episodes__gt=0,
             ).exists()
 
         if watched:
@@ -352,7 +346,7 @@ def user_stats(request):
     from .cache import cache
     user = request.user
     stats = cache.get_user_stats(user.id)
-    entries = WatchEntry.objects.filter(user=user, status=WatchEntryStatus.WATCHED)
+    entries = WatchEntry.objects.filter(user=user)
 
     movie_ids = list(entries.filter(media_type=WatchEntryMediaType.MOVIE).values_list('tmdb_id', flat=True))
     top_genres = []
@@ -448,12 +442,11 @@ def mark_episode_watched(request):
         tmdb_id=tmdb_id,
         season_number=season_number,
         episode_number=episode_number,
-        defaults={'status': WatchEntryStatus.WATCHED, 'watched_at': watched_at}
+        defaults={'watched_at': watched_at}
     )
     if not created:
-        entry.status = WatchEntryStatus.WATCHED
         entry.watched_at = watched_at
-        entry.save(update_fields=['status', 'watched_at'])
+        entry.save(update_fields=['watched_at'])
 
     from .cache import cache
     cache.mark_episode_watched(request.user.id, tmdb_id, season_number, episode_number)
@@ -504,7 +497,6 @@ def watched_episodes(request):
         user=request.user,
         media_type=WatchEntryMediaType.EPISODE,
         tmdb_id=tmdb_id,
-        status=WatchEntryStatus.WATCHED,
     ).values('season_number', 'episode_number', 'watched_at')
 
     return Response({'episodes': list(episodes)})
@@ -562,7 +554,6 @@ def mark_season_watched(request):
             tmdb_id=tmdb_id,
             season_number=season_number,
             episode_number=ep['episode_number'],
-            status=WatchEntryStatus.WATCHED,
             watched_at=watched_at
         ))
     
@@ -911,7 +902,6 @@ def progress_list(request):
     latest_watched_episode = WatchEntry.objects.filter(
         user=request.user,
         media_type=WatchEntryMediaType.EPISODE,
-        status=WatchEntryStatus.WATCHED,
         tmdb_id=OuterRef('tmdb_id'),
         season_number__isnull=False,
         episode_number__isnull=False,
@@ -999,7 +989,6 @@ def progress_list(request):
     watched_runtime_total = WatchEntry.objects.filter(
         user=request.user,
         media_type=WatchEntryMediaType.EPISODE,
-        status=WatchEntryStatus.WATCHED,
         tmdb_id__in=tmdb_ids,
         season_number__isnull=False,
         episode_number__isnull=False,
@@ -1169,28 +1158,15 @@ def drop_show(request):
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
     dropped_at = timezone.now()
-    dropped_entry = WatchEntry.objects.filter(
+    show_status, _ = UserTvShowStatus.objects.get_or_create(
         user=request.user,
-        media_type=WatchEntryMediaType.EPISODE,
         tmdb_id=tmdb_id,
-        season_number__isnull=True,
-        episode_number__isnull=True,
-        status=WatchEntryStatus.DROPPED,
-    ).order_by('-id').first()
-
-    if dropped_entry:
-        dropped_entry.watched_at = dropped_at
-        dropped_entry.save(update_fields=['watched_at'])
-    else:
-        WatchEntry.objects.create(
-            user=request.user,
-            media_type=WatchEntryMediaType.EPISODE,
-            tmdb_id=tmdb_id,
-            season_number=None,
-            episode_number=None,
-            status=WatchEntryStatus.DROPPED,
-            watched_at=dropped_at,
-        )
+        defaults={'status': TvShowStatus.NONE},
+    )
+    show_status.status = TvShowStatus.DROPPED
+    show_status.dropped_at = dropped_at
+    show_status.status_changed_at = dropped_at
+    show_status.save(update_fields=['status', 'dropped_at', 'status_changed_at', 'updated_at'])
 
     Watchlist.objects.filter(
         user=request.user,
@@ -1516,14 +1492,12 @@ def recommendations(request):
         WatchEntry.objects.filter(
             user=request.user,
             media_type=WatchEntryMediaType.MOVIE,
-            status=WatchEntryStatus.WATCHED,
         ).values_list('tmdb_id', flat=True)
     )
     watched_tv = set(
         WatchEntry.objects.filter(
             user=request.user,
             media_type=WatchEntryMediaType.EPISODE,
-            status=WatchEntryStatus.WATCHED,
         ).values_list('tmdb_id', flat=True)
     )
     watchlist_movies = set(
@@ -1536,7 +1510,7 @@ def recommendations(request):
     excluded_movies = watched_movies | watchlist_movies
     excluded_tv = watched_tv | watchlist_tv
 
-    history_count = WatchEntry.objects.filter(user=request.user, status=WatchEntryStatus.WATCHED).count()
+    history_count = WatchEntry.objects.filter(user=request.user).count()
 
     def pick_items(items, excluded, limit=12):
         picked = []

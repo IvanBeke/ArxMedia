@@ -6,7 +6,7 @@ from django.utils import timezone
 from media.models import Movie, Season, TVShow
 from media.tmdb import tmdb
 
-from ..choices import DataImportMode, MediaType, TvShowStatus, WatchEntryMediaType, WatchEntryStatus
+from ..choices import DataImportMode, MediaType, TvShowStatus, WatchEntryMediaType
 from ..models import DataTransferJob, Rating, UserTvShowStatus, WatchEntry, Watchlist
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,6 @@ def _upsert_watch_entry(
         season_number=season_number,
         episode_number=episode_number,
         defaults={
-            'status': WatchEntryStatus.WATCHED,
             'watched_at': watched_at,
         },
     )
@@ -77,11 +76,10 @@ def _upsert_watch_entry(
     if entry.watched_at and watched_at:
         new_watched_at = max(entry.watched_at, watched_at)
 
-    needs_update = entry.status != WatchEntryStatus.WATCHED or new_watched_at != entry.watched_at
+    needs_update = new_watched_at != entry.watched_at
     if needs_update:
-        entry.status = WatchEntryStatus.WATCHED
         entry.watched_at = new_watched_at
-        entry.save(update_fields=['status', 'watched_at'])
+        entry.save(update_fields=['watched_at'])
         return 'updated'
     return 'unchanged'
 
@@ -96,6 +94,9 @@ def _import_watch_entry_status_by_mode(
     season_number: int | None = None,
     episode_number: int | None = None,
 ) -> bool:
+    if status_value != TvShowStatus.WATCHED:
+        return False
+
     existing = WatchEntry.objects.filter(
         user=user,
         media_type=media_type,
@@ -113,18 +114,13 @@ def _import_watch_entry_status_by_mode(
             tmdb_id=tmdb_id,
             season_number=season_number,
             episode_number=episode_number,
-            status=status_value,
             watched_at=watched_at,
         )
         return True
 
     update_fields = []
-    if existing.status != status_value:
-        existing.status = status_value
-        update_fields.append('status')
-
     if watched_at:
-        if status_value == WatchEntryStatus.WATCHED and existing.watched_at:
+        if existing.watched_at:
             next_watched_at = max(existing.watched_at, watched_at)
         else:
             next_watched_at = watched_at
@@ -249,37 +245,21 @@ def _import_tv_status_by_mode(user, tmdb_id: int, status_value: str, status_at, 
 
 def _mark_show_dropped(user, tmdb_id: int):
     dropped_at = timezone.now()
-    dropped_entry = WatchEntry.objects.filter(
+    show_status, _ = UserTvShowStatus.objects.get_or_create(
         user=user,
-        media_type=WatchEntryMediaType.EPISODE,
         tmdb_id=tmdb_id,
-        season_number__isnull=True,
-        episode_number__isnull=True,
-        status=WatchEntryStatus.DROPPED,
-    ).order_by('-id').first()
-
-    if dropped_entry:
-        dropped_entry.watched_at = dropped_at
-        dropped_entry.save(update_fields=['watched_at'])
-    else:
-        WatchEntry.objects.create(
-            user=user,
-            media_type=WatchEntryMediaType.EPISODE,
-            tmdb_id=tmdb_id,
-            season_number=None,
-            episode_number=None,
-            status=WatchEntryStatus.DROPPED,
-            watched_at=dropped_at,
-        )
+        defaults={'status': TvShowStatus.NONE},
+    )
+    show_status.status = TvShowStatus.DROPPED
+    show_status.dropped_at = dropped_at
+    show_status.status_changed_at = dropped_at
+    show_status.save(update_fields=['status', 'dropped_at', 'status_changed_at', 'updated_at'])
 
 
 def _apply_mirror_deletions(job: DataTransferJob, imported_keys: dict, collections_present: set[str]):
     if 'watch_history' in collections_present:
         delete_ids = []
-        for entry in WatchEntry.objects.filter(
-            user=job.user,
-            status__in=[WatchEntryStatus.WATCHED, WatchEntryStatus.DROPPED],
-        ):
+        for entry in WatchEntry.objects.filter(user=job.user):
             key = _watch_entry_key(entry.media_type, entry.tmdb_id, entry.season_number, entry.episode_number)
             if key not in imported_keys['watch_entries']:
                 delete_ids.append(entry.id)

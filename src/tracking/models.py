@@ -13,7 +13,6 @@ from .choices import (
     SeasonStatus,
     TvShowStatus,
     WatchEntryMediaType,
-    WatchEntryStatus,
 )
 
 
@@ -23,7 +22,6 @@ class WatchEntry(models.Model):
     )
     media_type = models.CharField(max_length=10, choices=WatchEntryMediaType.choices)
     tmdb_id = models.IntegerField()
-    status = models.CharField(max_length=20, choices=WatchEntryStatus.choices, default=WatchEntryStatus.WATCHED)
     watched_at = models.DateTimeField(null=True, blank=True)
     season_number = models.IntegerField(null=True, blank=True)
     episode_number = models.IntegerField(null=True, blank=True)
@@ -33,8 +31,6 @@ class WatchEntry(models.Model):
         indexes = [
             models.Index(fields=['user', 'media_type', 'tmdb_id']),
             models.Index(fields=['user', 'media_type', 'tmdb_id', 'season_number', 'episode_number']),
-            models.Index(fields=['user', 'status', 'media_type', 'watched_at']),
-            models.Index(fields=['user', 'media_type', 'status', 'tmdb_id']),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -45,7 +41,7 @@ class WatchEntry(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.user.username} - {self.media_type} {self.tmdb_id} ({self.status})'
+        return f'{self.user.username} - {self.media_type} {self.tmdb_id}'
 
 
 class Rating(models.Model):

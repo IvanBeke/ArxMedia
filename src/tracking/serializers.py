@@ -15,7 +15,7 @@ class WatchEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = WatchEntry
         fields = [
-            'id', 'media_type', 'tmdb_id', 'status', 'watched_at',
+            'id', 'media_type', 'tmdb_id', 'watched_at',
             'season_number', 'episode_number', 'created_at', 'title', 'poster_path',
             'poster_url', 'vote_average', 'year', 'show_name'
         ]

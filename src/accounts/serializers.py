@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.db.models import Avg, Count, Q
 from rest_framework import serializers
-from tracking.choices import ListPrivacy, WatchEntryStatus
+from tracking.choices import ListPrivacy
 from tracking.models import CustomList, Rating, WatchEntry, Watchlist
 from tracking.serializers import CustomListSerializer, WatchEntrySerializer
 
@@ -149,7 +149,7 @@ class PublicUserSerializer(serializers.ModelSerializer):
             return []
 
         entries = list(
-            WatchEntry.objects.filter(user=obj, status=WatchEntryStatus.WATCHED)
+            WatchEntry.objects.filter(user=obj)
             .order_by('-watched_at', '-id')[:12]
         )
         if not entries:

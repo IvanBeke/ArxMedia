@@ -4,8 +4,8 @@ import re
 import zipfile
 from typing import Any
 
-from ...choices import DataImportMode, DataTransferFormat, MediaType, WatchEntryMediaType, WatchEntryStatus
-from ...models import DataTransferJob, WatchEntry
+from ...choices import DataImportMode, DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
+from ...models import DataTransferJob, UserTvShowStatus
 from ..shared import (
     _apply_mirror_deletions,
     _ensure_tmdb_metadata_for_import_item,
@@ -269,13 +269,10 @@ def _apply_zip_record_by_mode(
             return
         _ensure_tmdb_metadata_for_import_item(MediaType.TV, tmdb_id, state)
         imported_keys['watch_entries'].add(_watch_entry_key(WatchEntryMediaType.EPISODE, tmdb_id, None, None))
-        if import_mode != DataImportMode.NEW_ITEMS or not WatchEntry.objects.filter(
+        if import_mode != DataImportMode.NEW_ITEMS or not UserTvShowStatus.objects.filter(
             user=user,
-            media_type=WatchEntryMediaType.EPISODE,
             tmdb_id=tmdb_id,
-            season_number__isnull=True,
-            episode_number__isnull=True,
-            status=WatchEntryStatus.DROPPED,
+            status=TvShowStatus.DROPPED,
         ).exists():
             _mark_show_dropped(user, tmdb_id)
         report['records_imported'] += 1

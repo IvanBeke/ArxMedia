@@ -12,8 +12,8 @@ from .models import (
 
 @admin.register(WatchEntry)
 class WatchEntryAdmin(admin.ModelAdmin):
-    list_display = ['user', 'media_type', 'tmdb_id', 'status', 'watched_at']
-    list_filter = ['media_type', 'status']
+    list_display = ['user', 'media_type', 'tmdb_id', 'watched_at']
+    list_filter = ['media_type']
     search_fields = ['user__username']
 
 

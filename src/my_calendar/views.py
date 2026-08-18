@@ -6,8 +6,8 @@ from media.models import Episode, Movie
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from tracking.choices import MediaType, WatchEntryMediaType, WatchEntryStatus
-from tracking.models import WatchEntry, Watchlist
+from tracking.choices import MediaType, TvShowStatus
+from tracking.models import UserTvShowStatus, Watchlist
 
 
 def _parse_range(request):
@@ -76,20 +76,19 @@ def my_calendar(request):
         Watchlist.objects.filter(user=request.user, media_type=MediaType.MOVIE).values_list('tmdb_id', flat=True)
     )
     dropped_tv_ids = list(
-        WatchEntry.objects.filter(
+        UserTvShowStatus.objects.filter(
             user=request.user,
-            media_type=WatchEntryMediaType.EPISODE,
-            status=WatchEntryStatus.DROPPED,
-        ).values_list('tmdb_id', flat=True).distinct()
+            status=TvShowStatus.DROPPED,
+        ).values_list('tmdb_id', flat=True)
     )
     watching_tv_ids = list(
-        WatchEntry.objects.filter(
+        UserTvShowStatus.objects.filter(
             user=request.user,
-            media_type=WatchEntryMediaType.EPISODE,
-            status=WatchEntryStatus.WATCHED,
+            status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED),
+            watched_episodes__gt=0,
         ).exclude(
             tmdb_id__in=dropped_tv_ids,
-        ).values_list('tmdb_id', flat=True).distinct()
+        ).values_list('tmdb_id', flat=True)
     )
 
     movies = Movie.objects.filter(tmdb_id__in=watchlist_movie_ids, release_date__gte=start, release_date__lt=end)

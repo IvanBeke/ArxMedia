@@ -6,7 +6,7 @@ from django.utils import timezone
 from media.models import Episode, Movie, Season, TVShow
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
-from tracking.models import WatchEntry, Watchlist
+from tracking.models import UserTvShowStatus, WatchEntry, Watchlist
 
 User = get_user_model()
 
@@ -94,15 +94,16 @@ class CalendarTests(TestCase):
             tmdb_id=watched_show.tmdb_id,
             season_number=1,
             episode_number=1,
-            status='watched',
         )
-        WatchEntry.objects.create(
+        UserTvShowStatus.objects.create(
             user=self.user,
-            media_type='episode',
             tmdb_id=dropped_show.tmdb_id,
-            season_number=None,
-            episode_number=None,
             status='dropped',
+            watched_episodes=1,
+            total_episodes=1,
+            progress_percent=100,
+            dropped_at=timezone.now(),
+            status_changed_at=timezone.now(),
         )
 
         response = self.client.get('/api/calendar/my/?days=30')

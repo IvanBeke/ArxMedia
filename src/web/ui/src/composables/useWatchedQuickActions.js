@@ -73,7 +73,6 @@ export function useWatchedQuickActions() {
       await trackingAPI.addToHistory({
         media_type: MEDIA_TYPE.MOVIE,
         tmdb_id: id,
-        status: WATCH_ENTRY_STATUS.WATCHED,
         watched_at: watchedAt,
       })
       triggerPulse(mediaType, id)

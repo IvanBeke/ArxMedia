@@ -158,7 +158,7 @@ class MediaTests(TestCase):
             'total_results': 2,
         }
         Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=101)
-        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=102, status='watched', watched_at='2026-08-01T10:00:00Z')
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=102, watched_at='2026-08-01T10:00:00Z')
         Rating.objects.create(user=self.user, media_type='movie', tmdb_id=102, score=9)
 
         response = self.client.get('/api/media/popular/?type=movie')
@@ -292,7 +292,6 @@ class MediaTests(TestCase):
             tmdb_id=303,
             season_number=0,
             episode_number=1,
-            status='watched',
             watched_at='2026-08-01T10:00:00Z',
         )
 
@@ -310,7 +309,6 @@ class MediaTests(TestCase):
             tmdb_id=303,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at='2026-08-02T10:00:00Z',
         )
         response = self.client.get('/api/media/popular/?type=tv')
@@ -323,7 +321,6 @@ class MediaTests(TestCase):
             tmdb_id=303,
             season_number=1,
             episode_number=2,
-            status='watched',
             watched_at='2026-08-03T10:00:00Z',
         )
         WatchEntry.objects.create(
@@ -332,7 +329,6 @@ class MediaTests(TestCase):
             tmdb_id=303,
             season_number=2,
             episode_number=1,
-            status='watched',
             watched_at='2026-08-04T10:00:00Z',
         )
         response = self.client.get('/api/media/popular/?type=tv')
@@ -350,7 +346,6 @@ class MediaTests(TestCase):
             tmdb_id=404,
             season_number=0,
             episode_number=1,
-            status='watched',
             watched_at='2026-08-01T10:00:00Z',
         )
 
@@ -461,7 +456,6 @@ class MediaTests(TestCase):
             tmdb_id=888,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at='2026-08-01T10:00:00Z',
         )
         response = self.client.get('/api/media/tv/888/')

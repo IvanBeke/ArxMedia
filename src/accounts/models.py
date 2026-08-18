@@ -1,6 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-from tracking.choices import WatchEntryMediaType, WatchEntryStatus
+from tracking.choices import WatchEntryMediaType
 
 
 class AccountVisibility(models.TextChoices):
@@ -33,12 +33,10 @@ class User(AbstractUser):
     def total_watched_movies(self):
         return self.watchentries.filter(
             media_type=WatchEntryMediaType.MOVIE,
-            status=WatchEntryStatus.WATCHED,
         ).count()
 
     @property
     def total_watched_episodes(self):
         return self.watchentries.filter(
             media_type=WatchEntryMediaType.EPISODE,
-            status=WatchEntryStatus.WATCHED,
         ).count()

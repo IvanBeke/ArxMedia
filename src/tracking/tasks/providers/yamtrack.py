@@ -8,7 +8,6 @@ from ...choices import (
     MediaType,
     TvShowStatus,
     WatchEntryMediaType,
-    WatchEntryStatus,
 )
 from ...models import DataTransferJob
 from ...status_sync import refresh_show_and_season_statuses
@@ -63,10 +62,7 @@ def _yamtrack_row_timestamp(row: dict, *fields: str):
 
 def _yamtrack_watch_entry_status(value: str) -> str | None:
     mapping = {
-        'Completed': WatchEntryStatus.WATCHED,
-        'In progress': WatchEntryStatus.WATCHING,
-        'Paused': WatchEntryStatus.WATCHING,
-        'Dropped': WatchEntryStatus.DROPPED,
+        'Completed': TvShowStatus.WATCHED,
     }
     return mapping.get(value)
 
@@ -282,7 +278,7 @@ def apply_yamtrack_csv_import(job: DataTransferJob, content: bytes, import_mode:
 
             entry_status = _yamtrack_watch_entry_status(status)
             if not entry_status and end_at:
-                entry_status = WatchEntryStatus.WATCHED
+                entry_status = TvShowStatus.WATCHED
 
             if entry_status and season_number is not None and episode_number is not None:
                 imported_keys['watch_entries'].add(_watch_entry_key(WatchEntryMediaType.EPISODE, tmdb_id, season_number, episode_number))

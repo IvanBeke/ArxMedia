@@ -286,7 +286,6 @@ async function handleWatchOption(option) {
     await trackingAPI.addToHistory({ 
       media_type: MEDIA_TYPE.MOVIE,
       tmdb_id: route.params.id, 
-      status: WATCH_ENTRY_STATUS.WATCHED,
     })
     watchedCount.value++
     inWatchlist.value = false
@@ -310,7 +309,6 @@ async function handleWatchOption(option) {
   await trackingAPI.addToHistory({ 
     media_type: MEDIA_TYPE.MOVIE,
     tmdb_id: route.params.id, 
-    status: WATCH_ENTRY_STATUS.WATCHED,
     watched_at: watchedAt
   })
   watchedCount.value++

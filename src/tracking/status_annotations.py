@@ -1,7 +1,7 @@
 from django.db.models import DateTimeField, Max
 from django.db.models.functions import Coalesce
 
-from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType, WatchEntryStatus
+from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType
 from .models import Rating, UserSeasonStatus, UserTvShowStatus, WatchEntry, Watchlist
 
 
@@ -63,7 +63,6 @@ def annotate_media_user_status(user, media_items):
     movie_watched_rows = WatchEntry.objects.filter(
         user=user,
         media_type=WatchEntryMediaType.MOVIE,
-        status=WatchEntryStatus.WATCHED,
         tmdb_id__in=movie_ids,
     ).annotate(
         event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())

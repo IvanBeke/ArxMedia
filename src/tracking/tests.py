@@ -66,7 +66,7 @@ class BaseTestCase(TestCase):
 
 class WatchEntryTests(BaseTestCase):
     def test_create_movie_watched(self):
-        data = {'media_type': 'movie', 'tmdb_id': 123, 'status': 'watched'}
+        data = {'media_type': 'movie', 'tmdb_id': 123}
         response = self.client.post('/api/tracking/history/', data)
         self.assertEqual(response.status_code, 201)
         self.assertEqual(WatchEntry.objects.count(), 1)
@@ -84,7 +84,7 @@ class WatchEntryTests(BaseTestCase):
     def test_remove_from_watchlist_on_watch(self):
         Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=999)
         self.assertEqual(Watchlist.objects.count(), 1)
-        data = {'media_type': 'movie', 'tmdb_id': 999, 'status': 'watched'}
+        data = {'media_type': 'movie', 'tmdb_id': 999}
         response = self.client.post('/api/tracking/history/', data)
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Watchlist.objects.count(), 0)
@@ -92,7 +92,7 @@ class WatchEntryTests(BaseTestCase):
     def test_drop_show(self):
         WatchEntry.objects.create(
             user=self.user, media_type='episode', tmdb_id=789,
-            status='watched', season_number=1, episode_number=1
+            season_number=1, episode_number=1
         )
         response = self.client.post('/api/tracking/shows/drop/', {'tmdb_id': 789})
         self.assertEqual(response.status_code, 200)
@@ -104,20 +104,12 @@ class WatchEntryTests(BaseTestCase):
                 tmdb_id=789,
                 season_number=1,
                 episode_number=1,
-                status='watched',
             ).count(),
             1,
         )
-        self.assertTrue(
-            WatchEntry.objects.filter(
-                user=self.user,
-                media_type='episode',
-                tmdb_id=789,
-                status='dropped',
-                season_number__isnull=True,
-                episode_number__isnull=True,
-            ).exists()
-        )
+        dropped_status = UserTvShowStatus.objects.get(user=self.user, tmdb_id=789)
+        self.assertEqual(dropped_status.status, 'dropped')
+        self.assertIsNotNone(dropped_status.dropped_at)
 
     def test_drop_show_not_found(self):
         response = self.client.post('/api/tracking/shows/drop/', {'tmdb_id': 999})
@@ -133,14 +125,12 @@ class WatchEntryTests(BaseTestCase):
             tmdb_id=500,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=older,
         )
         WatchEntry.objects.create(
             user=self.user,
             media_type='movie',
             tmdb_id=600,
-            status='watched',
             watched_at=newer,
         )
 
@@ -158,14 +148,12 @@ class WatchEntryTests(BaseTestCase):
             tmdb_id=700,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=timezone.now(),
         )
         WatchEntry.objects.create(
             user=self.user,
             media_type='movie',
             tmdb_id=701,
-            status='watched',
             watched_at=timezone.now(),
         )
 
@@ -184,14 +172,12 @@ class WatchEntryTests(BaseTestCase):
             user=self.user,
             media_type='movie',
             tmdb_id=800,
-            status='watched',
             watched_at=newer,
         )
         WatchEntry.objects.create(
             user=self.user,
             media_type='movie',
             tmdb_id=801,
-            status='watched',
             watched_at=older,
         )
 
@@ -213,7 +199,6 @@ class WatchEntryTests(BaseTestCase):
             tmdb_id=1900,
             season_number=1,
             episode_number=3,
-            status='watched',
             watched_at=timezone.now(),
         )
 
@@ -228,7 +213,6 @@ class WatchEntryTests(BaseTestCase):
             user=self.user,
             media_type='movie',
             tmdb_id=2101,
-            status='watched',
             watched_at=timezone.now(),
         )
         Rating.objects.create(
@@ -251,7 +235,6 @@ class WatchEntryTests(BaseTestCase):
             tmdb_id=2102,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=timezone.now(),
         )
         Rating.objects.create(
@@ -274,7 +257,6 @@ class RatingTests(BaseTestCase):
             user=self.user,
             media_type='movie',
             tmdb_id=123,
-            status='watched',
             watched_at=timezone.now(),
         )
         data = {'media_type': 'movie', 'tmdb_id': 123, 'score': 8}
@@ -287,7 +269,6 @@ class RatingTests(BaseTestCase):
             user=self.user,
             media_type='movie',
             tmdb_id=123,
-            status='watched',
             watched_at=timezone.now(),
         )
         Rating.objects.create(user=self.user, media_type='movie', tmdb_id=123, score=5)
@@ -359,7 +340,7 @@ class WatchlistTests(BaseTestCase):
     def test_block_watched_content_to_watchlist(self):
         WatchEntry.objects.create(
             user=self.user, media_type='movie', tmdb_id=123,
-            status='watched', watched_at=timezone.now()
+            watched_at=timezone.now()
         )
         data = {'media_type': 'movie', 'tmdb_id': 123}
         response = self.client.post('/api/tracking/watchlist/', data)
@@ -368,16 +349,18 @@ class WatchlistTests(BaseTestCase):
     def test_block_show_with_watched_episodes(self):
         WatchEntry.objects.create(
             user=self.user, media_type='episode', tmdb_id=456,
-            season_number=1, episode_number=1, status='watched'
+            season_number=1, episode_number=1
         )
         data = {'media_type': 'tv', 'tmdb_id': 456}
         response = self.client.post('/api/tracking/watchlist/', data)
         self.assertEqual(response.status_code, 400)
 
     def test_allow_show_without_watched_episodes(self):
-        WatchEntry.objects.create(
-            user=self.user, media_type='episode', tmdb_id=789,
-            season_number=1, episode_number=1, status='watching'
+        UserTvShowStatus.objects.create(
+            user=self.user,
+            tmdb_id=789,
+            status='plan_to_watch',
+            watched_episodes=0,
         )
         data = {'media_type': 'tv', 'tmdb_id': 789}
         response = self.client.post('/api/tracking/watchlist/', data)
@@ -431,7 +414,7 @@ class EpisodeTests(BaseTestCase):
     def test_unmark_episode_watched(self):
         WatchEntry.objects.create(
             user=self.user, media_type='episode', tmdb_id=123,
-            season_number=1, episode_number=1, status='watched'
+            season_number=1, episode_number=1
         )
         data = {'tmdb_id': 123, 'season_number': 1, 'episode_number': 1}
         response = self.client.post('/api/tracking/episodes/unmark/', data)
@@ -440,7 +423,7 @@ class EpisodeTests(BaseTestCase):
     def test_get_watched_episodes(self):
         WatchEntry.objects.create(
             user=self.user, media_type='episode', tmdb_id=123,
-            season_number=1, episode_number=1, status='watched'
+            season_number=1, episode_number=1
         )
         response = self.client.get('/api/tracking/episodes/watched/?tmdb_id=123')
         self.assertEqual(response.status_code, 200)
@@ -473,7 +456,6 @@ class MaterializedStatusTests(BaseTestCase):
             tmdb_id=9100,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=timezone.make_aware(timezone.datetime(2026, 1, 1, 10, 0, 0)),
         )
         self.client.post('/api/tracking/shows/drop/', {'tmdb_id': 9100})
@@ -494,7 +476,6 @@ class MaterializedStatusTests(BaseTestCase):
             tmdb_id=9200,
             season_number=1,
             episode_number=1,
-            status='watched',
         )
         WatchEntry.objects.create(
             user=self.user,
@@ -502,7 +483,6 @@ class MaterializedStatusTests(BaseTestCase):
             tmdb_id=9200,
             season_number=1,
             episode_number=2,
-            status='watched',
         )
 
         show_status = UserTvShowStatus.objects.get(user=self.user, tmdb_id=9200)
@@ -522,7 +502,6 @@ class MaterializedStatusTests(BaseTestCase):
             tmdb_id=9300,
             season_number=1,
             episode_number=1,
-            status='watched',
         )
         WatchEntry.objects.create(
             user=self.user,
@@ -530,7 +509,6 @@ class MaterializedStatusTests(BaseTestCase):
             tmdb_id=9300,
             season_number=1,
             episode_number=2,
-            status='watched',
         )
 
         show_status = UserTvShowStatus.objects.get(user=self.user, tmdb_id=9300)
@@ -590,7 +568,7 @@ class UpNextTests(BaseTestCase):
         for i in range(1, 4):
             WatchEntry.objects.create(
                 user=self.user, media_type='episode', tmdb_id=123,
-                season_number=1, episode_number=i, status='watched'
+                season_number=1, episode_number=i
             )
         
         response = self.client.get('/api/tracking/up-next/')
@@ -615,7 +593,6 @@ class UpNextTests(BaseTestCase):
             tmdb_id=777,
             season_number=1,
             episode_number=1,
-            status='watched',
         )
 
         response = self.client.get('/api/tracking/up-next/')
@@ -641,7 +618,7 @@ class UpNextTests(BaseTestCase):
         for i in range(1, 11):
             WatchEntry.objects.create(
                 user=self.user, media_type='episode', tmdb_id=456,
-                season_number=1, episode_number=i, status='watched'
+                season_number=1, episode_number=i
             )
         response = self.client.get('/api/tracking/up-next/')
         self.assertEqual(response.status_code, 200)
@@ -664,7 +641,6 @@ class UpNextTests(BaseTestCase):
             tmdb_id=123,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=timezone.make_aware(timezone.datetime(2026, 1, 1, 0, 0, 0)),
         )
         WatchEntry.objects.create(
@@ -673,7 +649,6 @@ class UpNextTests(BaseTestCase):
             tmdb_id=999,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=timezone.make_aware(timezone.datetime(2026, 1, 2, 0, 0, 0)),
         )
 
@@ -711,7 +686,6 @@ class UpNextTests(BaseTestCase):
                 tmdb_id=show_id,
                 season_number=1,
                 episode_number=1,
-                status='watched',
                 watched_at=watched_time,
             )
 
@@ -746,7 +720,6 @@ class UpNextTests(BaseTestCase):
             tmdb_id=2001,
             season_number=1,
             episode_number=1,
-            status='watched',
         )
         WatchEntry.objects.create(
             user=self.user,
@@ -754,15 +727,18 @@ class UpNextTests(BaseTestCase):
             tmdb_id=2002,
             season_number=1,
             episode_number=1,
-            status='watched',
         )
-        WatchEntry.objects.create(
+        UserTvShowStatus.objects.update_or_create(
             user=self.user,
-            media_type='episode',
             tmdb_id=2001,
-            season_number=None,
-            episode_number=None,
-            status='dropped',
+            defaults={
+                'status': 'dropped',
+                'watched_episodes': 1,
+                'total_episodes': 2,
+                'progress_percent': 50,
+                'dropped_at': timezone.now(),
+                'status_changed_at': timezone.now(),
+            },
         )
 
         response = self.client.get('/api/tracking/up-next/')
@@ -793,7 +769,6 @@ class UpNextTests(BaseTestCase):
             tmdb_id=3001,
             season_number=0,
             episode_number=1,
-            status='watched',
         )
         WatchEntry.objects.create(
             user=self.user,
@@ -801,7 +776,6 @@ class UpNextTests(BaseTestCase):
             tmdb_id=3001,
             season_number=1,
             episode_number=1,
-            status='watched',
         )
 
         response = self.client.get('/api/tracking/up-next/')
@@ -827,7 +801,6 @@ class UpNextTests(BaseTestCase):
             tmdb_id=3002,
             season_number=1,
             episode_number=1,
-            status='watched',
         )
 
         response = self.client.get('/api/tracking/upcoming/')
@@ -903,7 +876,6 @@ class ProgressListTests(BaseTestCase):
             tmdb_id=4001,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=timezone.make_aware(timezone.datetime(2026, 1, 10, 10, 0, 0)),
         )
         WatchEntry.objects.create(
@@ -912,7 +884,6 @@ class ProgressListTests(BaseTestCase):
             tmdb_id=4002,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=timezone.make_aware(timezone.datetime(2026, 1, 8, 10, 0, 0)),
         )
         WatchEntry.objects.create(
@@ -921,7 +892,6 @@ class ProgressListTests(BaseTestCase):
             tmdb_id=4002,
             season_number=1,
             episode_number=2,
-            status='watched',
             watched_at=timezone.make_aware(timezone.datetime(2026, 1, 9, 10, 0, 0)),
         )
         WatchEntry.objects.create(
@@ -930,17 +900,19 @@ class ProgressListTests(BaseTestCase):
             tmdb_id=4003,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=timezone.make_aware(timezone.datetime(2026, 1, 7, 10, 0, 0)),
         )
-        WatchEntry.objects.create(
+        UserTvShowStatus.objects.update_or_create(
             user=self.user,
-            media_type='episode',
             tmdb_id=4003,
-            status='dropped',
-            season_number=None,
-            episode_number=None,
-            watched_at=timezone.make_aware(timezone.datetime(2026, 1, 11, 10, 0, 0)),
+            defaults={
+                'status': 'dropped',
+                'watched_episodes': 1,
+                'total_episodes': 2,
+                'progress_percent': 50,
+                'dropped_at': timezone.make_aware(timezone.datetime(2026, 1, 11, 10, 0, 0)),
+                'status_changed_at': timezone.make_aware(timezone.datetime(2026, 1, 11, 10, 0, 0)),
+            },
         )
 
         Rating.objects.create(user=self.user, media_type='tv', tmdb_id=4002, score=8)
@@ -1246,7 +1218,7 @@ class UserStatsTests(BaseTestCase):
     def test_stats_with_watched_movie(self):
         WatchEntry.objects.create(
             user=self.user, media_type='movie', tmdb_id=123,
-            status='watched', watched_at=timezone.now()
+            watched_at=timezone.now()
         )
         response = self.client.get('/api/tracking/stats/')
         self.assertEqual(response.status_code, 200)
@@ -1258,7 +1230,6 @@ class UserStatsTests(BaseTestCase):
             user=self.user,
             media_type='movie',
             tmdb_id=999,
-            status='watched',
             watched_at=watched_at,
         )
         Rating.objects.create(
@@ -1280,7 +1251,6 @@ class UserStatsTests(BaseTestCase):
             user=self.user,
             media_type='movie',
             tmdb_id=321,
-            status='watched',
             watched_at=timezone.now(),
         )
 
@@ -1302,7 +1272,6 @@ class UserStatsTests(BaseTestCase):
             tmdb_id=654,
             season_number=1,
             episode_number=1,
-            status='watched',
             watched_at=timezone.now(),
         )
 
@@ -1322,7 +1291,7 @@ class RecommendationsTests(BaseTestCase):
     @patch('tracking.views.tmdb.get_popular_movies')
     @patch('tracking.views.tmdb.get_popular_tv')
     def test_recommendations_exclude_watched_and_watchlist(self, mock_tv, mock_movies):
-        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=10, status='watched')
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=10)
         Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=20)
 
         mock_movies.return_value = {'results': [{'id': 10}, {'id': 11}]}
@@ -1631,10 +1600,9 @@ class DataImportExportTests(BaseTestCase):
             season_number=1,
             episode_number=2,
         )
-        self.assertEqual(episode_entry.status, 'watched')
         self.assertEqual(episode_entry.watched_at.isoformat(), '2026-02-01T12:30:00+00:00')
 
-        self.assertTrue(WatchEntry.objects.filter(user=self.user, media_type='movie', tmdb_id=601, status='watched').exists())
+        self.assertTrue(WatchEntry.objects.filter(user=self.user, media_type='movie', tmdb_id=601).exists())
         self.assertTrue(Rating.objects.filter(user=self.user, media_type='movie', tmdb_id=601, score=9).exists())
         self.assertTrue(Rating.objects.filter(user=self.user, media_type='tv', tmdb_id=500, score=8).exists())
         self.assertFalse(Rating.objects.filter(user=self.user, media_type='movie', tmdb_id=602).exists())
@@ -1858,12 +1826,9 @@ class DataImportExportTests(BaseTestCase):
         apply_trakt_zip_import(response.data['id'])
 
         self.assertTrue(
-            WatchEntry.objects.filter(
+            UserTvShowStatus.objects.filter(
                 user=self.user,
-                media_type='episode',
                 tmdb_id=9090,
-                season_number__isnull=True,
-                episode_number__isnull=True,
                 status='dropped',
             ).exists()
         )

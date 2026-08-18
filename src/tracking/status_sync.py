@@ -1,8 +1,10 @@
+from datetime import datetime
+
 from django.db.models import Count, DateTimeField, Max, Min
 from django.db.models.functions import Coalesce
 from media.models import Episode, TVShow
 
-from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType, WatchEntryStatus
+from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType
 from .models import UserSeasonStatus, UserTvShowStatus, WatchEntry, Watchlist
 
 FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
@@ -23,7 +25,6 @@ def refresh_show_status(user_id: int, tmdb_id: int):
     watched_data = WatchEntry.objects.filter(
         user_id=user_id,
         media_type=WatchEntryMediaType.EPISODE,
-        status=WatchEntryStatus.WATCHED,
         tmdb_id=tmdb_id,
         season_number__gt=0,
     ).annotate(
@@ -42,16 +43,10 @@ def refresh_show_status(user_id: int, tmdb_id: int):
         season__season_number__gt=0,
     ).count()
 
-    dropped_at = WatchEntry.objects.filter(
+    dropped_at = UserTvShowStatus.objects.filter(
         user_id=user_id,
-        media_type=WatchEntryMediaType.EPISODE,
-        status=WatchEntryStatus.DROPPED,
         tmdb_id=tmdb_id,
-        season_number__isnull=True,
-        episode_number__isnull=True,
-    ).annotate(
-        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
-    ).aggregate(last_dropped_at=Max('event_at'))['last_dropped_at']
+    ).values_list('dropped_at', flat=True).first()
 
     plan_to_watch_at = Watchlist.objects.filter(
         user_id=user_id,
@@ -72,6 +67,7 @@ def refresh_show_status(user_id: int, tmdb_id: int):
     else:
         candidate_status = TvShowStatus.NONE
 
+    status_changed_at: datetime | None = None
     if dropped_at and (last_watched_at is None or last_watched_at <= dropped_at):
         status_value = TvShowStatus.DROPPED
         status_changed_at = dropped_at
@@ -110,7 +106,6 @@ def refresh_season_status(user_id: int, tmdb_id: int, season_number: int):
     watched_data = WatchEntry.objects.filter(
         user_id=user_id,
         media_type=WatchEntryMediaType.EPISODE,
-        status=WatchEntryStatus.WATCHED,
         tmdb_id=tmdb_id,
         season_number=season_number,
     ).annotate(
