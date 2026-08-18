@@ -42,7 +42,7 @@
         <div
           v-for="item in upNext"
           :key="item.tmdb_id"
-          class="flex-shrink-0 w-40"
+          class="flex-shrink-0 w-[165px] md:w-[173px] xl:w-[189px]"
         >
           <FutureEpisodeCard
             :show-title="item.show_name"
@@ -79,7 +79,7 @@
         <div
           v-for="item in upcoming"
           :key="`${item.tmdb_id}-${item.season_number}-${item.episode_number}`"
-          class="flex-shrink-0 w-40"
+          class="flex-shrink-0 w-[165px] md:w-[173px] xl:w-[189px]"
         >
           <FutureEpisodeCard
             :show-title="item.show_name"
@@ -109,7 +109,9 @@
           :key="entry.id"
           :entry="entry"
           :link-to="getLink(entry)"
-          class="flex-shrink-0 w-40"
+          :show-remove-action="true"
+          class="flex-shrink-0 w-[165px] md:w-[173px] xl:w-[189px]"
+          @action:history-remove="removeRecentEntry"
         />
       </div>
       <div v-else class="card p-8 text-center">
@@ -139,7 +141,10 @@ const loadingUpcoming = ref(true)
 const markingId = ref(null)
 
 function formatDate(d) {
-  return formatDateByLocale(d)
+  if (!d) return ''
+  const date = new Date(d)
+  if (Number.isNaN(date.getTime())) return formatDateByLocale(d)
+  return date.toLocaleDateString('en-GB')
 }
 
 function getLink(entry) {
@@ -167,12 +172,25 @@ async function markNextEpisodeWatched(item) {
       season_number: item.next_episode.season_number,
       episode_number: item.next_episode.episode_number
     })
-    // Refresh up next after marking
-    upNext.value = await trackingAPI.getUpNext()
+    const [upNextRes, statsRes] = await Promise.all([
+      trackingAPI.getUpNext(),
+      trackingAPI.getStats(),
+    ])
+    upNext.value = upNextRes
+    stats.value = statsRes
   } catch (e) {
     console.error('Failed to mark episode watched', e)
   } finally {
     markingId.value = null
+  }
+}
+
+async function removeRecentEntry(entry) {
+  try {
+    await trackingAPI.deleteHistory(entry.id)
+    stats.value = await trackingAPI.getStats()
+  } catch (e) {
+    console.error('Failed to delete history entry', e)
   }
 }
 
