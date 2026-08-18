@@ -32,6 +32,7 @@ const classes = computed(() => {
     if (props.size === 'xs') return 'episode-code-plain episode-code-plain-xs'
     return 'episode-code-plain'
   }
+  if (props.size === 's') return 'episode-code-pill episode-code-pill-s'
   if (props.size === 'xs') return 'episode-code-pill episode-code-pill-xs'
   return 'episode-code-pill'
 })
@@ -55,6 +56,11 @@ const classes = computed(() => {
 .episode-code-pill-xs {
   padding: 0.12rem 0.4rem;
   font-size: 0.62rem;
+}
+
+.episode-code-pill-s {
+  padding: 0.18rem 0.46rem;
+  font-size: 0.68rem;
 }
 
 .episode-code-plain {

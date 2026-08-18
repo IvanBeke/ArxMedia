@@ -1,53 +1,80 @@
 <template>
-  <div class="group">
-    <RouterLink :to="resolvedPosterLinkTo" class="block">
-      <div class="relative w-full aspect-[2/3] rounded-lg overflow-hidden bg-surface-200">
-        <img
-          v-if="posterUrl"
-          :src="posterUrl"
-          :alt="displayTitle"
-          class="w-full h-full object-cover group-hover:opacity-80 transition-opacity"
-          loading="lazy"
+  <MediaCardShell
+    :poster-url="card.posterUrl"
+    :poster-alt="card.posterAlt"
+    :poster-link-to="resolvedPosterLinkTo"
+    :poster-aria-label="`Open ${card.title}`"
+    :title-link-to="resolvedTitleLinkTo"
+    :title-text="card.title"
+    :title-tooltip="card.titleTooltip"
+    :subtitle-link-to="resolvedTitleLinkTo"
+    :subtitle-text="showMeta ? card.subtitle : ''"
+    :subtitle-tooltip="card.subtitleTooltip"
+    poster-hover-effect="dim"
+    poster-frame-class="rounded-lg"
+  >
+    <template #overlay-right>
+      <div class="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
+        <CardEpisodeCodePill
+          v-if="card.episodeCode.visible"
+          :season-number="card.episodeCode.seasonNumber"
+          :episode-number="card.episodeCode.episodeNumber"
+          variant="pill"
+          size="s"
+          extra-class="shadow ring-1 ring-black/10"
         />
-        <div v-else class="w-full h-full flex items-center justify-center">
-          <svg class="w-12 h-12 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 4h16v16H4z"/>
-          </svg>
-        </div>
-        <UserRating v-if="hasRating" :value="rating" size="xs" class="absolute top-2 right-2" />
-        <div v-if="$slots['poster-badge']" class="absolute top-2 left-2 z-10">
-          <slot name="poster-badge" />
-        </div>
+        <CardUserRating v-if="hasRating" :value="card.userRating" size="xs" />
       </div>
-    </RouterLink>
-    <slot name="title" :display-title="displayTitle" :title-link-to="resolvedTitleLinkTo" :entry="entry">
-      <RouterLink :to="resolvedTitleLinkTo" class="block p-2">
-        <p class="text-sm text-primary font-medium truncate hover:text-brand-400">{{ displayTitle }}</p>
-      </RouterLink>
-    </slot>
-    <div class="px-2 pb-2 space-y-1">
-      <slot name="meta" :subtitle="subtitle" :subtitle-show-title="subtitleShowTitle" :timestamp-label="timestampLabel" :entry="entry">
-        <p v-if="showMeta && (subtitle || hasEpisodeCode)" class="text-xs text-muted">
-          <span v-if="subtitleShowTitle">{{ subtitleShowTitle }} · </span>
-          <EpisodeCodePill
-            v-if="hasEpisodeCode"
-            :season-number="entry.season_number"
-            :episode-number="entry.episode_number"
-            variant="plain"
-          />
-          <span v-else>{{ subtitle }}</span>
-        </p>
-        <p v-if="showTimestamp && timestampLabel" class="text-xs text-muted">{{ timestampLabel }}</p>
+    </template>
+
+    <template #overlay-left>
+      <div v-if="card.showMediaTypeBadge || $slots['poster-badge']" class="absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
+        <CardMediaTypeBadge v-if="card.showMediaTypeBadge" :media-type="card.mediaType" />
+        <slot v-if="$slots['poster-badge']" name="poster-badge" />
+      </div>
+    </template>
+
+    <template #title>
+      <slot name="title" :display-title="card.title" :title-link-to="resolvedTitleLinkTo" :entry="entry">
+        <RouterLink :to="resolvedTitleLinkTo" class="block px-2 pt-2 pb-1" :title="card.titleTooltip">
+          <p class="text-sm text-primary font-medium leading-snug break-words hover:text-brand-400">{{ card.title }}</p>
+        </RouterLink>
       </slot>
-    </div>
-  </div>
+    </template>
+
+    <template #subtitle>
+      <div class="px-2">
+        <slot name="meta" :subtitle="card.subtitle" :timestamp-label="timestampLabel" :entry="entry">
+          <p v-if="showMeta && card.subtitle" class="text-xs text-muted leading-snug break-words" :title="card.subtitleTooltip">{{ card.subtitle }}</p>
+        </slot>
+      </div>
+    </template>
+
+    <template #footer>
+      <div class="px-2 pb-2 space-y-0.5">
+        <slot name="timestamp" :timestamp-label="timestampLabel" :entry="entry">
+          <p v-if="showTimestamp && timestampLabel" class="text-xs text-muted">{{ timestampLabel }}</p>
+        </slot>
+      </div>
+    </template>
+
+    <template #actions>
+      <MediaCardActions :visible="showRemoveAction">
+        <CardActionRemoveHistoryEntry @action:history-remove="$emit('action:history-remove', entry)" />
+      </MediaCardActions>
+    </template>
+  </MediaCardShell>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
-import UserRating from '@/components/UserRating.vue'
-import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
+import MediaCardActions from '@/components/cards/MediaCardActions.vue'
+import MediaCardShell from '@/components/cards/MediaCardShell.vue'
+import CardActionRemoveHistoryEntry from '@/components/cards/primitives/CardActionRemoveHistoryEntry.vue'
+import CardEpisodeCodePill from '@/components/cards/primitives/CardEpisodeCodePill.vue'
+import CardMediaTypeBadge from '@/components/cards/primitives/CardMediaTypeBadge.vue'
+import CardUserRating from '@/components/cards/primitives/CardUserRating.vue'
+import { useMediaCardModel } from '@/composables/useMediaCardModel'
 
 const props = defineProps({
   entry: { type: Object, required: true },
@@ -58,65 +85,27 @@ const props = defineProps({
   timestampText: { type: String, default: '' },
   showMeta: { type: Boolean, default: true },
   showTimestamp: { type: Boolean, default: true },
+  showRemoveAction: { type: Boolean, default: false },
 })
+
+defineEmits(['action:history-remove'])
 
 const resolvedPosterLinkTo = computed(() => props.posterLinkTo || props.linkTo)
 const resolvedTitleLinkTo = computed(() => props.titleLinkTo || props.linkTo)
 
-const isEpisode = computed(() => props.entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE)
+const { model } = useMediaCardModel(
+  'history',
+  computed(() => props.entry),
+  computed(() => ({
+    posterLinkTo: resolvedPosterLinkTo.value,
+    titleLinkTo: resolvedTitleLinkTo.value,
+    subtitleLinkTo: resolvedTitleLinkTo.value,
+    showMediaTypeBadge: true,
+  }))
+)
 
-const displayTitle = computed(() => {
-  if (isEpisode.value && props.entry.episode_title) {
-    return props.entry.episode_title
-  }
-  if (props.entry.title) {
-    return props.entry.title
-  }
-  return isEpisode.value ? 'Episode' : 'Unknown'
-})
-
-const posterUrl = computed(() => {
-  const path = props.entry.poster_url || props.entry.poster_path
-  if (!path) return null
-  if (path.startsWith('http')) return path
-  return `https://image.tmdb.org/t/p/w342${path}`
-})
-
-const rating = computed(() => {
-  if (props.entry.rating !== null && props.entry.rating !== undefined) {
-    return props.entry.rating
-  }
-  return props.entry.user_status?.rating
-})
-
-const hasRating = computed(() => rating.value !== null && rating.value !== undefined)
-
-const hasEpisodeCode = computed(() => {
-  return Boolean(isEpisode.value && props.entry.season_number && props.entry.episode_number)
-})
-
-const subtitle = computed(() => {
-  if (!isEpisode.value) {
-    return ''
-  }
-  const seasonNumber = props.entry.season_number
-  const episodeNumber = props.entry.episode_number
-  if (!seasonNumber || !episodeNumber) {
-    return props.entry.show_title || props.entry.show_name || ''
-  }
-  const showTitle = props.entry.show_title || props.entry.show_name || ''
-  if (!showTitle || showTitle === displayTitle.value) {
-    return ''
-  }
-  return showTitle
-})
-
-const subtitleShowTitle = computed(() => {
-  if (!isEpisode.value) return ''
-  const showTitle = props.entry.show_title || props.entry.show_name || ''
-  if (!showTitle || showTitle === displayTitle.value) return ''
-  return showTitle
-})
+const card = computed(() => model.value)
+const hasRating = computed(() => card.value.userRating !== null && card.value.userRating !== undefined)
 
 const timestampLabel = computed(() => {
   if (props.timestampText) {
