@@ -41,7 +41,13 @@
             </div>
 
             <h1 class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ show.name }}</h1>
-            <p class="text-muted text-sm mb-4">{{ show.first_air_date ? new Date(show.first_air_date).getFullYear() : '' }} · {{ show.number_of_seasons }} Season{{ show.number_of_seasons !== 1 ? 's' : '' }} · {{ show.number_of_episodes }} Episode{{ show.number_of_episodes !== 1 ? 's' : '' }}</p>
+            <p class="text-muted text-sm mb-4">
+              {{ show.first_air_date ? new Date(show.first_air_date).getFullYear() : '' }}
+              · {{ show.number_of_seasons }} Season{{ show.number_of_seasons !== 1 ? 's' : '' }}
+              · {{ show.number_of_episodes }} Episode{{ show.number_of_episodes !== 1 ? 's' : '' }}
+              <span v-if="show.episode_runtime"> · {{ show.episode_runtime }} min/ep</span>
+              <span v-if="show.status"> · {{ show.status }}</span>
+            </p>
 
             <div class="flex items-center gap-4 mb-4 text-sm">
               <RatingBadge :value="show.vote_average" :votes="show.vote_count" out-of-ten />
@@ -52,7 +58,7 @@
                 type="button"
                 @click="refreshMetadata"
                 :disabled="refreshingMetadata"
-                class="btn-ghost text-xs"
+                class="btn-ghost text-xs border border-surface-200 bg-surface-100/70 hover:bg-surface-100"
               >
                 {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB' }}
               </button>
@@ -74,8 +80,9 @@
                   "
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="badge bg-surface-200 text-secondary hover:text-primary"
+                  class="badge bg-surface-200 text-secondary hover:text-primary inline-flex items-center gap-1.5"
                 >
+                  <img v-if="p.logo_path" :src="imgUrl(p.logo_path, 'w45')" :alt="`${p.provider_name} logo`" class="h-3.5 w-3.5 rounded-sm object-cover" loading="lazy" decoding="async" />
                   {{ p.provider_name }}
                 </a>
                 <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>

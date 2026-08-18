@@ -1,6 +1,6 @@
 <template>
   <span
-    class="inline-flex items-center rounded-md bg-amber-500/90 text-white shadow-lg"
+    class="inline-flex items-center rounded-md bg-amber-500/90 user-rating-text shadow-lg"
     :class="sizeClass"
     :title="label"
     :aria-label="ariaLabel"
@@ -42,3 +42,9 @@ const iconClass = computed(() => {
   return 'w-3.5 h-3.5'
 })
 </script>
+
+<style scoped>
+.user-rating-text {
+  color: var(--user-rating-text);
+}
+</style>
