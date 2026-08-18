@@ -14,17 +14,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 4h16v16H4z"/>
           </svg>
         </div>
-        <div
-          v-if="hasRating"
-          class="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-amber-500/90 px-1.5 py-1 text-[10px] font-semibold text-white shadow-lg"
-          :title="`Your rating: ${rating}/10`"
-          :aria-label="`Your rating: ${rating} out of 10`"
-        >
-          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.176 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-          </svg>
-          <span>{{ rating }}</span>
-        </div>
+        <UserRating v-if="hasRating" :value="rating" size="xs" class="absolute top-2 right-2" />
         <div v-if="$slots['poster-badge']" class="absolute top-2 left-2 z-10">
           <slot name="poster-badge" />
         </div>
@@ -36,8 +26,17 @@
       </RouterLink>
     </slot>
     <div class="px-2 pb-2 space-y-1">
-      <slot name="meta" :subtitle="subtitle" :timestamp-label="timestampLabel" :entry="entry">
-        <p v-if="showMeta && subtitle" class="text-xs text-muted">{{ subtitle }}</p>
+      <slot name="meta" :subtitle="subtitle" :subtitle-show-title="subtitleShowTitle" :timestamp-label="timestampLabel" :entry="entry">
+        <p v-if="showMeta && (subtitle || hasEpisodeCode)" class="text-xs text-muted">
+          <span v-if="subtitleShowTitle">{{ subtitleShowTitle }} · </span>
+          <EpisodeCodePill
+            v-if="hasEpisodeCode"
+            :season-number="entry.season_number"
+            :episode-number="entry.episode_number"
+            variant="plain"
+          />
+          <span v-else>{{ subtitle }}</span>
+        </p>
         <p v-if="showTimestamp && timestampLabel" class="text-xs text-muted">{{ timestampLabel }}</p>
       </slot>
     </div>
@@ -46,6 +45,8 @@
 
 <script setup>
 import { computed } from 'vue'
+import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
+import UserRating from '@/components/UserRating.vue'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 
 const props = defineProps({
@@ -90,6 +91,10 @@ const rating = computed(() => {
 
 const hasRating = computed(() => rating.value !== null && rating.value !== undefined)
 
+const hasEpisodeCode = computed(() => {
+  return Boolean(isEpisode.value && props.entry.season_number && props.entry.episode_number)
+})
+
 const subtitle = computed(() => {
   if (!isEpisode.value) {
     return ''
@@ -99,12 +104,18 @@ const subtitle = computed(() => {
   if (!seasonNumber || !episodeNumber) {
     return props.entry.show_title || props.entry.show_name || ''
   }
-  const code = `S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`
   const showTitle = props.entry.show_title || props.entry.show_name || ''
   if (!showTitle || showTitle === displayTitle.value) {
-    return code
+    return ''
   }
-  return `${showTitle} · ${code}`
+  return showTitle
+})
+
+const subtitleShowTitle = computed(() => {
+  if (!isEpisode.value) return ''
+  const showTitle = props.entry.show_title || props.entry.show_name || ''
+  if (!showTitle || showTitle === displayTitle.value) return ''
+  return showTitle
 })
 
 const timestampLabel = computed(() => {

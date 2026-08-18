@@ -75,7 +75,7 @@
     </RouterLink>
 
     <div class="px-2 pb-2 space-y-0.5">
-      <p class="text-xs text-muted">{{ episodeCode }}</p>
+      <p class="text-xs text-muted"><EpisodeCodePill :season-number="seasonNumber" :episode-number="episodeNumber" variant="plain" /></p>
       <p v-if="metaText" class="text-xs text-muted">{{ metaText }}</p>
     </div>
   </div>
@@ -83,6 +83,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 
 const props = defineProps({
   showTitle: { type: String, required: true },
@@ -106,10 +107,6 @@ const props = defineProps({
 defineEmits(['watch'])
 
 const resolvedTitleLinkTo = computed(() => props.titleLinkTo || props.posterLinkTo)
-
-const episodeCode = computed(() => {
-  return `S${String(props.seasonNumber).padStart(2, '0')}E${String(props.episodeNumber).padStart(2, '0')}`
-})
 
 const episodeTitleLabel = computed(() => props.episodeTitle || 'Episode')
 

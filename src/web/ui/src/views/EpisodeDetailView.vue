@@ -21,9 +21,14 @@
       <div class="h-20 w-full skeleton rounded-md"></div>
     </div>
 
-    <div v-else-if="episodeData">
+      <div v-else-if="episodeData">
 <div class="flex items-center gap-3 mb-4">
-        <span class="text-brand-500 font-mono text-xl">S{{ pad(seasonNum) }}E{{ pad(episodeNum) }}</span>
+        <EpisodeCodePill
+          :season-number="seasonNum"
+          :episode-number="episodeNum"
+          variant="plain"
+          class="text-brand-500 font-mono text-xl"
+        />
         <WatchMenu
           :release-date="episodeData?.air_date"
           @select="handleWatchOption"
@@ -110,6 +115,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { trackingAPI, mediaAPI } from '@/api'
+import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 import WatchMenu from '@/components/WatchMenu.vue'
 import SpoilerBlock from '@/components/SpoilerBlock.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
@@ -147,10 +153,6 @@ const watchButtonTooltip = computed(() => {
   if (!formatted) return t('tracking_watched')
   return `${t('tracking_watched_on')} ${formatted}`
 })
-
-function pad(n) {
-  return String(n || 0).padStart(2, '0')
-}
 
 function imgUrl(path, size = 'w500') {
   if (!path) return null

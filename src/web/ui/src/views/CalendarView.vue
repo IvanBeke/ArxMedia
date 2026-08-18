@@ -45,7 +45,17 @@
               class="block text-[11px] leading-snug rounded px-1.5 py-1 bg-surface-200/60 text-primary hover:text-brand-400 truncate"
               :title="item.label"
             >
-              {{ item.label }}
+              <template v-if="item.kind === MEDIA_TYPE.MOVIE">{{ item.label }}</template>
+              <template v-else>
+                {{ item.showName }}
+                <span aria-hidden="true"> </span>
+                <EpisodeCodePill
+                  :season-number="item.seasonNumber"
+                  :episode-number="item.episodeNumber"
+                  variant="plain"
+                  size="xs"
+                />
+              </template>
             </RouterLink>
             <p v-if="day.items.length > 3" class="text-[11px] text-muted px-1">+{{ day.items.length - 3 }} more</p>
           </div>
@@ -58,6 +68,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { calendarAPI } from '@/api'
+import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 
 function dateToIso(date) {
@@ -96,13 +107,18 @@ const itemMap = computed(() => {
     if (item.kind === MEDIA_TYPE.MOVIE) {
       list.push({
         key: `movie-${item.tmdb_id}-${item.date}`,
+        kind: MEDIA_TYPE.MOVIE,
         label: `Movie: ${item.title}`,
         to: `/movies/${item.tmdb_id}`
       })
     } else {
       list.push({
         key: `ep-${item.tmdb_id}-${item.season_number}-${item.episode_number}-${item.date}`,
-        label: `${item.show_name} S${String(item.season_number).padStart(2, '0')}E${String(item.episode_number).padStart(2, '0')}`,
+        kind: MEDIA_TYPE.TV,
+        label: `${item.show_name}`,
+        showName: item.show_name,
+        seasonNumber: item.season_number,
+        episodeNumber: item.episode_number,
         to: `/tv/${item.tmdb_id}/season/${item.season_number}/episode/${item.episode_number}`
       })
     }
