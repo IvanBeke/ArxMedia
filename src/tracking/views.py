@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 
 from accounts.privacy import can_view_account_content, get_viewer_relationship
 from django.db.models import Avg, Count, DateTimeField, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
@@ -9,6 +9,7 @@ from media.tmdb import tmdb
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from .choices import (
@@ -73,6 +74,24 @@ def _parse_watched_at(value):
     if timezone.is_naive(dt):
         return timezone.make_aware(dt, timezone.get_current_timezone())
     return dt
+
+
+def _parse_bool_param(value):
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in ('1', 'true', 'yes', 'on'):
+        return True
+    if normalized in ('0', 'false', 'no', 'off'):
+        return False
+    return None
+
+
+def _parse_multi_param(query_params, key: str) -> list[str]:
+    values = []
+    for raw in query_params.getlist(key):
+        values.extend([part.strip() for part in str(raw).split(',') if part.strip()])
+    return values
 
 
 def _can_view_public_lists(viewer, owner) -> bool:
@@ -705,6 +724,349 @@ def up_next(request):
         item.pop('last_watched_at', None)
 
     return Response(ordered_items)
+
+
+def _apply_progress_filters(items, request):
+    params = request.query_params
+    search = (params.get('search') or '').strip().lower()
+    status_values = {value.strip().lower() for value in (params.get('status') or '').split(',') if value.strip()}
+    selected_genres = {value.lower() for value in _parse_multi_param(params, 'genres')}
+    selected_networks = {value.lower() for value in _parse_multi_param(params, 'networks')}
+    has_upcoming = _parse_bool_param(params.get('has_upcoming'))
+    is_new = _parse_bool_param(params.get('is_new'))
+    missing_rating = _parse_bool_param(params.get('missing_rating'))
+
+    filtered = []
+    for item in items:
+        if search and search not in item['show_name'].lower():
+            continue
+        if status_values and item['status'] not in status_values:
+            continue
+        if selected_genres:
+            item_genres = {genre.lower() for genre in item['genres']}
+            if item_genres.isdisjoint(selected_genres):
+                continue
+        if selected_networks:
+            item_networks = {network.lower() for network in item['networks']}
+            if item_networks.isdisjoint(selected_networks):
+                continue
+        if has_upcoming is not None and item['has_upcoming_episode'] != has_upcoming:
+            continue
+        if is_new is not None and item['is_new'] != is_new:
+            continue
+        if missing_rating is True and item['user_rating'] is not None:
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def _sort_progress_items(items, sort_by: str, direction: str):
+    sort_key = (sort_by or 'time_left').strip().lower()
+    direction_key = (direction or '').strip().lower()
+
+    default_direction = {
+        'time_left': 'asc',
+        'last_watched': 'desc',
+        'progress_percent': 'desc',
+        'title': 'asc',
+        'air_date': 'asc',
+    }.get(sort_key, 'asc')
+    final_direction = direction_key if direction_key in ('asc', 'desc') else default_direction
+
+    if sort_key == 'last_watched':
+        def watched_ts(item):
+            value = item['last_watched_at']
+            return value.timestamp() if value is not None else None
+
+        if final_direction == 'desc':
+            return sorted(
+                items,
+                key=lambda item: (
+                    watched_ts(item) is None,
+                    -(watched_ts(item) or 0),
+                    item['show_name'].lower(),
+                ),
+            )
+        return sorted(
+            items,
+            key=lambda item: (
+                watched_ts(item) is None,
+                watched_ts(item) or 0,
+                item['show_name'].lower(),
+            ),
+        )
+
+    if sort_key == 'progress_percent':
+        return sorted(
+            items,
+            key=lambda item: (item['progress_percent'], item['show_name'].lower()),
+            reverse=final_direction == 'desc',
+        )
+
+    if sort_key == 'title':
+        return sorted(items, key=lambda item: item['show_name'].lower(), reverse=final_direction == 'desc')
+
+    if sort_key == 'air_date':
+        return sorted(
+            items,
+            key=lambda item: (
+                item['next_episode']['air_date'] is None,
+                item['next_episode']['air_date'] or date.max,
+                item['show_name'].lower(),
+            ),
+            reverse=final_direction == 'desc',
+        )
+
+    return sorted(
+        items,
+        key=lambda item: (
+            item['episodes_left'] <= 0,
+            item['runtime_left_minutes'] if item['episodes_left'] > 0 else 10**9,
+            item['episodes_left'] if item['episodes_left'] > 0 else 10**9,
+            item['show_name'].lower(),
+        ),
+        reverse=final_direction == 'desc',
+    )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def progress_list(request):
+    from media.models import Episode, TVShow
+
+    today = timezone.now().date()
+
+    watched_episode_exists = WatchEntry.objects.filter(
+        user=request.user,
+        media_type=WatchEntryMediaType.EPISODE,
+        tmdb_id=OuterRef('season__show__tmdb_id'),
+        season_number=OuterRef('season__season_number'),
+        episode_number=OuterRef('episode_number'),
+    )
+
+    unwatched_aired_episodes = Episode.objects.filter(
+        season__show__tmdb_id=OuterRef('tmdb_id'),
+        season__season_number__gt=0,
+        air_date__lte=today,
+    ).filter(~Exists(watched_episode_exists))
+
+    next_episode = unwatched_aired_episodes.order_by('season__season_number', 'episode_number')
+    episodes_left_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
+        total=Count('id')
+    ).values('total')[:1]
+    runtime_left_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
+        total=Coalesce(Sum('runtime'), Value(0))
+    ).values('total')[:1]
+    unknown_runtime_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
+        total=Count('id', filter=Q(runtime__isnull=True))
+    ).values('total')[:1]
+
+    upcoming_episode = Episode.objects.filter(
+        season__show__tmdb_id=OuterRef('tmdb_id'),
+        season__season_number__gt=0,
+        air_date__gt=today,
+    ).order_by('air_date', 'season__season_number', 'episode_number')
+
+    started_statuses = (TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED)
+    oldest_watched_episode = WatchEntry.objects.filter(
+        user=request.user,
+        media_type=WatchEntryMediaType.EPISODE,
+        tmdb_id=OuterRef('tmdb_id'),
+    ).annotate(
+        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
+    ).order_by('event_at', 'id')
+
+    latest_watched_episode = WatchEntry.objects.filter(
+        user=request.user,
+        media_type=WatchEntryMediaType.EPISODE,
+        status=WatchEntryStatus.WATCHED,
+        tmdb_id=OuterRef('tmdb_id'),
+        season_number__isnull=False,
+        episode_number__isnull=False,
+    ).annotate(
+        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
+    ).order_by('-event_at', '-id')
+
+    show_rows = list(
+        UserTvShowStatus.objects.filter(
+            user=request.user,
+            status__in=started_statuses,
+        ).annotate(
+            next_season_number=Subquery(next_episode.values('season__season_number')[:1]),
+            next_episode_number=Subquery(next_episode.values('episode_number')[:1]),
+            next_episode_name=Subquery(next_episode.values('name')[:1]),
+            next_still_path=Subquery(next_episode.values('still_path')[:1]),
+            next_air_date=Subquery(next_episode.values('air_date')[:1]),
+            next_runtime=Subquery(next_episode.values('runtime')[:1]),
+            next_vote_average=Subquery(next_episode.values('vote_average')[:1]),
+            next_vote_count=Subquery(next_episode.values('vote_count')[:1]),
+            episodes_left=Coalesce(Subquery(episodes_left_subquery), Value(0), output_field=IntegerField()),
+            runtime_left_minutes=Coalesce(Subquery(runtime_left_subquery), Value(0), output_field=IntegerField()),
+            unknown_runtime_count=Coalesce(Subquery(unknown_runtime_subquery), Value(0), output_field=IntegerField()),
+            upcoming_season_number=Subquery(upcoming_episode.values('season__season_number')[:1]),
+            upcoming_episode_number=Subquery(upcoming_episode.values('episode_number')[:1]),
+            upcoming_episode_name=Subquery(upcoming_episode.values('name')[:1]),
+            upcoming_air_date=Subquery(upcoming_episode.values('air_date')[:1]),
+            started_watch_at=Subquery(oldest_watched_episode.values('event_at')[:1]),
+            last_watched_season_number=Subquery(latest_watched_episode.values('season_number')[:1]),
+            last_watched_episode_number=Subquery(latest_watched_episode.values('episode_number')[:1]),
+        ).values(
+            'tmdb_id',
+            'status',
+            'progress_percent',
+            'last_watched_at',
+            'started_at',
+            'watched_episodes',
+            'total_episodes',
+            'next_season_number',
+            'next_episode_number',
+            'next_episode_name',
+            'next_still_path',
+            'next_air_date',
+            'next_runtime',
+            'next_vote_average',
+            'next_vote_count',
+            'episodes_left',
+            'runtime_left_minutes',
+            'unknown_runtime_count',
+            'upcoming_season_number',
+            'upcoming_episode_number',
+            'upcoming_episode_name',
+            'upcoming_air_date',
+            'started_watch_at',
+            'last_watched_season_number',
+            'last_watched_episode_number',
+        )
+    )
+
+    if not show_rows:
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset([], request)
+        if page is None:
+            return Response({
+                'results': [],
+                'count': 0,
+                'next': None,
+                'previous': None,
+                'available_genres': [],
+                'available_networks': [],
+                'total_watched_minutes': 0,
+            })
+        response = paginator.get_paginated_response(page)
+        response.data['available_genres'] = []
+        response.data['available_networks'] = []
+        response.data['total_watched_minutes'] = 0
+        return response
+
+    tmdb_ids = [item['tmdb_id'] for item in show_rows]
+    watched_runtime_subquery = Episode.objects.filter(
+        season__show__tmdb_id=OuterRef('tmdb_id'),
+        season__season_number=OuterRef('season_number'),
+        episode_number=OuterRef('episode_number'),
+    ).values('runtime')[:1]
+    watched_runtime_total = WatchEntry.objects.filter(
+        user=request.user,
+        media_type=WatchEntryMediaType.EPISODE,
+        status=WatchEntryStatus.WATCHED,
+        tmdb_id__in=tmdb_ids,
+        season_number__isnull=False,
+        episode_number__isnull=False,
+    ).annotate(
+        runtime=Coalesce(Subquery(watched_runtime_subquery, output_field=IntegerField()), Value(0))
+    ).aggregate(
+        total=Coalesce(Sum('runtime'), Value(0), output_field=IntegerField())
+    )
+    total_watched_minutes = watched_runtime_total['total'] or 0
+
+    shows = TVShow.objects.filter(tmdb_id__in=tmdb_ids).prefetch_related('genres')
+    show_map = {show.tmdb_id: show for show in shows}
+    rating_map = {
+        row['tmdb_id']: row['score']
+        for row in Rating.objects.filter(
+            user=request.user,
+            media_type=MediaType.TV,
+            tmdb_id__in=tmdb_ids,
+        ).values('tmdb_id', 'score')
+    }
+
+    new_threshold = today - timedelta(days=7)
+    progress_items = []
+    for row in show_rows:
+        show = show_map.get(row['tmdb_id'])
+        if show is None:
+            continue
+
+        raw_networks = [part.strip() for part in (show.networks or '').split(',') if part.strip()]
+        next_air_date = row.get('next_air_date')
+        is_new = bool(next_air_date and new_threshold <= next_air_date <= today)
+        progress_items.append({
+            'tmdb_id': row['tmdb_id'],
+            'show_name': show.name,
+            'poster_path': show.poster_path,
+            'poster_url': show.poster_url,
+            'status': row['status'],
+            'provider_status': show.status,
+            'progress_percent': row['progress_percent'] or 0,
+            'watched_episodes': row['watched_episodes'] or 0,
+            'total_episodes': row['total_episodes'] or 0,
+            'last_watched_at': row['last_watched_at'],
+            'started_at': row['started_watch_at'] or row['started_at'],
+            'user_rating': rating_map.get(row['tmdb_id']),
+            'vote_average': show.vote_average,
+            'vote_count': show.vote_count,
+            'genres': [genre.name for genre in show.genres.all()],
+            'networks': raw_networks,
+            'episodes_left': row['episodes_left'] or 0,
+            'runtime_left_minutes': row['runtime_left_minutes'] or 0,
+            'runtime_left_has_unknown': (row['unknown_runtime_count'] or 0) > 0,
+            'is_new': is_new,
+            'has_upcoming_episode': row['upcoming_air_date'] is not None,
+            'next_episode': {
+                'season_number': row['next_season_number'],
+                'episode_number': row['next_episode_number'],
+                'name': row['next_episode_name'],
+                'still_path': row['next_still_path'],
+                'still_url': f"https://image.tmdb.org/t/p/w300{row['next_still_path']}" if row['next_still_path'] else None,
+                'air_date': row['next_air_date'],
+                'runtime': row['next_runtime'],
+                'vote_average': row['next_vote_average'],
+                'vote_count': row['next_vote_count'],
+            },
+            'upcoming_episode': {
+                'season_number': row['upcoming_season_number'],
+                'episode_number': row['upcoming_episode_number'],
+                'name': row['upcoming_episode_name'],
+                'air_date': row['upcoming_air_date'],
+            },
+            'last_watched_episode': {
+                'season_number': row['last_watched_season_number'],
+                'episode_number': row['last_watched_episode_number'],
+            },
+        })
+
+    available_genres = sorted({genre for item in progress_items for genre in item['genres']})
+    available_networks = sorted({network for item in progress_items for network in item['networks']})
+
+    filtered = _apply_progress_filters(progress_items, request)
+    sorted_items = _sort_progress_items(filtered, request.query_params.get('sort'), request.query_params.get('direction'))
+
+    paginator = PageNumberPagination()
+    page = paginator.paginate_queryset(sorted_items, request)
+    if page is None:
+        return Response({
+            'results': sorted_items,
+            'count': len(sorted_items),
+            'next': None,
+            'previous': None,
+            'available_genres': available_genres,
+            'available_networks': available_networks,
+            'total_watched_minutes': total_watched_minutes,
+        })
+    response = paginator.get_paginated_response(page)
+    response.data['available_genres'] = available_genres
+    response.data['available_networks'] = available_networks
+    response.data['total_watched_minutes'] = total_watched_minutes
+    return response
 
 
 @api_view(['GET'])

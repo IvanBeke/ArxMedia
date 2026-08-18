@@ -16,6 +16,7 @@ urlpatterns = [
     path('seasons/mark/', views.mark_season_watched, name='mark_season_watched'),
     path('seasons/unmark/', views.unmark_season_watched, name='unmark_season_watched'),
     path('up-next/', views.up_next, name='up_next'),
+    path('progress/', views.progress_list, name='progress_list'),
     path('upcoming/', views.upcoming, name='upcoming'),
     path('shows/drop/', views.drop_show, name='drop_show'),
     path('lists/', views.CustomListListCreateView.as_view(), name='custom_lists'),

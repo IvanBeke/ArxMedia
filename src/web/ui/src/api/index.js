@@ -162,6 +162,7 @@ export const trackingAPI = {
   rate: (data) => api.post('/tracking/ratings/', data),
   getStats: () => api.get('/tracking/stats/'),
   getUpNext: () => api.get('/tracking/up-next/'),
+  getProgress: (params) => api.get('/tracking/progress/', { params }),
   getUpcoming: () => api.get('/tracking/upcoming/'),
   dropShow: (data) => api.post('/tracking/shows/drop/', data),
   getLists: () => api.get('/tracking/lists/'),

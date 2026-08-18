@@ -12,7 +12,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 from django.utils import timezone
-from media.models import Episode, Movie, Season, TVShow
+from media.models import Episode, Genre, Movie, Season, TVShow
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from social.models import Follow
@@ -834,6 +834,206 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['season_number'], 1)
+
+
+class ProgressListTests(BaseTestCase):
+    def setUp(self):
+        super().setUp()
+        today = timezone.now().date()
+
+        genre_drama = Genre.objects.create(tmdb_id=501, name='Drama')
+        genre_scifi = Genre.objects.create(tmdb_id=502, name='Sci-Fi')
+
+        show_a = TVShow.objects.create(
+            tmdb_id=4001,
+            name='Alpha Show',
+            poster_path='/alpha.jpg',
+            networks='HBO, Max',
+            vote_count=150,
+            status='Ended',
+        )
+        show_a.genres.add(genre_drama)
+        season_a = Season.objects.create(show=show_a, tmdb_id=4101, season_number=1, name='Season 1')
+        Episode.objects.create(season=season_a, tmdb_id=4111, episode_number=1, name='A1', air_date=today - timedelta(days=20), runtime=42)
+        Episode.objects.create(
+            season=season_a,
+            tmdb_id=4112,
+            episode_number=2,
+            name='A2',
+            air_date=today - timedelta(days=2),
+            runtime=40,
+            vote_average=8.6,
+            vote_count=210,
+        )
+        Episode.objects.create(season=season_a, tmdb_id=4113, episode_number=3, name='A3', air_date=today + timedelta(days=4), runtime=43)
+
+        show_b = TVShow.objects.create(
+            tmdb_id=4002,
+            name='Beta Show',
+            poster_path='/beta.jpg',
+            networks='Netflix',
+            vote_count=900,
+            status='Returning Series',
+        )
+        show_b.genres.add(genre_scifi)
+        season_b = Season.objects.create(show=show_b, tmdb_id=4201, season_number=1, name='Season 1')
+        Episode.objects.create(season=season_b, tmdb_id=4211, episode_number=1, name='B1', air_date=today - timedelta(days=40), runtime=55)
+        Episode.objects.create(season=season_b, tmdb_id=4212, episode_number=2, name='B2', air_date=today - timedelta(days=30), runtime=55)
+
+        show_c = TVShow.objects.create(
+            tmdb_id=4003,
+            name='Gamma Show',
+            poster_path='/gamma.jpg',
+            networks='AMC',
+            vote_count=80,
+            status='Ended',
+        )
+        show_c.genres.add(genre_drama, genre_scifi)
+        season_c = Season.objects.create(show=show_c, tmdb_id=4301, season_number=1, name='Season 1')
+        Episode.objects.create(season=season_c, tmdb_id=4311, episode_number=1, name='C1', air_date=today - timedelta(days=14), runtime=30)
+        Episode.objects.create(season=season_c, tmdb_id=4312, episode_number=2, name='C2', air_date=today - timedelta(days=10), runtime=30)
+
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=4001,
+            season_number=1,
+            episode_number=1,
+            status='watched',
+            watched_at=timezone.make_aware(timezone.datetime(2026, 1, 10, 10, 0, 0)),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=4002,
+            season_number=1,
+            episode_number=1,
+            status='watched',
+            watched_at=timezone.make_aware(timezone.datetime(2026, 1, 8, 10, 0, 0)),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=4002,
+            season_number=1,
+            episode_number=2,
+            status='watched',
+            watched_at=timezone.make_aware(timezone.datetime(2026, 1, 9, 10, 0, 0)),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=4003,
+            season_number=1,
+            episode_number=1,
+            status='watched',
+            watched_at=timezone.make_aware(timezone.datetime(2026, 1, 7, 10, 0, 0)),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=4003,
+            status='dropped',
+            season_number=None,
+            episode_number=None,
+            watched_at=timezone.make_aware(timezone.datetime(2026, 1, 11, 10, 0, 0)),
+        )
+
+        Rating.objects.create(user=self.user, media_type='tv', tmdb_id=4002, score=8)
+
+    def test_progress_list_includes_started_shows_only(self):
+        response = self.client.get('/api/tracking/progress/')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        tmdb_ids = {item['tmdb_id'] for item in items}
+        self.assertEqual(tmdb_ids, {4001, 4002, 4003})
+
+    def test_progress_list_filters_missing_rating(self):
+        response = self.client.get('/api/tracking/progress/?missing_rating=true')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertTrue(all(item['user_rating'] is None for item in items))
+        self.assertEqual({item['tmdb_id'] for item in items}, {4001, 4003})
+
+    def test_progress_list_filters_genres_and_networks_multi(self):
+        response = self.client.get('/api/tracking/progress/?genres=Drama&genres=Sci-Fi&networks=AMC')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['tmdb_id'], 4003)
+
+    def test_progress_list_filters_status_and_search(self):
+        response = self.client.get('/api/tracking/progress/?status=dropped&search=gamma')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['status'], 'dropped')
+        self.assertEqual(items[0]['tmdb_id'], 4003)
+
+    def test_progress_list_sorts_time_left(self):
+        response = self.client.get('/api/tracking/progress/?sort=time_left')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(items[0]['tmdb_id'], 4003)
+
+    def test_progress_list_sorts_last_watched(self):
+        response = self.client.get('/api/tracking/progress/?sort=last_watched')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(items[0]['tmdb_id'], 4001)
+
+    def test_progress_list_filters_upcoming_and_new(self):
+        response = self.client.get('/api/tracking/progress/?has_upcoming=true&is_new=true')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['tmdb_id'], 4001)
+        self.assertTrue(items[0]['has_upcoming_episode'])
+        self.assertTrue(items[0]['is_new'])
+
+    def test_progress_list_includes_total_watched_minutes(self):
+        response = self.client.get('/api/tracking/progress/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('total_watched_minutes', response.data)
+        self.assertEqual(response.data['total_watched_minutes'], 182)
+
+    def test_progress_list_includes_last_watched_episode_code_parts(self):
+        response = self.client.get('/api/tracking/progress/?search=alpha')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item['tmdb_id'], 4001)
+        self.assertEqual(item['last_watched_episode']['season_number'], 1)
+        self.assertEqual(item['last_watched_episode']['episode_number'], 1)
+
+    def test_progress_list_includes_started_at_from_oldest_watch_entry(self):
+        response = self.client.get('/api/tracking/progress/?search=beta')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item['tmdb_id'], 4002)
+        self.assertTrue(str(item['started_at']).startswith('2026-01-08'))
+
+    def test_progress_list_includes_next_episode_provider_rating_fields(self):
+        response = self.client.get('/api/tracking/progress/?search=alpha')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item['tmdb_id'], 4001)
+        self.assertEqual(item['next_episode']['vote_average'], 8.6)
+        self.assertEqual(item['next_episode']['vote_count'], 210)
+
+    def test_progress_list_includes_provider_show_status(self):
+        response = self.client.get('/api/tracking/progress/?search=beta')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item['tmdb_id'], 4002)
+        self.assertEqual(item['provider_status'], 'Returning Series')
 
 
 class CustomListTests(BaseTestCase):
