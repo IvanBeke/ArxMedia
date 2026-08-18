@@ -50,6 +50,11 @@
             :show-new-badge="item.is_new"
             :show-watch-action="true"
             :watch-loading="markingId === item.tmdb_id"
+            :progress-percent="item.progress_percent"
+            :episode-duration-minutes="item.next_episode?.runtime"
+            :episodes-left="item.episodes_left"
+            :runtime-left-minutes="item.runtime_left_minutes"
+            :runtime-left-has-unknown="item.runtime_left_has_unknown"
             @watch="markNextEpisodeWatched(item)"
           />
         </div>

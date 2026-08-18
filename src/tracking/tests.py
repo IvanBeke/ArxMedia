@@ -562,7 +562,8 @@ class UpNextTests(BaseTestCase):
                 tmdb_id=2000 + i,  # Unique TMDB ID for each episode
                 episode_number=i,
                 name=f'Episode {i}',
-                air_date='2024-01-01'
+                air_date='2024-01-01',
+                runtime=24,
             )
         # Create season 2
         self.season2 = Season.objects.create(
@@ -575,7 +576,8 @@ class UpNextTests(BaseTestCase):
             tmdb_id=2011,
             episode_number=1,
             name='S2 Episode 1',
-            air_date='2024-02-01'
+            air_date='2024-02-01',
+            runtime=24,
         )
 
     def test_up_next_empty(self):
@@ -597,6 +599,35 @@ class UpNextTests(BaseTestCase):
         # Should return S1E4 as next episode
         self.assertEqual(response.data[0]['next_episode']['season_number'], 1)
         self.assertEqual(response.data[0]['next_episode']['episode_number'], 4)
+
+    def test_up_next_includes_progress_and_remaining_runtime_fields(self):
+        today = timezone.now().date()
+        show = TVShow.objects.create(tmdb_id=777, name='Runtime Show')
+        season = Season.objects.create(show=show, tmdb_id=7771, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=77711, episode_number=1, name='Episode 1', air_date=today - timedelta(days=5), runtime=20)
+        Episode.objects.create(season=season, tmdb_id=77712, episode_number=2, name='Episode 2', air_date=today - timedelta(days=4), runtime=30)
+        Episode.objects.create(season=season, tmdb_id=77713, episode_number=3, name='Episode 3', air_date=today - timedelta(days=2), runtime=None)
+        Episode.objects.create(season=season, tmdb_id=77714, episode_number=4, name='Episode 4', air_date=today + timedelta(days=2), runtime=45)
+
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=777,
+            season_number=1,
+            episode_number=1,
+            status='watched',
+        )
+
+        response = self.client.get('/api/tracking/up-next/')
+        self.assertEqual(response.status_code, 200)
+        item = next(entry for entry in response.data if entry['tmdb_id'] == 777)
+
+        self.assertEqual(item['next_episode']['episode_number'], 2)
+        self.assertEqual(item['next_episode']['runtime'], 30)
+        self.assertEqual(item['episodes_left'], 2)
+        self.assertEqual(item['runtime_left_minutes'], 30)
+        self.assertEqual(item['runtime_left_has_unknown'], True)
+        self.assertEqual(item['progress_percent'], 25)
 
     def test_up_next_season_boundary(self):
         # Create season 1 and 2 with episodes

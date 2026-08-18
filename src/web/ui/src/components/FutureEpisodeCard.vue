@@ -1,6 +1,6 @@
 <template>
   <div class="group block">
-    <div class="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-surface-200">
+    <div class="relative aspect-[2/3] w-full overflow-hidden bg-surface-200" :class="posterFrameClass">
       <RouterLink
         :to="posterLinkTo"
         class="absolute inset-0 z-10"
@@ -50,6 +50,26 @@
       </div>
     </div>
 
+    <div
+      v-if="showProgressStrip"
+      class="relative overflow-hidden"
+      :class="progressStripClass"
+      :style="progressStripStyle"
+    >
+      <div
+        class="absolute inset-y-0 left-0 bg-brand-500/60"
+        :style="{ width: `${safeProgressPercent}%` }"
+      />
+      <div class="relative flex items-center justify-between gap-2 px-2 py-1 text-[10px] font-semibold text-white">
+        <span class="truncate">{{ formattedEpisodeDuration }}</span>
+        <div class="min-w-0 inline-flex items-center justify-end gap-0.5">
+          <span class="truncate text-right">{{ formattedEpisodesLeft }}</span>
+          <span class="text-white/70">&middot;</span>
+          <span class="truncate text-right">{{ formattedRuntimeLeft }}</span>
+        </div>
+      </div>
+    </div>
+
     <RouterLink :to="resolvedTitleLinkTo" class="block p-2">
       <p class="text-sm text-primary font-medium truncate hover:text-brand-400">{{ showTitle }}</p>
     </RouterLink>
@@ -76,6 +96,11 @@ const props = defineProps({
   showWatchAction: { type: Boolean, default: false },
   watchLoading: { type: Boolean, default: false },
   metaText: { type: String, default: '' },
+  progressPercent: { type: Number, default: null },
+  episodeDurationMinutes: { type: Number, default: null },
+  episodesLeft: { type: Number, default: null },
+  runtimeLeftMinutes: { type: Number, default: null },
+  runtimeLeftHasUnknown: { type: Boolean, default: false },
 })
 
 defineEmits(['watch'])
@@ -87,4 +112,56 @@ const episodeCode = computed(() => {
 })
 
 const episodeTitleLabel = computed(() => props.episodeTitle || 'Episode')
+
+const showProgressStrip = computed(() => {
+  return props.progressPercent !== null || props.episodesLeft !== null
+})
+
+const safeProgressPercent = computed(() => {
+  const value = Number(props.progressPercent)
+  if (!Number.isFinite(value)) return 0
+  if (value < 0) return 0
+  if (value > 100) return 100
+  return Math.round(value)
+})
+
+const progressStripClass = computed(() => 'rounded-lg')
+
+const posterFrameClass = computed(() => {
+  if (showProgressStrip.value) {
+    return 'rounded-t-lg rounded-b-none'
+  }
+  return 'rounded-lg'
+})
+
+const progressStripStyle = computed(() => {
+  return {
+    backgroundColor: 'var(--upnext-strip-bg)',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+  }
+})
+
+function formatMinutes(value) {
+  const minutes = Number(value)
+  if (!Number.isFinite(minutes) || minutes < 0) return '--'
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remainder = minutes % 60
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`
+}
+
+const formattedEpisodeDuration = computed(() => formatMinutes(props.episodeDurationMinutes))
+
+const formattedEpisodesLeft = computed(() => {
+  const left = Number(props.episodesLeft)
+  if (!Number.isFinite(left) || left < 0) return '--'
+  return `${left} left`
+})
+
+const formattedRuntimeLeft = computed(() => {
+  const runtime = formatMinutes(props.runtimeLeftMinutes)
+  if (runtime === '--') return runtime
+  return props.runtimeLeftHasUnknown ? `~${runtime}` : runtime
+})
 </script>

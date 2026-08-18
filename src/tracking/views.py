@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta
 
 from accounts.privacy import can_view_account_content, get_viewer_relationship
-from django.db.models import Avg, Count, DateTimeField, F, Q
+from django.db.models import Avg, Count, DateTimeField, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from media.tmdb import tmdb
@@ -590,63 +590,102 @@ def unmark_season_watched(request):
 def up_next(request):
     """Get next episodes for currently watching shows."""
     from django.utils import timezone
-    from media.models import Episode, Season, TVShow
+    from media.models import Episode, TVShow
 
     today = timezone.now().date()
 
     from .models import UserTvShowStatus
 
+    watched_episode_exists = WatchEntry.objects.filter(
+        user=request.user,
+        media_type=WatchEntryMediaType.EPISODE,
+        tmdb_id=OuterRef('season__show__tmdb_id'),
+        season_number=OuterRef('season__season_number'),
+        episode_number=OuterRef('episode_number'),
+    )
+
+    unwatched_aired_episodes = Episode.objects.filter(
+        season__show__tmdb_id=OuterRef('tmdb_id'),
+        season__season_number__gt=0,
+        air_date__lte=today,
+    ).filter(~Exists(watched_episode_exists))
+
+    next_episode = unwatched_aired_episodes.order_by('season__season_number', 'episode_number')
+    episodes_left_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
+        total=Count('id')
+    ).values('total')[:1]
+    runtime_left_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
+        total=Coalesce(Sum('runtime'), Value(0))
+    ).values('total')[:1]
+    unknown_runtime_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
+        total=Count('id', filter=Q(runtime__isnull=True))
+    ).values('total')[:1]
+
     watched_show_ids = UserTvShowStatus.objects.filter(
         user=request.user,
         status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED),
         watched_episodes__gt=0,
-    ).values('tmdb_id', 'last_watched_at').order_by('-last_watched_at', '-tmdb_id')
+    ).annotate(
+        next_season_number=Subquery(next_episode.values('season__season_number')[:1]),
+        next_episode_number=Subquery(next_episode.values('episode_number')[:1]),
+        next_episode_name=Subquery(next_episode.values('name')[:1]),
+        next_still_path=Subquery(next_episode.values('still_path')[:1]),
+        next_air_date=Subquery(next_episode.values('air_date')[:1]),
+        next_runtime=Subquery(next_episode.values('runtime')[:1]),
+        episodes_left=Coalesce(Subquery(episodes_left_subquery), Value(0), output_field=IntegerField()),
+        runtime_left_minutes=Coalesce(Subquery(runtime_left_subquery), Value(0), output_field=IntegerField()),
+        unknown_runtime_count=Coalesce(Subquery(unknown_runtime_subquery), Value(0), output_field=IntegerField()),
+    ).filter(
+        next_season_number__isnull=False,
+    ).values(
+        'tmdb_id',
+        'last_watched_at',
+        'progress_percent',
+        'next_season_number',
+        'next_episode_number',
+        'next_episode_name',
+        'next_still_path',
+        'next_air_date',
+        'next_runtime',
+        'episodes_left',
+        'runtime_left_minutes',
+        'unknown_runtime_count',
+    ).order_by('-last_watched_at', '-tmdb_id')
+
+    watched_show_rows = list(watched_show_ids)
+
+    shows_by_tmdb_id = {
+        show.tmdb_id: show
+        for show in TVShow.objects.filter(tmdb_id__in=[item['tmdb_id'] for item in watched_show_rows]).only('tmdb_id', 'name', 'poster_path')
+    }
 
     up_next_data = []
     new_threshold = today - timedelta(days=7)
-    for show_item in watched_show_ids:
-        tmdb_id = show_item['tmdb_id']
-        show = TVShow.objects.filter(tmdb_id=tmdb_id).first()
-        if not show:
+    for show_item in watched_show_rows:
+        show = shows_by_tmdb_id.get(show_item['tmdb_id'])
+        if show is None:
             continue
-
-        watched_eps = set(
-            WatchEntry.objects.filter(
-                user=request.user,
-                media_type=WatchEntryMediaType.EPISODE,
-                tmdb_id=tmdb_id,
-                season_number__gt=0,
-            ).values_list('season_number', 'episode_number')
-        )
-
-        seasons = Season.objects.filter(show=show, season_number__gt=0).order_by('season_number')
-        found_next = False
-        for season in seasons:
-            if found_next:
-                break
-            episodes = Episode.objects.filter(
-                season=season,
-                air_date__lte=today
-            ).order_by('episode_number')
-            for episode in episodes:
-                if (season.season_number, episode.episode_number) not in watched_eps:
-                    up_next_data.append({
-                        'tmdb_id': tmdb_id,
-                        'show_name': show.name,
-                        'poster_path': show.poster_path,
-                        'poster_url': show.poster_url,
-                        'last_watched_at': show_item['last_watched_at'],
-                        'next_episode': {
-                            'season_number': episode.season.season_number,
-                            'episode_number': episode.episode_number,
-                            'name': episode.name,
-                            'still_path': episode.still_path,
-                            'still_url': episode.still_url,
-                            'air_date': episode.air_date,
-                        }
-                    })
-                    found_next = True
-                    break
+        progress_percent = show_item.get('progress_percent')
+        up_next_data.append({
+            'tmdb_id': show_item['tmdb_id'],
+            'show_name': show.name,
+            'poster_path': show.poster_path,
+            'poster_url': show.poster_url,
+            'last_watched_at': show_item['last_watched_at'],
+            'progress_percent': progress_percent if progress_percent is not None else 0,
+            'episodes_left': show_item['episodes_left'],
+            'runtime_left_minutes': show_item['runtime_left_minutes'],
+            'runtime_left_has_unknown': show_item['unknown_runtime_count'] > 0,
+            'next_episode': {
+                'season_number': show_item['next_season_number'],
+                'episode_number': show_item['next_episode_number'],
+                'name': show_item['next_episode_name'],
+                'still_path': show_item['next_still_path'],
+                'still_url': f"https://image.tmdb.org/t/p/w300{show_item['next_still_path']}" if show_item['next_still_path'] else None,
+                'air_date': show_item['next_air_date'],
+                'runtime': show_item['next_runtime'],
+            }
+        })
 
     new_items = []
     old_items = []
