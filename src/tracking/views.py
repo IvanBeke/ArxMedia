@@ -729,9 +729,9 @@ def up_next(request):
 def _apply_progress_filters(items, request):
     params = request.query_params
     search = (params.get('search') or '').strip().lower()
-    status_values = {value.strip().lower() for value in (params.get('status') or '').split(',') if value.strip()}
+    status_values = {value.lower() for value in _parse_multi_param(params, 'status')}
+    provider_status_values = {value.lower() for value in _parse_multi_param(params, 'provider_status')}
     selected_genres = {value.lower() for value in _parse_multi_param(params, 'genres')}
-    selected_networks = {value.lower() for value in _parse_multi_param(params, 'networks')}
     has_upcoming = _parse_bool_param(params.get('has_upcoming'))
     is_new = _parse_bool_param(params.get('is_new'))
     missing_rating = _parse_bool_param(params.get('missing_rating'))
@@ -740,15 +740,34 @@ def _apply_progress_filters(items, request):
     for item in items:
         if search and search not in item['show_name'].lower():
             continue
-        if status_values and item['status'] not in status_values:
-            continue
+        if status_values:
+            status_match = False
+            for status_value in status_values:
+                if status_value == 'watching':
+                    if item['status'] == 'watching' and (item.get('episodes_left') or 0) > 0:
+                        status_match = True
+                        break
+                    continue
+
+                if status_value in ('watched', 'completed', 'complete'):
+                    if (item.get('progress_percent') or 0) >= 100:
+                        status_match = True
+                        break
+                    continue
+
+                if item['status'] == status_value:
+                    status_match = True
+                    break
+
+            if not status_match:
+                continue
+        if provider_status_values:
+            provider_status = str(item.get('provider_status') or '').strip().lower()
+            if provider_status not in provider_status_values:
+                continue
         if selected_genres:
             item_genres = {genre.lower() for genre in item['genres']}
             if item_genres.isdisjoint(selected_genres):
-                continue
-        if selected_networks:
-            item_networks = {network.lower() for network in item['networks']}
-            if item_networks.isdisjoint(selected_networks):
                 continue
         if has_upcoming is not None and item['has_upcoming_episode'] != has_upcoming:
             continue
@@ -766,6 +785,7 @@ def _sort_progress_items(items, sort_by: str, direction: str):
 
     default_direction = {
         'time_left': 'asc',
+        'episodes_left': 'asc',
         'last_watched': 'desc',
         'progress_percent': 'desc',
         'title': 'asc',
@@ -812,6 +832,18 @@ def _sort_progress_items(items, sort_by: str, direction: str):
             key=lambda item: (
                 item['next_episode']['air_date'] is None,
                 item['next_episode']['air_date'] or date.max,
+                item['show_name'].lower(),
+            ),
+            reverse=final_direction == 'desc',
+        )
+
+    if sort_key == 'episodes_left':
+        return sorted(
+            items,
+            key=lambda item: (
+                item['episodes_left'] <= 0,
+                item['episodes_left'] if item['episodes_left'] > 0 else 10**9,
+                item['runtime_left_minutes'] if item['episodes_left'] > 0 else 10**9,
                 item['show_name'].lower(),
             ),
             reverse=final_direction == 'desc',
@@ -949,12 +981,12 @@ def progress_list(request):
                 'next': None,
                 'previous': None,
                 'available_genres': [],
-                'available_networks': [],
+                'available_provider_statuses': [],
                 'total_watched_minutes': 0,
             })
         response = paginator.get_paginated_response(page)
         response.data['available_genres'] = []
-        response.data['available_networks'] = []
+        response.data['available_provider_statuses'] = []
         response.data['total_watched_minutes'] = 0
         return response
 
@@ -1004,6 +1036,7 @@ def progress_list(request):
             'show_name': show.name,
             'poster_path': show.poster_path,
             'poster_url': show.poster_url,
+            'number_of_seasons': show.number_of_seasons,
             'status': row['status'],
             'provider_status': show.status,
             'progress_percent': row['progress_percent'] or 0,
@@ -1016,6 +1049,7 @@ def progress_list(request):
             'vote_count': show.vote_count,
             'genres': [genre.name for genre in show.genres.all()],
             'networks': raw_networks,
+            'episode_runtime': show.episode_runtime,
             'episodes_left': row['episodes_left'] or 0,
             'runtime_left_minutes': row['runtime_left_minutes'] or 0,
             'runtime_left_has_unknown': (row['unknown_runtime_count'] or 0) > 0,
@@ -1045,7 +1079,11 @@ def progress_list(request):
         })
 
     available_genres = sorted({genre for item in progress_items for genre in item['genres']})
-    available_networks = sorted({network for item in progress_items for network in item['networks']})
+    available_provider_statuses = sorted({
+        str(item['provider_status']).strip()
+        for item in progress_items
+        if str(item.get('provider_status') or '').strip()
+    })
 
     filtered = _apply_progress_filters(progress_items, request)
     sorted_items = _sort_progress_items(filtered, request.query_params.get('sort'), request.query_params.get('direction'))
@@ -1059,12 +1097,12 @@ def progress_list(request):
             'next': None,
             'previous': None,
             'available_genres': available_genres,
-            'available_networks': available_networks,
+            'available_provider_statuses': available_provider_statuses,
             'total_watched_minutes': total_watched_minutes,
         })
     response = paginator.get_paginated_response(page)
     response.data['available_genres'] = available_genres
-    response.data['available_networks'] = available_networks
+    response.data['available_provider_statuses'] = available_provider_statuses
     response.data['total_watched_minutes'] = total_watched_minutes
     return response
 

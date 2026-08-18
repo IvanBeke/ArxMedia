@@ -848,7 +848,9 @@ class ProgressListTests(BaseTestCase):
             tmdb_id=4001,
             name='Alpha Show',
             poster_path='/alpha.jpg',
+            number_of_seasons=1,
             networks='HBO, Max',
+            episode_runtime=42,
             vote_count=150,
             status='Ended',
         )
@@ -871,6 +873,7 @@ class ProgressListTests(BaseTestCase):
             tmdb_id=4002,
             name='Beta Show',
             poster_path='/beta.jpg',
+            number_of_seasons=1,
             networks='Netflix',
             vote_count=900,
             status='Returning Series',
@@ -884,6 +887,7 @@ class ProgressListTests(BaseTestCase):
             tmdb_id=4003,
             name='Gamma Show',
             poster_path='/gamma.jpg',
+            number_of_seasons=1,
             networks='AMC',
             vote_count=80,
             status='Ended',
@@ -955,12 +959,12 @@ class ProgressListTests(BaseTestCase):
         self.assertTrue(all(item['user_rating'] is None for item in items))
         self.assertEqual({item['tmdb_id'] for item in items}, {4001, 4003})
 
-    def test_progress_list_filters_genres_and_networks_multi(self):
-        response = self.client.get('/api/tracking/progress/?genres=Drama&genres=Sci-Fi&networks=AMC')
+    def test_progress_list_filters_genres_multi(self):
+        response = self.client.get('/api/tracking/progress/?genres=Drama&genres=Sci-Fi')
         self.assertEqual(response.status_code, 200)
         items = response.data['results']
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]['tmdb_id'], 4003)
+        tmdb_ids = {item['tmdb_id'] for item in items}
+        self.assertEqual(tmdb_ids, {4001, 4002, 4003})
 
     def test_progress_list_filters_status_and_search(self):
         response = self.client.get('/api/tracking/progress/?status=dropped&search=gamma')
@@ -969,6 +973,40 @@ class ProgressListTests(BaseTestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]['status'], 'dropped')
         self.assertEqual(items[0]['tmdb_id'], 4003)
+
+    def test_progress_list_filters_user_status_multi_select(self):
+        response = self.client.get('/api/tracking/progress/?status=watching&status=watched')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        tmdb_ids = {item['tmdb_id'] for item in items}
+        self.assertEqual(tmdb_ids, {4001, 4002})
+
+    def test_progress_list_filters_provider_status_multi_select(self):
+        response = self.client.get('/api/tracking/progress/?provider_status=Ended&provider_status=Returning%20Series')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        tmdb_ids = {item['tmdb_id'] for item in items}
+        self.assertEqual(tmdb_ids, {4001, 4002, 4003})
+
+    def test_progress_list_includes_available_provider_statuses(self):
+        response = self.client.get('/api/tracking/progress/')
+        self.assertEqual(response.status_code, 200)
+        statuses = response.data.get('available_provider_statuses', [])
+        self.assertEqual(statuses, ['Ended', 'Returning Series'])
+
+    def test_progress_list_filters_watching_requires_episodes_left(self):
+        response = self.client.get('/api/tracking/progress/?status=watching')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual([item['tmdb_id'] for item in items], [4001])
+        self.assertTrue(all(item['episodes_left'] > 0 for item in items))
+
+    def test_progress_list_filters_completed_by_full_progress(self):
+        response = self.client.get('/api/tracking/progress/?status=watched')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual([item['tmdb_id'] for item in items], [4002])
+        self.assertTrue(all(item['progress_percent'] == 100 for item in items))
 
     def test_progress_list_sorts_time_left(self):
         response = self.client.get('/api/tracking/progress/?sort=time_left')
@@ -981,6 +1019,12 @@ class ProgressListTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         items = response.data['results']
         self.assertEqual(items[0]['tmdb_id'], 4001)
+
+    def test_progress_list_sorts_episodes_left(self):
+        response = self.client.get('/api/tracking/progress/?sort=episodes_left')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(items[0]['tmdb_id'], 4003)
 
     def test_progress_list_filters_upcoming_and_new(self):
         response = self.client.get('/api/tracking/progress/?has_upcoming=true&is_new=true')
@@ -1034,6 +1078,20 @@ class ProgressListTests(BaseTestCase):
         item = items[0]
         self.assertEqual(item['tmdb_id'], 4002)
         self.assertEqual(item['provider_status'], 'Returning Series')
+
+    def test_progress_list_includes_episode_runtime(self):
+        response = self.client.get('/api/tracking/progress/?search=alpha')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['episode_runtime'], 42)
+
+    def test_progress_list_includes_number_of_seasons(self):
+        response = self.client.get('/api/tracking/progress/?search=alpha')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['number_of_seasons'], 1)
 
 
 class CustomListTests(BaseTestCase):

@@ -29,13 +29,28 @@
 
           <div v-if="showAdvancedFilters" class="control-panel left-0 w-[20rem] max-w-[85vw] p-3 space-y-3">
             <div class="space-y-2">
-              <p class="text-xs text-muted">Status</p>
+              <p class="text-xs text-muted">Quick filters</p>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="chip-toggle" :data-on="staged.hasUpcoming ? 'true' : 'false'" @click="staged.hasUpcoming = !staged.hasUpcoming">
+                  Has upcoming
+                </button>
+                <button type="button" class="chip-toggle" :data-on="staged.newOnly ? 'true' : 'false'" @click="staged.newOnly = !staged.newOnly">
+                  New episodes
+                </button>
+                <button type="button" class="chip-toggle" :data-on="staged.missingRating ? 'true' : 'false'" @click="staged.missingRating = !staged.missingRating">
+                  Missing rating
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <p class="text-xs text-muted">User status</p>
               <div class="flex flex-wrap gap-2">
                 <button
                   v-for="chip in statusChips"
                   :key="chip.value"
                   class="chip"
-                  :class="staged.status === chip.value ? 'chip-active' : ''"
+                  :class="staged.statuses.includes(chip.value) ? 'chip-active' : ''"
                   @click="setStagedStatus(chip.value)"
                 >
                   {{ chip.label }}
@@ -44,38 +59,35 @@
             </div>
 
             <div class="space-y-2">
-              <p class="text-xs text-muted">Genres</p>
-              <div class="max-h-32 overflow-y-auto rounded-md border border-surface-200 p-2">
-                <label v-for="genre in availableGenres" :key="genre" class="flex items-center gap-2 py-1 text-xs text-secondary">
-                  <input type="checkbox" :value="genre" v-model="staged.genres">
-                  <span>{{ genre }}</span>
-                </label>
+              <p class="text-xs text-muted">Show status</p>
+              <div class="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+                <button
+                  v-for="providerStatus in availableProviderStatuses"
+                  :key="providerStatus"
+                  type="button"
+                  class="chip"
+                  :class="staged.providerStatuses.includes(providerStatus) ? 'chip-active' : ''"
+                  @click="toggleStagedProviderStatus(providerStatus)"
+                >
+                  {{ providerStatus }}
+                </button>
               </div>
             </div>
 
             <div class="space-y-2">
-              <p class="text-xs text-muted">Networks</p>
-              <div class="max-h-32 overflow-y-auto rounded-md border border-surface-200 p-2">
-                <label v-for="network in availableNetworks" :key="network" class="flex items-center gap-2 py-1 text-xs text-secondary">
-                  <input type="checkbox" :value="network" v-model="staged.networks">
-                  <span>{{ network }}</span>
-                </label>
+              <p class="text-xs text-muted">Genres</p>
+              <div class="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+                <button
+                  v-for="genre in availableGenres"
+                  :key="genre"
+                  type="button"
+                  class="chip"
+                  :class="staged.genres.includes(genre) ? 'chip-active' : ''"
+                  @click="toggleStagedGenre(genre)"
+                >
+                  {{ genre }}
+                </button>
               </div>
-            </div>
-
-            <div class="grid grid-cols-1 gap-1.5">
-              <label class="chip-toggle" :data-on="staged.hasUpcoming ? 'true' : 'false'">
-                <input type="checkbox" v-model="staged.hasUpcoming">
-                <span>Has upcoming</span>
-              </label>
-              <label class="chip-toggle" :data-on="staged.newOnly ? 'true' : 'false'">
-                <input type="checkbox" v-model="staged.newOnly">
-                <span>New episodes</span>
-              </label>
-              <label class="chip-toggle" :data-on="staged.missingRating ? 'true' : 'false'">
-                <input type="checkbox" v-model="staged.missingRating">
-                <span>Missing rating</span>
-              </label>
             </div>
 
             <div class="flex items-center justify-between pt-1 border-t border-surface-200">
@@ -256,27 +268,27 @@ const rowBusyId = ref(null)
 
 const searchInput = ref('')
 const search = ref('')
-const status = ref('')
+const statuses = ref([])
+const providerStatuses = ref([])
 const sort = ref('time_left')
 const direction = ref('asc')
 const hasUpcoming = ref(false)
 const newOnly = ref(false)
 const missingRating = ref(false)
 const selectedGenres = ref([])
-const selectedNetworks = ref([])
 const showAdvancedFilters = ref(false)
 const advancedFiltersRef = ref(null)
 const staged = ref({
-  status: '',
+  statuses: [],
+  providerStatuses: [],
   genres: [],
-  networks: [],
   hasUpcoming: false,
   newOnly: false,
   missingRating: false,
 })
 
 const availableGenres = ref([])
-const availableNetworks = ref([])
+const availableProviderStatuses = ref([])
 
 const count = ref(0)
 const totalWatchedMinutes = ref(0)
@@ -294,7 +306,6 @@ const watchedTimeLabel = computed(() => {
 })
 
 const statusChips = [
-  { label: 'All started', value: '' },
   { label: 'Watching', value: 'watching' },
   { label: 'Completed', value: 'watched' },
   { label: 'Dropped', value: 'dropped' },
@@ -302,6 +313,7 @@ const statusChips = [
 
 const sortOptions = [
   { label: 'Time left', value: 'time_left' },
+  { label: 'Episodes left', value: 'episodes_left' },
   { label: 'Last watched', value: 'last_watched' },
   { label: 'Progress', value: 'progress_percent' },
   { label: 'Title', value: 'title' },
@@ -312,9 +324,9 @@ const sortLabel = computed(() => sortOptions.find((entry) => entry.value === sor
 
 const activeFilterCount = computed(() => {
   let total = 0
-  if (status.value) total += 1
+  total += statuses.value.length
+  total += providerStatuses.value.length
   total += selectedGenres.value.length
-  total += selectedNetworks.value.length
   if (hasUpcoming.value) total += 1
   if (newOnly.value) total += 1
   if (missingRating.value) total += 1
@@ -323,9 +335,9 @@ const activeFilterCount = computed(() => {
 
 function resetStagedFromCommitted() {
   staged.value = {
-    status: status.value,
+    statuses: [...statuses.value],
+    providerStatuses: [...providerStatuses.value],
     genres: [...selectedGenres.value],
-    networks: [...selectedNetworks.value],
     hasUpcoming: hasUpcoming.value,
     newOnly: newOnly.value,
     missingRating: missingRating.value,
@@ -343,14 +355,34 @@ function toggleAdvancedFilters() {
 }
 
 function setStagedStatus(nextStatus) {
-  staged.value.status = staged.value.status === nextStatus ? '' : nextStatus
+  if (staged.value.statuses.includes(nextStatus)) {
+    staged.value.statuses = staged.value.statuses.filter((statusValue) => statusValue !== nextStatus)
+  } else {
+    staged.value.statuses = [...staged.value.statuses, nextStatus]
+  }
+}
+
+function toggleStagedProviderStatus(nextStatus) {
+  if (staged.value.providerStatuses.includes(nextStatus)) {
+    staged.value.providerStatuses = staged.value.providerStatuses.filter((statusValue) => statusValue !== nextStatus)
+  } else {
+    staged.value.providerStatuses = [...staged.value.providerStatuses, nextStatus]
+  }
+}
+
+function toggleStagedGenre(nextGenre) {
+  if (staged.value.genres.includes(nextGenre)) {
+    staged.value.genres = staged.value.genres.filter((genreValue) => genreValue !== nextGenre)
+  } else {
+    staged.value.genres = [...staged.value.genres, nextGenre]
+  }
 }
 
 function clearStagedFilters() {
   staged.value = {
-    status: '',
+    statuses: [],
+    providerStatuses: [],
     genres: [],
-    networks: [],
     hasUpcoming: false,
     newOnly: false,
     missingRating: false,
@@ -358,9 +390,9 @@ function clearStagedFilters() {
 }
 
 function applyAdvancedFilters() {
-  status.value = staged.value.status
+  statuses.value = [...staged.value.statuses]
+  providerStatuses.value = [...staged.value.providerStatuses]
   selectedGenres.value = [...staged.value.genres]
-  selectedNetworks.value = [...staged.value.networks]
   hasUpcoming.value = staged.value.hasUpcoming
   newOnly.value = staged.value.newOnly
   missingRating.value = staged.value.missingRating
@@ -402,12 +434,12 @@ function buildParams() {
     sort: sort.value,
     direction: direction.value,
     ...(search.value ? { search: search.value } : {}),
-    ...(status.value ? { status: status.value } : {}),
+    ...(statuses.value.length ? { status: statuses.value } : {}),
+    ...(providerStatuses.value.length ? { provider_status: providerStatuses.value } : {}),
     ...(hasUpcoming.value ? { has_upcoming: true } : {}),
     ...(newOnly.value ? { is_new: true } : {}),
     ...(missingRating.value ? { missing_rating: true } : {}),
     ...(selectedGenres.value.length ? { genres: selectedGenres.value } : {}),
-    ...(selectedNetworks.value.length ? { networks: selectedNetworks.value } : {}),
   }
 }
 
@@ -418,12 +450,12 @@ function syncUrlWithState() {
     direction: direction.value,
   }
   if (search.value) nextQuery.search = search.value
-  if (status.value) nextQuery.status = status.value
+  if (statuses.value.length) nextQuery.status = statuses.value
+  if (providerStatuses.value.length) nextQuery.provider_status = providerStatuses.value
   if (hasUpcoming.value) nextQuery.has_upcoming = '1'
   if (newOnly.value) nextQuery.is_new = '1'
   if (missingRating.value) nextQuery.missing_rating = '1'
   if (selectedGenres.value.length) nextQuery.genres = selectedGenres.value
-  if (selectedNetworks.value.length) nextQuery.networks = selectedNetworks.value
   router.replace({ query: nextQuery })
 }
 
@@ -436,14 +468,14 @@ function hydrateFromQuery() {
   }
   search.value = typeof query.search === 'string' ? query.search : ''
   searchInput.value = search.value
-  status.value = typeof query.status === 'string' ? query.status : ''
+  statuses.value = parseArray(query.status)
+  providerStatuses.value = parseArray(query.provider_status)
   sort.value = typeof query.sort === 'string' ? query.sort : 'time_left'
   direction.value = query.direction === 'desc' ? 'desc' : 'asc'
   hasUpcoming.value = query.has_upcoming === '1'
   newOnly.value = query.is_new === '1'
   missingRating.value = query.missing_rating === '1'
   selectedGenres.value = parseArray(query.genres)
-  selectedNetworks.value = parseArray(query.networks)
   const page = Number.parseInt(String(query.page || '1'), 10)
   currentPage.value = Number.isInteger(page) && page > 0 ? page : 1
 }
@@ -455,7 +487,7 @@ async function loadProgress() {
     const data = await trackingAPI.getProgress(buildParams())
     rows.value = data?.results || []
     availableGenres.value = data?.available_genres || []
-    availableNetworks.value = data?.available_networks || []
+    availableProviderStatuses.value = data?.available_provider_statuses || []
     count.value = Number.isFinite(data?.count) ? data.count : rows.value.length
     totalWatchedMinutes.value = Number.isFinite(data?.total_watched_minutes) ? data.total_watched_minutes : 0
     if (Array.isArray(data?.results) && data.results.length > 0) {
@@ -570,19 +602,19 @@ async function rate(tmdbId, score) {
 function resetFilters() {
   searchInput.value = ''
   search.value = ''
-  status.value = ''
+  statuses.value = []
+  providerStatuses.value = []
   sort.value = 'time_left'
   direction.value = 'asc'
   hasUpcoming.value = false
   newOnly.value = false
   missingRating.value = false
   selectedGenres.value = []
-  selectedNetworks.value = []
   currentPage.value = 1
 }
 
 watch(
-  [search, sort, direction, status, hasUpcoming, newOnly, missingRating, selectedGenres, selectedNetworks, currentPage],
+  [search, sort, direction, statuses, providerStatuses, hasUpcoming, newOnly, missingRating, selectedGenres, currentPage],
   async () => {
     syncUrlWithState()
     await loadProgress()
@@ -610,9 +642,9 @@ watch(
 }
 
 .chip {
-  border: 1px solid var(--chip-border);
-  background: var(--chip-bg);
-  color: var(--chip-text);
+  border: 1px solid var(--filter-chip-border);
+  background: var(--filter-chip-bg);
+  color: var(--filter-chip-text);
   border-radius: 9999px;
   font-size: 0.75rem;
   line-height: 1;
@@ -621,37 +653,39 @@ watch(
 }
 
 .chip:hover {
-  background: var(--chip-bg-hover);
-  color: var(--chip-text-strong);
+  background: var(--filter-chip-bg-hover);
+  color: var(--filter-chip-text-hover);
 }
 
 .chip-active {
-  background: var(--chip-active-bg);
-  color: var(--chip-active-text);
-  border-color: var(--chip-active-border);
+  background: var(--filter-chip-active-bg);
+  color: var(--filter-chip-active-text);
+  border-color: var(--filter-chip-active-border);
 }
 
 .chip-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  border: 1px solid var(--chip-border);
-  background: var(--chip-bg);
-  color: var(--chip-text);
+  justify-content: center;
+  border: 1px solid var(--filter-chip-border);
+  background: var(--filter-chip-bg);
+  color: var(--filter-chip-text);
   border-radius: 9999px;
   font-size: 0.75rem;
   line-height: 1;
   padding: 0.45rem 0.75rem;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
 }
 
 .chip-toggle[data-on='true'] {
-  background: var(--chip-active-bg);
-  color: var(--chip-active-text);
-  border-color: var(--chip-active-border);
+  background: var(--filter-chip-active-bg);
+  color: var(--filter-chip-active-text);
+  border-color: var(--filter-chip-active-border);
 }
 
-.chip-toggle input {
-  accent-color: #9f42c6;
+.chip-toggle:hover {
+  background: var(--filter-chip-bg-hover);
+  color: var(--filter-chip-text-hover);
 }
 
 .control-menu {
@@ -697,16 +731,17 @@ watch(
 }
 
 .control-count {
-  min-width: 1.25rem;
+  width: 1.25rem;
   height: 1.25rem;
   border-radius: 9999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-grid;
+  place-items: center;
   font-size: 0.6875rem;
-  color: var(--chip-active-text);
-  background: var(--chip-active-bg);
-  border: 1px solid var(--chip-active-border);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--filter-chip-active-text);
+  background: var(--filter-chip-active-bg);
+  border: 1px solid var(--filter-chip-active-border);
 }
 
 .control-panel {

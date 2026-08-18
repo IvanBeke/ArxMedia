@@ -97,7 +97,7 @@
             variant="pill"
             class="episode-code"
           />
-          <p class="episode-title">{{ item.next_episode?.name }}</p>
+          <p class="episode-title" :title="item.next_episode?.name || ''">{{ item.next_episode?.name }}</p>
           <p class="episode-air">{{ item.next_episode?.air_date ? formatDateByLocale(item.next_episode.air_date) : '' }}</p>
           <div class="mt-3 flex items-center gap-2">
             <RatingBadge
@@ -126,7 +126,7 @@
 
     <div class="mt-3 pt-3 border-t border-surface-200">
       <RouterLink :to="`/tv/${item.tmdb_id}`" class="inline-flex items-center gap-1 text-sm text-secondary hover:text-primary transition-colors">
-        <span>{{ item.total_episodes ? `${Math.ceil(item.total_episodes / 24)} Seasons` : 'Show details' }}</span>
+        <span>{{ seasonsLabel(item) }}</span>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
         </svg>
@@ -141,6 +141,7 @@ import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import UserRating from '@/components/UserRating.vue'
 import { formatDateByLocale } from '@/i18n'
+import { formatHoursMinutes } from '@/utils/progress'
 
 defineProps({
   item: { type: Object, required: true },
@@ -175,7 +176,7 @@ function inferredStarted(value) {
 }
 
 function minutesPerEpisode(item) {
-  const runtime = Number(item.next_episode?.runtime)
+  const runtime = Number(item.episode_runtime)
   if (!Number.isFinite(runtime) || runtime <= 0) return '-- min/ep'
   return `${runtime} min/ep`
 }
@@ -189,7 +190,7 @@ function statusClass(value) {
 
 function statusText(value) {
   if (value === 'watching') return 'Watching'
-  if (value === 'watched') return 'Ended'
+  if (value === 'watched') return 'Watched'
   if (value === 'dropped') return 'Dropped'
   return value
 }
@@ -210,10 +211,7 @@ function formatTimeLeft(item) {
   const episodesLeft = Number(item.episodes_left || 0)
   if (episodesLeft <= 0) return '0m'
   if (!Number.isFinite(minutes) || minutes <= 0) return `${episodesLeft} eps`
-  const hours = Math.floor(minutes / 60)
-  const remainder = minutes % 60
-  const compact = hours ? `${hours}h ${remainder}m` : `${remainder}m`
-  return item.runtime_left_has_unknown ? `~${compact}` : compact
+  return formatHoursMinutes(minutes, item.runtime_left_has_unknown)
 }
 
 function hasLastWatchedEpisodeCode(item) {
@@ -231,6 +229,14 @@ function episodeLink(item) {
     return `/tv/${item.tmdb_id}/season/${item.next_episode.season_number}/episode/${item.next_episode.episode_number}`
   }
   return `/tv/${item.tmdb_id}`
+}
+
+function seasonsLabel(item) {
+  const seasons = Number(item.number_of_seasons)
+  if (Number.isFinite(seasons) && seasons > 0) {
+    return `${seasons} ${seasons === 1 ? 'Season' : 'Seasons'}`
+  }
+  return 'Show details'
 }
 </script>
 
@@ -412,7 +418,11 @@ function episodeLink(item) {
 
 .status-default { background: var(--bg-surface-200); color: var(--text-secondary); border-color: var(--bg-surface-300); }
 .status-watching { background: color-mix(in srgb, var(--brand-500) 22%, var(--bg-surface-100)); color: var(--text-primary); border-color: color-mix(in srgb, var(--brand-500) 68%, var(--bg-surface-300)); }
-.status-watched { background: var(--bg-surface-200); color: var(--text-primary); border-color: var(--bg-surface-300); }
+.status-watched {
+  background: color-mix(in srgb, #86efac 18%, var(--bg-surface-100));
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, #22c55e 40%, var(--bg-surface-300));
+}
 .status-dropped { background: color-mix(in srgb, var(--action-danger) 14%, var(--bg-surface-100)); color: var(--text-secondary); border-color: color-mix(in srgb, var(--action-danger) 45%, var(--bg-surface-300)); }
 
 .stats-inline {
