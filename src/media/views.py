@@ -13,6 +13,17 @@ from .tmdb import tmdb
 
 logger = logging.getLogger(__name__)
 
+TMDB_FIND_EXTERNAL_SOURCES = (
+    'imdb_id',
+    'facebook_id',
+    'instagram_id',
+    'tvdb_id',
+    'tiktok_id',
+    'twitter_id',
+    'wikidata_id',
+    'youtube_id',
+)
+
 
 def _parse_int_query(request, key, default):
     raw = request.query_params.get(key, default)
@@ -63,6 +74,83 @@ def _episode_credits_payload(credit):
     }
 
 
+def _dedupe_media_results(results):
+    deduped = []
+    seen = set()
+    for result in results:
+        media_type = result.get('media_type')
+        media_id = result.get('id')
+        key = (media_type, media_id)
+        if media_type not in (MediaType.MOVIE, MediaType.TV) or not media_id or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(result)
+    return deduped
+
+
+def _filter_by_scope(results, scope):
+    if scope == MediaType.MOVIE:
+        return [item for item in results if item.get('media_type') == MediaType.MOVIE]
+    if scope == MediaType.TV:
+        return [item for item in results if item.get('media_type') == MediaType.TV]
+    return [item for item in results if item.get('media_type') in (MediaType.MOVIE, MediaType.TV)]
+
+
+def _annotate_results_with_user_status(user, results):
+    items = [
+        {'media_type': row.get('media_type'), 'tmdb_id': row.get('id')}
+        for row in results
+        if row.get('media_type') in (MediaType.MOVIE, MediaType.TV)
+    ]
+    if not items:
+        return
+
+    status_map = annotate_media_user_status(user, items)
+    for row in results:
+        key = (row.get('media_type'), row.get('id'))
+        if key in status_map:
+            row['user_status'] = status_map[key]
+
+
+def _search_by_prefixed_id(query, scope):
+    raw_external_id = query[1:].strip()
+    if not raw_external_id:
+        return {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
+
+    merged_results = []
+
+    if raw_external_id.isdigit():
+        tmdb_id = int(raw_external_id)
+        for media_type, getter in ((MediaType.MOVIE, tmdb.get_movie), (MediaType.TV, tmdb.get_tv_show)):
+            try:
+                payload = getter(tmdb_id)
+            except Exception as exc:
+                logger.warning('Failed direct %s lookup for #%s: %s', media_type, raw_external_id, exc)
+                continue
+            if isinstance(payload, dict) and payload.get('id'):
+                payload['media_type'] = media_type
+                merged_results.append(payload)
+
+    for external_source in TMDB_FIND_EXTERNAL_SOURCES:
+        try:
+            payload = tmdb.find_by_external_id(raw_external_id, external_source)
+        except Exception as exc:
+            logger.warning('Failed find lookup for #%s with source %s: %s', raw_external_id, external_source, exc)
+            continue
+
+        merged_results.extend(payload.get('movie_results', []))
+        merged_results.extend(payload.get('tv_results', []))
+
+    deduped = _dedupe_media_results(merged_results)
+    scoped_results = _filter_by_scope(deduped, scope)
+    return {
+        'results': scoped_results,
+        'page': 1,
+        'total_pages': 1,
+        'total_results': len(scoped_results),
+    }
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def search(request):
@@ -76,30 +164,22 @@ def search(request):
         return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
 
     try:
-        if media_type == 'movie':
-            data = tmdb.search_movies(query, page)
-            for item in data.get('results', []):
-                item['media_type'] = MediaType.MOVIE
-        elif media_type == 'tv':
-            data = tmdb.search_tv(query, page)
-            for item in data.get('results', []):
-                item['media_type'] = MediaType.TV
+        if query.startswith('#'):
+            data = _search_by_prefixed_id(query, media_type)
         else:
-            data = tmdb.search_multi(query, page)
+            if media_type == 'movie':
+                data = tmdb.search_movies(query, page)
+                for item in data.get('results', []):
+                    item['media_type'] = MediaType.MOVIE
+            elif media_type == 'tv':
+                data = tmdb.search_tv(query, page)
+                for item in data.get('results', []):
+                    item['media_type'] = MediaType.TV
+            else:
+                data = tmdb.search_multi(query, page)
 
         if request.user.is_authenticated:
-            items = []
-            for result in data.get('results', []):
-                if result.get('media_type') in (MediaType.MOVIE, MediaType.TV):
-                    items.append({
-                        'media_type': result['media_type'],
-                        'tmdb_id': result.get('id'),
-                    })
-            status_map = annotate_media_user_status(request.user, items)
-            for result in data.get('results', []):
-                key = (result.get('media_type'), result.get('id'))
-                if key in status_map:
-                    result['user_status'] = status_map[key]
+            _annotate_results_with_user_status(request.user, data.get('results', []))
 
         return Response(data)
     except Exception as e:

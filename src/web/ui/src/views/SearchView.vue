@@ -8,7 +8,7 @@
       @cancel="handleDatePickerCancel"
     />
 
-    <h1 class="font-display text-2xl text-primary font-semibold mb-6">Discover</h1>
+    <h1 class="font-display text-2xl text-primary font-semibold mb-6">{{ pageTitle }}</h1>
 
     <Transition name="fade">
       <div v-if="quickActionError" class="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
@@ -16,36 +16,17 @@
       </div>
     </Transition>
 
-    <!-- Search bar -->
-    <div class="relative mb-6">
-      <input
+    <div class="mb-6">
+      <SearchBar
         v-model="query"
-        @input="debouncedSearch"
-        placeholder="Search for movies, TV shows..."
-        class="input pl-12 py-3 rounded-md"
-        autofocus
+        :scope="activeScope"
+        :autofocus="true"
+        :enable-preview="false"
+        :inline-scope-selector="true"
+        placeholder="Search movies, series & anime, or #id"
+        @update:scope="setScope"
+        @submit="onSearchSubmit"
       />
-      <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-      </svg>
-      <button v-if="query" @click="query = ''; results = []" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary">
-        ✕
-      </button>
-    </div>
-
-    <!-- Filters -->
-    <div class="flex gap-1 mb-8">
-      <button
-        v-for="t in filters"
-        :key="t.value"
-        @click="activeFilter = t.value; debouncedSearch()"
-        type="button"
-        :aria-pressed="activeFilter === t.value ? 'true' : 'false'"
-        class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-        :class="activeFilter === t.value ? 'bg-brand-500 text-white' : 'text-gray-400 hover:text-primary hover:bg-surface-100'"
-      >
-        {{ t.label }}
-      </button>
     </div>
 
     <!-- Loading -->
@@ -54,6 +35,13 @@
     </div>
 
     <!-- Results -->
+    <UserList
+      v-else-if="isUserScope && userResults.length"
+      :users="userResults"
+      :followers-label="t('profile_followers_count_label')"
+      :following-label="t('profile_following_count_label')"
+    />
+
     <div v-else-if="results.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
       <MediaCard
         v-for="item in results"
@@ -82,7 +70,7 @@
     </div>
 
     <!-- Default state -->
-    <div v-else-if="!query">
+    <div v-else-if="!query && !isUserScope">
       <h2 class="section-title mb-4">Trending Right Now</h2>
       <div v-if="loadingDefault" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
@@ -139,14 +127,20 @@
         </div>
       </div>
     </div>
+
+    <div v-else-if="!query && isUserScope" class="card p-6 text-sm text-muted">
+      Search users by username.
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { mediaAPI } from '@/api'
+import { useRoute, useRouter } from 'vue-router'
+import { authAPI, mediaAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
+import SearchBar from '@/components/SearchBar.vue'
+import UserList from '@/components/UserList.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { useAuthStore } from '@/stores/auth'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
@@ -157,8 +151,10 @@ import { getApiErrorMessage } from '@/utils/errors'
 import { useI18n } from '@/i18n'
 
 const route = useRoute()
-const query = ref(route.query.q || '')
+const router = useRouter()
+const query = ref('')
 const results = ref([])
+const userResults = ref([])
 const trendingMovies = ref([])
 const trendingTvShows = ref([])
 const loading = ref(false)
@@ -167,6 +163,13 @@ const activeFilter = ref('multi')
 const quickActionError = ref('')
 const auth = useAuthStore()
 const { t } = useI18n()
+
+const SCOPE_VALUE = Object.freeze({
+  ALL: 'all',
+  MOVIES: 'movies',
+  SHOWS: 'shows',
+  USERS: 'users',
+})
 
 const {
   showDatePicker,
@@ -194,11 +197,9 @@ function isWatchedStatus(item) {
   return status === WATCH_ENTRY_STATUS.WATCHED || status === WATCH_ENTRY_STATUS.WATCHING
 }
 
-const filters = [
-  { label: 'All', value: 'multi' },
-  { label: 'Movies', value: MEDIA_TYPE.MOVIE },
-  { label: 'TV Shows', value: MEDIA_TYPE.TV },
-]
+const activeScope = ref(SCOPE_VALUE.ALL)
+const isUserScope = ref(false)
+const pageTitle = ref('Discover')
 
 let debounceTimer = null
 function debouncedSearch() {
@@ -209,21 +210,101 @@ function debouncedSearch() {
 async function doSearch() {
   if (!query.value.trim()) {
     results.value = []
+    userResults.value = []
     return
   }
+
   loading.value = true
   try {
+    if (isUserScope.value) {
+      if (query.value.trim().length < 3) {
+        userResults.value = []
+        return
+      }
+      userResults.value = await authAPI.searchUsers(query.value.trim())
+      results.value = []
+      return
+    }
+
     const data = await mediaAPI.search(query.value, activeFilter.value)
     if (data) {
       const type = activeFilter.value
-      results.value = (data.results || []).map(r => ({
-        ...r,
-        media_type: (type === 'multi') ? (r.media_type || MEDIA_TYPE.MOVIE) : type
-      }))
+      const typedRows = (data.results || [])
+        .filter((row) => {
+          if (type === 'multi') {
+            return row.media_type === MEDIA_TYPE.MOVIE || row.media_type === MEDIA_TYPE.TV
+          }
+          return true
+        })
+        .map((row) => ({
+          ...row,
+          media_type: type === 'multi' ? (row.media_type || MEDIA_TYPE.MOVIE) : type,
+        }))
+      results.value = typedRows
+      userResults.value = []
     }
   } finally {
     loading.value = false
   }
+}
+
+function mapScopeToFilter(scope) {
+  if (scope === SCOPE_VALUE.MOVIES) return MEDIA_TYPE.MOVIE
+  if (scope === SCOPE_VALUE.SHOWS) return MEDIA_TYPE.TV
+  return 'multi'
+}
+
+function mapFilterToScope(value) {
+  if (value === MEDIA_TYPE.MOVIE) return SCOPE_VALUE.MOVIES
+  if (value === MEDIA_TYPE.TV) return SCOPE_VALUE.SHOWS
+  if (value === 'users') return SCOPE_VALUE.USERS
+  return SCOPE_VALUE.ALL
+}
+
+function applyScope(scope) {
+  activeScope.value = scope
+  isUserScope.value = scope === SCOPE_VALUE.USERS
+  activeFilter.value = isUserScope.value ? 'multi' : mapScopeToFilter(scope)
+}
+
+function syncPageTitle() {
+  pageTitle.value = query.value.trim() ? 'Search' : 'Discover'
+}
+
+function setScope(scope) {
+  applyScope(scope)
+  if (query.value.trim()) {
+    doSearch()
+  } else {
+    results.value = []
+    userResults.value = []
+  }
+  router.replace({
+    name: 'search',
+    query: buildSearchQuery(scope, query.value),
+  })
+}
+
+function onSearchSubmit({ query: nextQuery, scope }) {
+  applyScope(scope)
+  router.replace({
+    name: 'search',
+    query: buildSearchQuery(scope, nextQuery),
+  })
+  query.value = nextQuery
+  syncPageTitle()
+  if (nextQuery) {
+    doSearch()
+  } else {
+    results.value = []
+    userResults.value = []
+  }
+}
+
+function buildSearchQuery(scope, rawQuery) {
+  const scopedValue = scope === SCOPE_VALUE.USERS ? 'users' : mapScopeToFilter(scope)
+  const trimmedQuery = String(rawQuery || '').trim()
+  return trimmedQuery ? { q: trimmedQuery, scope: scopedValue } : { scope: scopedValue }
 }
 
 function showQuickActionError(message) {
@@ -287,7 +368,16 @@ function getWatchlistAriaLabel(mediaType, inWatchlist) {
 }
 
 onMounted(async () => {
-  if (query.value) doSearch()
+  const initialScope = mapFilterToScope(route.query.scope || route.query.type || 'all')
+  const initialQuery = String(route.query.q || '').trim()
+  applyScope(initialScope)
+  query.value = initialQuery
+  syncPageTitle()
+
+  if (query.value) {
+    doSearch()
+  }
+
   try {
     const [moviesData, tvData] = await Promise.all([
       mediaAPI.trending(MEDIA_TYPE.MOVIE),
@@ -299,6 +389,28 @@ onMounted(async () => {
     loadingDefault.value = false
   }
 })
+
+watch(
+  () => route.query,
+  (nextQuery) => {
+    const nextScope = mapFilterToScope(nextQuery.scope || nextQuery.type || 'all')
+    const nextValue = String(nextQuery.q || '').trim()
+    const scopeChanged = activeScope.value !== nextScope
+    applyScope(nextScope)
+    if (query.value !== nextValue || scopeChanged) {
+      query.value = nextValue
+      syncPageTitle()
+      if (nextValue) {
+        doSearch()
+      } else {
+        results.value = []
+        userResults.value = []
+      }
+    } else {
+      syncPageTitle()
+    }
+  }
+)
 
 watch(
   () => auth.isAuthenticated,

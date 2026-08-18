@@ -60,6 +60,9 @@ class TMDBService:
     def search_tv(self, query, page=1):
         return self._get('/search/tv', {'query': query, 'page': page})
 
+    def find_by_external_id(self, external_id, external_source):
+        return self._get(f'/find/{external_id}', {'external_source': external_source})
+
     def get_movie(self, tmdb_id):
         return self._get(f'/movie/{tmdb_id}', {'append_to_response': 'credits,videos'})
 

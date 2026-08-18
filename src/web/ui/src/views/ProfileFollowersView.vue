@@ -22,21 +22,11 @@
     <template v-else>
       <div v-if="forbidden" class="card p-6 text-sm text-muted">{{ t('profile_locked_followers') }}</div>
       <div v-else-if="followers.length" class="space-y-3">
-        <div v-for="user in followers" :key="`follower-${user.id}`" class="card p-4 md:p-5 flex items-center justify-between gap-4 hover:bg-surface-200/40 transition-colors">
-          <div class="flex items-center gap-3 min-w-0">
-            <div class="w-10 h-10 rounded-full bg-brand-500/20 border border-brand-500/30 text-brand-300 text-sm font-semibold flex items-center justify-center flex-shrink-0">
-              {{ user.username[0]?.toUpperCase() }}
-            </div>
-            <div class="min-w-0">
-              <RouterLink :to="`/profile/${user.username}`" class="text-primary text-sm font-semibold hover:text-brand-400">{{ user.username }}</RouterLink>
-              <p v-if="user.bio" class="text-xs text-muted mt-1 truncate">{{ user.bio }}</p>
-            </div>
-          </div>
-          <div class="text-[11px] text-muted whitespace-nowrap text-right">
-            <span class="text-primary font-semibold">{{ user.followers_count }}</span>
-            <span class="ml-1">{{ t('profile_followers_count_label') }}</span>
-          </div>
-        </div>
+        <UserList
+          :users="followers"
+          :followers-label="t('profile_followers_count_label')"
+          :following-label="t('profile_following_count_label')"
+        />
 
         <div class="flex flex-col items-center gap-2 pt-2">
           <p class="text-xs text-muted">{{ t('profile_page_indicator', { page, total: totalPages }) }}</p>
@@ -59,6 +49,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { authAPI } from '@/api'
 import PaginationControls from '@/components/PaginationControls.vue'
+import UserList from '@/components/UserList.vue'
 import { useI18n } from '@/i18n'
 
 const route = useRoute()

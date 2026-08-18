@@ -187,6 +187,74 @@ class MediaTests(TestCase):
         self.assertEqual(tv_entry['user_status']['status'], 'plan_to_watch')
         self.assertNotIn('user_status', person_entry)
 
+    @patch('media.views.tmdb.find_by_external_id')
+    @patch('media.views.tmdb.get_tv_show')
+    @patch('media.views.tmdb.get_movie')
+    def test_search_prefixed_id_merges_dedupes_and_annotates(self, mock_get_movie, mock_get_tv, mock_find_by_external_id):
+        mock_get_movie.return_value = {
+            'id': 550,
+            'title': 'Fight Club',
+            'release_date': '1999-10-15',
+            'poster_path': '/movie.jpg',
+        }
+        mock_get_tv.return_value = {
+            'id': 550,
+            'name': 'Show 550',
+            'first_air_date': '2019-01-01',
+            'poster_path': '/show.jpg',
+        }
+
+        def fake_find(external_id, external_source):
+            if external_source == 'imdb_id':
+                return {
+                    'movie_results': [
+                        {'id': 550, 'title': 'Fight Club', 'media_type': 'movie'},
+                        {'id': 777, 'title': 'Seven Seven Seven', 'media_type': 'movie'},
+                    ],
+                    'tv_results': [
+                        {'id': 550, 'name': 'Show 550', 'media_type': 'tv'},
+                    ],
+                }
+            return {'movie_results': [], 'tv_results': []}
+
+        mock_find_by_external_id.side_effect = fake_find
+        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=550)
+        Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=550)
+
+        response = self.client.get('/api/media/search/?q=%23550&type=multi')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['total_results'], 3)
+
+        results = response.data['results']
+        keys = {(row['media_type'], row['id']) for row in results}
+        self.assertEqual(keys, {('movie', 550), ('tv', 550), ('movie', 777)})
+
+        movie_550 = next(row for row in results if row['media_type'] == 'movie' and row['id'] == 550)
+        tv_550 = next(row for row in results if row['media_type'] == 'tv' and row['id'] == 550)
+        self.assertEqual(movie_550['user_status']['status'], 'plan_to_watch')
+        self.assertEqual(tv_550['user_status']['status'], 'plan_to_watch')
+
+    @patch('media.views.tmdb.find_by_external_id')
+    def test_search_prefixed_id_applies_scope_filter(self, mock_find_by_external_id):
+        mock_find_by_external_id.return_value = {
+            'movie_results': [
+                {'id': 10, 'title': 'Ten', 'media_type': 'movie'},
+            ],
+            'tv_results': [
+                {'id': 20, 'name': 'Twenty', 'media_type': 'tv'},
+            ],
+        }
+
+        movies_response = self.client.get('/api/media/search/?q=%23tt0111161&type=movie')
+        self.assertEqual(movies_response.status_code, 200)
+        self.assertEqual(len(movies_response.data['results']), 1)
+        self.assertEqual(movies_response.data['results'][0]['media_type'], 'movie')
+
+        tv_response = self.client.get('/api/media/search/?q=%23tt0111161&type=tv')
+        self.assertEqual(tv_response.status_code, 200)
+        self.assertEqual(len(tv_response.data['results']), 1)
+        self.assertEqual(tv_response.data['results'][0]['media_type'], 'tv')
+
     @patch('media.views.tmdb.get_popular_tv')
     def test_popular_tv_status_rules_exclude_season_zero_for_show_progress(self, mock_popular):
         mock_popular.return_value = {
