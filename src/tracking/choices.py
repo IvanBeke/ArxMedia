@@ -10,7 +10,6 @@ class WatchEntryStatus(models.TextChoices):
     WATCHED = 'watched', 'Watched'
     WATCHING = 'watching', 'Watching'
     PLAN_TO_WATCH = 'plan_to_watch', 'Plan to Watch'
-    ON_HOLD = 'on_hold', 'On Hold'
     DROPPED = 'dropped', 'Dropped'
 
 

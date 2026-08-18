@@ -12,7 +12,6 @@ export const WATCH_ENTRY_STATUS = Object.freeze({
   WATCHED: 'watched',
   WATCHING: 'watching',
   PLAN_TO_WATCH: 'plan_to_watch',
-  ON_HOLD: 'on_hold',
   DROPPED: 'dropped',
 })
 

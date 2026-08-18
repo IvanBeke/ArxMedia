@@ -44,7 +44,6 @@ const statusLabel = computed(() => {
   if (status === WATCH_ENTRY_STATUS.WATCHED) return 'Watched'
   if (status === WATCH_ENTRY_STATUS.WATCHING) return 'Watching'
   if (status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) return 'Watchlist'
-  if (status === WATCH_ENTRY_STATUS.ON_HOLD) return 'On hold'
   if (status === WATCH_ENTRY_STATUS.DROPPED) return 'Dropped'
   return ''
 })

@@ -16,9 +16,6 @@
     <svg v-else-if="statusValue === WATCH_ENTRY_STATUS.PLAN_TO_WATCH" class="w-4 h-4 text-white" fill="currentColor" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.4" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
     </svg>
-    <svg v-else-if="statusValue === WATCH_ENTRY_STATUS.ON_HOLD" class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M10 7v10M14 7v10"/>
-    </svg>
     <svg v-else class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 6l12 12M18 6L6 18"/>
     </svg>
@@ -45,7 +42,6 @@ const statusBadgeClass = computed(() => {
   if (statusValue.value === WATCH_ENTRY_STATUS.WATCHED) return 'bg-emerald-600'
   if (statusValue.value === WATCH_ENTRY_STATUS.WATCHING) return 'bg-brand-500'
   if (statusValue.value === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) return 'bg-indigo-600'
-  if (statusValue.value === WATCH_ENTRY_STATUS.ON_HOLD) return 'bg-amber-600'
   if (statusValue.value === WATCH_ENTRY_STATUS.DROPPED) return 'bg-rose-600'
   return 'bg-surface-300'
 })
@@ -54,7 +50,6 @@ const statusLabel = computed(() => {
   if (statusValue.value === WATCH_ENTRY_STATUS.WATCHED) return 'Watched'
   if (statusValue.value === WATCH_ENTRY_STATUS.WATCHING) return 'Watching'
   if (statusValue.value === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) return 'Watchlist'
-  if (statusValue.value === WATCH_ENTRY_STATUS.ON_HOLD) return 'On hold'
   if (statusValue.value === WATCH_ENTRY_STATUS.DROPPED) return 'Dropped'
   return ''
 })
