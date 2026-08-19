@@ -800,6 +800,7 @@ def up_next(request):
         next_still_path=Subquery(next_episode.values('still_path')[:1]),
         next_air_date=Subquery(next_episode.values('air_date')[:1]),
         next_runtime=Subquery(next_episode.values('runtime')[:1]),
+        next_episode_type=Subquery(next_episode.values('episode_type')[:1]),
         episodes_left=Coalesce(Subquery(episodes_left_subquery), Value(0), output_field=IntegerField()),
         runtime_left_minutes=Coalesce(Subquery(runtime_left_subquery), Value(0), output_field=IntegerField()),
         unknown_runtime_count=Coalesce(Subquery(unknown_runtime_subquery), Value(0), output_field=IntegerField()),
@@ -815,6 +816,7 @@ def up_next(request):
         'next_still_path',
         'next_air_date',
         'next_runtime',
+        'next_episode_type',
         'episodes_left',
         'runtime_left_minutes',
         'unknown_runtime_count',
@@ -852,6 +854,7 @@ def up_next(request):
                 'still_url': f"https://image.tmdb.org/t/p/w300{show_item['next_still_path']}" if show_item['next_still_path'] else None,
                 'air_date': show_item['next_air_date'],
                 'runtime': show_item['next_runtime'],
+                'episode_type': show_item['next_episode_type'],
             }
         })
 
@@ -931,7 +934,8 @@ def _apply_progress_filters(items, request):
 def _sort_progress_items(items, sort_by: str, direction: str):
     sort_key = (sort_by or 'time_left').strip().lower()
     direction_key = (direction or '').strip().lower()
-    final_direction = direction_key if direction_key in ('asc', 'desc') else 'asc'
+    default_direction = 'desc' if sort_key == 'last_watched' else 'asc'
+    final_direction = direction_key if direction_key in ('asc', 'desc') else default_direction
 
     if sort_key == 'last_watched':
         def watched_ts(item):
@@ -1069,6 +1073,7 @@ def progress_list(request):
             next_still_path=Subquery(next_episode.values('still_path')[:1]),
             next_air_date=Subquery(next_episode.values('air_date')[:1]),
             next_runtime=Subquery(next_episode.values('runtime')[:1]),
+            next_episode_type=Subquery(next_episode.values('episode_type')[:1]),
             next_vote_average=Subquery(next_episode.values('vote_average')[:1]),
             next_vote_count=Subquery(next_episode.values('vote_count')[:1]),
             episodes_left=Coalesce(Subquery(episodes_left_subquery), Value(0), output_field=IntegerField()),
@@ -1077,6 +1082,7 @@ def progress_list(request):
             upcoming_season_number=Subquery(upcoming_episode.values('season__season_number')[:1]),
             upcoming_episode_number=Subquery(upcoming_episode.values('episode_number')[:1]),
             upcoming_episode_name=Subquery(upcoming_episode.values('name')[:1]),
+            upcoming_episode_type=Subquery(upcoming_episode.values('episode_type')[:1]),
             upcoming_air_date=Subquery(upcoming_episode.values('air_date')[:1]),
             started_watch_at=Subquery(oldest_watched_episode.values('event_at')[:1]),
             last_watched_season_number=Subquery(latest_watched_episode.values('season_number')[:1]),
@@ -1095,6 +1101,7 @@ def progress_list(request):
             'next_still_path',
             'next_air_date',
             'next_runtime',
+            'next_episode_type',
             'next_vote_average',
             'next_vote_count',
             'episodes_left',
@@ -1103,6 +1110,7 @@ def progress_list(request):
             'upcoming_season_number',
             'upcoming_episode_number',
             'upcoming_episode_name',
+            'upcoming_episode_type',
             'upcoming_air_date',
             'started_watch_at',
             'last_watched_season_number',
@@ -1204,6 +1212,7 @@ def progress_list(request):
                 'still_url': f"https://image.tmdb.org/t/p/w300{row['next_still_path']}" if row['next_still_path'] else None,
                 'air_date': row['next_air_date'],
                 'runtime': row['next_runtime'],
+                'episode_type': row['next_episode_type'],
                 'vote_average': row['next_vote_average'],
                 'vote_count': row['next_vote_count'],
             },
@@ -1211,6 +1220,7 @@ def progress_list(request):
                 'season_number': row['upcoming_season_number'],
                 'episode_number': row['upcoming_episode_number'],
                 'name': row['upcoming_episode_name'],
+                'episode_type': row['upcoming_episode_type'],
                 'air_date': row['upcoming_air_date'],
             },
             'last_watched_episode': {
@@ -1292,6 +1302,7 @@ def upcoming(request):
             'season_number': ep.season.season_number,
             'episode_number': ep.episode_number,
             'name': ep.name,
+            'episode_type': ep.episode_type,
             'still_path': ep.still_path,
             'still_url': ep.still_url,
             'air_date': ep.air_date,

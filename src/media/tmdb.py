@@ -214,6 +214,7 @@ class TMDBService:
                     'runtime': ep_data.get('runtime'),
                     'vote_average': ep_data.get('vote_average', 0),
                     'vote_count': ep_data.get('vote_count', 0),
+                    'episode_type': ep_data.get('episode_type', '') or '',
                 }
             )
 

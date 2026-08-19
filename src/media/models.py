@@ -117,6 +117,7 @@ class Episode(models.Model):
     runtime = models.IntegerField(null=True, blank=True)
     vote_average = models.FloatField(default=0)
     vote_count = models.IntegerField(default=0)
+    episode_type = models.CharField(max_length=50, blank=True)
 
     class Meta:
         unique_together = ('season', 'episode_number')

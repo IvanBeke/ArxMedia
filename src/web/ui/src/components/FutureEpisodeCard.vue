@@ -23,13 +23,16 @@
     </template>
 
     <template #overlay-right>
-      <CardEpisodeCodePill
-        :season-number="card.episodeCode.seasonNumber"
-        :episode-number="card.episodeCode.episodeNumber"
-        variant="pill"
-        size="s"
-        extra-class="absolute top-2 right-2 z-20 shadow ring-1 ring-black/10"
-      />
+      <div class="absolute top-2 right-2 z-20 inline-flex flex-col items-end gap-1">
+        <CardEpisodeCodePill
+          :season-number="card.episodeCode.seasonNumber"
+          :episode-number="card.episodeCode.episodeNumber"
+          variant="pill"
+          size="s"
+          extra-class="shadow ring-1 ring-black/10"
+        />
+        <EpisodeTypePill :value="episodeType" class="shadow ring-1 ring-black/10" />
+      </div>
     </template>
 
     <template #actions>
@@ -90,6 +93,7 @@ import MediaCardShell from '@/components/cards/MediaCardShell.vue'
 import MediaCardActions from '@/components/cards/MediaCardActions.vue'
 import CardActionMarkNextEpisodeWatched from '@/components/cards/primitives/CardActionMarkNextEpisodeWatched.vue'
 import CardEpisodeCodePill from '@/components/cards/primitives/CardEpisodeCodePill.vue'
+import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import { useMediaCardModel } from '@/composables/useMediaCardModel'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import { formatHoursMinutes } from '@/utils/progress'
@@ -97,6 +101,7 @@ import { formatHoursMinutes } from '@/utils/progress'
 const props = defineProps({
   showTitle: { type: String, required: true },
   episodeTitle: { type: String, default: '' },
+  episodeType: { type: String, default: '' },
   seasonNumber: { type: [Number, String], required: true },
   episodeNumber: { type: [Number, String], required: true },
   posterUrl: { type: String, default: '' },

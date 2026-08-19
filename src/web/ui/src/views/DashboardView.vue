@@ -47,6 +47,7 @@
           <FutureEpisodeCard
             :show-title="item.show_name"
             :episode-title="item.next_episode?.name || ''"
+            :episode-type="item.next_episode?.episode_type || ''"
             :season-number="item.next_episode?.season_number || 0"
             :episode-number="item.next_episode?.episode_number || 0"
             :poster-url="item.poster_url"
@@ -84,6 +85,7 @@
           <FutureEpisodeCard
             :show-title="item.show_name"
             :episode-title="item.name || ''"
+            :episode-type="item.episode_type || ''"
             :season-number="item.season_number"
             :episode-number="item.episode_number"
             :poster-url="item.poster_url"

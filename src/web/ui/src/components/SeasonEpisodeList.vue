@@ -37,6 +37,7 @@
           <span v-if="ep.air_date">{{ formatDateByLocale(ep.air_date) }}</span>
           <span v-if="ep.runtime">· {{ ep.runtime }} min</span>
           <RatingBadge v-if="ep.vote_average" :value="ep.vote_average" size="xs" />
+          <EpisodeTypePill :value="ep.episode_type" size="s" />
         </div>
       </div>
     </div>
@@ -47,6 +48,7 @@
 import { RouterLink } from 'vue-router'
 import WatchCheckmarkMenu from '@/components/WatchCheckmarkMenu.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
+import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import { formatDateByLocale } from '@/i18n'
 
 const props = defineProps({

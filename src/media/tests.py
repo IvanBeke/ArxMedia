@@ -61,6 +61,7 @@ class MediaTests(TestCase):
                         'episode_number': 1,
                         'name': 'Winter Is Coming',
                         'air_date': '2011-04-17',
+                        'episode_type': 'finale',
                     }
                 ],
             }
@@ -125,9 +126,21 @@ class MediaTests(TestCase):
         response = self.client.get('/api/media/tv/1399/seasons/1/')
         self.assertEqual(response.status_code, 200)
 
+    def test_season_detail_includes_episode_type(self):
+        response = self.client.get('/api/media/tv/1399/seasons/1/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['episodes'][0]['episode_type'], 'finale')
+
     def test_episode_detail(self):
         response = self.client.get('/api/media/tv/1399/seasons/1/episodes/1/credits/')
         self.assertEqual(response.status_code, 200)
+
+    def test_sync_tv_show_persists_episode_type(self):
+        tmdb.sync_tv_show(1399)
+        show = TVShow.objects.get(tmdb_id=1399)
+        season = show.seasons.get(season_number=1)
+        episode = season.episodes.get(episode_number=1)
+        self.assertEqual(episode.episode_type, 'finale')
 
     @patch('media.views.tmdb.sync_season')
     @patch('media.views.tmdb.get_tv_watch_providers')

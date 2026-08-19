@@ -59,6 +59,9 @@
             <div v-if="episodeData.vote_average" class="flex items-center gap-1 mt-2">
               <RatingBadge :value="formatRating(episodeData.vote_average)" :votes="episodeData.vote_count || 0" out-of-ten />
             </div>
+            <div class="mt-2">
+              <EpisodeTypePill :value="episodeData?.episode_type || ''" />
+            </div>
           </div>
 
           <SpoilerBlock v-if="episodeData.overview" :item-key="`episode-overview-${tmdbId}-${seasonNum}-${episodeNum}`" :watched="isWatched" class="w-full">
@@ -116,6 +119,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { trackingAPI, mediaAPI } from '@/api'
 import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
+import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import WatchMenu from '@/components/WatchMenu.vue'
 import SpoilerBlock from '@/components/SpoilerBlock.vue'
 import RatingBadge from '@/components/RatingBadge.vue'

@@ -50,7 +50,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'tmdb_id', 'episode_number', 'name', 'overview',
             'still_path', 'still_url', 'air_date', 'runtime', 
-            'vote_average', 'vote_count', 'guest_stars', 'crew'
+            'vote_average', 'vote_count', 'episode_type', 'guest_stars', 'crew'
         ]
 
     def get_guest_stars(self, obj):

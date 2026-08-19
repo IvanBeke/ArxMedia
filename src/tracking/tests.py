@@ -749,7 +749,15 @@ class UpNextTests(BaseTestCase):
         show = TVShow.objects.create(tmdb_id=777, name='Runtime Show')
         season = Season.objects.create(show=show, tmdb_id=7771, season_number=1, name='Season 1')
         Episode.objects.create(season=season, tmdb_id=77711, episode_number=1, name='Episode 1', air_date=today - timedelta(days=5), runtime=20)
-        Episode.objects.create(season=season, tmdb_id=77712, episode_number=2, name='Episode 2', air_date=today - timedelta(days=4), runtime=30)
+        Episode.objects.create(
+            season=season,
+            tmdb_id=77712,
+            episode_number=2,
+            name='Episode 2',
+            air_date=today - timedelta(days=4),
+            runtime=30,
+            episode_type='season finale',
+        )
         Episode.objects.create(season=season, tmdb_id=77713, episode_number=3, name='Episode 3', air_date=today - timedelta(days=2), runtime=None)
         Episode.objects.create(season=season, tmdb_id=77714, episode_number=4, name='Episode 4', air_date=today + timedelta(days=2), runtime=45)
 
@@ -767,6 +775,7 @@ class UpNextTests(BaseTestCase):
 
         self.assertEqual(item['next_episode']['episode_number'], 2)
         self.assertEqual(item['next_episode']['runtime'], 30)
+        self.assertEqual(item['next_episode']['episode_type'], 'season finale')
         self.assertEqual(item['episodes_left'], 2)
         self.assertEqual(item['runtime_left_minutes'], 30)
         self.assertEqual(item['runtime_left_has_unknown'], True)
@@ -959,7 +968,14 @@ class UpNextTests(BaseTestCase):
         season1 = Season.objects.create(show=show, tmdb_id=30021, season_number=1, name='Season 1')
 
         Episode.objects.create(season=season0, tmdb_id=300201, episode_number=1, name='Upcoming Special', air_date=today + timedelta(days=1))
-        Episode.objects.create(season=season1, tmdb_id=300211, episode_number=1, name='Upcoming Episode', air_date=today + timedelta(days=2))
+        Episode.objects.create(
+            season=season1,
+            tmdb_id=300211,
+            episode_number=1,
+            name='Upcoming Episode',
+            air_date=today + timedelta(days=2),
+            episode_type='season premiere',
+        )
 
         WatchEntry.objects.create(
             user=self.user,
@@ -973,6 +989,7 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['season_number'], 1)
+        self.assertEqual(response.data[0]['episode_type'], 'season premiere')
 
 
 class ProgressListTests(BaseTestCase):
@@ -1003,6 +1020,7 @@ class ProgressListTests(BaseTestCase):
             name='A2',
             air_date=today - timedelta(days=2),
             runtime=40,
+            episode_type='finale',
             vote_average=8.6,
             vote_count=210,
         )
@@ -1213,6 +1231,13 @@ class ProgressListTests(BaseTestCase):
         self.assertEqual(item['tmdb_id'], 4001)
         self.assertEqual(item['next_episode']['vote_average'], 8.6)
         self.assertEqual(item['next_episode']['vote_count'], 210)
+
+    def test_progress_list_includes_next_episode_type(self):
+        response = self.client.get('/api/tracking/progress/?search=alpha')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['next_episode']['episode_type'], 'finale')
 
     def test_progress_list_includes_provider_show_status(self):
         response = self.client.get('/api/tracking/progress/?search=beta')
