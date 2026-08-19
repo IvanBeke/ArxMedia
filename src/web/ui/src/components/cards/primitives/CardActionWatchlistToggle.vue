@@ -9,10 +9,7 @@
     :data-pulsing="pulsing ? 'true' : 'false'"
     @click.stop.prevent="handleTrigger"
   >
-    <svg v-if="loading" class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-      <circle class="opacity-30" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" />
-      <path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-    </svg>
+    <div v-if="loading" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
     <svg v-else class="w-4 h-4" :fill="active ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
     </svg>

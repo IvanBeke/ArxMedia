@@ -49,8 +49,11 @@
           :watched-quick-action-loading="isWatchedLoading(item.media_type, item.tmdb_id)"
           :watched-quick-action-pulsing="isWatchedPulsing(item.media_type, item.tmdb_id)"
           :watched-quick-action-aria-label="t('tracking_mark_as_watched')"
+          :remove-watched-quick-action-aria-label="t('tracking_mark_as_watched')"
+          :remove-watched-quick-action-confirm-text="getRemoveHistoryConfirmText(item.media_type)"
           @quick-action-watchlist="handleQuickAction(item, item.media_type)"
           @quick-action-watch-option="handleWatchOption(item, item.media_type, $event)"
+          @quick-action-remove-watched="handleRemoveWatched(item, item.media_type)"
         />
       </div>
       <PaginationControls
@@ -98,7 +101,7 @@ const router = useRouter()
 
 const { showDatePicker, pickerInitialValue, pickWatchedDateTime, handleDatePickerConfirm, handleDatePickerCancel } = useWatchedDateTimePicker()
 const { isLoading, isPulsing, toggleWatchlist } = useWatchlistQuickActions()
-const { isLoading: isWatchedLoading, isPulsing: isWatchedPulsing, markWatched } = useWatchedQuickActions()
+const { isLoading: isWatchedLoading, isPulsing: isWatchedPulsing, markWatched, unmarkWatched } = useWatchedQuickActions()
 
 function canToggleWatchlist(item) {
   const status = item?.user_status?.status
@@ -115,6 +118,13 @@ function getWatchlistAriaLabel(mediaType, inWatchlist) {
     return inWatchlist ? t('watchlist_remove_show') : t('watchlist_add_show')
   }
   return inWatchlist ? t('watchlist_remove_movie') : t('watchlist_add_movie')
+}
+
+function getRemoveHistoryConfirmText(mediaType) {
+  if (mediaType === MEDIA_TYPE.TV) {
+    return t('remove_history_confirm_show')
+  }
+  return t('remove_history_confirm_movie')
 }
 
 function showQuickActionError(message) {
@@ -245,6 +255,24 @@ async function handleWatchOption(item, mediaType, option) {
       status: nextStatus,
       watched_at: nowIso,
       status_changed_at: nowIso,
+    }
+  } catch (error) {
+    showQuickActionError(getApiErrorMessage(error, 'Could not update watched status.'))
+  }
+}
+
+async function handleRemoveWatched(item, mediaType) {
+  try {
+    const removed = await unmarkWatched(mediaType, item.tmdb_id)
+    if (!removed) {
+      return
+    }
+
+    item.user_status = {
+      ...(item.user_status || {}),
+      status: WATCH_ENTRY_STATUS.NONE,
+      watched_at: null,
+      status_changed_at: null,
     }
   } catch (error) {
     showQuickActionError(getApiErrorMessage(error, 'Could not update watched status.'))

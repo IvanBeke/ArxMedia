@@ -37,8 +37,11 @@
         :watched-quick-action-loading="isWatchedLoading(mediaType, item.id)"
         :watched-quick-action-pulsing="isWatchedPulsing(mediaType, item.id)"
         :watched-quick-action-aria-label="t('tracking_mark_as_watched')"
+        :remove-watched-quick-action-aria-label="t('tracking_mark_as_watched')"
+        :remove-watched-quick-action-confirm-text="getRemoveHistoryConfirmText(item.media_type || mediaType)"
         @quick-action-watchlist="handleQuickAction(item)"
         @quick-action-watch-option="handleWatchOption(item, $event)"
+        @quick-action-remove-watched="handleRemoveWatched(item)"
       />
     </div>
 
@@ -94,6 +97,7 @@ const {
   isLoading: isWatchedLoading,
   isPulsing: isWatchedPulsing,
   markWatched,
+  unmarkWatched,
 } = useWatchedQuickActions()
 
 function canToggleWatchlist(item) {
@@ -119,6 +123,13 @@ function getWatchlistAriaLabel(item) {
     return inWatchlist ? t('watchlist_remove_show') : t('watchlist_add_show')
   }
   return inWatchlist ? t('watchlist_remove_movie') : t('watchlist_add_movie')
+}
+
+function getRemoveHistoryConfirmText(mediaType) {
+  if (mediaType === MEDIA_TYPE.TV) {
+    return t('remove_history_confirm_show')
+  }
+  return t('remove_history_confirm_movie')
 }
 
 async function handleQuickAction(item) {
@@ -161,6 +172,24 @@ async function handleWatchOption(item, option) {
       status: nextStatus,
       watched_at: nowIso,
       status_changed_at: nowIso,
+    }
+  } catch (error) {
+    showQuickActionError(getApiErrorMessage(error, 'Could not update watched status.'))
+  }
+}
+
+async function handleRemoveWatched(item) {
+  try {
+    const removed = await unmarkWatched(props.mediaType, item.id)
+    if (!removed) {
+      return
+    }
+
+    item.user_status = {
+      ...(item.user_status || {}),
+      status: WATCH_ENTRY_STATUS.NONE,
+      watched_at: null,
+      status_changed_at: null,
     }
   } catch (error) {
     showQuickActionError(getApiErrorMessage(error, 'Could not update watched status.'))

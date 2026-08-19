@@ -82,10 +82,34 @@ export function useWatchedQuickActions() {
     }
   }
 
+  async function unmarkWatched(mediaType, tmdbId) {
+    const id = Number(tmdbId)
+    const loadingSet = getLoadingSet(mediaType)
+    if (loadingSet.value.has(id)) {
+      return null
+    }
+
+    updateSet(loadingSet, id, true)
+    try {
+      if (mediaType === MEDIA_TYPE.TV) {
+        await trackingAPI.unmarkShowWatched({ tmdb_id: id })
+      } else {
+        await trackingAPI.removeFromHistory({
+          media_type: MEDIA_TYPE.MOVIE,
+          tmdb_id: id,
+        })
+      }
+      return true
+    } finally {
+      updateSet(loadingSet, id, false)
+    }
+  }
+
   return {
     resetTransientState,
     isLoading,
     isPulsing,
     markWatched,
+    unmarkWatched,
   }
 }

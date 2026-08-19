@@ -25,7 +25,7 @@
     </template>
 
     <template #actions>
-      <MediaCardActions :visible="card.actions.watchlist.visible || showWatchedQuickActionButton">
+      <MediaCardActions :visible="card.actions.watchlist.visible || showWatchedQuickActionButton || showRemoveWatchedQuickActionButton">
         <CardActionWatchlistToggle
           v-if="card.actions.watchlist.visible"
           :active="card.actions.watchlist.active"
@@ -33,6 +33,13 @@
           :pulsing="card.actions.watchlist.pulsing"
           :aria-label="card.actions.watchlist.ariaLabel"
           @trigger="$emit('quick-action-watchlist')"
+        />
+        <CardActionRemoveHistoryEntry
+          v-if="showRemoveWatchedQuickActionButton"
+          :loading="card.actions.watchedMenu.loading"
+          :aria-label="removeWatchedQuickActionAriaLabel"
+          :confirm-text="removeWatchedQuickActionConfirmText"
+          @trigger="$emit('quick-action-remove-watched')"
         />
         <CardActionWatchedMenu
           v-if="showWatchedQuickActionButton"
@@ -59,6 +66,7 @@ import { computed } from 'vue'
 import MediaCardShell from '@/components/cards/MediaCardShell.vue'
 import MediaCardActions from '@/components/cards/MediaCardActions.vue'
 import CardActionWatchlistToggle from '@/components/cards/primitives/CardActionWatchlistToggle.vue'
+import CardActionRemoveHistoryEntry from '@/components/cards/primitives/CardActionRemoveHistoryEntry.vue'
 import CardActionWatchedMenu from '@/components/cards/primitives/CardActionWatchedMenu.vue'
 import CardMediaTypeBadge from '@/components/cards/primitives/CardMediaTypeBadge.vue'
 import CardProviderRating from '@/components/cards/primitives/CardProviderRating.vue'
@@ -81,9 +89,11 @@ const props = defineProps({
   watchedQuickActionLoading: { type: Boolean, default: false },
   watchedQuickActionPulsing: { type: Boolean, default: false },
   watchedQuickActionAriaLabel: { type: String, default: 'Mark as watched' },
+  removeWatchedQuickActionAriaLabel: { type: String, default: 'Remove from watched history' },
+  removeWatchedQuickActionConfirmText: { type: String, default: '' },
 })
 
-const emit = defineEmits(['quick-action-watchlist', 'quick-action-watch-option'])
+const emit = defineEmits(['quick-action-watchlist', 'quick-action-watch-option', 'quick-action-remove-watched'])
 
 const { model } = useMediaCardModel(
   'mixed',
@@ -109,11 +119,20 @@ const card = computed(() => model.value)
 const title = computed(() => card.value.title)
 const posterUrl = computed(() => card.value.posterUrl)
 const linkTo = computed(() => card.value.titleLinkTo)
+const isWatchedOrWatching = computed(() => {
+  return card.value.status.value === WATCH_ENTRY_STATUS.WATCHING || card.value.status.value === WATCH_ENTRY_STATUS.WATCHED
+})
 const showWatchedQuickActionButton = computed(() => {
   if (!card.value.actions.watchedMenu.visible) {
     return false
   }
-  return card.value.status.value !== WATCH_ENTRY_STATUS.WATCHING && card.value.status.value !== WATCH_ENTRY_STATUS.WATCHED
+  return !isWatchedOrWatching.value
+})
+const showRemoveWatchedQuickActionButton = computed(() => {
+  if (!card.value.actions.watchedMenu.visible) {
+    return false
+  }
+  return isWatchedOrWatching.value
 })
 
 function selectWatchOption(option) {

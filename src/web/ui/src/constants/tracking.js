@@ -9,6 +9,7 @@ export const WATCH_ENTRY_MEDIA_TYPE = Object.freeze({
 })
 
 export const WATCH_ENTRY_STATUS = Object.freeze({
+  NONE: 'none',
   WATCHED: 'watched',
   WATCHING: 'watching',
   PLAN_TO_WATCH: 'plan_to_watch',

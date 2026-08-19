@@ -154,6 +154,7 @@ export const trackingAPI = {
   unmarkEpisodeWatched: (data) => api.post('/tracking/episodes/unmark/', data),
   markSeasonWatched: (data) => api.post('/tracking/seasons/mark/', data),
   unmarkSeasonWatched: (data) => api.post('/tracking/seasons/unmark/', data),
+  unmarkShowWatched: (data) => api.post('/tracking/shows/unmark/', data),
   getWatchedEpisodes: (tmdbId) => api.get('/tracking/episodes/watched/', { params: { tmdb_id: tmdbId } }),
   getWatchlist: (params) => api.get('/tracking/watchlist/', { params }),
   addToWatchlist: (data) => api.post('/tracking/watchlist/', data),
