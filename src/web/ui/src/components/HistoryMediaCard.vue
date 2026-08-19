@@ -60,7 +60,11 @@
 
     <template #actions>
       <MediaCardActions :visible="showRemoveAction">
-        <CardActionRemoveHistoryEntry @action:history-remove="$emit('action:history-remove', entry)" />
+        <CardActionRemoveHistoryEntry
+          :loading="removeLoading"
+          :confirm-text="removeConfirmText"
+          @action:history-remove="$emit('action:history-remove', entry)"
+        />
       </MediaCardActions>
     </template>
   </MediaCardShell>
@@ -86,6 +90,8 @@ const props = defineProps({
   showMeta: { type: Boolean, default: true },
   showTimestamp: { type: Boolean, default: true },
   showRemoveAction: { type: Boolean, default: false },
+  removeLoading: { type: Boolean, default: false },
+  removeConfirmText: { type: String, default: '' },
 })
 
 defineEmits(['action:history-remove'])

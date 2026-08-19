@@ -110,6 +110,8 @@
           :entry="entry"
           :link-to="getLink(entry)"
           :show-remove-action="true"
+          :remove-loading="deletingEntryId === entry.id"
+          :remove-confirm-text="getRemoveHistoryConfirmText(entry)"
           class="flex-shrink-0 w-[165px] md:w-[173px] xl:w-[189px]"
           @action:history-remove="removeRecentEntry"
         />
@@ -126,12 +128,13 @@
 import { ref, onMounted } from 'vue'
 import { trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
-import { formatDateByLocale } from '@/i18n'
+import { formatDateByLocale, useI18n } from '@/i18n'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
 
 const auth = useAuthStore()
+const { t } = useI18n()
 const stats = ref(null)
 const loadingStats = ref(true)
 const upNext = ref(null)
@@ -139,6 +142,7 @@ const loadingUpNext = ref(true)
 const upcoming = ref(null)
 const loadingUpcoming = ref(true)
 const markingId = ref(null)
+const deletingEntryId = ref(null)
 
 function formatDate(d) {
   if (!d) return ''
@@ -161,6 +165,13 @@ function getUpNextPosterLink(item) {
 
 function getUpcomingPosterLink(item) {
   return `/tv/${item.tmdb_id}/season/${item.season_number}/episode/${item.episode_number}`
+}
+
+function getRemoveHistoryConfirmText(entry) {
+  if (entry?.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
+    return t('remove_history_confirm_episode')
+  }
+  return t('remove_history_confirm_movie')
 }
 
 async function markNextEpisodeWatched(item) {
@@ -186,11 +197,16 @@ async function markNextEpisodeWatched(item) {
 }
 
 async function removeRecentEntry(entry) {
+  if (deletingEntryId.value) return
+  deletingEntryId.value = entry.id
+
   try {
     await trackingAPI.deleteHistory(entry.id)
     stats.value = await trackingAPI.getStats()
   } catch (e) {
     console.error('Failed to delete history entry', e)
+  } finally {
+    deletingEntryId.value = null
   }
 }
 

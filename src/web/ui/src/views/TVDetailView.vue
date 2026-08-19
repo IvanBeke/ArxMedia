@@ -521,15 +521,10 @@ async function handleWatchingAction() {
 
 async function handleRemoveWatchedEpisodes() {
   statusMenuOpen.value = false
-  const data = await trackingAPI.getWatchedEpisodes(tmdbId.value)
-  const episodes = (data?.episodes || []).filter(e => e.season_number > 0)
-  await Promise.all(
-    episodes.map((e) => trackingAPI.unmarkEpisodeWatched({
-      tmdb_id: tmdbId.value,
-      season_number: e.season_number,
-      episode_number: e.episode_number,
-    }))
-  )
+  if (!window.confirm(t('remove_history_confirm_show'))) {
+    return
+  }
+  await trackingAPI.unmarkShowWatched({ tmdb_id: tmdbId.value })
   watchedEps.value = new Set()
   watchedAtMap.value = new Map()
   seasonEpisodes.value = {}

@@ -73,6 +73,8 @@
             :entry="entry"
             :link-to="getLink(entry)"
             :show-remove-action="true"
+            :remove-loading="deletingEntryId === entry.id"
+            :remove-confirm-text="getRemoveHistoryConfirmText(entry)"
             @action:history-remove="deleteEntry"
           />
         </div>
@@ -105,11 +107,13 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { trackingAPI } from '@/api'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
+import { useI18n } from '@/i18n'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 const entries = ref([])
 const stats = ref(null)
@@ -121,6 +125,8 @@ const currentPage = ref(1)
 const totalPages = ref(1)
 const count = ref(0)
 const pageSize = ref(20)
+const deletingEntryId = ref(null)
+let suppressRouteLoad = false
 
 const filters = [
   { label: 'All', value: 'all' },
@@ -164,41 +170,80 @@ function getLink(entry) {
   return `/tv/${entry.tmdb_id}`
 }
 
+function getRemoveHistoryConfirmText(entry) {
+  if (entry?.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
+    return t('remove_history_confirm_episode')
+  }
+  return t('remove_history_confirm_movie')
+}
+
+function decrementHistoryStats(currentStats, mediaType) {
+  if (!currentStats) return currentStats
+
+  if (mediaType === MEDIA_TYPE.MOVIE) {
+    return {
+      ...currentStats,
+      movies_watched: Math.max(0, Number(currentStats.movies_watched || 0) - 1),
+    }
+  }
+
+  if (mediaType === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
+    return {
+      ...currentStats,
+      episodes_watched: Math.max(0, Number(currentStats.episodes_watched || 0) - 1),
+    }
+  }
+
+  return currentStats
+}
+
 async function loadHistory() {
   loading.value = true
   try {
-    const params = {
-      order: sortOrder.value,
-      page: currentPage.value,
-    }
-    if (activeFilter.value !== 'all') {
-      params.media_type = activeFilter.value
-    }
-
     const [historyRes, statsRes] = await Promise.all([
-      trackingAPI.getHistory(params),
+      trackingAPI.getHistory(buildHistoryParams()),
       trackingAPI.getStats()
     ])
-
-    if (Array.isArray(historyRes?.results)) {
-      count.value = Number.isFinite(historyRes.count) ? historyRes.count : historyRes.results.length
-      if (historyRes.results.length > 0) {
-        pageSize.value = historyRes.results.length
-      }
-      totalPages.value = Math.max(1, Math.ceil(count.value / pageSize.value))
-    } else {
-      const list = historyRes || []
-      count.value = list.length
-      totalPages.value = 1
-    }
-
-    entries.value = historyRes.results || historyRes
+    applyHistoryResponse(historyRes)
     stats.value = statsRes
   } catch (e) {
     console.error('Failed to load history', e)
   } finally {
     loading.value = false
   }
+}
+
+function buildHistoryParams(page = currentPage.value) {
+  const params = {
+    order: sortOrder.value,
+    page,
+  }
+  if (activeFilter.value !== 'all') {
+    params.media_type = activeFilter.value
+  }
+  return params
+}
+
+function applyHistoryResponse(historyRes) {
+  if (Array.isArray(historyRes?.results)) {
+    count.value = Number.isFinite(historyRes.count) ? historyRes.count : historyRes.results.length
+    if (historyRes.results.length > 0) {
+      pageSize.value = historyRes.results.length
+    }
+    totalPages.value = Math.max(1, Math.ceil(count.value / pageSize.value))
+    entries.value = historyRes.results
+    return
+  }
+
+  const list = historyRes || []
+  count.value = list.length
+  totalPages.value = 1
+  entries.value = list
+}
+
+async function loadHistoryEntries(page = currentPage.value) {
+  const historyRes = await trackingAPI.getHistory(buildHistoryParams(page))
+  applyHistoryResponse(historyRes)
 }
 
 function queryToState() {
@@ -281,11 +326,28 @@ function goToPage(page) {
 }
 
 async function deleteEntry(entry) {
+  if (deletingEntryId.value) {
+    return
+  }
+  deletingEntryId.value = entry.id
+
   try {
     await trackingAPI.deleteHistory(entry.id)
-    await loadHistory()
+    const nextPage = entries.value.length === 1 && currentPage.value > 1
+      ? currentPage.value - 1
+      : currentPage.value
+
+    if (nextPage !== currentPage.value) {
+      suppressRouteLoad = true
+      currentPage.value = nextPage
+    }
+
+    await loadHistoryEntries(nextPage)
+    stats.value = decrementHistoryStats(stats.value, entry.media_type)
   } catch (e) {
     console.error('Failed to delete', e)
+  } finally {
+    deletingEntryId.value = null
   }
 }
 
@@ -294,6 +356,10 @@ watch([activeFilter, sortOrder, groupByDay, currentPage], syncUrlWithState)
 watch(
   () => route.query,
   async () => {
+    if (suppressRouteLoad) {
+      suppressRouteLoad = false
+      return
+    }
     queryToState()
     await loadHistory()
   },
