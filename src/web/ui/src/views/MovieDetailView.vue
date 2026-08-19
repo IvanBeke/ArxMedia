@@ -55,6 +55,17 @@
               <RatingBadge :value="movie.vote_average" :votes="movie.vote_count" out-of-ten />
             </div>
 
+            <Transition name="fade">
+              <div v-if="metadataSuccessMsg" class="mb-3 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
+                {{ metadataSuccessMsg }}
+              </div>
+            </Transition>
+            <Transition name="fade">
+              <div v-if="metadataErrorMsg" class="mb-3 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm inline-block">
+                {{ metadataErrorMsg }}
+              </div>
+            </Transition>
+
             <div class="mb-3 flex flex-wrap items-center gap-3">
               <button
                 v-if="auth.isAuthenticated"
@@ -192,6 +203,8 @@ const latestWatchedAt = ref('')
 const inWatchlist = ref(false)
 const successMsg = ref('')
 const errorMsg = ref('')
+const metadataSuccessMsg = ref('')
+const metadataErrorMsg = ref('')
 const refreshingMetadata = ref(false)
 function showError(msg) {
   successMsg.value = ''
@@ -253,6 +266,18 @@ function showSuccess(msg) {
   setTimeout(() => { successMsg.value = '' }, 2500)
 }
 
+function showMetadataSuccess(msg) {
+  metadataErrorMsg.value = ''
+  metadataSuccessMsg.value = msg
+  setTimeout(() => { metadataSuccessMsg.value = '' }, 2500)
+}
+
+function showMetadataError(msg) {
+  metadataSuccessMsg.value = ''
+  metadataErrorMsg.value = msg
+  setTimeout(() => { metadataErrorMsg.value = '' }, 3500)
+}
+
 onMounted(async () => {
   try {
     const [movieRes, creditsRes] = await Promise.all([
@@ -282,7 +307,7 @@ onMounted(async () => {
         latestWatchedAt.value = instantFromEpochMs(Math.max(...watchedDates))
       }
     }
-    inWatchlist.value = movie.value?.user_status?.status === 'plan_to_watch'
+    inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
     if (ratingRes.status === 'fulfilled') {
       const ratings = ratingRes.value.results || ratingRes.value
       const found = ratings[0]
@@ -343,10 +368,10 @@ async function refreshMetadata() {
   try {
     await mediaAPI.refreshMovie(route.params.id)
     movie.value = await mediaAPI.getMovie(route.params.id)
-    inWatchlist.value = movie.value?.user_status?.status === 'plan_to_watch'
-    showSuccess('Metadata updated from TMDB')
+    inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
+    showMetadataSuccess('Metadata updated from TMDB')
   } catch (error) {
-    showError(getApiErrorMessage(error, 'Could not refresh metadata.'))
+    showMetadataError(getApiErrorMessage(error, 'Could not refresh metadata.'))
   } finally {
     refreshingMetadata.value = false
   }

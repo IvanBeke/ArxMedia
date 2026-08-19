@@ -2,7 +2,7 @@
   <article class="card p-3 md:p-4 progress-row-deferred">
     <div class="progress-row-grid" :class="hasNextEpisode(item) ? 'row-with-episode' : 'row-no-episode'">
       <section class="show-section">
-        <RouterLink :to="`/tv/${item.tmdb_id}`" class="w-20 h-28 md:w-24 md:h-32 rounded-md overflow-hidden bg-surface-200 flex-shrink-0 border border-surface-200">
+        <RouterLink :to="`/tv/${item.tmdb_id}`" class="w-[113px] h-[170px] rounded-md overflow-hidden bg-surface-200 flex-shrink-0 border border-surface-200">
           <img v-if="item.poster_url" :src="item.poster_url" :alt="item.show_name" class="w-full h-full object-cover" loading="lazy">
         </RouterLink>
         <div class="show-main min-w-0">
@@ -97,6 +97,7 @@
             variant="pill"
             class="episode-code"
           />
+          <EpisodeTypePill :value="item.next_episode?.episode_type" class="episode-type" />
           <p class="episode-title" :title="item.next_episode?.name || ''">{{ item.next_episode?.name }}</p>
           <p class="episode-air">{{ item.next_episode?.air_date ? formatDateByLocale(item.next_episode.air_date) : '' }}</p>
           <div class="mt-3 flex items-center gap-2">
@@ -138,6 +139,7 @@
 <script setup>
 import ProgressBar from '@/components/ProgressBar.vue'
 import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
+import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import UserRating from '@/components/UserRating.vue'
 import { formatDateByLocale } from '@/i18n'
@@ -460,7 +462,7 @@ function seasonsLabel(item) {
   gap: 0.65rem;
   border-left: 1px solid var(--bg-surface-200);
   padding-left: 0.85rem;
-  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) 272px;
 }
 
 .episode-kicker {
@@ -489,6 +491,10 @@ function seasonsLabel(item) {
   overflow: hidden;
 }
 
+.episode-type {
+  margin-left: 0.45rem;
+}
+
 .episode-air {
   margin-top: 0.5rem;
   font-size: 0.8rem;
@@ -503,6 +509,7 @@ function seasonsLabel(item) {
 
 .episode-still {
   width: 100%;
+  height: 170px;
   border-radius: 0.35rem;
   overflow: hidden;
   border: 1px solid var(--bg-surface-200);
@@ -512,7 +519,8 @@ function seasonsLabel(item) {
 .episode-still-image {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover;
 }
 
 @media (max-width: 1099px) {
@@ -559,7 +567,7 @@ function seasonsLabel(item) {
 
 @media (min-width: 1100px) {
   .progress-row-grid.row-with-episode {
-    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-columns: minmax(0, 1fr) 470px;
     align-items: start;
   }
 

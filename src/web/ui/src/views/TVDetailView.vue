@@ -73,6 +73,13 @@
               <RatingBadge :value="show.vote_average" :votes="show.vote_count" out-of-ten />
             </div>
 
+            <div v-if="metadataSuccessMsg" class="mb-3 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
+              {{ metadataSuccessMsg }}
+            </div>
+            <div v-if="metadataErrorMsg" class="mb-3 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm inline-block">
+              {{ metadataErrorMsg }}
+            </div>
+
             <div v-if="auth.isAuthenticated" class="mb-3 flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -296,6 +303,8 @@ const userRating = ref(0)
 const showStatus = ref(WATCH_ENTRY_STATUS.NONE)
 const successMsg = ref('')
 const errorMsg = ref('')
+const metadataSuccessMsg = ref('')
+const metadataErrorMsg = ref('')
 const refreshingMetadata = ref(false)
 const removeHistoryDialog = ref(null)
 const removingHistory = ref(false)
@@ -368,6 +377,18 @@ function showSuccess(msg) {
   errorMsg.value = ''
   successMsg.value = msg
   setTimeout(() => { successMsg.value = '' }, 2500)
+}
+
+function showMetadataSuccess(msg) {
+  metadataErrorMsg.value = ''
+  metadataSuccessMsg.value = msg
+  setTimeout(() => { metadataSuccessMsg.value = '' }, 2500)
+}
+
+function showMetadataError(msg) {
+  metadataSuccessMsg.value = ''
+  metadataErrorMsg.value = msg
+  setTimeout(() => { metadataErrorMsg.value = '' }, 3500)
 }
 
 function showError(msg) {
@@ -661,9 +682,9 @@ async function refreshMetadata() {
     await mediaAPI.refreshTV(tmdbId.value)
     await loadShow()
     seasonEpisodes.value = {}
-    showSuccess('Metadata updated from TMDB')
+    showMetadataSuccess('Metadata updated from TMDB')
   } catch (error) {
-    showError(getApiErrorMessage(error, 'Could not refresh metadata.'))
+    showMetadataError(getApiErrorMessage(error, 'Could not refresh metadata.'))
   } finally {
     refreshingMetadata.value = false
   }
