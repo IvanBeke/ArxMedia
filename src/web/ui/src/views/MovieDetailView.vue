@@ -72,20 +72,16 @@
             </SpoilerBlock>
 
             <div v-if="movie.watch_providers" class="mb-6">
-              <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">Watch Now ({{ movie.watch_providers.region }})</p>
+              <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">Watch Now (Powered by JustWatch)</p>
               <div class="flex flex-wrap gap-2">
-                <a
+                <div
                   v-for="p in (movie.watch_providers.flatrate || []).slice(0, 6)"
                   :key="`provider-${p.provider_id}`"
-                  :href="movie.watch_providers.link || '#'
-                  "
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="badge bg-surface-200 text-secondary hover:text-primary inline-flex items-center gap-1.5"
+                  class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary"
                 >
-                  <img v-if="p.logo_path" :src="imgUrl(p.logo_path, 'w45')" :alt="`${p.provider_name} logo`" class="h-3.5 w-3.5 rounded-sm object-cover" loading="lazy" decoding="async" />
+                  <img v-if="p.logo_path" :src="imgUrl(p.logo_path, 'w92')" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
                   {{ p.provider_name }}
-                </a>
+                </div>
                 <span v-if="!(movie.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
               </div>
             </div>
