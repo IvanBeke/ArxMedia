@@ -64,7 +64,8 @@ Code style, patterns, and no-gos for this project.
 
 - Always use `docker compose` (not `docker-compose`)
 - App service name: `app`
+- UI service name: `ui`
 - Redis service name: `redis` (if used)
 - Never run app/UI tooling on host; run through Docker services only
 - App commands: `docker compose exec app ...` (`uv`/`python`)
-- UI build command: `docker run --rm -e CI=true -v "$(pwd)/src/web:/workspace" -w /workspace/ui node:22-alpine sh -lc "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm build"`
+- UI build command: `docker compose exec ui sh -lc "pnpm install && pnpm build"`

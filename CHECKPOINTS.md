@@ -9,7 +9,7 @@ Criteria for a feature to be considered `done`.
 3. **App migrations applied** — `docker compose exec app python manage.py showmigrations` shows no unapplied migrations
 4. **No breaking changes to existing APIs** — existing endpoints still respond correctly
 5. **No hardcoded secrets** — no API keys, tokens, or secrets in source code
-6. **Embedded UI builds without errors** — `docker run --rm -e CI=true -v "$(pwd)/src/web:/workspace" -w /workspace/ui node:22-alpine sh -lc "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm build"` exits 0
+6. **Embedded UI builds without errors** — `docker compose exec ui sh -lc "pnpm install && pnpm build"` exits 0
 
 ## Task-specific checkpoints
 

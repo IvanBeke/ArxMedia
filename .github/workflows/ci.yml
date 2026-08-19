@@ -46,6 +46,9 @@ jobs:
       - name: App tests
         run: docker compose exec -T app python manage.py test --keepdb
 
+      - name: UI tests
+        run: docker compose exec -T ui sh -lc "pnpm test"
+
       - name: Tear down
         if: always()
         run: docker compose down -v

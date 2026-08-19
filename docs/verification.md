@@ -38,7 +38,7 @@ curl -s http://localhost:8000/api/auth/register/ | jq -e '.username'
 
 ### 5. Embedded UI builds
 ```bash
-docker run --rm -e CI=true -v "$(pwd)/src/web:/workspace" -w /workspace/ui node:22-alpine sh -lc "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm build"
+docker compose exec ui sh -lc "pnpm install && pnpm build"
 ```
 Must exit 0.
 

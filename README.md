@@ -75,13 +75,13 @@ docker compose exec app python manage.py <command>
 docker compose exec app python manage.py test <module_or_class> --keepdb
 
 # regenerate backend lockfile (uv.lock)
-docker run --rm -v "$(pwd)/src:/workspace" -w /workspace ghcr.io/astral-sh/uv:python3.14-bookworm uv lock
+docker compose exec app uv lock
 
 # regenerate frontend lockfile (pnpm-lock.yaml)
-docker run --rm -e CI=true -v "$(pwd)/src/web:/workspace" -w /workspace/ui node:22-alpine sh -lc "corepack enable && corepack prepare pnpm@latest --activate && pnpm install --no-frozen-lockfile"
+docker compose exec ui sh -lc "pnpm install --no-frozen-lockfile"
 
 # build UI production assets
-docker run --rm -e CI=true -v "$(pwd)/src/web:/workspace" -w /workspace/ui node:22-alpine sh -lc "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm build"
+docker compose exec ui sh -lc "pnpm install && pnpm build"
 ```
 
 ## Production

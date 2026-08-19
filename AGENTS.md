@@ -30,7 +30,7 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 - App types: `docker compose exec app uv run mypy accounts media tracking social my_calendar web arxmedia`
 - Targeted tests (non-interactive-safe): `docker compose exec app python manage.py test <module_or_class> --keepdb`
 - UI production build (required path):
-  `docker run --rm -e CI=true -v "$(pwd)/src/web:/workspace" -w /workspace/ui node:22-alpine sh -lc "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm build"`
+  `docker compose exec ui sh -lc "pnpm install && pnpm build"`
 
 ## Verification order
 

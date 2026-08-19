@@ -43,7 +43,7 @@ curl -s "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e
 If UI code is touched, also run:
 
 ```bash
-docker run --rm -e CI=true -v "$(pwd)/src/web:/workspace" -w /workspace/ui node:22-alpine sh -lc "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm build"
+docker compose exec ui sh -lc "pnpm install && pnpm build"
 ```
 
 ## Style and conventions

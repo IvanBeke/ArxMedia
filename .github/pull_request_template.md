@@ -29,7 +29,7 @@ Task-specific ad-hoc checks:
 If UI code was touched:
 
 ```bash
-docker run --rm -e CI=true -v "$(pwd)/src/web:/workspace" -w /workspace/ui node:22-alpine sh -lc "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm build"
+docker compose exec ui sh -lc "pnpm install && pnpm build"
 ```
 
 ## Migration impact
