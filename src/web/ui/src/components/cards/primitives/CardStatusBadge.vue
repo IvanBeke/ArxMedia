@@ -27,15 +27,15 @@ import { computed } from 'vue'
 import { WATCH_ENTRY_STATUS } from '@/constants/tracking'
 
 const props = defineProps({
-  status: { type: String, default: 'none' },
+  status: { type: String, default: WATCH_ENTRY_STATUS.NONE },
   watched: { type: Boolean, default: false },
 })
 
 const statusValue = computed(() => {
-  if (props.status && props.status !== 'none') {
+  if (props.status && props.status !== WATCH_ENTRY_STATUS.NONE) {
     return props.status
   }
-  return props.watched ? WATCH_ENTRY_STATUS.WATCHED : 'none'
+  return props.watched ? WATCH_ENTRY_STATUS.WATCHED : WATCH_ENTRY_STATUS.NONE
 })
 
 const statusBadgeClass = computed(() => {

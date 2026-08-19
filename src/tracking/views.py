@@ -404,16 +404,15 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
         from media.models import Movie, TVShow
         movie_ids = [entry.tmdb_id for entry in items if entry.media_type == MediaType.MOVIE]
         tv_ids = [entry.tmdb_id for entry in items if entry.media_type == MediaType.TV]
-        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids).prefetch_related('genres')}
-        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids).prefetch_related('genres')}
-        tv_runtime_map = _build_tv_runtime_map(tv_ids)
+        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
+        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids)}
         status_map = annotate_media_user_status(
             request.user,
             [{'media_type': entry.media_type, 'tmdb_id': entry.tmdb_id} for entry in items],
         )
 
         context = self.get_serializer_context()
-        context.update({'movie_map': movie_map, 'tv_map': tv_map, 'tv_runtime_map': tv_runtime_map, 'status_map': status_map})
+        context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
 
         if page is not None:
@@ -1395,10 +1394,13 @@ class CustomListDetailView(generics.RetrieveUpdateDestroyAPIView):
         tv_ids = [entry.tmdb_id for entry in items_qs if entry.media_type == MediaType.TV]
         movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
         tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids)}
-        tv_runtime_map = _build_tv_runtime_map(tv_ids)
+        status_map = annotate_media_user_status(
+            request.user,
+            [{'media_type': entry.media_type, 'tmdb_id': entry.tmdb_id} for entry in items_qs],
+        )
 
         item_context = self.get_serializer_context()
-        item_context.update({'movie_map': movie_map, 'tv_map': tv_map, 'tv_runtime_map': tv_runtime_map})
+        item_context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
         payload['items'] = ListItemSerializer(items_qs, many=True, context=item_context).data
         return Response(payload)
 
@@ -1502,16 +1504,15 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         from media.models import Movie, TVShow
         movie_ids = [entry.tmdb_id for entry in items if entry.media_type == MediaType.MOVIE]
         tv_ids = [entry.tmdb_id for entry in items if entry.media_type == MediaType.TV]
-        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids).prefetch_related('genres')}
-        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids).prefetch_related('genres')}
-        tv_runtime_map = _build_tv_runtime_map(tv_ids)
+        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
+        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids)}
         status_map = annotate_media_user_status(
             request.user,
             [{'media_type': entry.media_type, 'tmdb_id': entry.tmdb_id} for entry in items],
         )
 
         context = self.get_serializer_context()
-        context.update({'movie_map': movie_map, 'tv_map': tv_map, 'tv_runtime_map': tv_runtime_map, 'status_map': status_map})
+        context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
 
         if page is not None:

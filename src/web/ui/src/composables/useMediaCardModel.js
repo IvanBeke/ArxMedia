@@ -1,6 +1,7 @@
 import { computed, unref } from 'vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { formatDateByLocale } from '@/i18n'
+import { temporalYear } from '@/utils/temporal'
 
 function resolvePosterUrl(item) {
   const path = item?.poster_url || item?.poster_path
@@ -10,8 +11,8 @@ function resolvePosterUrl(item) {
 }
 
 function normalizeStatus(status, watched) {
-  if (status && status !== 'none') return status
-  return watched ? WATCH_ENTRY_STATUS.WATCHED : 'none'
+  if (status && status !== WATCH_ENTRY_STATUS.NONE) return status
+  return watched ? WATCH_ENTRY_STATUS.WATCHED : WATCH_ENTRY_STATUS.NONE
 }
 
 function resolveMediaType(item, mediaType) {
@@ -43,8 +44,7 @@ export function useMediaCardModel(context, entrySource, optionsSource = {}) {
       ? `/tv/${item.tmdb_id}/season/${item.season_number}/episode/${item.episode_number}`
       : ''
 
-    const rawReleaseDate = item.release_date || item.first_air_date || ''
-
+    const rawReleaseDate = item.release_date || ''
     return {
       title,
       subtitle,
@@ -56,7 +56,7 @@ export function useMediaCardModel(context, entrySource, optionsSource = {}) {
       titleLinkTo: options.titleLinkTo || detailLink,
       subtitleLinkTo: options.subtitleLinkTo || detailLink,
       releaseDate: formatDateByLocale(rawReleaseDate),
-      year: rawReleaseDate ? new Date(rawReleaseDate).getFullYear() : '',
+      year: rawReleaseDate ? (temporalYear(rawReleaseDate) || '') : '',
       showMediaTypeBadge: options.showMediaTypeBadge ?? context === 'mixed',
       mediaType: itemMediaType,
       episodeCode: {
@@ -66,7 +66,7 @@ export function useMediaCardModel(context, entrySource, optionsSource = {}) {
       },
       status: {
         value: normalizeStatus(options.status, options.watched),
-        visible: normalizeStatus(options.status, options.watched) !== 'none',
+        visible: normalizeStatus(options.status, options.watched) !== WATCH_ENTRY_STATUS.NONE,
       },
       userRating: item.rating ?? item.user_status?.rating,
       providerRating: item.vote_average,
@@ -86,7 +86,7 @@ export function useMediaCardModel(context, entrySource, optionsSource = {}) {
           loading: Boolean(options.watchedQuickActionLoading),
           pulsing: Boolean(options.watchedQuickActionPulsing),
           ariaLabel: options.watchedQuickActionAriaLabel || 'Mark as watched',
-          releaseDate: item.release_date || item.first_air_date || '',
+          releaseDate: item.release_date || '',
         },
       },
     }

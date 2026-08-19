@@ -141,7 +141,7 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]['tmdb_id'], 600)
 
-    def test_history_episode_includes_runtime(self):
+    def test_history_episode_payload_includes_show_fields(self):
         show = TVShow.objects.create(tmdb_id=5001, name='Runtime Show', episode_runtime=41)
         season = Season.objects.create(
             show=show,
@@ -170,7 +170,7 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         entries = response.data.get('results', response.data)
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]['runtime'], 44)
+        self.assertEqual(entries[0]['show_name'], 'Runtime Show')
 
     def test_history_list_filters_media_type(self):
         WatchEntry.objects.create(
@@ -415,8 +415,6 @@ class WatchlistTests(BaseTestCase):
         self.assertEqual(entry['tmdb_id'], 1101)
         self.assertEqual(entry['user_status']['status'], 'plan_to_watch')
         self.assertEqual(str(entry['release_date']), '2024-05-01')
-        self.assertIsNone(entry['first_air_date'])
-        self.assertEqual(entry['runtime'], 127)
 
     def test_watchlist_list_includes_tv_plan_to_watch_status(self):
         show = TVShow.objects.create(
@@ -445,9 +443,7 @@ class WatchlistTests(BaseTestCase):
         entry = entries[0]
         self.assertEqual(entry['tmdb_id'], 2202)
         self.assertEqual(entry['user_status']['status'], 'plan_to_watch')
-        self.assertEqual(str(entry['first_air_date']), '2023-08-10')
-        self.assertIsNone(entry['release_date'])
-        self.assertEqual(entry['runtime'], 95)
+        self.assertEqual(str(entry['release_date']), '2023-08-10')
 
     def test_watchlist_list_filters_genres(self):
         drama = Genre.objects.create(tmdb_id=901, name='Drama')
@@ -1385,7 +1381,8 @@ class ListItemTests(BaseTestCase):
 
     def test_list_detail_includes_items_payload(self):
         lst = CustomList.objects.create(user=self.user, name='Detail List')
-        Movie.objects.create(tmdb_id=888, title='Detail Movie', runtime=99)
+        Movie.objects.create(tmdb_id=888, title='Detail Movie', vote_average=8.1, release_date='2021-05-01')
+        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=888)
         ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=888)
 
         response = self.client.get(f'/api/tracking/lists/{lst.id}/')
@@ -1393,26 +1390,9 @@ class ListItemTests(BaseTestCase):
         self.assertIn('items', response.data)
         self.assertEqual(len(response.data['items']), 1)
         self.assertEqual(response.data['items'][0]['tmdb_id'], 888)
-        self.assertEqual(response.data['items'][0]['runtime'], 99)
-
-    def test_list_items_includes_tv_runtime(self):
-        lst = CustomList.objects.create(user=self.user, name='Runtime List')
-        show = TVShow.objects.create(tmdb_id=9911, name='Runtime Show', episode_runtime=52, number_of_episodes=8)
-        season = Season.objects.create(
-            show=show,
-            tmdb_id=99110,
-            season_number=1,
-            name='Runtime Season',
-            episode_count=2,
-        )
-        Episode.objects.create(season=season, tmdb_id=991101, episode_number=1, name='Runtime Ep1', runtime=52)
-        Episode.objects.create(season=season, tmdb_id=991102, episode_number=2, name='Runtime Ep2', runtime=48)
-        ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=9911)
-
-        response = self.client.get(f'/api/tracking/lists/{lst.id}/items/')
-        self.assertEqual(response.status_code, 200)
-        items = response.data.get('results', response.data)
-        self.assertEqual(items[0]['runtime'], 100)
+        self.assertEqual(response.data['items'][0]['vote_average'], 8.1)
+        self.assertEqual(str(response.data['items'][0]['release_date']), '2021-05-01')
+        self.assertEqual(response.data['items'][0]['user_status']['status'], 'plan_to_watch')
 
     def test_duplicate_add_to_list_returns_validation_error(self):
         lst = CustomList.objects.create(user=self.user, name='Unique List')

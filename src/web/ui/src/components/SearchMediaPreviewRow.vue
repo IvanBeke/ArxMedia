@@ -26,6 +26,7 @@
 <script setup>
 import { computed } from 'vue'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
+import { temporalYear } from '@/utils/temporal'
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -33,8 +34,8 @@ const props = defineProps({
 
 const title = computed(() => props.item?.title || props.item?.name || 'Untitled')
 const year = computed(() => {
-  const raw = props.item?.release_date || props.item?.first_air_date
-  return raw ? new Date(raw).getFullYear() : ''
+  const raw = props.item?.release_date
+  return raw ? (temporalYear(raw) || '') : ''
 })
 
 const typeLabel = computed(() => props.item?.media_type === MEDIA_TYPE.TV ? 'Show' : 'Movie')

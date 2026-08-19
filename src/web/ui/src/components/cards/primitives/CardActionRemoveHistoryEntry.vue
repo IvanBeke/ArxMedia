@@ -18,15 +18,11 @@
 const props = defineProps({
   loading: { type: Boolean, default: false },
   ariaLabel: { type: String, default: 'Remove history entry' },
-  confirmText: { type: String, default: '' },
 })
 
 const emit = defineEmits(['trigger', 'action:history-remove'])
 
 function handleTrigger() {
-  if (props.confirmText && !window.confirm(props.confirmText)) {
-    return
-  }
   emit('action:history-remove')
   emit('trigger')
 }

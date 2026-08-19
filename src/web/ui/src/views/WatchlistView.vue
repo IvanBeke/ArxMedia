@@ -1,13 +1,5 @@
 <template>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <WatchedDateTimePicker
-      :open="showDatePicker"
-      :initial-value="pickerInitialValue"
-      title="When did you watch this?"
-      @confirm="handleDatePickerConfirm"
-      @cancel="handleDatePickerCancel"
-    />
-
     <Transition name="fade">
       <div v-if="quickActionError" class="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
         {{ quickActionError }}
@@ -45,22 +37,8 @@
           :key="`${item.media_type}-${item.id}`"
           :item="item"
           :media-type="item.media_type"
-          :watched="isWatchedStatus(item)"
-          :status="item.user_status?.status || 'none'"
-          :show-quick-action="canToggleWatchlist(item)"
-          :quick-action-active="item.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH"
-          :quick-action-loading="isLoading(item.media_type, item.tmdb_id)"
-          :quick-action-pulsing="isPulsing(item.media_type, item.tmdb_id)"
-          :quick-action-aria-label="getWatchlistAriaLabel(item.media_type, item.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH)"
-          :show-watched-quick-action="true"
-          :watched-quick-action-loading="isWatchedLoading(item.media_type, item.tmdb_id)"
-          :watched-quick-action-pulsing="isWatchedPulsing(item.media_type, item.tmdb_id)"
-          :watched-quick-action-aria-label="t('tracking_mark_as_watched')"
-          :remove-watched-quick-action-aria-label="t('tracking_mark_as_watched')"
-          :remove-watched-quick-action-confirm-text="getRemoveHistoryConfirmText(item.media_type)"
-          @quick-action-watchlist="handleQuickAction(item, item.media_type)"
-          @quick-action-watch-option="handleWatchOption(item, item.media_type, $event)"
-          @quick-action-remove-watched="handleRemoveWatched(item, item.media_type)"
+          @error="showQuickActionError"
+          @watchlist-removed="handleWatchlistRemoved"
         />
       </div>
       <PaginationControls
@@ -86,13 +64,7 @@ import { trackingAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
-import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
-import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
-import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions'
-import { useWatchedQuickActions } from '@/composables/useWatchedQuickActions'
-import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
-import { getApiErrorMessage } from '@/utils/errors'
 
 const items = ref([])
 const loading = ref(true)
@@ -118,39 +90,22 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-const { showDatePicker, pickerInitialValue, pickWatchedDateTime, handleDatePickerConfirm, handleDatePickerCancel } = useWatchedDateTimePicker()
-const { isLoading, isPulsing, toggleWatchlist } = useWatchlistQuickActions()
-const { isLoading: isWatchedLoading, isPulsing: isWatchedPulsing, markWatched, unmarkWatched } = useWatchedQuickActions()
-
-function canToggleWatchlist(item) {
-  const status = item?.user_status?.status
-  return status !== WATCH_ENTRY_STATUS.WATCHED && status !== WATCH_ENTRY_STATUS.WATCHING
-}
-
-function isWatchedStatus(item) {
-  const status = item?.user_status?.status
-  return status === WATCH_ENTRY_STATUS.WATCHED || status === WATCH_ENTRY_STATUS.WATCHING
-}
-
-function getWatchlistAriaLabel(mediaType, inWatchlist) {
-  if (mediaType === MEDIA_TYPE.TV) {
-    return inWatchlist ? t('watchlist_remove_show') : t('watchlist_add_show')
-  }
-  return inWatchlist ? t('watchlist_remove_movie') : t('watchlist_add_movie')
-}
-
-function getRemoveHistoryConfirmText(mediaType) {
-  if (mediaType === MEDIA_TYPE.TV) {
-    return t('remove_history_confirm_show')
-  }
-  return t('remove_history_confirm_movie')
-}
-
 function showQuickActionError(message) {
   quickActionError.value = message
   setTimeout(() => {
     quickActionError.value = ''
   }, 3500)
+}
+
+function handleWatchlistRemoved(payload) {
+  const itemId = payload?.tmdb_id || payload?.id
+  if (!itemId) {
+    return
+  }
+  items.value = items.value.filter((entry) => {
+    const entryId = entry.tmdb_id || entry.id
+    return entryId !== itemId
+  })
 }
 
 async function load(page = 1) {
@@ -238,75 +193,6 @@ function syncPageQuery() {
   }
 }
 
-async function handleQuickAction(item, mediaType) {
-  try {
-    if (!canToggleWatchlist(item)) {
-      return
-    }
-
-    const inWatchlist = item?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
-    const result = await toggleWatchlist(mediaType, item.tmdb_id, inWatchlist)
-    item.user_status = {
-      ...(item.user_status || {}),
-      status: result === 'removed' ? 'none' : WATCH_ENTRY_STATUS.PLAN_TO_WATCH,
-    }
-
-    if (result === 'removed') {
-      items.value = items.value.filter(i => i.id !== item.id)
-    }
-  } catch (error) {
-    showQuickActionError(getApiErrorMessage(error, 'Could not update watchlist.'))
-  }
-}
-
-async function handleWatchOption(item, mediaType, option) {
-  try {
-    let watchedAt = null
-    if (option === 'release') {
-      const releaseDate = item.release_date || item.first_air_date
-      watchedAt = releaseDate ? `${releaseDate}T00:00:00Z` : null
-    } else if (option === 'date') {
-      watchedAt = await pickWatchedDateTime(item?.user_status?.watched_at || '')
-      if (!watchedAt) {
-        return
-      }
-    }
-
-    const nextStatus = await markWatched(mediaType, item.tmdb_id, watchedAt)
-    if (!nextStatus) {
-      return
-    }
-
-    const nowIso = watchedAt || new Date().toISOString()
-    item.user_status = {
-      ...(item.user_status || {}),
-      status: nextStatus,
-      watched_at: nowIso,
-      status_changed_at: nowIso,
-    }
-  } catch (error) {
-    showQuickActionError(getApiErrorMessage(error, 'Could not update watched status.'))
-  }
-}
-
-async function handleRemoveWatched(item, mediaType) {
-  try {
-    const removed = await unmarkWatched(mediaType, item.tmdb_id)
-    if (!removed) {
-      return
-    }
-
-    item.user_status = {
-      ...(item.user_status || {}),
-      status: WATCH_ENTRY_STATUS.NONE,
-      watched_at: null,
-      status_changed_at: null,
-    }
-  } catch (error) {
-    showQuickActionError(getApiErrorMessage(error, 'Could not update watched status.'))
-  }
-}
-
 onMounted(async () => {
   currentPage.value = parsePage(route.query.page)
   await load(currentPage.value)
@@ -330,4 +216,5 @@ watch(
     await load(currentPage.value)
   }
 )
+
 </script>

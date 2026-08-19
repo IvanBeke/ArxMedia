@@ -122,6 +122,16 @@ def _annotate_results_with_user_status(user, results):
             row['user_status'] = status_map[key]
 
 
+def _normalize_media_release_date(results):
+    for row in results:
+        media_type = row.get('media_type')
+        if media_type not in (MediaType.MOVIE, MediaType.TV):
+            continue
+        if row.get('release_date'):
+            continue
+        row['release_date'] = row.get('first_air_date') or ''
+
+
 def _search_by_prefixed_id(query, scope):
     raw_external_id = query[1:].strip()
     if not raw_external_id:
@@ -188,6 +198,8 @@ def search(request):
             else:
                 data = tmdb.search_multi(query, page)
 
+        _normalize_media_release_date(data.get('results', []))
+
         if request.user.is_authenticated:
             _annotate_results_with_user_status(request.user, data.get('results', []))
 
@@ -207,6 +219,8 @@ def trending(request):
         if media_type in (MediaType.MOVIE, MediaType.TV):
             for result in data.get('results', []):
                 result['media_type'] = media_type
+
+        _normalize_media_release_date(data.get('results', []))
 
         if request.user.is_authenticated:
             items = []
@@ -246,6 +260,8 @@ def popular(request):
 
         for result in data.get('results', []):
             result['media_type'] = resolved_media_type
+
+        _normalize_media_release_date(data.get('results', []))
 
         if request.user.is_authenticated:
             status_map = annotate_media_user_status(

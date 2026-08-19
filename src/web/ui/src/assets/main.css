@@ -253,6 +253,15 @@
     color: var(--text-primary);
   }
 
+  .app-dialog {
+    margin: auto;
+  }
+
+  .app-dialog::backdrop {
+    background: rgba(7, 8, 11, 0.72);
+    backdrop-filter: blur(3px);
+  }
+
   .tab-active {
     border-bottom: 2px solid #9f42c6;
     color: var(--text-primary);

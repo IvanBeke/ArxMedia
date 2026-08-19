@@ -202,6 +202,23 @@ class MediaTests(TestCase):
         self.assertEqual(tv_entry['user_status']['status'], 'plan_to_watch')
         self.assertNotIn('user_status', person_entry)
 
+    @patch('media.views.tmdb.search_multi')
+    def test_search_multi_normalizes_tv_first_air_date_to_release_date(self, mock_search_multi):
+        mock_search_multi.return_value = {
+            'results': [
+                {'id': 202, 'media_type': 'tv', 'name': 'Show', 'first_air_date': '2020-01-15'},
+            ],
+            'page': 1,
+            'total_pages': 1,
+            'total_results': 1,
+        }
+
+        response = self.client.get('/api/media/search/?q=test&type=multi')
+        self.assertEqual(response.status_code, 200)
+        result = response.data['results'][0]
+        self.assertEqual(result['first_air_date'], '2020-01-15')
+        self.assertEqual(result['release_date'], '2020-01-15')
+
     @patch('media.views.tmdb.find_by_external_id')
     @patch('media.views.tmdb.get_tv_show')
     @patch('media.views.tmdb.get_movie')

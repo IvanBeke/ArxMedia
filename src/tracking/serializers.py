@@ -4,12 +4,75 @@ from .choices import MediaType, WatchEntryMediaType
 from .models import CustomList, DataTransferJob, ListCollaborator, ListItem, Rating, Review, WatchEntry, Watchlist
 
 
-class WatchEntrySerializer(serializers.ModelSerializer):
+class MediaCardSerializer(serializers.ModelSerializer):
     title = serializers.SerializerMethodField()
     poster_path = serializers.SerializerMethodField()
     poster_url = serializers.SerializerMethodField()
     vote_average = serializers.SerializerMethodField()
-    year = serializers.SerializerMethodField()
+    release_date = serializers.SerializerMethodField()
+
+    def _get_media(self, obj):
+        media_cache = getattr(self, '_media_cache', None)
+        if media_cache is None:
+            media_cache = {}
+            self._media_cache = media_cache
+
+        media_type = getattr(obj, 'media_type', None)
+        cache_key = (media_type, obj.tmdb_id)
+        if cache_key in media_cache:
+            return media_cache[cache_key]
+
+        movie_map = self.context.get('movie_map') or {}
+        tv_map = self.context.get('tv_map') or {}
+
+        if media_type == MediaType.MOVIE and obj.tmdb_id in movie_map:
+            media_cache[cache_key] = movie_map[obj.tmdb_id]
+            return media_cache[cache_key]
+        if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE) and obj.tmdb_id in tv_map:
+            media_cache[cache_key] = tv_map[obj.tmdb_id]
+            return media_cache[cache_key]
+
+        from media.models import Movie, TVShow
+        if media_type == MediaType.MOVIE:
+            media = Movie.objects.filter(tmdb_id=obj.tmdb_id).first()
+        elif media_type in (MediaType.TV, WatchEntryMediaType.EPISODE):
+            media = TVShow.objects.filter(tmdb_id=obj.tmdb_id).first()
+        else:
+            media = None
+
+        media_cache[cache_key] = media
+        return media
+
+    def get_title(self, obj):
+        media = self._get_media(obj)
+        if media:
+            media_type = getattr(obj, 'media_type', None)
+            return getattr(media, 'title' if media_type == MediaType.MOVIE else 'name', '')
+        return ''
+
+    def get_poster_path(self, obj):
+        media = self._get_media(obj)
+        return getattr(media, 'poster_path', '') if media else ''
+
+    def get_poster_url(self, obj):
+        media = self._get_media(obj)
+        if media and media.poster_path:
+            return f'https://image.tmdb.org/t/p/w500{media.poster_path}'
+        return None
+
+    def get_vote_average(self, obj):
+        media = self._get_media(obj)
+        return getattr(media, 'vote_average', 0) if media else 0
+
+    def get_release_date(self, obj):
+        media = self._get_media(obj)
+        if not media:
+            return None
+        media_type = getattr(obj, 'media_type', None)
+        return media.release_date if media_type == MediaType.MOVIE else media.first_air_date
+
+
+class WatchEntrySerializer(MediaCardSerializer):
     show_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -17,26 +80,9 @@ class WatchEntrySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'media_type', 'tmdb_id', 'watched_at',
             'season_number', 'episode_number', 'created_at', 'title', 'poster_path',
-            'poster_url', 'vote_average', 'year', 'show_name'
+            'poster_url', 'vote_average', 'show_name'
         ]
         read_only_fields = ['id', 'created_at']
-
-    def _get_media(self, obj):
-        movie_map = self.context.get('movie_map') or {}
-        tv_map = self.context.get('tv_map') or {}
-
-        if obj.media_type == WatchEntryMediaType.MOVIE and obj.tmdb_id in movie_map:
-            return movie_map[obj.tmdb_id]
-        if obj.media_type == WatchEntryMediaType.EPISODE and obj.tmdb_id in tv_map:
-            return tv_map[obj.tmdb_id]
-
-        if obj.media_type == WatchEntryMediaType.MOVIE:
-            from media.models import Movie
-            return Movie.objects.filter(tmdb_id=obj.tmdb_id).first()
-        if obj.media_type == WatchEntryMediaType.EPISODE:
-            from media.models import TVShow
-            return TVShow.objects.filter(tmdb_id=obj.tmdb_id).first()
-        return None
 
     def get_title(self, obj):
         if obj.media_type == WatchEntryMediaType.EPISODE:
@@ -55,41 +101,7 @@ class WatchEntrySerializer(serializers.ModelSerializer):
             if obj.episode_number:
                 return f'Episode {obj.episode_number}'
             return f'Episode #{obj.tmdb_id}'
-        media = self._get_media(obj)
-        if media:
-            if hasattr(media, 'title'):
-                return media.title
-            return media.name
-        return None
-
-    def get_poster_path(self, obj):
-        if obj.media_type == WatchEntryMediaType.EPISODE:
-            show = self._get_media(obj)
-            return show.poster_path if show else None
-        media = self._get_media(obj)
-        return media.poster_path if media else None
-
-    def get_poster_url(self, obj):
-        if obj.media_type == WatchEntryMediaType.EPISODE:
-            show = self._get_media(obj)
-            return show.poster_url if show else None
-        media = self._get_media(obj)
-        return media.poster_url if media else None
-
-    def get_vote_average(self, obj):
-        if obj.media_type == WatchEntryMediaType.EPISODE:
-            show = self._get_media(obj)
-            return show.vote_average if show else None
-        media = self._get_media(obj)
-        return media.vote_average if media else None
-
-    def get_year(self, obj):
-        if obj.media_type == WatchEntryMediaType.MOVIE:
-            media = self._get_media(obj)
-            if media and media.release_date:
-                return str(media.release_date)[:4]
-            return None
-        return None
+        return super().get_title(obj)
 
     def get_show_name(self, obj):
         if obj.media_type == WatchEntryMediaType.EPISODE:
@@ -105,80 +117,20 @@ class RatingSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class WatchlistSerializer(serializers.ModelSerializer):
-    title = serializers.SerializerMethodField()
-    poster_path = serializers.SerializerMethodField()
-    poster_url = serializers.SerializerMethodField()
-    vote_average = serializers.SerializerMethodField()
-    year = serializers.SerializerMethodField()
-    release_date = serializers.SerializerMethodField()
-    first_air_date = serializers.SerializerMethodField()
+class WatchlistSerializer(MediaCardSerializer):
     user_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Watchlist
         fields = [
-            'id', 'media_type', 'tmdb_id', 'title', 'poster_path', 'poster_url', 'vote_average', 'year',
-            'release_date', 'first_air_date', 'user_status', 'notes', 'added_at'
+            'id', 'media_type', 'tmdb_id', 'title', 'poster_path', 'poster_url', 'vote_average',
+            'release_date', 'user_status', 'notes', 'added_at'
         ]
         read_only_fields = ['id', 'added_at']
-
-    def _get_media(self, obj):
-        movie_map = self.context.get('movie_map') or {}
-        tv_map = self.context.get('tv_map') or {}
-        if obj.media_type == MediaType.MOVIE and obj.tmdb_id in movie_map:
-            return movie_map[obj.tmdb_id]
-        if obj.media_type == MediaType.TV and obj.tmdb_id in tv_map:
-            return tv_map[obj.tmdb_id]
-
-        from media.models import Movie, TVShow
-        if obj.media_type == MediaType.MOVIE:
-            return Movie.objects.filter(tmdb_id=obj.tmdb_id).first()
-        return TVShow.objects.filter(tmdb_id=obj.tmdb_id).first()
-
-    def get_title(self, obj):
-        media = self._get_media(obj)
-        if media:
-            return getattr(media, 'title' if obj.media_type == MediaType.MOVIE else 'name', '')
-        return ''
-
-    def get_poster_path(self, obj):
-        media = self._get_media(obj)
-        return getattr(media, 'poster_path', '') if media else ''
-
-    def get_poster_url(self, obj):
-        media = self._get_media(obj)
-        if media and media.poster_path:
-            return f'https://image.tmdb.org/t/p/w500{media.poster_path}'
-        return None
-
-    def get_vote_average(self, obj):
-        media = self._get_media(obj)
-        return getattr(media, 'vote_average', 0) if media else 0
-
-    def get_year(self, obj):
-        media = self._get_media(obj)
-        if media:
-            date = getattr(media, 'release_date' if obj.media_type == MediaType.MOVIE else 'first_air_date', None)
-            return date.year if date else ''
-        return ''
-
-    def get_release_date(self, obj):
-        if obj.media_type != MediaType.MOVIE:
-            return None
-        media = self._get_media(obj)
-        return media.release_date if media else None
-
-    def get_first_air_date(self, obj):
-        if obj.media_type != MediaType.TV:
-            return None
-        media = self._get_media(obj)
-        return media.first_air_date if media else None
 
     def get_user_status(self, obj):
         status_map = self.context.get('status_map') or {}
         return status_map.get((obj.media_type, obj.tmdb_id))
-
 
 class ReviewSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
@@ -216,53 +168,20 @@ class CustomListSerializer(serializers.ModelSerializer):
         ]
 
 
-class ListItemSerializer(serializers.ModelSerializer):
-    title = serializers.SerializerMethodField()
-    poster_path = serializers.SerializerMethodField()
-    poster_url = serializers.SerializerMethodField()
-    year = serializers.SerializerMethodField()
+class ListItemSerializer(MediaCardSerializer):
+    user_status = serializers.SerializerMethodField()
 
     class Meta:
         model = ListItem
-        fields = ['id', 'media_type', 'tmdb_id', 'title', 'poster_path', 'poster_url', 'year', 'added_at']
+        fields = [
+            'id', 'media_type', 'tmdb_id', 'title', 'poster_path', 'poster_url', 'vote_average',
+            'release_date', 'user_status', 'added_at'
+        ]
         read_only_fields = ['id', 'added_at']
 
-    def _get_media(self, obj):
-        movie_map = self.context.get('movie_map') or {}
-        tv_map = self.context.get('tv_map') or {}
-        if obj.media_type == MediaType.MOVIE and obj.tmdb_id in movie_map:
-            return movie_map[obj.tmdb_id]
-        if obj.media_type == MediaType.TV and obj.tmdb_id in tv_map:
-            return tv_map[obj.tmdb_id]
-
-        from media.models import Movie, TVShow
-        if obj.media_type == MediaType.MOVIE:
-            return Movie.objects.filter(tmdb_id=obj.tmdb_id).first()
-        return TVShow.objects.filter(tmdb_id=obj.tmdb_id).first()
-
-    def get_title(self, obj):
-        media = self._get_media(obj)
-        if media:
-            return getattr(media, 'title' if obj.media_type == MediaType.MOVIE else 'name', '')
-        return ''
-
-    def get_poster_path(self, obj):
-        media = self._get_media(obj)
-        return getattr(media, 'poster_path', '') if media else ''
-
-    def get_poster_url(self, obj):
-        media = self._get_media(obj)
-        if media and media.poster_path:
-            return f'https://image.tmdb.org/t/p/w500{media.poster_path}'
-        return None
-
-    def get_year(self, obj):
-        media = self._get_media(obj)
-        if media:
-            date = getattr(media, 'release_date' if obj.media_type == MediaType.MOVIE else 'first_air_date', None)
-            return date.year if date else ''
-        return ''
-
+    def get_user_status(self, obj):
+        status_map = self.context.get('status_map') or {}
+        return status_map.get((obj.media_type, obj.tmdb_id))
 
 class ListCollaboratorSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source='user.id', read_only=True)

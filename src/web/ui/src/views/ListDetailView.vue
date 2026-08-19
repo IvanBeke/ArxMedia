@@ -1,13 +1,5 @@
 <template>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <WatchedDateTimePicker
-      :open="showDatePicker"
-      :initial-value="pickerInitialValue"
-      title="When did you watch this?"
-      @confirm="handleDatePickerConfirm"
-      @cancel="handleDatePickerCancel"
-    />
-
     <Transition name="fade">
       <div v-if="quickActionError" class="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
         {{ quickActionError }}
@@ -48,7 +40,7 @@
               Add Item
             </button>
             <button @click="openEditModal" class="btn-ghost text-sm">Edit</button>
-            <button @click="deleteList" class="btn-ghost text-sm border-red-500/40 text-red-300 hover:bg-red-500/10">Delete</button>
+            <button @click="openDeleteListDialog" class="btn-ghost text-sm border-red-500/40 text-red-300 hover:bg-red-500/10">Delete</button>
           </div>
         </div>
 
@@ -92,50 +84,18 @@
       </Transition>
 
       <section v-if="items.length" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        <article v-for="item in items" :key="item.id" class="group relative">
-          <MediaCard
-            :item="item"
-            :media-type="item.media_type"
-            :watched="isWatchedStatus(item)"
-            :status="item.user_status?.status || 'none'"
-            :show-quick-action="canToggleWatchlist(item)"
-            :quick-action-active="item.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH"
-            :quick-action-loading="isLoading(item.media_type, item.tmdb_id)"
-            :quick-action-pulsing="isPulsing(item.media_type, item.tmdb_id)"
-            :quick-action-aria-label="getWatchlistAriaLabel(item.media_type, item.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH)"
-            :show-watched-quick-action="true"
-            :watched-quick-action-loading="isWatchedLoading(item.media_type, item.tmdb_id)"
-            :watched-quick-action-pulsing="isWatchedPulsing(item.media_type, item.tmdb_id)"
-            watched-quick-action-aria-label="Mark as watched"
-            remove-watched-quick-action-aria-label="Remove from watched history"
-            :remove-watched-quick-action-confirm-text="getRemoveHistoryConfirmText(item.media_type)"
-            @quick-action-watchlist="handleQuickAction(item, item.media_type)"
-            @quick-action-watch-option="handleWatchOption(item, item.media_type, $event)"
-            @quick-action-remove-watched="handleRemoveWatched(item, item.media_type)"
-          />
-          <div v-if="canEdit" class="absolute top-2 right-2 z-20 list-item-menu" :class="{ 'is-open': openItemMenuId === item.id }">
-            <button
-              type="button"
-              class="list-item-menu-trigger"
-              aria-label="List item actions"
-              title="List item actions"
-              @click.stop="toggleItemMenu(item.id)"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01"/>
-              </svg>
-            </button>
-            <div v-if="openItemMenuId === item.id" class="list-item-menu-panel">
-              <button
-                type="button"
-                class="list-item-menu-danger"
-                @click="openRemoveDialog(item, $event)"
-              >
-                Remove from list
-              </button>
-            </div>
-          </div>
-        </article>
+        <MediaCard
+          v-for="item in items"
+          :key="item.id"
+          :item="item"
+          :media-type="item.media_type"
+          hide-watchlist-action
+          hide-watched-action
+          :show-list-remove-action="canEdit"
+          :list-context-id="route.params.id"
+          @error="showQuickActionError"
+          @list-item-removed="handleListItemRemoved"
+        />
       </section>
 
       <section v-else class="card p-12 text-center">
@@ -147,7 +107,7 @@
       <dialog
         ref="editDialog"
         closedby="any"
-        class="list-dialog w-full max-w-xl rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
+        class="app-dialog list-dialog w-full max-w-xl rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
         aria-labelledby="edit-list-title"
         @close="onEditDialogClose"
         @click="onDialogClick($event, editDialog)"
@@ -257,7 +217,7 @@
       <dialog
         ref="addDialog"
         closedby="any"
-        class="list-dialog w-full max-w-2xl rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
+        class="app-dialog list-dialog w-full max-w-2xl rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
         aria-labelledby="add-list-item-title"
         @click="onDialogClick($event, addDialog)"
       >
@@ -273,24 +233,31 @@
             >
           </div>
 
-          <div v-if="searching" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
+          <div v-if="searching" class="grid grid-cols-3 gap-4 mb-4">
             <div v-for="n in 8" :key="`search-skeleton-${n}`" class="aspect-[2/3] rounded-md skeleton"></div>
           </div>
           <div v-else-if="searchResults.length" class="max-h-[60vh] overflow-y-auto mb-4 pr-1">
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              <article
-                v-for="result in searchResults"
-                :key="`${result.media_type}-${result.tmdb_id}`"
-                class="space-y-2"
-              >
-                <MediaCard
-                  :item="result"
-                  :media-type="result.media_type"
-                  :watched="isWatchedStatus(result)"
-                  :status="result.user_status?.status || 'none'"
-                />
-                <button type="button" class="btn-primary text-xs w-full" @click="addItem(result)">Add to List</button>
-              </article>
+            <div class="grid grid-cols-3 gap-4">
+              <div v-for="result in searchResults" :key="`${result.media_type}-${result.tmdb_id}`" class="flex h-full flex-col gap-2">
+                <div class="flex-1">
+                  <MediaCard
+                    :item="result"
+                    :media-type="result.media_type"
+                    :status="result.user_status?.status || undefined"
+                    hide-watchlist-action
+                    hide-watched-action
+                    @error="showQuickActionError"
+                  />
+                </div>
+                <button
+                  type="button"
+                  class="btn-primary w-full text-xs py-1.5 mt-auto"
+                  :disabled="addingResultKey === `${result.media_type}-${result.tmdb_id}`"
+                  @click="addSearchResultToList(result)"
+                >
+                  {{ addingResultKey === `${result.media_type}-${result.tmdb_id}` ? 'Adding...' : 'Add to list' }}
+                </button>
+              </div>
             </div>
           </div>
           <p v-else-if="searchQuery && !searching" class="text-gray-500 text-sm text-center py-4">No results found</p>
@@ -302,20 +269,19 @@
       </dialog>
 
       <dialog
-        ref="removeDialog"
+        ref="deleteListDialog"
         closedby="any"
-        class="list-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
-        aria-labelledby="remove-item-title"
-        @close="onRemoveDialogClose"
-        @click="onDialogClick($event, removeDialog)"
+        class="app-dialog list-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
+        aria-labelledby="delete-list-title"
+        @click="onDialogClick($event, deleteListDialog)"
       >
         <div class="p-6">
-          <h2 id="remove-item-title" class="text-lg font-display text-primary font-semibold">Remove from this list?</h2>
-          <p class="mt-2 text-sm text-muted">This removes the item from this list only. It does not remove watch history or ratings.</p>
+          <h2 id="delete-list-title" class="text-lg font-display text-primary font-semibold">Delete this list?</h2>
+          <p class="mt-2 text-sm text-muted">This permanently deletes the list and removes all list memberships from it.</p>
           <div class="mt-5 flex gap-3">
-            <button type="button" class="btn-ghost flex-1" @click="closeRemoveDialog">Keep item</button>
-            <button type="button" class="btn-ghost flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" :disabled="removingItem" @click="confirmRemoveItem">
-              {{ removingItem ? 'Removing...' : 'Remove' }}
+            <button type="button" class="btn-ghost flex-1" @click="closeDeleteListDialog">Keep list</button>
+            <button type="button" class="btn-ghost flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" :disabled="deletingList" @click="confirmDeleteList">
+              {{ deletingList ? 'Deleting...' : 'Delete' }}
             </button>
           </div>
         </div>
@@ -326,19 +292,16 @@
 </template>
 
 <script setup>
-import { nextTick, ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { nextTick, ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authAPI, trackingAPI, mediaAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import MediaCard from '@/components/MediaCard.vue'
-import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { useAuthStore } from '@/stores/auth'
 import { formatDateByLocale } from '@/i18n'
-import { LIST_PRIVACY, MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
+import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
-import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions'
-import { useWatchedQuickActions } from '@/composables/useWatchedQuickActions'
-import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
+import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 
 const route = useRoute()
 const router = useRouter()
@@ -358,7 +321,7 @@ const showCollaboratorResults = ref(false)
 const searchingUsers = ref(false)
 const editDialog = ref(null)
 const addDialog = ref(null)
-const removeDialog = ref(null)
+const deleteListDialog = ref(null)
 const editNameInput = ref(null)
 let collaboratorDebounce = null
 const appliedFilters = ref({
@@ -376,19 +339,14 @@ const appliedFilters = ref({
 const feedbackMsg = ref('')
 const feedbackKind = ref('success')
 const quickActionError = ref('')
-const pendingRemovalItem = ref(null)
-const removingItem = ref(false)
-const openItemMenuId = ref(null)
+const deletingList = ref(false)
+const addingResultKey = ref('')
 
 const editForm = ref({
   name: '',
   description: '',
   privacy: LIST_PRIVACY.PUBLIC,
 })
-
-const { showDatePicker, pickerInitialValue, pickWatchedDateTime, handleDatePickerConfirm, handleDatePickerCancel } = useWatchedDateTimePicker()
-const { isLoading, isPulsing, toggleWatchlist } = useWatchlistQuickActions()
-const { isLoading: isWatchedLoading, isPulsing: isWatchedPulsing, markWatched, unmarkWatched } = useWatchedQuickActions()
 
 const isOwner = computed(() => {
   return auth.user?.username === list.value?.username
@@ -416,30 +374,6 @@ function showFeedback(message, kind = 'success') {
   }, 3500)
 }
 
-function isWatchedStatus(item) {
-  const status = item?.user_status?.status
-  return status === WATCH_ENTRY_STATUS.WATCHED || status === WATCH_ENTRY_STATUS.WATCHING
-}
-
-function canToggleWatchlist(item) {
-  const status = item?.user_status?.status
-  return status !== WATCH_ENTRY_STATUS.WATCHED && status !== WATCH_ENTRY_STATUS.WATCHING
-}
-
-function getWatchlistAriaLabel(mediaType, inWatchlist) {
-  if (mediaType === MEDIA_TYPE.TV) {
-    return inWatchlist ? 'Remove show from watchlist' : 'Add show to watchlist'
-  }
-  return inWatchlist ? 'Remove movie from watchlist' : 'Add movie to watchlist'
-}
-
-function getRemoveHistoryConfirmText(mediaType) {
-  if (mediaType === MEDIA_TYPE.TV) {
-    return 'Remove show from watched history?'
-  }
-  return 'Remove movie from watched history?'
-}
-
 function showQuickActionError(message) {
   quickActionError.value = message
   setTimeout(() => {
@@ -455,29 +389,9 @@ function privacyClass(privacy) {
   return classes[privacy] || ''
 }
 
-function hasClosedBySupport() {
-  return 'closedBy' in HTMLDialogElement.prototype
-}
-
 function onDialogClick(event, dialogRef) {
-  if (hasClosedBySupport()) {
-    return
-  }
   const dialog = dialogRef?.value
-  if (!dialog || event.target !== dialog) {
-    return
-  }
-
-  const rect = dialog.getBoundingClientRect()
-  const clickedInside = (
-    rect.top <= event.clientY
-    && event.clientY <= rect.top + rect.height
-    && rect.left <= event.clientX
-    && event.clientX <= rect.left + rect.width
-  )
-  if (!clickedInside) {
-    dialog.close()
-  }
+  closeOnDialogBackdropClick(event, dialog)
 }
 
 function openEditModal() {
@@ -511,32 +425,14 @@ function closeAddModal() {
   }
 }
 
-function toggleItemMenu(itemId) {
-  openItemMenuId.value = openItemMenuId.value === itemId ? null : itemId
+function openDeleteListDialog() {
+  deleteListDialog.value?.showModal()
 }
 
-function closeItemMenu() {
-  openItemMenuId.value = null
-}
-
-function openRemoveDialog(item, event) {
-  if (event) {
-    event.stopPropagation()
+function closeDeleteListDialog() {
+  if (deleteListDialog.value?.open) {
+    deleteListDialog.value.close()
   }
-  closeItemMenu()
-  pendingRemovalItem.value = item
-  removeDialog.value?.showModal()
-}
-
-function closeRemoveDialog() {
-  if (removeDialog.value?.open) {
-    removeDialog.value.close()
-  }
-}
-
-function onRemoveDialogClose() {
-  pendingRemovalItem.value = null
-  removingItem.value = false
 }
 
 async function loadList() {
@@ -601,14 +497,20 @@ async function updateList() {
   }
 }
 
-async function deleteList() {
-  if (!confirm('Are you sure you want to delete this list?')) return
+async function confirmDeleteList() {
+  if (deletingList.value) {
+    return
+  }
+  deletingList.value = true
   try {
     await trackingAPI.deleteList(route.params.id)
+    closeDeleteListDialog()
     router.push('/lists')
   } catch (error) {
     console.error('Failed to delete list:', error)
     showFeedback(getApiErrorMessage(error, 'Could not delete list.'), 'error')
+  } finally {
+    deletingList.value = false
   }
 }
 
@@ -634,109 +536,41 @@ async function searchMedia() {
   }
 }
 
-async function addItem(item) {
-  try {
-    await trackingAPI.addToList(route.params.id, {
-      media_type: item.media_type,
-      tmdb_id: item.tmdb_id
-    })
-    searchQuery.value = ''
-    searchResults.value = []
-    closeAddModal()
-    await loadItems()
-    showFeedback('Item added to list.')
-  } catch (error) {
-    showFeedback(getApiErrorMessage(error, 'Could not add item to list.'), 'error')
-  }
+function handleListItemAdded() {
+  searchQuery.value = ''
+  searchResults.value = []
+  closeAddModal()
+  loadItems()
+  showFeedback('Item added to list.')
 }
 
-async function removeItem(itemId) {
-  try {
-    await trackingAPI.removeFromList(route.params.id, itemId)
-    await loadItems()
-    showFeedback('Item removed from list.')
-  } catch (error) {
-    showFeedback(getApiErrorMessage(error, 'Could not remove item from list.'), 'error')
-  }
-}
-
-async function confirmRemoveItem() {
-  const itemId = pendingRemovalItem.value?.id
-  if (!itemId || removingItem.value) {
+async function addSearchResultToList(result) {
+  const tmdbId = Number(result?.tmdb_id || result?.id)
+  if (!tmdbId || !route.params.id) {
+    showFeedback('Could not add item to list.', 'error')
     return
   }
-  removingItem.value = true
+  const requestKey = `${result.media_type}-${tmdbId}`
+  if (addingResultKey.value) {
+    return
+  }
+  addingResultKey.value = requestKey
   try {
-    await removeItem(itemId)
-    closeRemoveDialog()
+    await trackingAPI.addToList(route.params.id, {
+      media_type: result.media_type,
+      tmdb_id: tmdbId,
+    })
+    handleListItemAdded()
+  } catch (error) {
+    showFeedback(getApiErrorMessage(error, 'Could not add item to list.'), 'error')
   } finally {
-    removingItem.value = false
+    addingResultKey.value = ''
   }
 }
 
-async function handleQuickAction(item, mediaType) {
-  try {
-    if (!canToggleWatchlist(item)) {
-      return
-    }
-
-    const inWatchlist = item?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
-    const result = await toggleWatchlist(mediaType, item.tmdb_id, inWatchlist)
-    item.user_status = {
-      ...(item.user_status || {}),
-      status: result === 'removed' ? WATCH_ENTRY_STATUS.NONE : WATCH_ENTRY_STATUS.PLAN_TO_WATCH,
-    }
-  } catch (error) {
-    showQuickActionError(getApiErrorMessage(error, 'Could not update watchlist.'))
-  }
-}
-
-async function handleWatchOption(item, mediaType, option) {
-  try {
-    let watchedAt = null
-    if (option === 'release') {
-      const releaseDate = item.release_date || item.first_air_date
-      watchedAt = releaseDate ? `${releaseDate}T00:00:00Z` : null
-    } else if (option === 'date') {
-      watchedAt = await pickWatchedDateTime(item?.user_status?.watched_at || '')
-      if (!watchedAt) {
-        return
-      }
-    }
-
-    const nextStatus = await markWatched(mediaType, item.tmdb_id, watchedAt)
-    if (!nextStatus) {
-      return
-    }
-
-    const nowIso = watchedAt || new Date().toISOString()
-    item.user_status = {
-      ...(item.user_status || {}),
-      status: nextStatus,
-      watched_at: nowIso,
-      status_changed_at: nowIso,
-    }
-  } catch (error) {
-    showQuickActionError(getApiErrorMessage(error, 'Could not update watched status.'))
-  }
-}
-
-async function handleRemoveWatched(item, mediaType) {
-  try {
-    const removed = await unmarkWatched(mediaType, item.tmdb_id)
-    if (!removed) {
-      return
-    }
-
-    item.user_status = {
-      ...(item.user_status || {}),
-      status: WATCH_ENTRY_STATUS.NONE,
-      watched_at: null,
-      status_changed_at: null,
-    }
-  } catch (error) {
-    showQuickActionError(getApiErrorMessage(error, 'Could not update watched status.'))
-  }
+function handleListItemRemoved() {
+  loadItems()
+  showFeedback('Item removed from list.')
 }
 
 async function addCollaborator(user) {
@@ -791,25 +625,8 @@ async function removeCollaborator(userId) {
 }
 
 onMounted(async () => {
-  document.addEventListener('click', handleDocumentClick)
   await loadList()
   await loadItems()
-})
-
-function handleDocumentClick(event) {
-  if (!openItemMenuId.value) return
-  const target = event.target
-  if (!(target instanceof Element)) {
-    closeItemMenu()
-    return
-  }
-  if (!target.closest('.list-item-menu')) {
-    closeItemMenu()
-  }
-}
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleDocumentClick)
 })
 
 watch(
@@ -822,69 +639,8 @@ watch(
 </script>
 
 <style scoped>
-.list-dialog::backdrop {
-  background: rgba(7, 8, 11, 0.72);
-  backdrop-filter: blur(3px);
-}
-
 .list-dialog {
-  margin: auto;
   inset: 0;
   max-height: calc(100vh - 2rem);
-}
-
-.list-item-menu {
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.group:hover .list-item-menu,
-.list-item-menu.is-open {
-  opacity: 1;
-}
-
-.list-item-menu-trigger {
-  list-style: none;
-  width: 1.75rem;
-  height: 1.75rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  border: 1px solid var(--bg-surface-200);
-  background: color-mix(in srgb, var(--bg-surface-100) 86%, black 14%);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.list-item-menu-trigger::-webkit-details-marker {
-  display: none;
-}
-
-.list-item-menu-panel {
-  position: absolute;
-  top: 2rem;
-  right: 0;
-  min-width: 10rem;
-  border-radius: 0.6rem;
-  border: 1px solid var(--bg-surface-200);
-  background: var(--bg-surface-100);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
-  padding: 0.3rem;
-}
-
-.list-item-menu-danger {
-  width: 100%;
-  border: 0;
-  border-radius: 0.45rem;
-  background: transparent;
-  color: rgb(252 165 165);
-  text-align: left;
-  font-size: 0.8rem;
-  padding: 0.45rem 0.55rem;
-}
-
-.list-item-menu-danger:hover {
-  background: rgba(239, 68, 68, 0.1);
 }
 </style>
