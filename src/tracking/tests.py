@@ -23,11 +23,11 @@ from tracking.models import (
     ListCollaborator,
     ListItem,
     Rating,
-    UserSeasonStatus,
     UserTvShowStatus,
     WatchEntry,
     Watchlist,
 )
+from tracking.status_annotations import annotate_season_user_status
 
 User = get_user_model()
 
@@ -522,9 +522,12 @@ class MaterializedStatusTests(BaseTestCase):
         )
 
         show_status = UserTvShowStatus.objects.get(user=self.user, tmdb_id=9200)
-        season_status = UserSeasonStatus.objects.get(user=self.user, tmdb_id=9200, season_number=1)
+        season_status = annotate_season_user_status(
+            self.user,
+            [{'tmdb_id': 9200, 'season_number': 1}],
+        )[(9200, 1)]
         self.assertEqual(show_status.status, 'watching')
-        self.assertEqual(season_status.status, 'watching')
+        self.assertEqual(season_status['status'], 'watching')
 
     def test_final_tmdb_show_becomes_watched_when_complete(self):
         show = TVShow.objects.create(tmdb_id=9300, name='Finished Show', status='Canceled')
@@ -548,9 +551,12 @@ class MaterializedStatusTests(BaseTestCase):
         )
 
         show_status = UserTvShowStatus.objects.get(user=self.user, tmdb_id=9300)
-        season_status = UserSeasonStatus.objects.get(user=self.user, tmdb_id=9300, season_number=1)
+        season_status = annotate_season_user_status(
+            self.user,
+            [{'tmdb_id': 9300, 'season_number': 1}],
+        )[(9300, 1)]
         self.assertEqual(show_status.status, 'watched')
-        self.assertEqual(season_status.status, 'watched')
+        self.assertEqual(season_status['status'], 'watched')
 
 
 class UpNextTests(BaseTestCase):

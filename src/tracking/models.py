@@ -10,7 +10,6 @@ from .choices import (
     DataTransferStatus,
     ListPrivacy,
     MediaType,
-    SeasonStatus,
     TvShowStatus,
     WatchEntryMediaType,
 )
@@ -172,33 +171,6 @@ class UserTvShowStatus(models.Model):
 
     def __str__(self):
         return f'{self.user.username} TV {self.tmdb_id}: {self.status}'
-
-
-class UserSeasonStatus(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='season_statuses')
-    tmdb_id = models.IntegerField()
-    season_number = models.IntegerField()
-    status = models.CharField(max_length=20, choices=SeasonStatus.choices, default=SeasonStatus.NONE)
-    watched_episodes = models.IntegerField(default=0)
-    total_episodes = models.IntegerField(default=0)
-    progress_percent = models.IntegerField(default=0)
-    started_at = models.DateTimeField(null=True, blank=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-    last_watched_at = models.DateTimeField(null=True, blank=True)
-    status_changed_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ('user', 'tmdb_id', 'season_number')
-        indexes = [
-            models.Index(fields=['user', 'status']),
-            models.Index(fields=['user', 'tmdb_id']),
-            models.Index(fields=['user', 'updated_at']),
-        ]
-
-    def __str__(self):
-        return f'{self.user.username} TV {self.tmdb_id} S{self.season_number}: {self.status}'
 
 
 class DataTransferJob(models.Model):

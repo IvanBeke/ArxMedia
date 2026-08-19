@@ -1,8 +1,17 @@
-from django.db.models import DateTimeField, Max
+from django.db.models import Count, DateTimeField, Max, Min
 from django.db.models.functions import Coalesce
+from media.models import Episode, TVShow
 
 from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType
-from .models import Rating, UserSeasonStatus, UserTvShowStatus, WatchEntry, Watchlist
+from .models import Rating, UserTvShowStatus, WatchEntry, Watchlist
+
+FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
+
+
+def _percent(watched_count: int, total_count: int) -> int:
+    if total_count <= 0:
+        return 0
+    return round((watched_count / total_count) * 100)
 
 
 def _as_int(value):
@@ -158,50 +167,72 @@ def annotate_season_user_status(user, season_items):
     tmdb_ids = {tmdb_id for tmdb_id, _ in normalized_items}
     season_numbers = {season_number for _, season_number in normalized_items}
 
-    season_rows = UserSeasonStatus.objects.filter(
+    watched_rows = WatchEntry.objects.filter(
         user=user,
+        media_type=WatchEntryMediaType.EPISODE,
         tmdb_id__in=tmdb_ids,
         season_number__in=season_numbers,
+    ).annotate(
+        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
     ).values(
         'tmdb_id',
         'season_number',
-        'status',
-        'status_changed_at',
-        'last_watched_at',
-        'watched_episodes',
-        'total_episodes',
-        'progress_percent',
+    ).annotate(
+        watched_episodes=Count('id'),
+        first_watched_at=Min('event_at'),
+        last_watched_at=Max('event_at'),
     )
-    season_map = {(row['tmdb_id'], row['season_number']): row for row in season_rows}
+    watched_map = {(row['tmdb_id'], row['season_number']): row for row in watched_rows}
+
+    total_rows = Episode.objects.filter(
+        season__show__tmdb_id__in=tmdb_ids,
+        season__season_number__in=season_numbers,
+    ).values(
+        'season__show__tmdb_id',
+        'season__season_number',
+    ).annotate(
+        total_episodes=Count('id')
+    )
+    total_map = {
+        (row['season__show__tmdb_id'], row['season__season_number']): row['total_episodes']
+        for row in total_rows
+    }
+
+    final_show_ids = {
+        tmdb_id
+        for tmdb_id, status in TVShow.objects.filter(tmdb_id__in=tmdb_ids).values_list('tmdb_id', 'status')
+        if (status or '').strip().lower() in FINAL_TV_STATUSES
+    }
 
     result = {}
     for key in normalized_items:
-        season_status = season_map.get(key)
-        if season_status:
-            result[key] = {
-                'status': season_status['status'],
-                'status_changed_at': season_status['status_changed_at'],
-                'watched_at': season_status['last_watched_at'],
-                'rating': None,
-                'rated_at': None,
-                'progress': {
-                    'watched_episodes': season_status['watched_episodes'],
-                    'total_episodes': season_status['total_episodes'],
-                    'percent': season_status['progress_percent'],
-                },
-            }
+        watched_data = watched_map.get(key)
+        watched_episodes = watched_data['watched_episodes'] if watched_data else 0
+        last_watched_at = watched_data['last_watched_at'] if watched_data else None
+        total_episodes = total_map.get(key, 0)
+        is_final = key[0] in final_show_ids
+
+        if watched_episodes > 0:
+            if (total_episodes == 0 and is_final) or (watched_episodes >= total_episodes and is_final):
+                status_value = SeasonStatus.WATCHED
+            else:
+                status_value = SeasonStatus.WATCHING
+            status_changed_at = last_watched_at
         else:
-            result[key] = {
-                'status': SeasonStatus.NONE,
-                'status_changed_at': None,
-                'watched_at': None,
-                'rating': None,
-                'rated_at': None,
-                'progress': {
-                    'watched_episodes': 0,
-                    'total_episodes': 0,
-                    'percent': 0,
-                },
-            }
+            status_value = SeasonStatus.NONE
+            status_changed_at = None
+
+        result[key] = {
+            'status': status_value,
+            'status_changed_at': status_changed_at,
+            'watched_at': last_watched_at,
+            'rating': None,
+            'rated_at': None,
+            'progress': {
+                'watched_episodes': watched_episodes,
+                'total_episodes': total_episodes,
+                'percent': _percent(watched_episodes, total_episodes),
+            },
+        }
 
     return result

@@ -4,8 +4,8 @@ from django.db.models import Count, DateTimeField, Max, Min
 from django.db.models.functions import Coalesce
 from media.models import Episode, TVShow
 
-from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType
-from .models import UserSeasonStatus, UserTvShowStatus, WatchEntry, Watchlist
+from .choices import MediaType, TvShowStatus, WatchEntryMediaType
+from .models import UserTvShowStatus, WatchEntry, Watchlist
 
 FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
 
@@ -102,77 +102,7 @@ def refresh_show_status(user_id: int, tmdb_id: int):
     )
 
 
-def refresh_season_status(user_id: int, tmdb_id: int, season_number: int):
-    watched_data = WatchEntry.objects.filter(
-        user_id=user_id,
-        media_type=WatchEntryMediaType.EPISODE,
-        tmdb_id=tmdb_id,
-        season_number=season_number,
-    ).annotate(
-        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
-    ).aggregate(
-        watched_episodes=Count('id'),
-        first_watched_at=Min('event_at'),
-        last_watched_at=Max('event_at'),
-    )
-    watched_episodes = watched_data.get('watched_episodes') or 0
-    first_watched_at = watched_data.get('first_watched_at')
-    last_watched_at = watched_data.get('last_watched_at')
-
-    total_episodes = Episode.objects.filter(
-        season__show__tmdb_id=tmdb_id,
-        season__season_number=season_number,
-    ).count()
-
-    is_final = _is_final_tmdb_show_status(tmdb_id)
-    if watched_episodes > 0:
-        if total_episodes == 0 and is_final or watched_episodes >= total_episodes and is_final:
-            status_value = SeasonStatus.WATCHED
-        else:
-            status_value = SeasonStatus.WATCHING
-    else:
-        status_value = SeasonStatus.NONE
-
-    if status_value == SeasonStatus.WATCHED or status_value == SeasonStatus.WATCHING:
-        status_changed_at = last_watched_at
-    else:
-        status_changed_at = None
-
-    completed_at = last_watched_at if status_value == SeasonStatus.WATCHED else None
-
-    UserSeasonStatus.objects.update_or_create(
-        user_id=user_id,
-        tmdb_id=tmdb_id,
-        season_number=season_number,
-        defaults={
-            'status': status_value,
-            'watched_episodes': watched_episodes,
-            'total_episodes': total_episodes,
-            'progress_percent': _percent(watched_episodes, total_episodes),
-            'started_at': first_watched_at,
-            'completed_at': completed_at,
-            'last_watched_at': last_watched_at,
-            'status_changed_at': status_changed_at,
-        },
-    )
-
-
-def refresh_show_and_season_statuses(user_id: int, tmdb_id: int, season_numbers: set[int] | None = None):
-    if season_numbers:
-        for season_number in season_numbers:
-            if season_number is None:
-                continue
-            refresh_season_status(user_id, tmdb_id, int(season_number))
-    refresh_show_status(user_id, tmdb_id)
-
-
 def refresh_all_statuses_for_show(tmdb_id: int):
-    season_numbers = set(
-        Episode.objects.filter(season__show__tmdb_id=tmdb_id, season__season_number__gt=0)
-        .values_list('season__season_number', flat=True)
-        .distinct()
-    )
-
     status_user_ids = set(
         UserTvShowStatus.objects.filter(tmdb_id=tmdb_id).values_list('user_id', flat=True)
     )
@@ -187,4 +117,4 @@ def refresh_all_statuses_for_show(tmdb_id: int):
     )
 
     for user_id in sorted(status_user_ids | watch_entry_user_ids | watchlist_user_ids):
-        refresh_show_and_season_statuses(user_id, tmdb_id, season_numbers)
+        refresh_show_status(user_id, tmdb_id)

@@ -46,7 +46,7 @@ from .serializers import (
     WatchlistSerializer,
 )
 from .status_annotations import annotate_media_user_status
-from .status_sync import refresh_season_status, refresh_show_status
+from .status_sync import refresh_show_status
 from .tasks.import_commands import ConfirmImportCommand
 
 logger = logging.getLogger(__name__)
@@ -566,7 +566,6 @@ def mark_season_watched(request):
     for ep in episodes:
         cache.mark_episode_watched(request.user.id, tmdb_id, season_number, ep['episode_number'])
 
-    refresh_season_status(request.user.id, tmdb_id, season_number)
     refresh_show_status(request.user.id, tmdb_id)
 
     return Response({'marked': len(episodes)})

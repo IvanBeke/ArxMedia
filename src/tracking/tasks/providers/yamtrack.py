@@ -10,7 +10,7 @@ from ...choices import (
     WatchEntryMediaType,
 )
 from ...models import DataTransferJob
-from ...status_sync import refresh_show_and_season_statuses
+from ...status_sync import refresh_show_status
 from ..shared import (
     _apply_mirror_deletions,
     _ensure_tmdb_metadata_for_import_item,
@@ -307,7 +307,7 @@ def apply_yamtrack_csv_import(job: DataTransferJob, content: bytes, import_mode:
 
     refresh_ids = set(season_numbers_by_show.keys()) - explicit_show_status_ids
     for tmdb_id in refresh_ids:
-        refresh_show_and_season_statuses(job.user.id, tmdb_id, season_numbers_by_show.get(tmdb_id, set()))
+        refresh_show_status(job.user.id, tmdb_id)
 
     report['metadata_hits'] = state['metadata_hits']
     report['metadata_fetches'] = state['metadata_fetches']

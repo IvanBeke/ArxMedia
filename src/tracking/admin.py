@@ -3,7 +3,6 @@ from django.contrib import admin
 from .models import (
     Rating,
     Review,
-    UserSeasonStatus,
     UserTvShowStatus,
     WatchEntry,
     Watchlist,
@@ -58,27 +57,3 @@ class UserTvShowStatusAdmin(admin.ModelAdmin):
         'updated_at',
     ]
 
-
-@admin.register(UserSeasonStatus)
-class UserSeasonStatusAdmin(admin.ModelAdmin):
-    list_display = [
-        'user',
-        'tmdb_id',
-        'season_number',
-        'status',
-        'watched_episodes',
-        'total_episodes',
-        'progress_percent',
-        'updated_at',
-    ]
-    list_filter = ['status', 'season_number']
-    search_fields = ['user__username', 'tmdb_id']
-    ordering = ['-updated_at']
-    readonly_fields = [
-        'started_at',
-        'completed_at',
-        'last_watched_at',
-        'status_changed_at',
-        'created_at',
-        'updated_at',
-    ]
