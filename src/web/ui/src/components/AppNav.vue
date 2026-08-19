@@ -32,11 +32,10 @@
         <!-- Desktop nav links -->
         <div class="hidden md:flex items-center gap-1">
           <template v-if="auth.isAuthenticated">
-            <RouterLink to="/dashboard" class="nav-link">{{ t('nav_dashboard') }}</RouterLink>
             <RouterLink to="/search" class="nav-link hidden lg:block">{{ t('nav_discover') }}</RouterLink>
+            <RouterLink to="/progress" class="nav-link">Progress</RouterLink>
             <RouterLink to="/history" class="nav-link hidden lg:block">History</RouterLink>
-            <RouterLink to="/lists" class="nav-link hidden lg:block">{{ t('nav_lists') }}</RouterLink>
-            <RouterLink to="/calendar" class="nav-link hidden xl:block">{{ t('nav_calendar') }}</RouterLink>
+            <RouterLink to="/watchlist" class="nav-link hidden lg:block">Watchlist</RouterLink>
           </template>
 
           <template v-else>
@@ -82,8 +81,6 @@
                 <RouterLink :to="`/profile/${auth.user?.username}`" @click="showUserMenu = false" class="dropdown-item">
                   Profile
                 </RouterLink>
-                <RouterLink to="/watchlist" @click="showUserMenu = false" class="dropdown-item">Watchlist</RouterLink>
-                <RouterLink to="/history" @click="showUserMenu = false" class="dropdown-item">History</RouterLink>
                 <RouterLink to="/lists" @click="showUserMenu = false" class="dropdown-item">Lists</RouterLink>
                 <RouterLink to="/calendar" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_calendar') }}</RouterLink>
                 <RouterLink to="/data" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_data') }}</RouterLink>
@@ -110,10 +107,10 @@
         <div v-if="showMobileMenu" ref="mobileMenuRef" class="md:hidden py-2 border-t border-surface-200">
           <div class="flex flex-col gap-1 pb-1">
             <template v-if="auth.isAuthenticated">
-              <RouterLink to="/dashboard" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_dashboard') }}</RouterLink>
               <RouterLink to="/search" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_discover') }}</RouterLink>
+              <RouterLink to="/progress" @click="showMobileMenu = false" class="mobile-nav-link">Progress</RouterLink>
               <RouterLink to="/history" @click="showMobileMenu = false" class="mobile-nav-link">History</RouterLink>
-              <RouterLink to="/lists" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_lists') }}</RouterLink>
+              <RouterLink to="/watchlist" @click="showMobileMenu = false" class="mobile-nav-link">Watchlist</RouterLink>
               <RouterLink to="/calendar" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_calendar') }}</RouterLink>
               <RouterLink to="/data" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_data') }}</RouterLink>
               <RouterLink to="/settings" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_settings') }}</RouterLink>
