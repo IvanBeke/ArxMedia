@@ -1013,6 +1013,12 @@ class ProgressListTests(BaseTestCase):
         self.assertIn('total_watched_minutes', response.data)
         self.assertEqual(response.data['total_watched_minutes'], 182)
 
+    def test_progress_list_total_watched_minutes_respects_filters(self):
+        response = self.client.get('/api/tracking/progress/?status=watched')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('total_watched_minutes', response.data)
+        self.assertEqual(response.data['total_watched_minutes'], 110)
+
     def test_progress_list_includes_last_watched_episode_code_parts(self):
         response = self.client.get('/api/tracking/progress/?search=alpha')
         self.assertEqual(response.status_code, 200)

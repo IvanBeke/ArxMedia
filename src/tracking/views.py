@@ -986,7 +986,7 @@ def progress_list(request):
         season__season_number=OuterRef('season_number'),
         episode_number=OuterRef('episode_number'),
     ).values('runtime')[:1]
-    watched_runtime_total = WatchEntry.objects.filter(
+    watched_runtime_entries = WatchEntry.objects.filter(
         user=request.user,
         media_type=WatchEntryMediaType.EPISODE,
         tmdb_id__in=tmdb_ids,
@@ -994,10 +994,13 @@ def progress_list(request):
         episode_number__isnull=False,
     ).annotate(
         runtime=Coalesce(Subquery(watched_runtime_subquery, output_field=IntegerField()), Value(0))
-    ).aggregate(
-        total=Coalesce(Sum('runtime'), Value(0), output_field=IntegerField())
     )
-    total_watched_minutes = watched_runtime_total['total'] or 0
+    watched_runtime_by_show = {
+        row['tmdb_id']: row['total_runtime'] or 0
+        for row in watched_runtime_entries.values('tmdb_id').annotate(
+            total_runtime=Coalesce(Sum('runtime'), Value(0), output_field=IntegerField())
+        )
+    }
 
     shows = TVShow.objects.filter(tmdb_id__in=tmdb_ids).prefetch_related('genres')
     show_map = {show.tmdb_id: show for show in shows}
@@ -1076,6 +1079,7 @@ def progress_list(request):
 
     filtered = _apply_progress_filters(progress_items, request)
     sorted_items = _sort_progress_items(filtered, request.query_params.get('sort'), request.query_params.get('direction'))
+    total_watched_minutes = sum(watched_runtime_by_show.get(item['tmdb_id'], 0) for item in filtered)
 
     paginator = PageNumberPagination()
     page = paginator.paginate_queryset(sorted_items, request)
