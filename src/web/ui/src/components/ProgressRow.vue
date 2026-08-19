@@ -142,6 +142,7 @@ import RatingBadge from '@/components/RatingBadge.vue'
 import UserRating from '@/components/UserRating.vue'
 import { formatDateByLocale } from '@/i18n'
 import { formatHoursMinutes } from '@/utils/progress'
+import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
 
 defineProps({
   item: { type: Object, required: true },
@@ -157,22 +158,12 @@ function hasProviderRating(value) {
 
 function formatCompactDate(value) {
   if (!value) return '--'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '--'
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const year = date.getFullYear()
-  return `${day}/${month}/${year}`
+  return formatIsoAsDDMMYYYY(value) || '--'
 }
 
 function inferredStarted(value) {
   if (!value) return '--'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '--'
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const year = date.getFullYear()
-  return `${day}/${month}/${year}`
+  return formatIsoAsDDMMYYYY(value) || '--'
 }
 
 function minutesPerEpisode(item) {

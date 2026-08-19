@@ -1,5 +1,6 @@
 import { computed } from 'vue'
 import { usePreferencesStore } from '@/stores/preferences'
+import { formatTemporalDate, formatTemporalDateTime } from '@/utils/temporal'
 
 
 const messages = {
@@ -151,16 +152,14 @@ export function formatDateByLocale(value) {
   if (!value) return ''
   const prefs = usePreferencesStore()
   const locale = prefs.locale === 'es' ? 'es-ES' : 'en-US'
-  return new Date(value).toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' })
+  return formatTemporalDate(value, locale, { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
 export function formatDateTimeByLocale(value, options = {}) {
   if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
   const prefs = usePreferencesStore()
   const locale = prefs.locale === 'es' ? 'es-ES' : 'en-US'
-  return date.toLocaleString(locale, {
+  return formatTemporalDateTime(value, locale, {
     month: 'long',
     day: 'numeric',
     year: 'numeric',

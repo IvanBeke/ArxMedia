@@ -122,6 +122,7 @@ import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { formatDateByLocale, formatDateTimeByLocale, useI18n } from '@/i18n'
 import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
+import { nowInstantIso, plainDateToUserInstantIso } from '@/utils/temporal'
 
 const route = useRoute()
 
@@ -213,7 +214,7 @@ async function handleWatchOption(option) {
         episode_number: episodeNum.value
       })
       isWatched.value = true
-      watchedAt.value = new Date().toISOString()
+      watchedAt.value = nowInstantIso()
     }
     return
   }
@@ -222,7 +223,7 @@ async function handleWatchOption(option) {
     let selectedWatchedAt = null
     if (option === 'release') {
       if (episodeData.value?.air_date) {
-        selectedWatchedAt = episodeData.value.air_date + 'T00:00:00Z'
+        selectedWatchedAt = plainDateToUserInstantIso(episodeData.value.air_date)
       }
     } else if (option === 'date') {
       selectedWatchedAt = await pickWatchedDateTime(watchedAt.value)
@@ -247,7 +248,7 @@ async function handleWatchOption(option) {
         watched_at: selectedWatchedAt
       })
       isWatched.value = true
-      watchedAt.value = selectedWatchedAt || new Date().toISOString()
+      watchedAt.value = selectedWatchedAt || nowInstantIso()
     }
   } catch (e) {
     console.error('Failed to toggle:', e)

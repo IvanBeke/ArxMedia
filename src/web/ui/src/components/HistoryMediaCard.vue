@@ -79,6 +79,7 @@ import CardEpisodeCodePill from '@/components/cards/primitives/CardEpisodeCodePi
 import CardMediaTypeBadge from '@/components/cards/primitives/CardMediaTypeBadge.vue'
 import CardUserRating from '@/components/cards/primitives/CardUserRating.vue'
 import { useMediaCardModel } from '@/composables/useMediaCardModel'
+import { formatIsoAsDDMMYYYY, formatIsoTimeHHMM } from '@/utils/temporal'
 
 const props = defineProps({
   entry: { type: Object, required: true },
@@ -119,14 +120,9 @@ const timestampLabel = computed(() => {
   }
   const rawTimestamp = props.timestamp || props.entry.watched_at
   if (!rawTimestamp) return ''
-  const date = new Date(rawTimestamp)
-  if (Number.isNaN(date.getTime())) return ''
-  const datePart = date.toLocaleDateString('en-GB')
-  const timePart = date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
+  const datePart = formatIsoAsDDMMYYYY(rawTimestamp)
+  const timePart = formatIsoTimeHHMM(rawTimestamp)
+  if (!datePart || !timePart) return ''
   return `${datePart} · ${timePart}`
 })
 </script>

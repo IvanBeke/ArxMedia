@@ -8,6 +8,26 @@
       @cancel="handleDatePickerCancel"
     />
 
+    <dialog
+      ref="removeHistoryDialog"
+      closedby="any"
+      class="app-dialog tv-detail-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
+      aria-labelledby="tv-remove-history-title"
+      @close="onRemoveHistoryDialogClose"
+      @click="onDialogClick($event, removeHistoryDialog)"
+    >
+      <div class="p-6">
+        <h2 id="tv-remove-history-title" class="text-lg font-display text-primary font-semibold">Remove from watched history?</h2>
+        <p class="mt-2 text-sm text-muted">This will remove all watched episodes for this show from your history. Ratings and list membership are not changed.</p>
+        <div class="mt-5 flex gap-3">
+          <button type="button" class="btn-ghost flex-1" @click="closeRemoveHistoryDialog">Keep history</button>
+          <button type="button" class="btn-ghost flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" :disabled="removingHistory" @click="confirmRemoveWatchedEpisodes">
+            {{ removingHistory ? 'Removing...' : 'Remove' }}
+          </button>
+        </div>
+      </div>
+    </dialog>
+
     <div class="relative h-72 md:h-[28rem]">
       <img v-if="show?.backdrop_url" :src="show.backdrop_url" class="w-full h-full object-cover" />
       <div class="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
@@ -42,7 +62,7 @@
 
             <h1 class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ show.name }}</h1>
             <p class="text-muted text-sm mb-4">
-              {{ show.first_air_date ? new Date(show.first_air_date).getFullYear() : '' }}
+              {{ show.first_air_date ? (temporalYear(show.first_air_date) || '') : '' }}
               · {{ show.number_of_seasons }} Season{{ show.number_of_seasons !== 1 ? 's' : '' }}
               · {{ show.number_of_episodes }} Episode{{ show.number_of_episodes !== 1 ? 's' : '' }}
               <span v-if="show.episode_runtime"> · {{ show.episode_runtime }} min/ep</span>
@@ -134,6 +154,11 @@
                 </svg>
                 {{ showStatus === 'watchlist' ? 'In Watchlist' : 'Watchlist' }}
               </button>
+              <AddToListPopover
+                :media-type="MEDIA_TYPE.TV"
+                :tmdb-id="tmdbId"
+                @added="() => showSuccess('Added to list')"
+              />
             </div>
 
             <div v-if="auth.isAuthenticated" class="mb-4">
@@ -195,7 +220,7 @@
                       </button>
                     </div>
                   </div>
-                  <p class="text-muted text-sm mt-0.5">{{ season.episode_count }} episodes{{ season.air_date ? ` · ${new Date(season.air_date).getFullYear()}` : '' }}</p>
+                  <p class="text-muted text-sm mt-0.5">{{ season.episode_count }} episodes{{ season.air_date ? ` · ${temporalYear(season.air_date) || ''}` : '' }}</p>
                   <div class="mt-2">
                     <ProgressBar :pct="getSeasonProgress(season.season_number)" />
                     <p class="text-xs text-muted mt-1">{{ formatSeasonProgressFraction(season.season_number) }} watched</p>
@@ -246,6 +271,7 @@ import { mediaAPI, trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import StarRating from '@/components/StarRating.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
+import AddToListPopover from '@/components/AddToListPopover.vue'
 import SpoilerBlock from '@/components/SpoilerBlock.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
@@ -254,8 +280,9 @@ import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/consta
 import { formatDateByLocale, formatDateTimeByLocale, useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
-import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions'
-import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
+import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
+import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
+import { nowInstantIso, plainDateToUserInstantIso, temporalYear } from '@/utils/temporal'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -266,10 +293,12 @@ const show = ref(null)
 const loading = ref(true)
 const loadingSeasons = ref(false)
 const userRating = ref(0)
-const showStatus = ref('none')
+const showStatus = ref(WATCH_ENTRY_STATUS.NONE)
 const successMsg = ref('')
 const errorMsg = ref('')
 const refreshingMetadata = ref(false)
+const removeHistoryDialog = ref(null)
+const removingHistory = ref(false)
 
 const activeTab = ref('seasons')
 const expandedSeason = ref(null)
@@ -282,14 +311,11 @@ const {
   showDatePicker,
   pickerInitialValue,
   pickWatchedDateTime,
+  handleQuickAction: runQuickAction,
+  handleRemoveWatched: runRemoveWatched,
   handleDatePickerConfirm,
   handleDatePickerCancel,
-} = useWatchedDateTimePicker()
-
-const {
-  addToWatchlist,
-  removeFromWatchlist,
-} = useWatchlistQuickActions()
+} = useMediaCardQuickActions({ onError: showError })
 
 const statusMenuOpen = ref(false)
 const statusMenuRef = ref(null)
@@ -327,7 +353,7 @@ function syncShowStatusFromUserStatus() {
     showStatus.value = status
     return
   }
-  showStatus.value = 'none'
+  showStatus.value = WATCH_ENTRY_STATUS.NONE
 }
 
 onClickOutside(statusMenuRef, () => {
@@ -354,6 +380,25 @@ function toggleStatusMenu() {
   statusMenuOpen.value = !statusMenuOpen.value
 }
 
+function onDialogClick(event, dialogRef) {
+  const dialog = dialogRef?.value
+  closeOnDialogBackdropClick(event, dialog)
+}
+
+function openRemoveHistoryDialog() {
+  removeHistoryDialog.value?.showModal()
+}
+
+function closeRemoveHistoryDialog() {
+  if (removeHistoryDialog.value?.open) {
+    removeHistoryDialog.value.close()
+  }
+}
+
+function onRemoveHistoryDialogClose() {
+  removingHistory.value = false
+}
+
 function isWatched(sn, epNum) {
   return watchedEps.value.has(`${sn}-${epNum}`)
 }
@@ -374,7 +419,7 @@ async function handleEpisodeWatchOption(sn, payload) {
   if (option === 'release') {
     let watchedAt = null
     if (payload.releaseDate) {
-      watchedAt = `${payload.releaseDate}T00:00:00Z`
+      watchedAt = plainDateToUserInstantIso(payload.releaseDate)
     }
     await markEpisode(sn, epNum, watchedAt)
     return
@@ -397,7 +442,7 @@ async function markEpisode(sn, epNum, watchedAt) {
   } else {
     await trackingAPI.markEpisodeWatched({ tmdb_id: tmdbId.value, season_number: sn, episode_number: epNum, watched_at: watchedAt })
     watchedEps.value.add(key)
-    watchedAtMap.value.set(key, watchedAt || new Date().toISOString())
+    watchedAtMap.value.set(key, watchedAt || nowInstantIso())
     showSuccess('Episode marked as watched')
   }
   delete seasonEpisodes.value[sn]
@@ -486,8 +531,15 @@ async function loadWatchedEpisodes() {
 }
 
 async function setShowStatus(status) {
+  if (!show.value) {
+    return false
+  }
+
   if (status === WATCH_ENTRY_STATUS.WATCHING && showStatus.value === 'watchlist') {
-    await removeFromWatchlist(MEDIA_TYPE.TV, tmdbId.value)
+    await runQuickAction(show.value, MEDIA_TYPE.TV)
+    if (show.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) {
+      return false
+    }
   }
   if (status === 'watchlist' && showStatus.value === WATCH_ENTRY_STATUS.WATCHING) {
     await trackingAPI.removeFromHistory({ media_type: WATCH_ENTRY_MEDIA_TYPE.EPISODE, tmdb_id: tmdbId.value })
@@ -496,36 +548,65 @@ async function setShowStatus(status) {
   if (status === WATCH_ENTRY_STATUS.WATCHING) {
     // Show watching status is now determined by watching any episode
   } else if (status === 'watchlist') {
-    await addToWatchlist(MEDIA_TYPE.TV, tmdbId.value)
-  } else if (status === 'none') {
-    await removeFromWatchlist(MEDIA_TYPE.TV, tmdbId.value)
+    await runQuickAction(show.value, MEDIA_TYPE.TV)
+    if (show.value?.user_status?.status !== WATCH_ENTRY_STATUS.PLAN_TO_WATCH) {
+      return false
+    }
+  } else if (status === WATCH_ENTRY_STATUS.NONE) {
+    if (showStatus.value === 'watchlist') {
+      await runQuickAction(show.value, MEDIA_TYPE.TV)
+      if (show.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) {
+        return false
+      }
+    }
   }
-  
+
   showStatus.value = status
+  return true
 }
 
 async function handleWatchingAction() {
   statusMenuOpen.value = false
   if (showStatus.value === WATCH_ENTRY_STATUS.WATCHING) {
-    await setShowStatus('none')
+    const updated = await setShowStatus(WATCH_ENTRY_STATUS.NONE)
+    if (!updated) {
+      return
+    }
     showSuccess('Removed from watching')
   } else {
-    await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
+    const updated = await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
+    if (!updated) {
+      return
+    }
     showSuccess('Added to watching!')
   }
 }
 
 async function handleRemoveWatchedEpisodes() {
   statusMenuOpen.value = false
-  if (!window.confirm(t('remove_history_confirm_show'))) {
+  openRemoveHistoryDialog()
+}
+
+async function confirmRemoveWatchedEpisodes() {
+  if (removingHistory.value || !show.value) {
     return
   }
-  await trackingAPI.unmarkShowWatched({ tmdb_id: tmdbId.value })
-  watchedEps.value = new Set()
-  watchedAtMap.value = new Map()
-  seasonEpisodes.value = {}
-  await loadShow()
-  showSuccess('Removed watched episodes')
+  removingHistory.value = true
+  try {
+    const removed = await runRemoveWatched(show.value, MEDIA_TYPE.TV)
+    if (!removed) {
+      return
+    }
+
+    watchedEps.value = new Set()
+    watchedAtMap.value = new Map()
+    seasonEpisodes.value = {}
+    await loadShow()
+    closeRemoveHistoryDialog()
+    showSuccess('Removed watched episodes')
+  } finally {
+    removingHistory.value = false
+  }
 }
 
 async function handleDropShow() {
@@ -540,15 +621,17 @@ async function handleDropShow() {
 
 async function handleWatchlistAction() {
   if (showStatus.value === 'watchlist') {
-    await setShowStatus('none')
+    const updated = await setShowStatus(WATCH_ENTRY_STATUS.NONE)
+    if (!updated) {
+      return
+    }
     showSuccess('Removed from watchlist')
   } else {
-    try {
-      await setShowStatus('watchlist')
-      showSuccess('Added to watchlist!')
-    } catch (error) {
-      showError(getApiErrorMessage(error, 'Could not add to watchlist.'))
+    const updated = await setShowStatus('watchlist')
+    if (!updated) {
+      return
     }
+    showSuccess('Added to watchlist!')
   }
 }
 

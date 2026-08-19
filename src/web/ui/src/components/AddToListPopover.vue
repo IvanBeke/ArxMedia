@@ -71,6 +71,7 @@ import { onMounted } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { trackingAPI } from '@/api'
 import { LIST_PRIVACY } from '@/constants/tracking'
+import { getApiErrorMessage } from '@/utils/errors'
 
 const props = defineProps({
   mediaType: { type: String, required: true },
@@ -142,7 +143,7 @@ async function addToExisting(listId) {
     setSuccess('Added to list')
     emit('added')
   } catch (error) {
-    setError(error?.detail || 'Could not add to list.')
+    setError(getApiErrorMessage(error, 'Could not add to list.'))
   } finally {
     submitting.value = false
   }
@@ -164,7 +165,7 @@ async function createAndAdd() {
     setSuccess('List created and item added')
     emit('added')
   } catch (error) {
-    setError(error?.detail || 'Could not create list and add item.')
+    setError(getApiErrorMessage(error, 'Could not create list and add item.'))
   } finally {
     submitting.value = false
   }

@@ -53,7 +53,7 @@
     <dialog
       ref="createDialog"
       closedby="any"
-      class="create-list-dialog w-full max-w-2xl rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
+      class="app-dialog create-list-dialog w-full max-w-2xl rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
       aria-labelledby="create-list-title"
       @close="onDialogClose"
       @click="onDialogClick"
@@ -187,6 +187,8 @@
 import { nextTick, onMounted, ref } from 'vue'
 import { authAPI, trackingAPI } from '@/api'
 import { LIST_PRIVACY } from '@/constants/tracking'
+import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
+import { formatDateByLocale } from '@/i18n'
 
 const lists = ref([])
 const loading = ref(true)
@@ -208,8 +210,7 @@ const newList = ref({
 const showUserResults = ref(false)
 
 function formatDate(d) {
-  if (!d) return ''
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return formatDateByLocale(d)
 }
 
 function privacyClass(privacy) {
@@ -274,24 +275,8 @@ function onDialogClose() {
 }
 
 function onDialogClick(event) {
-  if ('closedBy' in HTMLDialogElement.prototype) {
-    return
-  }
   const dialog = createDialog.value
-  if (!dialog || event.target !== dialog) {
-    return
-  }
-
-  const rect = dialog.getBoundingClientRect()
-  const clickedInside = (
-    rect.top <= event.clientY
-    && event.clientY <= rect.top + rect.height
-    && rect.left <= event.clientX
-    && event.clientX <= rect.left + rect.width
-  )
-  if (!clickedInside) {
-    dialog.close()
-  }
+  closeOnDialogBackdropClick(event, dialog)
 }
 
 function selectCollaborator(user) {
@@ -359,13 +344,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.create-list-dialog::backdrop {
-  background: rgba(7, 8, 11, 0.72);
-  backdrop-filter: blur(3px);
-}
-
 .create-list-dialog {
-  margin: auto;
   inset: 0;
   max-height: calc(100vh - 2rem);
 }

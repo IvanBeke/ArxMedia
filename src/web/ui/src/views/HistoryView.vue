@@ -110,6 +110,7 @@ import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
+import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
 
 const route = useRoute()
 const router = useRouter()
@@ -143,13 +144,10 @@ const groupedEntries = computed(() => {
   const byKey = new Map()
 
   for (const entry of entries.value) {
-    const dt = entry.watched_at ? new Date(entry.watched_at) : null
-    const key = dt && !Number.isNaN(dt.getTime())
-      ? dt.toISOString().slice(0, 10)
-      : 'unknown'
-    const label = dt && !Number.isNaN(dt.getTime())
-      ? dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      : 'Unknown date'
+    const key = isoDateKey(entry.watched_at) || 'unknown'
+    const label = key === 'unknown'
+      ? 'Unknown date'
+      : formatTemporalDate(entry.watched_at, 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
     if (!byKey.has(key)) {
       const group = { key, label, items: [] }

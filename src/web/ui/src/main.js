@@ -5,8 +5,11 @@ import router from './router'
 import './assets/main.css'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { ensureTemporal } from '@/utils/temporal'
 
 async function bootstrap() {
+  await ensureTemporal()
+
   const pinia = createPinia()
 
   const authStore = useAuthStore(pinia)

@@ -45,7 +45,10 @@
 
             <h1 class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ movie.title }}</h1>
             <p v-if="movie.tagline" class="text-gray-500 italic text-sm mb-3">{{ movie.tagline }}</p>
-            <p class="text-gray-500 text-sm mb-4">{{ releaseYear(movie.release_date) }} · {{ movie.runtime ? Math.floor(movie.runtime / 60) + 'h ' + (movie.runtime % 60) + 'm' : '' }}</p>
+            <p class="text-gray-500 text-sm mb-4">
+              {{ releaseYear(movie.release_date) }}
+              <span v-if="runtimeLabel"> · {{ runtimeLabel }}</span>
+            </p>
             <p class="text-gray-600 text-xs mb-4">{{ formatDateByLocale(movie.release_date) }}</p>
 
             <div class="flex items-center gap-4 mb-4 text-sm">
@@ -115,6 +118,11 @@
                 </svg>
                 {{ inWatchlist ? 'In Watchlist' : 'Watchlist' }}
               </button>
+              <AddToListPopover
+                :media-type="MEDIA_TYPE.MOVIE"
+                :tmdb-id="Number(route.params.id)"
+                @added="() => showSuccess('Added to list')"
+              />
             </div>
 
             <div v-if="auth.isAuthenticated" class="mb-4">
@@ -161,14 +169,16 @@ import { mediaAPI, trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import StarRating from '@/components/StarRating.vue'
 import WatchMenu from '@/components/WatchMenu.vue'
+import AddToListPopover from '@/components/AddToListPopover.vue'
 import SpoilerBlock from '@/components/SpoilerBlock.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { formatDateByLocale, formatDateTimeByLocale, useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
-import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions'
-import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
+import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
+import { formatHoursMinutes } from '@/utils/progress'
+import { instantEpochMs, instantFromEpochMs, nowInstantIso, temporalYear } from '@/utils/temporal'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -183,17 +193,20 @@ const inWatchlist = ref(false)
 const successMsg = ref('')
 const errorMsg = ref('')
 const refreshingMetadata = ref(false)
+function showError(msg) {
+  successMsg.value = ''
+  errorMsg.value = msg
+  setTimeout(() => { errorMsg.value = '' }, 3500)
+}
+
 const {
   showDatePicker,
   pickerInitialValue,
-  pickWatchedDateTime,
+  handleQuickAction: runQuickAction,
+  handleWatchOption: runWatchOption,
   handleDatePickerConfirm,
   handleDatePickerCancel,
-} = useWatchedDateTimePicker()
-
-const {
-  toggleWatchlist: toggleWatchlistEntry,
-} = useWatchlistQuickActions()
+} = useMediaCardQuickActions({ onError: showError })
 
 const watchedMessage = computed(() => watchedCount.value > 0 ? `Watched (${watchedCount.value}×)` : 'Mark as Watched')
 
@@ -211,6 +224,14 @@ const metadataUpdatedAtLabel = computed(() => {
   return formatDateTimeByLocale(value, { hour12: false }) || 'Unknown'
 })
 
+const runtimeLabel = computed(() => {
+  const runtime = Number(movie.value?.runtime)
+  if (!Number.isFinite(runtime) || runtime <= 0) {
+    return ''
+  }
+  return formatHoursMinutes(runtime)
+})
+
 const canRate = computed(() => {
   const status = movie.value?.user_status?.status
   return status === WATCH_ENTRY_STATUS.WATCHED || status === WATCH_ENTRY_STATUS.WATCHING || status === WATCH_ENTRY_STATUS.DROPPED
@@ -223,19 +244,13 @@ function imgUrl(path, size = 'w500') {
 
 function releaseYear(value) {
   if (!value) return ''
-  return new Date(value).getFullYear()
+  return temporalYear(value) || ''
 }
 
 function showSuccess(msg) {
   errorMsg.value = ''
   successMsg.value = msg
   setTimeout(() => { successMsg.value = '' }, 2500)
-}
-
-function showError(msg) {
-  successMsg.value = ''
-  errorMsg.value = msg
-  setTimeout(() => { errorMsg.value = '' }, 3500)
 }
 
 onMounted(async () => {
@@ -261,10 +276,10 @@ onMounted(async () => {
       const watchedDates = entries
         .map(e => e.watched_at)
         .filter(Boolean)
-        .map(v => new Date(v))
-        .filter(d => !Number.isNaN(d.getTime()))
+        .map(v => instantEpochMs(v))
+        .filter(v => Number.isFinite(v))
       if (watchedDates.length) {
-        latestWatchedAt.value = new Date(Math.max(...watchedDates)).toISOString()
+        latestWatchedAt.value = instantFromEpochMs(Math.max(...watchedDates))
       }
     }
     inWatchlist.value = movie.value?.user_status?.status === 'plan_to_watch'
@@ -277,50 +292,40 @@ onMounted(async () => {
 })
 
 async function handleWatchOption(option) {
-  if (option === 'now') {
-    // Just now - mark as watched immediately
-    await trackingAPI.addToHistory({ 
-      media_type: MEDIA_TYPE.MOVIE,
-      tmdb_id: route.params.id, 
-    })
-    watchedCount.value++
-    inWatchlist.value = false
-    latestWatchedAt.value = new Date().toISOString()
-    showSuccess('Marked as watched!')
+  if (!movie.value) {
     return
   }
-  
-  let watchedAt = null
-  if (option === 'release') {
-    if (movie.value?.release_date) {
-      watchedAt = movie.value.release_date + 'T00:00:00Z'
-    }
-  } else if (option === 'date') {
-    watchedAt = await pickWatchedDateTime(latestWatchedAt.value)
-    if (!watchedAt) {
-      return // cancelled
+
+  if (option === 'date') {
+    movie.value.user_status = {
+      ...(movie.value.user_status || {}),
+      watched_at: latestWatchedAt.value,
     }
   }
-  
-  await trackingAPI.addToHistory({ 
-    media_type: MEDIA_TYPE.MOVIE,
-    tmdb_id: route.params.id, 
-    watched_at: watchedAt
-  })
+
+  const nextStatus = await runWatchOption(movie.value, MEDIA_TYPE.MOVIE, option)
+  if (!nextStatus) {
+    return
+  }
+
   watchedCount.value++
   inWatchlist.value = false
-  latestWatchedAt.value = watchedAt || new Date().toISOString()
+  latestWatchedAt.value = movie.value?.user_status?.watched_at || nowInstantIso()
   showSuccess('Marked as watched!')
 }
 
 async function toggleWatchlist() {
-  try {
-    const result = await toggleWatchlistEntry(MEDIA_TYPE.MOVIE, route.params.id, inWatchlist.value)
-    inWatchlist.value = result !== 'removed'
-    showSuccess(result === 'removed' ? 'Removed from watchlist' : 'Added to watchlist!')
-  } catch (error) {
-    showError(getApiErrorMessage(error, 'Could not update watchlist.'))
+  if (!movie.value) {
+    return
   }
+
+  const result = await runQuickAction(movie.value, MEDIA_TYPE.MOVIE)
+  if (!result) {
+    return
+  }
+
+  inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
+  showSuccess(result === 'removed' ? 'Removed from watchlist' : 'Added to watchlist!')
 }
 
 async function submitRating(score) {

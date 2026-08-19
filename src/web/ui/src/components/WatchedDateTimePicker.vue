@@ -28,6 +28,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { localDateTimeInputToIso, nowInstantIso, toLocalDateTimeInput } from '@/utils/temporal'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -38,27 +39,15 @@ const props = defineProps({
 const emit = defineEmits(['confirm', 'cancel'])
 const localValue = ref('')
 
-function toLocalDateTimeInput(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hour}:${minute}`
-}
-
 function setNow() {
-  localValue.value = toLocalDateTimeInput(new Date().toISOString())
+  localValue.value = toLocalDateTimeInput(nowInstantIso())
 }
 
 function onConfirm() {
   if (!localValue.value) return
-  const date = new Date(localValue.value)
-  if (Number.isNaN(date.getTime())) return
-  emit('confirm', date.toISOString())
+  const isoValue = localDateTimeInputToIso(localValue.value)
+  if (!isoValue) return
+  emit('confirm', isoValue)
 }
 
 function onCancel() {

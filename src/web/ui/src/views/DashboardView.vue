@@ -132,6 +132,7 @@ import { formatDateByLocale, useI18n } from '@/i18n'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
+import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
 
 const auth = useAuthStore()
 const { t } = useI18n()
@@ -146,9 +147,7 @@ const deletingEntryId = ref(null)
 
 function formatDate(d) {
   if (!d) return ''
-  const date = new Date(d)
-  if (Number.isNaN(date.getTime())) return formatDateByLocale(d)
-  return date.toLocaleDateString('en-GB')
+  return formatIsoAsDDMMYYYY(d) || formatDateByLocale(d)
 }
 
 function getLink(entry) {

@@ -64,7 +64,7 @@
     <dialog
       ref="rateDialog"
       closedby="any"
-      class="progress-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
+      class="app-dialog progress-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
       aria-labelledby="progress-rate-title"
       @click="onDialogClick($event, rateDialog)"
       @close="onRateDialogClose"
@@ -94,7 +94,7 @@
     <dialog
       ref="addToListDialog"
       closedby="any"
-      class="progress-dialog w-full max-w-lg rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
+      class="app-dialog progress-dialog w-full max-w-lg rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
       aria-labelledby="progress-list-title"
       @click="onDialogClick($event, addToListDialog)"
       @close="onAddToListDialogClose"
@@ -134,6 +134,7 @@ import { trackingAPI } from '@/api'
 import AddToListPopover from '@/components/AddToListPopover.vue'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import { getApiErrorMessage } from '@/utils/errors'
+import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { formatHoursMinutes } from '@/utils/progress'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import PaginationControls from '@/components/PaginationControls.vue'
@@ -256,19 +257,7 @@ async function loadProgress() {
 
 function onDialogClick(event, dialogRef) {
   const dialog = dialogRef?.value
-  if (!dialog || event.target !== dialog) {
-    return
-  }
-  const rect = dialog.getBoundingClientRect()
-  const inDialog = (
-    event.clientX >= rect.left &&
-    event.clientX <= rect.right &&
-    event.clientY >= rect.top &&
-    event.clientY <= rect.bottom
-  )
-  if (!inDialog) {
-    dialog.close()
-  }
+  closeOnDialogBackdropClick(event, dialog)
 }
 
 function openRateModal(item) {
@@ -384,14 +373,3 @@ onMounted(async () => {
   await loadProgress()
 })
 </script>
-
-<style scoped>
-.progress-dialog::backdrop {
-  background: rgba(2, 6, 23, 0.72);
-  backdrop-filter: blur(2px);
-}
-
-.progress-dialog {
-  margin: auto;
-}
-</style>

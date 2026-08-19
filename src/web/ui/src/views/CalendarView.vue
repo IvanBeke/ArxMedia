@@ -35,7 +35,7 @@
           :class="day.inCurrentMonth ? 'bg-surface-100/40' : 'bg-surface-200/30 opacity-60'"
         >
           <div class="text-xs mb-2" :class="day.isToday ? 'text-brand-400 font-semibold' : 'text-muted'">
-            {{ day.date.getDate() }}
+            {{ day.date.day }}
           </div>
           <div class="space-y-1">
             <RouterLink
@@ -70,33 +70,19 @@ import { computed, onMounted, ref } from 'vue'
 import { calendarAPI } from '@/api'
 import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
+import { monthBounds, parsePlainDate, shiftIsoMonthStart } from '@/utils/temporal'
 
-function dateToIso(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function addMonths(base, amount) {
-  return new Date(base.getFullYear(), base.getMonth() + amount, 1)
-}
-
-function startOfMonth(date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1)
-}
-
-function endOfMonth(date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0)
+function todayMonthStartIso() {
+  return Temporal.Now.plainDateISO().with({ day: 1 }).toString()
 }
 
 const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const loading = ref(true)
-const selectedMonth = ref(startOfMonth(new Date()))
+const selectedMonth = ref(todayMonthStartIso())
 const items = ref([])
 
 const monthLabel = computed(() =>
-  selectedMonth.value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  parsePlainDate(selectedMonth.value)?.toLocaleString(undefined, { month: 'long', year: 'numeric' }) || ''
 )
 
 const itemMap = computed(() => {
@@ -128,29 +114,26 @@ const itemMap = computed(() => {
 })
 
 const calendarDays = computed(() => {
-  const first = startOfMonth(selectedMonth.value)
-  const last = endOfMonth(selectedMonth.value)
-  const firstWeekdayMonBased = (first.getDay() + 6) % 7
-  const startGrid = new Date(first)
-  startGrid.setDate(first.getDate() - firstWeekdayMonBased)
+  const bounds = monthBounds(selectedMonth.value)
+  if (!bounds) {
+    return []
+  }
 
-  const todayIso = dateToIso(new Date())
+  const first = bounds.start
+  const startGrid = first.subtract({ days: first.dayOfWeek - 1 })
+  const todayIso = Temporal.Now.plainDateISO().toString()
   const days = []
+
   for (let i = 0; i < 42; i += 1) {
-    const d = new Date(startGrid)
-    d.setDate(startGrid.getDate() + i)
-    const iso = dateToIso(d)
+    const d = startGrid.add({ days: i })
+    const iso = d.toString()
     days.push({
       iso,
       date: d,
-      inCurrentMonth: d.getMonth() === selectedMonth.value.getMonth() && d.getFullYear() === selectedMonth.value.getFullYear(),
+      inCurrentMonth: d.month === first.month && d.year === first.year,
       isToday: iso === todayIso,
       items: itemMap.value.get(iso) || []
     })
-  }
-
-  if (last < first) {
-    return []
   }
 
   return days
@@ -159,11 +142,15 @@ const calendarDays = computed(() => {
 async function load() {
   loading.value = true
   try {
-    const first = startOfMonth(selectedMonth.value)
-    const last = endOfMonth(selectedMonth.value)
-    const days = last.getDate()
+    const bounds = monthBounds(selectedMonth.value)
+    if (!bounds) {
+      items.value = []
+      return
+    }
+
+    const days = bounds.end.day
     const data = await calendarAPI.getMy({
-      start: dateToIso(first),
+      start: bounds.start.toString(),
       days
     })
     items.value = data?.results || []
@@ -175,17 +162,19 @@ async function load() {
 }
 
 async function goPrevMonth() {
-  selectedMonth.value = addMonths(selectedMonth.value, -1)
+  const nextMonth = shiftIsoMonthStart(selectedMonth.value, -1)
+  selectedMonth.value = nextMonth ? nextMonth.toString() : selectedMonth.value
   await load()
 }
 
 async function goNextMonth() {
-  selectedMonth.value = addMonths(selectedMonth.value, 1)
+  const nextMonth = shiftIsoMonthStart(selectedMonth.value, 1)
+  selectedMonth.value = nextMonth ? nextMonth.toString() : selectedMonth.value
   await load()
 }
 
 async function goToday() {
-  selectedMonth.value = startOfMonth(new Date())
+  selectedMonth.value = todayMonthStartIso()
   await load()
 }
 

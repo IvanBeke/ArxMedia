@@ -26,7 +26,7 @@
       <div class="flex items-end justify-between mb-8">
         <div>
           <h1 class="font-display text-2xl text-primary font-semibold">{{ season.name }}</h1>
-          <p class="text-muted text-sm mt-1">{{ season?.episodes?.length || 0 }} episodes{{ season.air_date ? ` · Aired ${new Date(season.air_date).getFullYear()}` : '' }}</p>
+          <p class="text-muted text-sm mt-1">{{ season?.episodes?.length || 0 }} episodes{{ season.air_date ? ` · Aired ${temporalYear(season.air_date) || ''}` : '' }}</p>
         </div>
         <div class="text-right flex items-center gap-4">
           <WatchMenu
@@ -76,6 +76,7 @@ import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
+import { nowInstantIso, plainDateToUserInstantIso, temporalYear } from '@/utils/temporal'
 
 const route = useRoute()
 const tmdbId = computed(() => parseInt(route.params.id))
@@ -127,7 +128,7 @@ async function toggleEpisodeWatched(epNum) {
   } else {
     watchedEps.value.add(epNum)
     await trackingAPI.markEpisodeWatched({ tmdb_id: tmdbId.value, season_number: sn, episode_number: epNum })
-    watchedAtMap.value.set(epNum, new Date().toISOString())
+    watchedAtMap.value.set(epNum, nowInstantIso())
   }
 }
 
@@ -144,7 +145,7 @@ async function handleEpisodeWatchOption(payload) {
   let watchedAtValue = null
   if (option === 'release') {
     if (payload.releaseDate) {
-      watchedAtValue = `${payload.releaseDate}T00:00:00Z`
+      watchedAtValue = plainDateToUserInstantIso(payload.releaseDate)
     }
   } else if (option === 'date') {
     watchedAtValue = await pickWatchedDateTime(getEpisodeWatchedAt(epNum))
@@ -163,7 +164,7 @@ async function handleEpisodeWatchOption(payload) {
       episode_number: epNum,
       watched_at: watchedAtValue,
     })
-    watchedAtMap.value.set(epNum, watchedAtValue || new Date().toISOString())
+    watchedAtMap.value.set(epNum, watchedAtValue || nowInstantIso())
   }
 }
 

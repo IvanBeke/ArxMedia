@@ -175,6 +175,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { trackingAPI } from '@/api'
 import { DATA_IMPORT_MODE, DATA_TRANSFER_FORMAT, DATA_TRANSFER_STATUS } from '@/constants/tracking'
+import { formatDateTimeByLocale } from '@/i18n'
+import { instantEpochMs, nowEpochMs } from '@/utils/temporal'
 
 const zipInput = ref(null)
 const yamtrackInput = ref(null)
@@ -217,17 +219,17 @@ const importModes = [
   },
 ]
 
-const sevenDaysAgo = computed(() => Date.now() - 7 * 24 * 60 * 60 * 1000)
+const sevenDaysAgo = computed(() => nowEpochMs() - 7 * 24 * 60 * 60 * 1000)
 const recentJobs = computed(() => {
   return jobs.value
     .filter((job) => job.job_type === 'import')
-    .filter((job) => new Date(job.created_at).getTime() >= sevenDaysAgo.value)
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .filter((job) => instantEpochMs(job.created_at) >= sevenDaysAgo.value)
+    .sort((a, b) => instantEpochMs(b.created_at) - instantEpochMs(a.created_at))
 })
 const latestExport = computed(() => {
   return jobs.value
     .filter((job) => job.job_type === 'export')
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0] || null
+    .sort((a, b) => instantEpochMs(b.created_at) - instantEpochMs(a.created_at))[0] || null
 })
 const modalSummary = computed(() => {
   const targetJob = jobs.value.find((item) => item.id === modalJobId.value)
@@ -384,8 +386,7 @@ function statusClass(value) {
 }
 
 function formatDateTime(value) {
-  if (!value) return ''
-  return new Date(value).toLocaleString()
+  return formatDateTimeByLocale(value)
 }
 
 async function confirmImportMode() {
