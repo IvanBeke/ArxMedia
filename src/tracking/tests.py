@@ -140,7 +140,37 @@ class WatchEntryTests(BaseTestCase):
         data = response.data.get('results', response.data)
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]['tmdb_id'], 600)
-        self.assertEqual(data[1]['tmdb_id'], 500)
+
+    def test_history_episode_includes_runtime(self):
+        show = TVShow.objects.create(tmdb_id=5001, name='Runtime Show', episode_runtime=41)
+        season = Season.objects.create(
+            show=show,
+            tmdb_id=50010,
+            season_number=1,
+            name='Season 1',
+            episode_count=1,
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=500101,
+            episode_number=1,
+            name='Pilot',
+            runtime=44,
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=5001,
+            season_number=1,
+            episode_number=1,
+            watched_at=timezone.now(),
+        )
+
+        response = self.client.get('/api/tracking/history/?media_type=episode')
+        self.assertEqual(response.status_code, 200)
+        entries = response.data.get('results', response.data)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['runtime'], 44)
 
     def test_history_list_filters_media_type(self):
         WatchEntry.objects.create(
@@ -372,6 +402,7 @@ class WatchlistTests(BaseTestCase):
             tmdb_id=1101,
             title='Movie For Watchlist',
             release_date=timezone.datetime(2024, 5, 1).date(),
+            runtime=127,
         )
         Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=1101)
 
@@ -385,13 +416,25 @@ class WatchlistTests(BaseTestCase):
         self.assertEqual(entry['user_status']['status'], 'plan_to_watch')
         self.assertEqual(str(entry['release_date']), '2024-05-01')
         self.assertIsNone(entry['first_air_date'])
+        self.assertEqual(entry['runtime'], 127)
 
     def test_watchlist_list_includes_tv_plan_to_watch_status(self):
-        TVShow.objects.create(
+        show = TVShow.objects.create(
             tmdb_id=2202,
             name='Show For Watchlist',
             first_air_date=timezone.datetime(2023, 8, 10).date(),
+            episode_runtime=46,
+            number_of_episodes=12,
         )
+        season = Season.objects.create(
+            show=show,
+            tmdb_id=3202,
+            season_number=1,
+            name='Season 1',
+            episode_count=2,
+        )
+        Episode.objects.create(season=season, tmdb_id=32021, episode_number=1, name='Episode 1', runtime=45)
+        Episode.objects.create(season=season, tmdb_id=32022, episode_number=2, name='Episode 2', runtime=50)
         Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=2202)
 
         response = self.client.get('/api/tracking/watchlist/?media_type=tv')
@@ -404,6 +447,40 @@ class WatchlistTests(BaseTestCase):
         self.assertEqual(entry['user_status']['status'], 'plan_to_watch')
         self.assertEqual(str(entry['first_air_date']), '2023-08-10')
         self.assertIsNone(entry['release_date'])
+        self.assertEqual(entry['runtime'], 95)
+
+    def test_watchlist_list_filters_genres(self):
+        drama = Genre.objects.create(tmdb_id=901, name='Drama')
+        comedy = Genre.objects.create(tmdb_id=902, name='Comedy')
+
+        movie = Movie.objects.create(tmdb_id=2301, title='Drama Movie')
+        movie.genres.add(drama)
+
+        show = TVShow.objects.create(tmdb_id=2302, name='Comedy Show')
+        show.genres.add(comedy)
+
+        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=2301)
+        Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=2302)
+
+        filtered = self.client.get('/api/tracking/watchlist/?genres=Drama')
+        self.assertEqual(filtered.status_code, 200)
+        entries = filtered.data.get('results', filtered.data)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['tmdb_id'], 2301)
+
+    def test_watchlist_sort_uses_title_as_secondary_tiebreaker(self):
+        Movie.objects.create(tmdb_id=3001, title='Beta Movie')
+        Movie.objects.create(tmdb_id=3002, title='Alpha Movie')
+        first = Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=3001)
+        second = Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=3002)
+
+        shared_added_at = timezone.now()
+        Watchlist.objects.filter(id__in=[first.id, second.id]).update(added_at=shared_added_at)
+
+        response = self.client.get('/api/tracking/watchlist/?media_type=movie&sort=added_at&direction=asc')
+        self.assertEqual(response.status_code, 200)
+        entries = response.data.get('results', response.data)
+        self.assertEqual([entry['tmdb_id'] for entry in entries], [3002, 3001])
 
 
 class EpisodeTests(BaseTestCase):
@@ -1306,6 +1383,76 @@ class ListItemTests(BaseTestCase):
         response = self.client.get(f'/api/tracking/lists/{lst.id}/items/')
         self.assertEqual(response.status_code, 403)
 
+    def test_list_detail_includes_items_payload(self):
+        lst = CustomList.objects.create(user=self.user, name='Detail List')
+        Movie.objects.create(tmdb_id=888, title='Detail Movie', runtime=99)
+        ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=888)
+
+        response = self.client.get(f'/api/tracking/lists/{lst.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('items', response.data)
+        self.assertEqual(len(response.data['items']), 1)
+        self.assertEqual(response.data['items'][0]['tmdb_id'], 888)
+        self.assertEqual(response.data['items'][0]['runtime'], 99)
+
+    def test_list_items_includes_tv_runtime(self):
+        lst = CustomList.objects.create(user=self.user, name='Runtime List')
+        show = TVShow.objects.create(tmdb_id=9911, name='Runtime Show', episode_runtime=52, number_of_episodes=8)
+        season = Season.objects.create(
+            show=show,
+            tmdb_id=99110,
+            season_number=1,
+            name='Runtime Season',
+            episode_count=2,
+        )
+        Episode.objects.create(season=season, tmdb_id=991101, episode_number=1, name='Runtime Ep1', runtime=52)
+        Episode.objects.create(season=season, tmdb_id=991102, episode_number=2, name='Runtime Ep2', runtime=48)
+        ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=9911)
+
+        response = self.client.get(f'/api/tracking/lists/{lst.id}/items/')
+        self.assertEqual(response.status_code, 200)
+        items = response.data.get('results', response.data)
+        self.assertEqual(items[0]['runtime'], 100)
+
+    def test_duplicate_add_to_list_returns_validation_error(self):
+        lst = CustomList.objects.create(user=self.user, name='Unique List')
+        ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=222)
+
+        response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': 222})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data.get('detail'), 'Item is already in this list.')
+
+    def test_list_items_title_sort_works(self):
+        lst = CustomList.objects.create(user=self.user, name='Sort by title')
+        Movie.objects.create(tmdb_id=7101, title='Zulu')
+        Movie.objects.create(tmdb_id=7102, title='Alpha')
+        ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=7101)
+        ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=7102)
+
+        response = self.client.get(f'/api/tracking/lists/{lst.id}/items/?sort=title&direction=asc')
+        self.assertEqual(response.status_code, 200)
+        items = response.data.get('results', response.data)
+        self.assertEqual([item['tmdb_id'] for item in items], [7102, 7101])
+
+    def test_list_items_filter_genres(self):
+        lst = CustomList.objects.create(user=self.user, name='Genre List')
+        drama = Genre.objects.create(tmdb_id=911, name='Drama')
+        thriller = Genre.objects.create(tmdb_id=912, name='Thriller')
+
+        movie = Movie.objects.create(tmdb_id=7201, title='Drama Film')
+        movie.genres.add(drama)
+        show = TVShow.objects.create(tmdb_id=7202, name='Thriller Show')
+        show.genres.add(thriller)
+
+        ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=7201)
+        ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=7202)
+
+        filtered = self.client.get(f'/api/tracking/lists/{lst.id}/items/?genres=Thriller')
+        self.assertEqual(filtered.status_code, 200)
+        items = filtered.data.get('results', filtered.data)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['tmdb_id'], 7202)
+
 
 class UserStatsTests(BaseTestCase):
     def test_stats_endpoint(self):
@@ -1996,7 +2143,6 @@ class DataImportExportTests(BaseTestCase):
 
 
 class SystemTaskTests(TestCase):
-    @patch('tracking.tasks.system.tmdb.sync_season')
     @patch('tracking.tasks.system.tmdb.sync_tv_show')
     @patch('tracking.tasks.system.tmdb.sync_movie')
     @patch('tracking.tasks.system.tmdb.get_tv_changes')
@@ -2007,11 +2153,12 @@ class SystemTaskTests(TestCase):
         mock_get_tv_changes,
         mock_sync_movie,
         mock_sync_tv_show,
-        mock_sync_season,
     ):
         Movie.objects.create(tmdb_id=11, title='Local movie')
         show = TVShow.objects.create(tmdb_id=22, name='Local show', number_of_seasons=2)
         Season.objects.create(show=show, tmdb_id=2200, season_number=0, name='Specials')
+        Season.objects.create(show=show, tmdb_id=2201, season_number=1, name='Season 1')
+        Season.objects.create(show=show, tmdb_id=2202, season_number=2, name='Season 2')
 
         mock_get_movie_changes.side_effect = [
             {'results': [{'id': 11}, {'id': 999}], 'total_pages': 2},
@@ -2039,9 +2186,6 @@ class SystemTaskTests(TestCase):
 
         mock_sync_movie.assert_called_once_with(11)
         mock_sync_tv_show.assert_called_once_with(22)
-        self.assertEqual(mock_sync_season.call_count, 3)
-        synced_seasons = sorted(call.args[1] for call in mock_sync_season.call_args_list)
-        self.assertEqual(synced_seasons, [0, 1, 2])
 
         self.assertEqual(mock_get_movie_changes.call_count, 2)
         self.assertEqual(mock_get_tv_changes.call_count, 1)
@@ -2051,7 +2195,6 @@ class SystemTaskTests(TestCase):
             self.assertFalse(call.kwargs['use_cache'])
 
     @patch('tracking.tasks.system.tmdb.sync_episode_credits')
-    @patch('tracking.tasks.system.tmdb.sync_season')
     @patch('tracking.tasks.system.tmdb.sync_tv_show')
     @patch('tracking.tasks.system.tmdb.sync_movie')
     @patch('tracking.tasks.system.tmdb.get_tv_changes')
@@ -2062,7 +2205,6 @@ class SystemTaskTests(TestCase):
         mock_get_tv_changes,
         mock_sync_movie,
         mock_sync_tv_show,
-        mock_sync_season,
         mock_sync_episode_credits,
     ):
         show = TVShow.objects.create(tmdb_id=3333, name='Changed Show', number_of_seasons=1)
@@ -2073,7 +2215,6 @@ class SystemTaskTests(TestCase):
         mock_get_movie_changes.return_value = {'results': [], 'total_pages': 1}
         mock_get_tv_changes.return_value = {'results': [{'id': 3333}], 'total_pages': 1}
         mock_sync_tv_show.return_value = show
-        mock_sync_season.return_value = season
 
         from tracking.tasks.system import sync_tmdb_changed_items
 

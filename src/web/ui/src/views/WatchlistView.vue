@@ -16,16 +16,23 @@
 
     <div class="flex items-center justify-between mb-6">
       <h1 class="font-display text-2xl text-primary font-semibold">Watchlist</h1>
-      <div class="flex gap-1">
-        <button
-          v-for="t in ['all', MEDIA_TYPE.MOVIE, MEDIA_TYPE.TV]"
-          :key="t"
-          @click="setFilter(t)"
-          class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-          :class="filter === t ? 'bg-brand-500 text-white' : 'text-gray-400 hover:text-primary hover:bg-surface-100'"
-        >{{ t === 'all' ? 'All' : t === MEDIA_TYPE.MOVIE ? 'Movies' : 'TV Shows' }}</button>
-      </div>
     </div>
+
+    <MediaFilterBar
+      :show-media-type-filter="true"
+      :show-status-filter="false"
+      :show-provider-status-filter="false"
+      :show-genre-filter="true"
+      :show-quick-filter-has-upcoming="false"
+      :show-quick-filter-new-only="false"
+      :show-quick-filter-missing-rating="false"
+      :show-search="true"
+      :show-sort="true"
+      :show-direction="true"
+      search-placeholder="Search by title"
+      :sync-url="true"
+      @change="onFilterBarChange"
+    />
 
     <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
       <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
@@ -77,6 +84,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { trackingAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
+import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
@@ -89,7 +97,18 @@ import { getApiErrorMessage } from '@/utils/errors'
 const items = ref([])
 const loading = ref(true)
 const loadingMore = ref(false)
-const filter = ref('all')
+const appliedFilters = ref({
+  search: '',
+  sort: 'added_at',
+  direction: 'desc',
+  mediaType: 'all',
+  statuses: [],
+  providerStatuses: [],
+  genres: [],
+  hasUpcoming: false,
+  newOnly: false,
+  missingRating: false,
+})
 const currentPage = ref(1)
 const totalPages = ref(1)
 const count = ref(0)
@@ -141,8 +160,13 @@ async function load(page = 1) {
   } else {
     loadingMore.value = true
   }
+  const filterState = appliedFilters.value
   const params = {
-    ...(filter.value !== 'all' ? { media_type: filter.value } : {}),
+    ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
+    ...(filterState.search ? { search: filterState.search } : {}),
+    ...(filterState.genres.length ? { genres: filterState.genres } : {}),
+    sort: filterState.sort,
+    direction: filterState.direction,
     page,
   }
   try {
@@ -165,7 +189,7 @@ async function load(page = 1) {
         items.value = pageItems
       }
       currentPage.value = page
-      syncUrlWithState()
+      syncPageQuery()
     }
   } finally {
     if (showFullLoader) {
@@ -183,15 +207,20 @@ async function goToPage(page) {
   await load(page)
 }
 
-async function setFilter(nextFilter) {
-  if (filter.value === nextFilter && currentPage.value === 1) {
-    return
-  }
-  filter.value = nextFilter
+function resetPage() {
   totalPages.value = 1
   currentPage.value = 1
   count.value = 0
-  await load(1)
+}
+
+function onFilterBarChange(payload) {
+  const next = payload?.filters
+  if (!next) return
+  const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
+  appliedFilters.value = next
+  if (didChange && payload?.source === 'interaction') {
+    resetPage()
+  }
 }
 
 function parsePage(value) {
@@ -199,15 +228,14 @@ function parsePage(value) {
   return Number.isInteger(page) && page > 0 ? page : 1
 }
 
-function syncUrlWithState() {
+function syncPageQuery() {
   const nextQuery = {
     ...route.query,
     page: String(currentPage.value),
   }
-  if (route.query.page === nextQuery.page) {
-    return
+  if (JSON.stringify(route.query) !== JSON.stringify(nextQuery)) {
+    router.replace({ query: nextQuery })
   }
-  router.replace({ query: nextQuery })
 }
 
 async function handleQuickAction(item, mediaType) {
@@ -285,12 +313,19 @@ onMounted(async () => {
 })
 
 watch(
+  [appliedFilters, currentPage],
+  async () => {
+    syncPageQuery()
+    await load(currentPage.value)
+  },
+  { deep: true }
+)
+
+watch(
   () => route.query.page,
-  async (nextPageQuery) => {
-    const nextPage = parsePage(nextPageQuery)
-    if (nextPage === currentPage.value) {
-      return
-    }
+  async () => {
+    const nextPage = parsePage(route.query.page)
+    if (nextPage === currentPage.value) return
     currentPage.value = nextPage
     await load(currentPage.value)
   }

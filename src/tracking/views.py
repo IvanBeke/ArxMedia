@@ -2,8 +2,9 @@ import logging
 from datetime import date, timedelta
 
 from accounts.privacy import can_view_account_content, get_viewer_relationship
+from django.db import IntegrityError
 from django.db.models import Avg, Count, DateTimeField, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Lower
 from django.utils import timezone
 from media.tmdb import tmdb
 from rest_framework import generics, permissions, status
@@ -91,6 +92,109 @@ def _parse_multi_param(query_params, key: str) -> list[str]:
     for raw in query_params.getlist(key):
         values.extend([part.strip() for part in str(raw).split(',') if part.strip()])
     return values
+
+
+def _build_tv_runtime_map(tmdb_ids: list[int]) -> dict[int, int]:
+    if not tmdb_ids:
+        return {}
+
+    from media.models import Episode
+
+    rows = Episode.objects.filter(
+        season__show__tmdb_id__in=tmdb_ids
+    ).values('season__show__tmdb_id').annotate(
+        total_runtime=Sum('runtime')
+    )
+
+    return {
+        row['season__show__tmdb_id']: row['total_runtime']
+        for row in rows
+        if row['total_runtime'] is not None
+    }
+
+
+def _normalize_sort(sort_raw: str | None, direction_raw: str | None, default_sort: str, default_direction: str) -> tuple[str, str]:
+    sort_value = (sort_raw or default_sort).strip().lower()
+    direction = (direction_raw or '').strip().lower()
+
+    if sort_value.startswith('-'):
+        sort_value = sort_value[1:]
+        direction = 'desc'
+
+    if direction not in ('asc', 'desc'):
+        direction = default_direction
+
+    return sort_value, direction
+
+
+def _annotate_media_sort_fields(queryset):
+    from media.models import Episode, Movie, TVShow
+
+    movie_lookup = Movie.objects.filter(tmdb_id=OuterRef('tmdb_id'))
+    tv_lookup = TVShow.objects.filter(tmdb_id=OuterRef('tmdb_id'))
+
+    return queryset.annotate(
+        movie_title=Subquery(movie_lookup.values('title')[:1]),
+        tv_title=Subquery(tv_lookup.values('name')[:1]),
+        movie_release_date=Subquery(movie_lookup.values('release_date')[:1]),
+        tv_first_air_date=Subquery(tv_lookup.values('first_air_date')[:1]),
+        movie_runtime=Subquery(movie_lookup.values('runtime')[:1]),
+        tv_total_runtime=Subquery(
+            Episode.objects.filter(
+                season__show__tmdb_id=OuterRef('tmdb_id')
+            ).values('season__show__tmdb_id').annotate(
+                total_runtime=Sum('runtime')
+            ).values('total_runtime')[:1]
+        ),
+        movie_total_episodes=Value(None, output_field=IntegerField()),
+        tv_total_episodes=Subquery(tv_lookup.values('number_of_episodes')[:1]),
+        movie_vote_average=Subquery(movie_lookup.values('vote_average')[:1]),
+        tv_vote_average=Subquery(tv_lookup.values('vote_average')[:1]),
+        movie_vote_count=Subquery(movie_lookup.values('vote_count')[:1]),
+        tv_vote_count=Subquery(tv_lookup.values('vote_count')[:1]),
+    ).annotate(
+        resolved_title=Lower(Coalesce('movie_title', 'tv_title', Value(''))),
+        resolved_date=Coalesce('movie_release_date', 'tv_first_air_date'),
+        resolved_runtime=Coalesce('movie_runtime', 'tv_total_runtime'),
+        resolved_total_episodes=Coalesce('movie_total_episodes', 'tv_total_episodes'),
+        resolved_vote_average=Coalesce('movie_vote_average', 'tv_vote_average', Value(0.0)),
+        resolved_vote_count=Coalesce('movie_vote_count', 'tv_vote_count', Value(0)),
+    )
+
+
+def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_desc: bool = False):
+    queryset = _annotate_media_sort_fields(queryset)
+
+    id_order = '-id' if id_desc else 'id'
+
+    if sort_key == 'title':
+        if direction == 'desc':
+            return queryset.order_by('-resolved_title', id_order)
+        return queryset.order_by('resolved_title', id_order)
+
+    if sort_key == 'media_type':
+        if direction == 'desc':
+            return queryset.order_by('-media_type', 'resolved_title', id_order)
+        return queryset.order_by('media_type', 'resolved_title', id_order)
+
+    if sort_key in ('release_date', 'first_air_date', 'air_date'):
+        if direction == 'desc':
+            return queryset.order_by(F('resolved_date').desc(nulls_last=True), 'resolved_title', id_order)
+        return queryset.order_by(F('resolved_date').asc(nulls_last=True), 'resolved_title', id_order)
+
+    field_by_sort = {
+        'runtime': 'resolved_runtime',
+        'total_episodes': 'resolved_total_episodes',
+        'rating': 'resolved_vote_average',
+        'vote_average': 'resolved_vote_average',
+        'vote_count': 'resolved_vote_count',
+        'added_at': 'added_at',
+    }
+    field_name = field_by_sort.get(sort_key, 'added_at')
+
+    if direction == 'desc':
+        return queryset.order_by(F(field_name).desc(nulls_last=True), 'resolved_title', id_order)
+    return queryset.order_by(F(field_name).asc(nulls_last=True), 'resolved_title', id_order)
 
 
 def _can_view_public_lists(viewer, owner) -> bool:
@@ -249,13 +353,48 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = Watchlist.objects.filter(user=self.request.user)
-        media_type = self.request.query_params.get('media_type')
-        if media_type:
+        media_type = (self.request.query_params.get('media_type') or '').strip().lower()
+        if media_type in (MediaType.MOVIE, MediaType.TV):
             qs = qs.filter(media_type=media_type)
+
         tmdb_id = self.request.query_params.get('tmdb_id')
         if tmdb_id is not None:
             qs = qs.filter(tmdb_id=_coerce_int(tmdb_id, 'tmdb_id'))
-        return qs.order_by('-added_at')
+
+        search = (self.request.query_params.get('search') or '').strip()
+        if search:
+            from media.models import Movie, TVShow
+            movie_ids = Movie.objects.filter(title__icontains=search).values_list('tmdb_id', flat=True)
+            tv_ids = TVShow.objects.filter(name__icontains=search).values_list('tmdb_id', flat=True)
+            qs = qs.filter(
+                Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
+                | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
+            ).distinct()
+
+        selected_genres = _parse_multi_param(self.request.query_params, 'genres')
+        if selected_genres:
+            from media.models import Movie, TVShow
+            movie_ids = Movie.objects.filter(genres__name__in=selected_genres).values_list('tmdb_id', flat=True)
+            tv_ids = TVShow.objects.filter(genres__name__in=selected_genres).values_list('tmdb_id', flat=True)
+            qs = qs.filter(
+                Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
+                | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
+            ).distinct()
+
+        sort_key, direction = _normalize_sort(
+            self.request.query_params.get('sort'),
+            self.request.query_params.get('direction'),
+            default_sort='added_at',
+            default_direction='asc',
+        )
+        valid_sorts = {
+            'added_at', 'title', 'media_type', 'release_date', 'first_air_date', 'air_date',
+            'rating', 'runtime', 'total_episodes', 'vote_count'
+        }
+        if sort_key not in valid_sorts:
+            sort_key = 'added_at'
+
+        return _apply_secondary_title_ordering(qs, sort_key, direction)
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -265,15 +404,16 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
         from media.models import Movie, TVShow
         movie_ids = [entry.tmdb_id for entry in items if entry.media_type == MediaType.MOVIE]
         tv_ids = [entry.tmdb_id for entry in items if entry.media_type == MediaType.TV]
-        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
-        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids)}
+        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids).prefetch_related('genres')}
+        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids).prefetch_related('genres')}
+        tv_runtime_map = _build_tv_runtime_map(tv_ids)
         status_map = annotate_media_user_status(
             request.user,
             [{'media_type': entry.media_type, 'tmdb_id': entry.tmdb_id} for entry in items],
         )
 
         context = self.get_serializer_context()
-        context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
+        context.update({'movie_map': movie_map, 'tv_map': tv_map, 'tv_runtime_map': tv_runtime_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
 
         if page is not None:
@@ -792,16 +932,7 @@ def _apply_progress_filters(items, request):
 def _sort_progress_items(items, sort_by: str, direction: str):
     sort_key = (sort_by or 'time_left').strip().lower()
     direction_key = (direction or '').strip().lower()
-
-    default_direction = {
-        'time_left': 'asc',
-        'episodes_left': 'asc',
-        'last_watched': 'desc',
-        'progress_percent': 'desc',
-        'title': 'asc',
-        'air_date': 'asc',
-    }.get(sort_key, 'asc')
-    final_direction = direction_key if direction_key in ('asc', 'desc') else default_direction
+    final_direction = direction_key if direction_key in ('asc', 'desc') else 'asc'
 
     if sort_key == 'last_watched':
         def watched_ts(item):
@@ -1252,6 +1383,25 @@ class CustomListDetailView(generics.RetrieveUpdateDestroyAPIView):
             raise PermissionDenied('You can only delete your own lists.')
         instance.delete()
 
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        payload = dict(serializer.data)
+
+        items_qs = ListItem.objects.filter(custom_list=instance).select_related('custom_list')
+        from media.models import Movie, TVShow
+
+        movie_ids = [entry.tmdb_id for entry in items_qs if entry.media_type == MediaType.MOVIE]
+        tv_ids = [entry.tmdb_id for entry in items_qs if entry.media_type == MediaType.TV]
+        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
+        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids)}
+        tv_runtime_map = _build_tv_runtime_map(tv_ids)
+
+        item_context = self.get_serializer_context()
+        item_context.update({'movie_map': movie_map, 'tv_map': tv_map, 'tv_runtime_map': tv_runtime_map})
+        payload['items'] = ListItemSerializer(items_qs, many=True, context=item_context).data
+        return Response(payload)
+
 
 class ListItemListCreateView(generics.ListCreateAPIView):
     serializer_class = ListItemSerializer
@@ -1268,17 +1418,13 @@ class ListItemListCreateView(generics.ListCreateAPIView):
             raise PermissionDenied('You do not have permission to access this list.')
 
         queryset = ListItem.objects.filter(custom_list=custom_list).select_related('custom_list')
-        
-        # Sorting
-        sort_by = self.request.query_params.get('sort', '-added_at')
-        valid_sorts = ['added_at', '-added_at', 'media_type', '-media_type']
-        if sort_by in valid_sorts:
-            queryset = queryset.order_by(sort_by)
-        else:
-            queryset = queryset.order_by('-added_at')
-        
+
+        media_type = (self.request.query_params.get('media_type') or '').strip().lower()
+        if media_type in (MediaType.MOVIE, MediaType.TV):
+            queryset = queryset.filter(media_type=media_type)
+
         # Search by title
-        search = self.request.query_params.get('search')
+        search = (self.request.query_params.get('search') or '').strip()
         if search:
             from media.models import Movie, TVShow
             movie_ids = Movie.objects.filter(title__icontains=search).values_list('tmdb_id', flat=True)
@@ -1287,6 +1433,31 @@ class ListItemListCreateView(generics.ListCreateAPIView):
                 Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids) |
                 Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
             ).distinct()
+
+        selected_genres = _parse_multi_param(self.request.query_params, 'genres')
+        if selected_genres:
+            from media.models import Movie, TVShow
+            movie_ids = Movie.objects.filter(genres__name__in=selected_genres).values_list('tmdb_id', flat=True)
+            tv_ids = TVShow.objects.filter(genres__name__in=selected_genres).values_list('tmdb_id', flat=True)
+            queryset = queryset.filter(
+                Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
+                | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
+            ).distinct()
+
+        sort_key, direction = _normalize_sort(
+            self.request.query_params.get('sort'),
+            self.request.query_params.get('direction'),
+            default_sort='added_at',
+            default_direction='asc',
+        )
+        valid_sorts = {
+            'added_at', 'title', 'media_type', 'release_date', 'first_air_date', 'air_date',
+            'rating', 'runtime', 'total_episodes', 'vote_count'
+        }
+        if sort_key not in valid_sorts:
+            sort_key = 'added_at'
+
+        queryset = _apply_secondary_title_ordering(queryset, sort_key, direction)
         return queryset
 
     def perform_create(self, serializer):
@@ -1296,7 +1467,10 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         is_collaborator = ListCollaborator.objects.filter(custom_list=custom_list, user=self.request.user).exists()
         if not (is_owner or is_collaborator):
             raise PermissionDenied('You can only add items to your lists or lists where you collaborate.')
-        serializer.save(custom_list=custom_list)
+        try:
+            serializer.save(custom_list=custom_list)
+        except IntegrityError:
+            raise ValidationError({'detail': 'Item is already in this list.'})
 
     def create(self, request, *args, **kwargs):
         # Support bulk create
@@ -1328,11 +1502,16 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         from media.models import Movie, TVShow
         movie_ids = [entry.tmdb_id for entry in items if entry.media_type == MediaType.MOVIE]
         tv_ids = [entry.tmdb_id for entry in items if entry.media_type == MediaType.TV]
-        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
-        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids)}
+        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids).prefetch_related('genres')}
+        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids).prefetch_related('genres')}
+        tv_runtime_map = _build_tv_runtime_map(tv_ids)
+        status_map = annotate_media_user_status(
+            request.user,
+            [{'media_type': entry.media_type, 'tmdb_id': entry.tmdb_id} for entry in items],
+        )
 
         context = self.get_serializer_context()
-        context.update({'movie_map': movie_map, 'tv_map': tv_map})
+        context.update({'movie_map': movie_map, 'tv_map': tv_map, 'tv_runtime_map': tv_runtime_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
 
         if page is not None:

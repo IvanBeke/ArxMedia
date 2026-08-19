@@ -120,6 +120,7 @@ export const authAPI = {
 // Media
 export const mediaAPI = {
   search: (q, type = 'multi', page = 1) => api.get('/media/search/', { params: { q, type, page } }),
+  genres: () => api.get('/media/genres/'),
   trending: (type = 'all', window = 'week') => api.get('/media/trending/', { params: { type, window } }),
   popular: (type = MEDIA_TYPE.MOVIE, page = 1) => api.get('/media/popular/', { params: { type, page } }),
   getMovie: (id, region) => api.get(`/media/movies/${id}/`, { params: { region } }),
@@ -169,6 +170,7 @@ export const trackingAPI = {
   getLists: () => api.get('/tracking/lists/'),
   createList: (data) => api.post('/tracking/lists/', data),
   getList: (id) => api.get(`/tracking/lists/${id}/`),
+  getListItems: (listId, params) => api.get(`/tracking/lists/${listId}/items/`, { params }),
   updateList: (id, data) => api.patch(`/tracking/lists/${id}/`, data),
   deleteList: (id) => api.delete(`/tracking/lists/${id}/`),
   addToList: (listId, data) => api.post(`/tracking/lists/${listId}/items/`, data),

@@ -6,7 +6,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from tracking.models import Rating, WatchEntry, Watchlist
 
-from media.models import EpisodeCredit, Movie, TVShow
+from media.models import EpisodeCredit, Genre, Movie, TVShow
+from media.tmdb import tmdb
 
 User = get_user_model()
 
@@ -111,6 +112,14 @@ class MediaTests(TestCase):
     def test_trending(self):
         response = self.client.get('/api/media/trending/')
         self.assertEqual(response.status_code, 200)
+
+    def test_genres_list_returns_sorted_genres(self):
+        Genre.objects.create(tmdb_id=1002, name='Thriller')
+        Genre.objects.create(tmdb_id=1001, name='Action')
+
+        response = self.client.get('/api/media/genres/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([row['name'] for row in response.data], ['Action', 'Thriller'])
 
     def test_season_detail(self):
         response = self.client.get('/api/media/tv/1399/seasons/1/')
@@ -493,10 +502,9 @@ class MediaTests(TestCase):
         self.assertIn('metadata_updated_at', response.data)
         mock_sync_movie.assert_called_once_with(550)
 
-    @patch('media.views.tmdb.sync_season')
     @patch('media.views.refresh_all_statuses_for_show')
     @patch('media.views.tmdb.sync_tv_show')
-    def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show, mock_refresh_statuses, mock_sync_season):
+    def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show, mock_refresh_statuses):
         show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones', number_of_seasons=2, number_of_episodes=10)
         show.seasons.create(tmdb_id=139900, season_number=0, name='Specials')
         mock_sync_tv_show.return_value = show
@@ -506,7 +514,6 @@ class MediaTests(TestCase):
         self.assertEqual(response.data['tmdb_id'], 1399)
         self.assertIn('metadata_updated_at', response.data)
         mock_sync_tv_show.assert_called_once_with(1399)
-        self.assertEqual(mock_sync_season.call_count, 3)
         mock_refresh_statuses.assert_called_once_with(1399, current_user_id=self.user.id)
 
     def test_movie_and_tv_detail_include_metadata_updated_at(self):
@@ -521,3 +528,34 @@ class MediaTests(TestCase):
         self.assertEqual(tv_response.status_code, 200)
         self.assertIn('metadata_updated_at', movie_response.data)
         self.assertIn('metadata_updated_at', tv_response.data)
+
+    @patch('media.tmdb.tmdb.sync_season')
+    @patch('media.tmdb.tmdb.get_tv_show')
+    def test_sync_tv_show_always_syncs_all_returned_seasons(self, mock_get_tv_show, mock_sync_season):
+        mock_get_tv_show.return_value = {
+            'id': 555,
+            'name': 'Complete Sync Show',
+            'overview': 'Complete metadata sync test',
+            'first_air_date': '2020-01-01',
+            'number_of_seasons': 2,
+            'number_of_episodes': 16,
+            'vote_average': 8.2,
+            'vote_count': 100,
+            'original_language': 'en',
+            'status': 'Returning Series',
+            'networks': [],
+            'episode_run_time': [50],
+            'genres': [],
+            'seasons': [
+                {'season_number': 0},
+                {'season_number': 1},
+                {'season_number': 2},
+            ],
+        }
+
+        show = tmdb.sync_tv_show(555)
+
+        self.assertEqual(show.tmdb_id, 555)
+        self.assertEqual(mock_sync_season.call_count, 3)
+        synced_seasons = sorted(call.args[1] for call in mock_sync_season.call_args_list)
+        self.assertEqual(synced_seasons, [0, 1, 2])
