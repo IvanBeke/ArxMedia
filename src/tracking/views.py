@@ -595,6 +595,26 @@ def unmark_season_watched(request):
     return Response({'unmarked': count})
 
 
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def unmark_show_watched(request):
+    """Unmark all watched episodes in a show."""
+    tmdb_id = request.data.get('tmdb_id')
+
+    if not tmdb_id:
+        return Response({'detail': 'tmdb_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
+
+    count, _ = WatchEntry.objects.filter(
+        user=request.user,
+        media_type=WatchEntryMediaType.EPISODE,
+        tmdb_id=tmdb_id,
+    ).delete()
+
+    return Response({'unmarked': count})
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def up_next(request):

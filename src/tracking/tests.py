@@ -441,6 +441,42 @@ class SeasonTests(BaseTestCase):
         response = self.client.post('/api/tracking/seasons/unmark/', data)
         self.assertEqual(response.status_code, 200)
 
+    def test_unmark_show_watched(self):
+        WatchEntry.objects.create(
+            user=self.user, media_type='episode', tmdb_id=123,
+            season_number=1, episode_number=1
+        )
+        WatchEntry.objects.create(
+            user=self.user, media_type='episode', tmdb_id=123,
+            season_number=1, episode_number=2
+        )
+        WatchEntry.objects.create(
+            user=self.user, media_type='episode', tmdb_id=456,
+            season_number=1, episode_number=1
+        )
+        WatchEntry.objects.create(
+            user=self.user2, media_type='episode', tmdb_id=123,
+            season_number=1, episode_number=1
+        )
+
+        response = self.client.post('/api/tracking/shows/unmark/', {'tmdb_id': 123})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data.get('unmarked'), 2)
+
+        self.assertFalse(
+            WatchEntry.objects.filter(user=self.user, media_type='episode', tmdb_id=123).exists()
+        )
+        self.assertTrue(
+            WatchEntry.objects.filter(user=self.user, media_type='episode', tmdb_id=456).exists()
+        )
+        self.assertTrue(
+            WatchEntry.objects.filter(user=self.user2, media_type='episode', tmdb_id=123).exists()
+        )
+
+    def test_unmark_show_watched_requires_tmdb_id(self):
+        response = self.client.post('/api/tracking/shows/unmark/', {})
+        self.assertEqual(response.status_code, 400)
+
 
 class MaterializedStatusTests(BaseTestCase):
     def test_dropped_show_moves_to_watching_when_new_episode_is_watched(self):
