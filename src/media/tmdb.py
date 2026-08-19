@@ -141,7 +141,7 @@ class TMDBService:
         return movie
 
     def sync_tv_show(self, tmdb_id):
-        """Fetch TV show from TMDB and save/update locally."""
+        """Fetch TV show from TMDB and save/update locally, including all seasons and episodes."""
         data = self.get_tv_show(tmdb_id)
         networks = ', '.join([n['name'] for n in data.get('networks', [])])
         runtimes = data.get('episode_run_time') or []
@@ -168,6 +168,22 @@ class TMDBService:
         for g in data.get('genres', []):
             genre, _ = Genre.objects.get_or_create(tmdb_id=g['id'], defaults={'name': g['name']})
             show.genres.add(genre)
+
+        season_numbers = [
+            int(season.get('season_number'))
+            for season in data.get('seasons', [])
+            if isinstance(season.get('season_number'), int)
+        ]
+        if not season_numbers:
+            total_seasons = data.get('number_of_seasons') or 0
+            season_numbers = list(range(1, int(total_seasons) + 1))
+
+        for season_number in season_numbers:
+            try:
+                self.sync_season(show, season_number)
+            except Exception as exc:
+                logger.warning('Failed to sync season %s for tv %s: %s', season_number, tmdb_id, exc)
+
         return show
 
     def sync_season(self, show, season_number):

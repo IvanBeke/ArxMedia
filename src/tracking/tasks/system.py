@@ -81,20 +81,13 @@ def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict
         try:
             show = tmdb.sync_tv_show(tmdb_id)
             tv_synced += 1
+            seasons_synced += show.seasons.count()
         except Exception:
             tv_failures += 1
             continue
 
-        season_numbers = set(range(1, max((show.number_of_seasons or 0), 0) + 1))
-        season_numbers.update(show.seasons.values_list('season_number', flat=True))
-        for season_number in sorted(season_numbers):
-            try:
-                season = tmdb.sync_season(show, season_number)
-                seasons_synced += 1
-            except Exception:
-                season_failures += 1
-                continue
-
+        for season in show.seasons.all():
+            season_number = int(season.season_number)
             for episode_number in season.episodes.values_list('episode_number', flat=True):
                 try:
                     tmdb.sync_episode_credits(tmdb_id, season_number, int(episode_number), show=show)

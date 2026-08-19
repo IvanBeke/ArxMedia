@@ -8,7 +8,7 @@ from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
 from tracking.status_sync import refresh_all_statuses_for_show
 
-from .models import EpisodeCredit, Movie, Season, TVShow
+from .models import EpisodeCredit, Movie, TVShow
 from .serializers import MovieSerializer, SeasonBriefSerializer, SeasonSerializer, TVShowSerializer
 from .tmdb import tmdb
 
@@ -73,6 +73,15 @@ def _episode_credits_payload(credit):
         'crew': credit.crew,
         'guest_stars': credit.guest_stars,
     }
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def genres_list(request):
+    from .models import Genre
+
+    genres = list(Genre.objects.order_by('name').values('tmdb_id', 'name'))
+    return Response(genres)
 
 
 def _dedupe_media_results(results):
@@ -302,22 +311,18 @@ def tv_detail(request, tmdb_id):
     region = _resolve_region(request)
     try:
         show = TVShow.objects.get(tmdb_id=tmdb_id)
+        required_seasons = show.number_of_seasons or 0
+        regular_seasons = show.seasons.filter(season_number__gte=1, season_number__lte=required_seasons)
+        has_complete_seasons = regular_seasons.count() >= required_seasons
+        has_complete_episodes = not regular_seasons.filter(episodes__isnull=True).exists()
+        if not has_complete_seasons or not has_complete_episodes:
+            show = tmdb.sync_tv_show(tmdb_id)
     except TVShow.DoesNotExist:
         try:
             show = tmdb.sync_tv_show(tmdb_id)
         except Exception:
             logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
             return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    # Sync seasons that don't exist yet or have no episodes synced
-    existing_seasons = Season.objects.filter(show=show)
-    for sn in range(1, show.number_of_seasons + 1):
-        season = existing_seasons.filter(season_number=sn).first()
-        if season is None or not season.episodes.exists():
-            try:
-                tmdb.sync_season(show, sn)
-            except Exception as exc:
-                logger.warning('Failed to sync season %s for show %s: %s', sn, tmdb_id, exc)
 
     data = _serialize_tv_show_detail(show)
     try:
@@ -360,24 +365,8 @@ def refresh_tv_metadata(request, tmdb_id):
         logger.warning('Failed to refresh TV show %s from TMDB', tmdb_id, exc_info=True)
         return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
 
-    season_numbers = set(range(1, max((show.number_of_seasons or 0), 0) + 1))
-    season_numbers.update(show.seasons.values_list('season_number', flat=True))
-    for season_number in sorted(season_numbers):
-        try:
-            tmdb.sync_season(show, season_number)
-        except Exception:
-            logger.warning(
-                'Failed to refresh season %s for show %s from TMDB',
-                season_number,
-                tmdb_id,
-                exc_info=True,
-            )
-            continue
-
-        season = show.seasons.filter(season_number=season_number).first()
-        if season is None:
-            continue
-
+    for season in show.seasons.all():
+        season_number = int(season.season_number)
         for episode_number in season.episodes.values_list('episode_number', flat=True):
             try:
                 tmdb.sync_episode_credits(int(tmdb_id), season_number, int(episode_number), show=show)
@@ -413,7 +402,7 @@ def season_detail(request, tmdb_id, season_number):
     season = show.seasons.filter(season_number=season_number).prefetch_related('episodes__credits').first()
     if season is None or not season.episodes.exists():
         try:
-            tmdb.sync_season(show, season_number)
+            tmdb.sync_tv_show(tmdb_id)
             season = show.seasons.filter(season_number=season_number).prefetch_related('episodes__credits').first()
         except Exception:
             logger.warning('Failed to fetch season %s for show %s from TMDB', season_number, tmdb_id, exc_info=True)
@@ -455,7 +444,7 @@ def episode_credits(request, tmdb_id, season_number, episode_number):
 
     if episode is None:
         try:
-            tmdb.sync_season(show, season_number)
+            tmdb.sync_tv_show(tmdb_id)
             season = show.seasons.filter(season_number=season_number).first()
             episode = season.episodes.filter(episode_number=episode_number).first() if season else None
         except Exception:
