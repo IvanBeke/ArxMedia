@@ -6,7 +6,7 @@ const routes = [
     path: '/',
     component: () => import('@/views/HomeView.vue'),
     name: 'home',
-    meta: { requiresAuth: true }
+    meta: { guest: true }
   },
   {
     path: '/dashboard',
@@ -147,9 +147,6 @@ router.beforeEach(async (to) => {
     return { name: 'dashboard' }
   }
 
-  if (to.name === 'home' && auth.isAuthenticated) {
-    return { name: 'dashboard' }
-  }
 })
 
 export default router

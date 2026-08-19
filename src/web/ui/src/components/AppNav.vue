@@ -16,8 +16,7 @@
           />
         </RouterLink>
 
-        <!-- Search bar -->
-        <div class="flex flex-1 min-w-0 mx-2 md:mx-8 md:max-w-md">
+        <div v-if="auth.isAuthenticated" class="flex flex-1 min-w-0 mx-2 md:mx-8 md:max-w-md">
           <SearchBar
             v-model="searchQuery"
             :scope="searchScope"
@@ -28,6 +27,7 @@
             @select-preview="goToPreviewItem"
           />
         </div>
+        <div v-else class="flex-1"></div>
 
         <!-- Desktop nav links -->
         <div class="hidden md:flex items-center gap-1">
@@ -39,9 +39,8 @@
           </template>
 
           <template v-else>
-            <RouterLink to="/search" class="nav-link hidden lg:block">{{ t('nav_discover') }}</RouterLink>
-            <RouterLink to="/login" class="btn-ghost text-sm px-3 py-1.5">Sign In</RouterLink>
-            <RouterLink to="/register" class="btn-primary text-sm px-3 py-1.5 ml-1">Join</RouterLink>
+            <RouterLink to="/login" class="btn-primary text-sm px-3 py-1.5">Log in</RouterLink>
+            <RouterLink to="/register" class="btn-ghost text-sm px-3 py-1.5 ml-1 bg-surface-100 border-surface-300 text-secondary hover:bg-surface-200 hover:text-primary">Create account</RouterLink>
           </template>
         </div>
 
@@ -119,9 +118,8 @@
             </template>
 
             <template v-else>
-              <RouterLink to="/search" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_discover') }}</RouterLink>
-              <RouterLink to="/login" @click="showMobileMenu = false" class="mobile-nav-link">Sign In</RouterLink>
-              <RouterLink to="/register" @click="showMobileMenu = false" class="mobile-nav-link">Join</RouterLink>
+              <RouterLink to="/login" @click="showMobileMenu = false" class="mobile-nav-link">Log in</RouterLink>
+              <RouterLink to="/register" @click="showMobileMenu = false" class="mobile-nav-link">Create account</RouterLink>
             </template>
           </div>
         </div>
