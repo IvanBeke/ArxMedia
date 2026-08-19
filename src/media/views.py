@@ -391,7 +391,7 @@ def refresh_tv_metadata(request, tmdb_id):
                 )
 
     show.refresh_from_db()
-    refresh_all_statuses_for_show(int(tmdb_id))
+    refresh_all_statuses_for_show(int(tmdb_id), current_user_id=request.user.id)
     return Response(_serialize_tv_show_detail(show))
 
 

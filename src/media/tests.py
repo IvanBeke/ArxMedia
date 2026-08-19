@@ -507,7 +507,7 @@ class MediaTests(TestCase):
         self.assertIn('metadata_updated_at', response.data)
         mock_sync_tv_show.assert_called_once_with(1399)
         self.assertEqual(mock_sync_season.call_count, 3)
-        mock_refresh_statuses.assert_called_once_with(1399)
+        mock_refresh_statuses.assert_called_once_with(1399, current_user_id=self.user.id)
 
     def test_movie_and_tv_detail_include_metadata_updated_at(self):
         Movie.objects.create(tmdb_id=777, title='Movie Detail')

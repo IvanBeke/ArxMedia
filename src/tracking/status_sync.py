@@ -102,9 +102,12 @@ def refresh_show_status(user_id: int, tmdb_id: int):
     )
 
 
-def refresh_all_statuses_for_show(tmdb_id: int):
+def refresh_all_statuses_for_show(tmdb_id: int, current_user_id: int | None = None):
     status_user_ids = set(
-        UserTvShowStatus.objects.filter(tmdb_id=tmdb_id).values_list('user_id', flat=True)
+        UserTvShowStatus.objects.filter(
+            tmdb_id=tmdb_id,
+            status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED),
+        ).values_list('user_id', flat=True)
     )
     watch_entry_user_ids = set(
         WatchEntry.objects.filter(
@@ -112,9 +115,18 @@ def refresh_all_statuses_for_show(tmdb_id: int):
             tmdb_id=tmdb_id,
         ).values_list('user_id', flat=True)
     )
-    watchlist_user_ids = set(
-        Watchlist.objects.filter(media_type=MediaType.TV, tmdb_id=tmdb_id).values_list('user_id', flat=True)
-    )
+    user_ids = status_user_ids | watch_entry_user_ids
 
-    for user_id in sorted(status_user_ids | watch_entry_user_ids | watchlist_user_ids):
-        refresh_show_status(user_id, tmdb_id)
+    if not user_ids:
+        return
+
+    remaining_user_ids = set(user_ids)
+    if current_user_id is not None and current_user_id in user_ids:
+        refresh_show_status(current_user_id, tmdb_id)
+        remaining_user_ids.discard(current_user_id)
+
+    if remaining_user_ids:
+        from .tasks.system import refresh_show_status_for_user
+
+        for user_id in remaining_user_ids:
+            refresh_show_status_for_user.delay(tmdb_id, user_id)

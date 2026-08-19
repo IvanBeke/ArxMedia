@@ -28,6 +28,7 @@ from tracking.models import (
     Watchlist,
 )
 from tracking.status_annotations import annotate_season_user_status
+from tracking.status_sync import refresh_all_statuses_for_show
 
 User = get_user_model()
 
@@ -557,6 +558,56 @@ class MaterializedStatusTests(BaseTestCase):
         )[(9300, 1)]
         self.assertEqual(show_status.status, 'watched')
         self.assertEqual(season_status['status'], 'watched')
+
+
+class RefreshAllShowStatusesTests(BaseTestCase):
+    @patch('tracking.tasks.system.refresh_show_status_for_user.delay')
+    @patch('tracking.status_sync.refresh_show_status')
+    def test_refreshes_current_user_sync_and_queues_remaining(self, mock_refresh_show_status, mock_delay):
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=7770,
+            season_number=1,
+            episode_number=1,
+        )
+        UserTvShowStatus.objects.create(user=self.user2, tmdb_id=7770, status='watching')
+
+        refresh_all_statuses_for_show(7770, current_user_id=self.user.id)
+
+        mock_refresh_show_status.assert_called_once_with(self.user.id, 7770)
+        mock_delay.assert_called_once_with(7770, self.user2.id)
+
+    @patch('tracking.tasks.system.refresh_show_status_for_user.delay')
+    @patch('tracking.status_sync.refresh_show_status')
+    def test_no_logged_user_queues_all_candidates(self, mock_refresh_show_status, mock_delay):
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=7771,
+            season_number=1,
+            episode_number=1,
+        )
+        UserTvShowStatus.objects.create(user=self.user2, tmdb_id=7771, status='watching')
+
+        refresh_all_statuses_for_show(7771)
+
+        mock_refresh_show_status.assert_not_called()
+        self.assertEqual(mock_delay.call_count, 2)
+        self.assertEqual(
+            {tuple(call.args) for call in mock_delay.call_args_list},
+            {(7771, self.user.id), (7771, self.user2.id)},
+        )
+
+    @patch('tracking.tasks.system.refresh_show_status_for_user.delay')
+    @patch('tracking.status_sync.refresh_show_status')
+    def test_watchlist_only_users_are_not_refreshed(self, mock_refresh_show_status, mock_delay):
+        Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=7772)
+
+        refresh_all_statuses_for_show(7772, current_user_id=self.user.id)
+
+        mock_refresh_show_status.assert_not_called()
+        mock_delay.assert_not_called()
 
 
 class UpNextTests(BaseTestCase):

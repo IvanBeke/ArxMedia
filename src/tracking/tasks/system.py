@@ -5,6 +5,8 @@ from django.utils import timezone
 from media.models import Movie, TVShow
 from media.tmdb import tmdb
 
+from ..status_sync import refresh_show_status
+
 
 def _fetch_changed_tmdb_ids(fetch_page) -> set[int]:
     changed_ids: set[int] = set()
@@ -35,6 +37,15 @@ def sync_tmdb_changed_items() -> dict[str, int | str]:
     end_date = timezone.localdate()
     start_date = end_date - timedelta(days=1)
     return sync_tmdb_changed_items_for_window(start_date, end_date)
+
+
+@shared_task(name='tracking.refresh_show_status_for_user')
+def refresh_show_status_for_user(tmdb_id: int, user_id: int) -> dict[str, int]:
+    refresh_show_status(user_id, tmdb_id)
+    return {
+        'tmdb_id': tmdb_id,
+        'user_id': user_id,
+    }
 
 
 def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict[str, int | str]:
