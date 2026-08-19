@@ -9,7 +9,7 @@
     </div>
 
     <!-- Filters -->
-    <div class="flex items-center gap-4 mb-6">
+    <div class="flex flex-wrap items-center gap-4 mb-6">
       <div class="flex gap-1 bg-surface-200 rounded-md p-1">
         <button
           v-for="t in filters"
@@ -30,6 +30,21 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
         </svg>
       </button>
+      <button
+        type="button"
+        class="group-toggle ml-auto"
+        :data-on="groupByDay ? 'true' : 'false'"
+        :aria-pressed="groupByDay"
+        aria-label="Group by day"
+        @click="toggleDayGrouping"
+      >
+        <span class="group-toggle-pill">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10m-12 9h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v11a2 2 0 002 2z" />
+          </svg>
+          <span class="group-toggle-label">Group by day</span>
+        </span>
+      </button>
     </div>
 
     <!-- Loading -->
@@ -44,7 +59,7 @@
     <div v-else-if="entries.length" class="space-y-6">
       <template v-for="group in groupedEntries" :key="group.label">
         <!-- Date Header -->
-        <div class="flex items-center gap-3 py-4">
+        <div v-if="groupByDay" class="flex items-center gap-3 py-4">
           <h2 class="text-sm font-medium text-secondary">{{ group.label }}</h2>
           <div class="flex-1 h-px bg-surface-200"></div>
           <span class="text-xs text-muted tab-selected px-2 py-0.5 rounded bg-surface-200">{{ group.items.length }}</span>
@@ -101,6 +116,7 @@ const stats = ref(null)
 const loading = ref(true)
 const activeFilter = ref('all')
 const sortOrder = ref('newest')
+const groupByDay = ref(true)
 const currentPage = ref(1)
 const totalPages = ref(1)
 const count = ref(0)
@@ -113,6 +129,10 @@ const filters = [
 ]
 
 const groupedEntries = computed(() => {
+  if (!groupByDay.value) {
+    return [{ key: 'all', label: 'All entries', items: entries.value }]
+  }
+
   const grouped = []
   const byKey = new Map()
 
@@ -184,14 +204,17 @@ async function loadHistory() {
 function queryToState() {
   const mediaType = route.query.media_type
   const order = route.query.order
+  const groupByDayQuery = route.query.group_by_day
   const pageQuery = Number.parseInt(String(route.query.page || ''), 10)
 
   const nextFilter = mediaType === MEDIA_TYPE.MOVIE || mediaType === WATCH_ENTRY_MEDIA_TYPE.EPISODE ? mediaType : 'all'
   const nextOrder = order === 'oldest' ? 'oldest' : 'newest'
+  const nextGroupByDay = groupByDayQuery !== '0'
   const nextPage = Number.isInteger(pageQuery) && pageQuery > 0 ? pageQuery : 1
 
   activeFilter.value = nextFilter
   sortOrder.value = nextOrder
+  groupByDay.value = nextGroupByDay
   currentPage.value = nextPage
 }
 
@@ -203,6 +226,9 @@ function stateToQuery() {
   if (sortOrder.value !== 'newest') {
     query.order = sortOrder.value
   }
+  if (!groupByDay.value) {
+    query.group_by_day = '0'
+  }
   query.page = String(currentPage.value)
   return query
 }
@@ -211,12 +237,19 @@ function syncUrlWithState() {
   const nextQuery = stateToQuery()
   const currentMediaType = route.query.media_type || undefined
   const currentOrder = route.query.order || undefined
+  const currentGroupByDay = route.query.group_by_day || undefined
   const currentPageQuery = route.query.page || undefined
   const nextMediaType = nextQuery.media_type || undefined
   const nextOrder = nextQuery.order || undefined
+  const nextGroupByDay = nextQuery.group_by_day || undefined
   const nextPageQuery = nextQuery.page || undefined
 
-  if (currentMediaType === nextMediaType && currentOrder === nextOrder && currentPageQuery === nextPageQuery) {
+  if (
+    currentMediaType === nextMediaType &&
+    currentOrder === nextOrder &&
+    currentGroupByDay === nextGroupByDay &&
+    currentPageQuery === nextPageQuery
+  ) {
     return
   }
 
@@ -236,6 +269,10 @@ function toggleSort() {
   currentPage.value = 1
 }
 
+function toggleDayGrouping() {
+  groupByDay.value = !groupByDay.value
+}
+
 function goToPage(page) {
   if (!Number.isInteger(page) || page < 1 || page > totalPages.value || page === currentPage.value || loading.value) {
     return
@@ -252,7 +289,7 @@ async function deleteEntry(entry) {
   }
 }
 
-watch([activeFilter, sortOrder, currentPage], syncUrlWithState)
+watch([activeFilter, sortOrder, groupByDay, currentPage], syncUrlWithState)
 
 watch(
   () => route.query,
@@ -263,3 +300,40 @@ watch(
   { immediate: true }
 )
 </script>
+
+<style scoped>
+.group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.group-toggle-label {
+  white-space: nowrap;
+}
+
+.group-toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 9999px;
+  border: 1px solid var(--filter-chip-border);
+  background: var(--filter-chip-bg);
+  color: var(--filter-chip-text);
+  padding: 0.33rem 0.58rem;
+  transition: background-color 0.22s ease, border-color 0.22s ease, color 0.22s ease;
+}
+
+.group-toggle[data-on='true'] .group-toggle-pill {
+  border-color: var(--filter-chip-active-border);
+  background: var(--filter-chip-active-bg);
+  color: var(--filter-chip-active-text);
+}
+
+.group-toggle:focus-visible .group-toggle-pill {
+  outline: 2px solid color-mix(in srgb, var(--brand-400) 75%, white 25%);
+  outline-offset: 2px;
+}
+</style>
