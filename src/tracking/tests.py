@@ -479,6 +479,18 @@ class WatchlistTests(BaseTestCase):
         self.assertEqual([entry['tmdb_id'] for entry in entries], [3002, 3001])
 
 
+    def test_watchlist_missing_rating_excludes_plan_to_watch(self):
+        Movie.objects.create(tmdb_id=3301, title='Plan Movie')
+        TVShow.objects.create(tmdb_id=3302, name='Plan Show')
+        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=3301)
+        Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=3302)
+
+        response = self.client.get('/api/tracking/watchlist/?missing_rating=true')
+        self.assertEqual(response.status_code, 200)
+        entries = response.data.get('results', response.data)
+        self.assertEqual(entries, [])
+
+
 class EpisodeTests(BaseTestCase):
     def test_mark_episode_watched(self):
         data = {'tmdb_id': 123, 'season_number': 1, 'episode_number': 1}
@@ -1385,7 +1397,7 @@ class ListItemTests(BaseTestCase):
         ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=123)
         ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=456)
         
-        # Default sort should be -added_at (newest first)
+        # Default sort should be added_at ascending
         response = self.client.get(f'/api/tracking/lists/{lst.id}/items/')
         self.assertEqual(response.status_code, 200)
         # Should have at least our 2 items
@@ -1395,7 +1407,7 @@ class ListItemTests(BaseTestCase):
         response = self.client.get(f'/api/tracking/lists/{lst.id}/items/?sort=added_at')
         self.assertEqual(response.status_code, 200)
         
-        # Sort by media_type
+        # Invalid sort falls back safely
         response = self.client.get(f'/api/tracking/lists/{lst.id}/items/?sort=media_type')
         self.assertEqual(response.status_code, 200)
 
@@ -1457,6 +1469,56 @@ class ListItemTests(BaseTestCase):
         items = filtered.data.get('results', filtered.data)
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]['tmdb_id'], 7202)
+
+    def test_list_items_filter_status(self):
+        lst = CustomList.objects.create(user=self.user, name='Status List')
+        Movie.objects.create(tmdb_id=7301, title='Planned Movie')
+        Movie.objects.create(tmdb_id=7302, title='Watched Movie')
+        TVShow.objects.create(tmdb_id=7303, name='Planned Show')
+        TVShow.objects.create(tmdb_id=7304, name='Watched Show')
+
+        ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=7301)
+        ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=7302)
+        ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=7303)
+        ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=7304)
+
+        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=7301)
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=7302, watched_at=timezone.now())
+        Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=7303)
+        UserTvShowStatus.objects.create(user=self.user, tmdb_id=7304, status='watched', watched_episodes=1, total_episodes=1)
+
+        planned = self.client.get(f'/api/tracking/lists/{lst.id}/items/?status=plan_to_watch')
+        self.assertEqual(planned.status_code, 200)
+        planned_items = planned.data.get('results', planned.data)
+        self.assertEqual({item['tmdb_id'] for item in planned_items}, {7301, 7303})
+
+        watched = self.client.get(f'/api/tracking/lists/{lst.id}/items/?status=watched')
+        self.assertEqual(watched.status_code, 200)
+        watched_items = watched.data.get('results', watched.data)
+        self.assertEqual({item['tmdb_id'] for item in watched_items}, {7302, 7304})
+
+    def test_list_items_missing_rating_excludes_plan_to_watch(self):
+        lst = CustomList.objects.create(user=self.user, name='Missing Rating List')
+        Movie.objects.create(tmdb_id=7401, title='Planned Movie')
+        Movie.objects.create(tmdb_id=7402, title='Watched Movie')
+        TVShow.objects.create(tmdb_id=7403, name='Planned Show')
+        TVShow.objects.create(tmdb_id=7404, name='Watched Show')
+
+        ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=7401)
+        ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=7402)
+        ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=7403)
+        ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=7404)
+
+        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=7401)
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=7402, watched_at=timezone.now())
+        Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=7403)
+        UserTvShowStatus.objects.create(user=self.user, tmdb_id=7404, status='watched', watched_episodes=1, total_episodes=1)
+        Rating.objects.create(user=self.user, media_type='tv', tmdb_id=7404, score=8)
+
+        response = self.client.get(f'/api/tracking/lists/{lst.id}/items/?missing_rating=true')
+        self.assertEqual(response.status_code, 200)
+        items = response.data.get('results', response.data)
+        self.assertEqual({item['tmdb_id'] for item in items}, {7402})
 
 
 class UserStatsTests(BaseTestCase):

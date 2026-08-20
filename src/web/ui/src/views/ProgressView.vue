@@ -12,18 +12,19 @@
     </div>
 
     <MediaFilterBar
-      :show-media-type-filter="false"
+      media-type="tv"
       :show-status-filter="true"
       :show-provider-status-filter="true"
       :show-genre-filter="true"
       :show-quick-filter-has-upcoming="true"
       :show-quick-filter-new-only="true"
       :show-quick-filter-missing-rating="true"
+      :show-quick-filter-in-watchlist="false"
       :show-search="true"
       :show-sort="true"
       :show-direction="true"
+      default-sort-key="time_left"
       search-placeholder="Search by show title"
-      media-type-context="tv"
       :provider-status-options="availableProviderStatuses"
       :genre-options="availableGenres"
       :sync-url="true"
@@ -153,13 +154,14 @@ const appliedFilters = ref({
   search: '',
   sort: 'time_left',
   direction: 'asc',
-  mediaType: 'all',
+  mediaType: 'tv',
   statuses: [],
   providerStatuses: [],
   genres: [],
   hasUpcoming: false,
   newOnly: false,
   missingRating: false,
+  inWatchlist: false,
 })
 
 const availableGenres = ref([])
@@ -205,6 +207,7 @@ function buildParams() {
     page: currentPage.value,
     sort: filterState.sort,
     direction: filterState.direction,
+    ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
     ...(filterState.search ? { search: filterState.search } : {}),
     ...(filterState.statuses.length ? { status: filterState.statuses } : {}),
     ...(filterState.providerStatuses.length ? { provider_status: filterState.providerStatuses } : {}),

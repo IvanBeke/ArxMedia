@@ -16,11 +16,11 @@
         </button>
 
         <div v-if="advancedOpen" class="control-panel left-0 w-[20rem] max-w-[85vw] p-3 space-y-3">
-          <div v-if="effectiveShowQuickFilterHasUpcoming || effectiveShowQuickFilterNewOnly || effectiveShowQuickFilterMissingRating" class="space-y-2">
+          <div v-if="showQuickFilterHasUpcomingEffective || showQuickFilterNewOnlyEffective || showQuickFilterMissingRatingEffective || showQuickFilterInWatchlistEffective" class="space-y-2">
             <p class="text-xs text-muted">Quick filters</p>
             <div class="flex flex-wrap gap-2">
               <button
-                v-if="effectiveShowQuickFilterHasUpcoming"
+                v-if="showQuickFilterHasUpcomingEffective"
                 type="button"
                 class="chip-toggle"
                 :data-on="staged.hasUpcoming ? 'true' : 'false'"
@@ -29,7 +29,7 @@
                 Has upcoming
               </button>
               <button
-                v-if="effectiveShowQuickFilterNewOnly"
+                v-if="showQuickFilterNewOnlyEffective"
                 type="button"
                 class="chip-toggle"
                 :data-on="staged.newOnly ? 'true' : 'false'"
@@ -38,7 +38,7 @@
                 New episodes
               </button>
               <button
-                v-if="effectiveShowQuickFilterMissingRating"
+                v-if="showQuickFilterMissingRatingEffective"
                 type="button"
                 class="chip-toggle"
                 :data-on="staged.missingRating ? 'true' : 'false'"
@@ -46,10 +46,19 @@
               >
                 Missing rating
               </button>
+              <button
+                v-if="showQuickFilterInWatchlistEffective"
+                type="button"
+                class="chip-toggle"
+                :data-on="staged.inWatchlist ? 'true' : 'false'"
+                @click="staged.inWatchlist = !staged.inWatchlist"
+              >
+                In watchlist
+              </button>
             </div>
           </div>
 
-          <div v-if="effectiveShowStatusFilter" class="space-y-2">
+          <div v-if="props.showStatusFilter" class="space-y-2">
             <p class="text-xs text-muted">User status</p>
             <div class="flex flex-wrap gap-2">
               <button
@@ -65,7 +74,7 @@
             </div>
           </div>
 
-          <div v-if="effectiveShowProviderStatusFilter" class="space-y-2">
+          <div v-if="props.showProviderStatusFilter" class="space-y-2">
             <p class="text-xs text-muted">Show status</p>
             <div class="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
               <button
@@ -81,7 +90,7 @@
             </div>
           </div>
 
-          <div v-if="effectiveShowGenreFilter" class="space-y-2">
+          <div v-if="props.showGenreFilter" class="space-y-2">
             <p class="text-xs text-muted">Genres</p>
             <div class="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
               <button
@@ -97,7 +106,7 @@
             </div>
           </div>
 
-          <div v-if="showMediaTypeFilter" class="space-y-2">
+          <div v-if="showMediaTypeControl" class="space-y-2">
             <p class="text-xs text-muted">Media type</p>
             <div class="flex flex-wrap gap-2">
               <button
@@ -133,7 +142,7 @@
         </svg>
       </div>
 
-      <details v-if="showSort" class="relative control-menu">
+      <details v-if="showSort" ref="sortMenuRef" class="relative control-menu">
         <summary class="control-trigger">
           <span class="inline-flex items-center gap-1.5">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -186,19 +195,21 @@ import { ArrowDownNarrowWide, ArrowDownWideNarrow } from '@lucide/vue'
 import { mediaAPI } from '@/api'
 
 const props = defineProps({
-  showMediaTypeFilter: { type: Boolean, default: false },
+  mediaType: { type: String, default: 'all' },
   showStatusFilter: { type: Boolean, default: false },
   showProviderStatusFilter: { type: Boolean, default: false },
   showGenreFilter: { type: Boolean, default: true },
   showQuickFilterHasUpcoming: { type: Boolean, default: false },
   showQuickFilterNewOnly: { type: Boolean, default: false },
   showQuickFilterMissingRating: { type: Boolean, default: false },
+  showQuickFilterInWatchlist: { type: Boolean, default: false },
   showSearch: { type: Boolean, default: true },
   showSort: { type: Boolean, default: true },
   showDirection: { type: Boolean, default: true },
+  defaultSortKey: { type: String, default: 'added_at' },
   searchPlaceholder: { type: String, default: 'Search by title' },
   advancedLabel: { type: String, default: 'Advanced Filters' },
-  mediaTypeContext: { type: String, default: 'all' },
+  applyMediaTypeExclusiveSorts: { type: Boolean, default: true },
   providerStatusOptions: { type: Array, default: () => [] },
   genreOptions: { type: Array, default: () => [] },
   syncUrl: { type: Boolean, default: true },
@@ -209,93 +220,102 @@ const emit = defineEmits(['change'])
 const route = useRoute()
 const router = useRouter()
 const rootRef = ref(null)
+const sortMenuRef = ref(null)
 const advancedOpen = ref(false)
 const directionOverridden = ref(false)
 const draftSearch = ref('')
 const fetchedGenres = ref([])
 
 const statusChipOptions = [
+  { label: 'Plan to watch', value: 'plan_to_watch' },
   { label: 'Watching', value: 'watching' },
   { label: 'Completed', value: 'watched' },
   { label: 'Dropped', value: 'dropped' },
 ]
 
-const defaultDirectionsBySort = {
-  added_at: 'desc',
+const sortLabelsByKey = {
+  added_at: 'Date added',
+  title: 'Title',
+  rating: 'Rating',
+  vote_count: 'Votes',
+  runtime: 'Runtime',
+  release_date: 'Release date',
+  watched_date: 'Watched date',
+  time_left: 'Time left',
+  episodes_left: 'Episodes left',
+  last_watched: 'Last watched',
+  started_date: 'Started date',
+  progress_percent: 'Progress',
+  next_episode_date: 'Next episode date',
+}
+
+const baseDefaultDirections = {
+  added_at: 'asc',
   title: 'asc',
   rating: 'desc',
   vote_count: 'desc',
   runtime: 'asc',
-  total_episodes: 'desc',
-  media_type: 'asc',
   release_date: 'desc',
-  first_air_date: 'desc',
-  air_date: 'asc',
+  watched_date: 'desc',
   time_left: 'asc',
   episodes_left: 'asc',
   last_watched: 'desc',
+  started_date: 'asc',
   progress_percent: 'desc',
+  next_episode_date: 'desc',
 }
 
-const isProgressMode = computed(() => {
-  return (
-    props.showStatusFilter
-    || props.showProviderStatusFilter
-    || props.showGenreFilter
-    || props.showQuickFilterHasUpcoming
-    || props.showQuickFilterNewOnly
-    || props.showQuickFilterMissingRating
-  )
-})
+const sortBaselineKeys = ['added_at', 'title', 'rating', 'vote_count', 'runtime', 'release_date']
+const sortMovieExclusiveKeys = ['watched_date']
+const sortTvExclusiveKeys = ['time_left', 'episodes_left', 'last_watched', 'started_date', 'progress_percent', 'next_episode_date']
 
-const defaultSort = computed(() => (isProgressMode.value ? 'time_left' : 'added_at'))
+const showMediaTypeControl = computed(() => props.mediaType === 'all')
 
 const filters = reactive({
   search: '',
-  sort: defaultSort.value,
-  direction: getDefaultDirection(defaultSort.value),
-  mediaType: 'all',
+  sort: props.defaultSortKey,
+  direction: getDefaultDirection(props.defaultSortKey),
+  mediaType: props.mediaType,
   statuses: [],
   providerStatuses: [],
   genres: [],
   hasUpcoming: false,
   newOnly: false,
   missingRating: false,
+  inWatchlist: false,
 })
 
 const staged = reactive({
-  mediaType: 'all',
+  mediaType: props.mediaType,
   statuses: [],
   providerStatuses: [],
   genres: [],
   hasUpcoming: false,
   newOnly: false,
   missingRating: false,
+  inWatchlist: false,
 })
 
 const effectiveMediaType = computed(() => {
-  if (props.showMediaTypeFilter) {
-    return filters.mediaType || 'all'
+  if (showMediaTypeControl.value) {
+    return filters.mediaType || props.mediaType || 'all'
   }
-  return props.mediaTypeContext || 'all'
+  return props.mediaType || 'all'
 })
 
-const advancedMediaType = computed(() => {
-  if (props.showMediaTypeFilter && advancedOpen.value) {
-    return staged.mediaType || 'all'
-  }
-  return effectiveMediaType.value
+const showQuickFilterHasUpcomingEffective = computed(() => props.showQuickFilterHasUpcoming)
+const showQuickFilterNewOnlyEffective = computed(() => props.showQuickFilterNewOnly)
+const showQuickFilterMissingRatingEffective = computed(() => props.showQuickFilterMissingRating)
+const showQuickFilterInWatchlistEffective = computed(() => props.showQuickFilterInWatchlist)
+const usesStatusWorkflowSortProfile = computed(() => {
+  return (
+    props.showStatusFilter
+    && props.showProviderStatusFilter
+    && props.showQuickFilterHasUpcoming
+    && props.showQuickFilterNewOnly
+  )
 })
 
-const isWatchlistRoute = computed(() => route.path.startsWith('/watchlist'))
-const autoTvAdvancedEnabled = computed(() => advancedMediaType.value === 'tv' && !isWatchlistRoute.value)
-
-const effectiveShowStatusFilter = computed(() => props.showStatusFilter || autoTvAdvancedEnabled.value)
-const effectiveShowProviderStatusFilter = computed(() => props.showProviderStatusFilter || autoTvAdvancedEnabled.value)
-const effectiveShowGenreFilter = computed(() => props.showGenreFilter)
-const effectiveShowQuickFilterHasUpcoming = computed(() => props.showQuickFilterHasUpcoming || autoTvAdvancedEnabled.value)
-const effectiveShowQuickFilterNewOnly = computed(() => props.showQuickFilterNewOnly || autoTvAdvancedEnabled.value)
-const effectiveShowQuickFilterMissingRating = computed(() => props.showQuickFilterMissingRating || autoTvAdvancedEnabled.value)
 const resolvedGenreOptions = computed(() => {
   const fromProps = props.genreOptions || []
   const fromApi = fetchedGenres.value || []
@@ -303,32 +323,32 @@ const resolvedGenreOptions = computed(() => {
 })
 
 const resolvedSortOptions = computed(() => {
-  if (isProgressMode.value) {
-    return [
-      { label: 'Time left', value: 'time_left' },
-      { label: 'Episodes left', value: 'episodes_left' },
-      { label: 'Last watched', value: 'last_watched' },
-      { label: 'Progress', value: 'progress_percent' },
-      { label: 'Title', value: 'title' },
-      { label: 'Air date', value: 'air_date' },
-    ]
+  const baseline = usesStatusWorkflowSortProfile.value
+    ? ['title', 'release_date']
+    : sortBaselineKeys
+  const keys = [...baseline]
+  if (props.applyMediaTypeExclusiveSorts) {
+    if (effectiveMediaType.value === 'movie') {
+      keys.push(...sortMovieExclusiveKeys)
+    } else if (effectiveMediaType.value === 'tv') {
+      keys.push(...sortTvExclusiveKeys)
+    }
   }
+  return dedupeSortKeys(keys).map((key) => ({
+    label: sortLabelsByKey[key] || key,
+    value: key,
+  }))
+})
 
-  const dedup = new Map([
-    ['added_at', { label: 'Date added', value: 'added_at' }],
-    ['title', { label: 'Title', value: 'title' }],
-    ['rating', { label: 'Rating', value: 'rating' }],
-    ['vote_count', { label: 'Votes', value: 'vote_count' }],
-    ['release_date', { label: 'Release date', value: 'release_date' }],
-    ['runtime', { label: 'Runtime', value: 'runtime' }],
-  ])
-
-  if (effectiveMediaType.value === 'tv') {
-    dedup.set('first_air_date', { label: 'First air date', value: 'first_air_date' })
-    dedup.set('total_episodes', { label: 'Total episodes', value: 'total_episodes' })
+const resolvedDefaultSort = computed(() => {
+  const keys = resolvedSortOptions.value.map((option) => option.value)
+  if (keys.includes(props.defaultSortKey)) {
+    return props.defaultSortKey
   }
-
-  return [...dedup.values()]
+  if (keys.includes('title')) {
+    return 'title'
+  }
+  return keys[0] || 'added_at'
 })
 
 const mediaTypeAdvancedOptions = [
@@ -338,13 +358,14 @@ const mediaTypeAdvancedOptions = [
 
 const hasAdvancedFilters = computed(() => {
   return (
-    props.showMediaTypeFilter
-    || effectiveShowStatusFilter.value
-    || effectiveShowProviderStatusFilter.value
-    || effectiveShowGenreFilter.value
-    || effectiveShowQuickFilterHasUpcoming.value
-    || effectiveShowQuickFilterNewOnly.value
-    || effectiveShowQuickFilterMissingRating.value
+    showMediaTypeControl.value
+    || props.showStatusFilter
+    || props.showProviderStatusFilter
+    || props.showGenreFilter
+    || showQuickFilterHasUpcomingEffective.value
+    || showQuickFilterNewOnlyEffective.value
+    || showQuickFilterMissingRatingEffective.value
+    || showQuickFilterInWatchlistEffective.value
   )
 })
 
@@ -354,13 +375,14 @@ const currentSortLabel = computed(() => {
 
 const activeAdvancedCount = computed(() => {
   let total = 0
-  if (props.showMediaTypeFilter && filters.mediaType !== 'all') total += 1
-  if (effectiveShowStatusFilter.value) total += filters.statuses.length
-  if (effectiveShowProviderStatusFilter.value) total += filters.providerStatuses.length
-  if (effectiveShowGenreFilter.value) total += filters.genres.length
-  if (effectiveShowQuickFilterHasUpcoming.value && filters.hasUpcoming) total += 1
-  if (effectiveShowQuickFilterNewOnly.value && filters.newOnly) total += 1
-  if (effectiveShowQuickFilterMissingRating.value && filters.missingRating) total += 1
+  if (showMediaTypeControl.value && filters.mediaType !== 'all') total += 1
+  if (props.showStatusFilter) total += filters.statuses.length
+  if (props.showProviderStatusFilter) total += filters.providerStatuses.length
+  if (props.showGenreFilter) total += filters.genres.length
+  if (showQuickFilterHasUpcomingEffective.value && filters.hasUpcoming) total += 1
+  if (showQuickFilterNewOnlyEffective.value && filters.newOnly) total += 1
+  if (showQuickFilterMissingRatingEffective.value && filters.missingRating) total += 1
+  if (showQuickFilterInWatchlistEffective.value && filters.inWatchlist) total += 1
   return total
 })
 
@@ -368,6 +390,11 @@ onClickOutside(rootRef, () => {
   if (!advancedOpen.value) return
   advancedOpen.value = false
   syncStagedFromApplied()
+})
+
+onClickOutside(sortMenuRef, () => {
+  if (!sortMenuRef.value?.open) return
+  sortMenuRef.value.open = false
 })
 
 onMounted(async () => {
@@ -395,21 +422,22 @@ watch(
 )
 
 function getDefaultDirection(sortKey) {
-  return defaultDirectionsBySort[sortKey] || 'asc'
+  return baseDefaultDirections[sortKey] || 'asc'
 }
 
 function serializeFilters(value) {
   return JSON.stringify({
     search: value.search || '',
-    sort: value.sort || defaultSort.value,
-    direction: value.direction || getDefaultDirection(value.sort || defaultSort.value),
-    mediaType: value.mediaType || 'all',
+    sort: value.sort || resolvedDefaultSort.value,
+    direction: value.direction || getDefaultDirection(value.sort || resolvedDefaultSort.value),
+    mediaType: value.mediaType || props.mediaType || 'all',
     statuses: [...(value.statuses || [])].sort(),
     providerStatuses: [...(value.providerStatuses || [])].sort(),
     genres: [...(value.genres || [])].sort(),
     hasUpcoming: Boolean(value.hasUpcoming),
     newOnly: Boolean(value.newOnly),
     missingRating: Boolean(value.missingRating),
+    inWatchlist: Boolean(value.inWatchlist),
   })
 }
 
@@ -424,6 +452,7 @@ function applyFiltersState(next) {
   filters.hasUpcoming = next.hasUpcoming
   filters.newOnly = next.newOnly
   filters.missingRating = next.missingRating
+  filters.inWatchlist = next.inWatchlist
   draftSearch.value = next.search
   directionOverridden.value = next.directionOverridden
   syncStagedFromApplied()
@@ -442,19 +471,20 @@ function parseArray(queryValue) {
 function parseFromQuery(query) {
   const next = {
     search: typeof query.search === 'string' ? query.search : '',
-    sort: typeof query.sort === 'string' ? query.sort : defaultSort.value,
+    sort: typeof query.sort === 'string' ? query.sort : resolvedDefaultSort.value,
     direction: '',
     directionOverridden: false,
-    mediaType: 'all',
+    mediaType: props.mediaType || 'all',
     statuses: parseArray(query.status),
     providerStatuses: parseArray(query.provider_status),
     genres: parseArray(query.genres),
     hasUpcoming: query.has_upcoming === '1',
     newOnly: query.is_new === '1',
     missingRating: query.missing_rating === '1',
+    inWatchlist: query.in_watchlist === '1',
   }
 
-  if (props.showMediaTypeFilter) {
+  if (showMediaTypeControl.value) {
     const mediaTypeValue = typeof query.media_type === 'string' ? query.media_type : 'all'
     next.mediaType = mediaTypeValue
   }
@@ -467,11 +497,19 @@ function parseFromQuery(query) {
   }
 
   if (!resolvedSortOptions.value.some((option) => option.value === next.sort)) {
-    next.sort = defaultSort.value
+    next.sort = resolvedDefaultSort.value
     if (!next.directionOverridden) {
       next.direction = getDefaultDirection(next.sort)
     }
   }
+
+  if (!props.showQuickFilterHasUpcoming) next.hasUpcoming = false
+  if (!props.showQuickFilterNewOnly) next.newOnly = false
+  if (!props.showQuickFilterMissingRating) next.missingRating = false
+  if (!showQuickFilterInWatchlistEffective.value) next.inWatchlist = false
+  if (!props.showStatusFilter) next.statuses = []
+  if (!props.showProviderStatusFilter) next.providerStatuses = []
+  if (!props.showGenreFilter) next.genres = []
 
   return next
 }
@@ -484,6 +522,7 @@ function syncStagedFromApplied() {
   staged.hasUpcoming = filters.hasUpcoming
   staged.newOnly = filters.newOnly
   staged.missingRating = filters.missingRating
+  staged.inWatchlist = filters.inWatchlist
 }
 
 function emitChange(source) {
@@ -498,6 +537,7 @@ function emitChange(source) {
     hasUpcoming: filters.hasUpcoming,
     newOnly: filters.newOnly,
     missingRating: filters.missingRating,
+    inWatchlist: filters.inWatchlist,
   }
   emit('change', { source, filters: payload })
 }
@@ -505,25 +545,26 @@ function emitChange(source) {
 function syncUrl() {
   if (!props.syncUrl) return
 
-  const keys = ['search', 'sort', 'direction', 'media_type', 'status', 'provider_status', 'has_upcoming', 'is_new', 'missing_rating', 'genres']
+  const keys = ['search', 'sort', 'direction', 'media_type', 'status', 'provider_status', 'has_upcoming', 'is_new', 'missing_rating', 'in_watchlist', 'genres']
   const nextQuery = { ...route.query }
   for (const key of keys) {
     delete nextQuery[key]
   }
 
   if (props.showSearch && filters.search) nextQuery.search = filters.search
-  if (props.showSort && filters.sort !== defaultSort.value) nextQuery.sort = filters.sort
+  if (props.showSort && filters.sort !== resolvedDefaultSort.value) nextQuery.sort = filters.sort
   if (props.showDirection && (directionOverridden.value || filters.direction !== getDefaultDirection(filters.sort))) {
     nextQuery.direction = filters.direction
   }
-  if (props.showMediaTypeFilter && filters.mediaType !== 'all') nextQuery.media_type = filters.mediaType
+  if (showMediaTypeControl.value && filters.mediaType !== 'all') nextQuery.media_type = filters.mediaType
 
-  if (effectiveShowStatusFilter.value && filters.statuses.length) nextQuery.status = [...filters.statuses]
-  if (effectiveShowProviderStatusFilter.value && filters.providerStatuses.length) nextQuery.provider_status = [...filters.providerStatuses]
-  if (effectiveShowGenreFilter.value && filters.genres.length) nextQuery.genres = [...filters.genres]
-  if (effectiveShowQuickFilterHasUpcoming.value && filters.hasUpcoming) nextQuery.has_upcoming = '1'
-  if (effectiveShowQuickFilterNewOnly.value && filters.newOnly) nextQuery.is_new = '1'
-  if (effectiveShowQuickFilterMissingRating.value && filters.missingRating) nextQuery.missing_rating = '1'
+  if (props.showStatusFilter && filters.statuses.length) nextQuery.status = [...filters.statuses]
+  if (props.showProviderStatusFilter && filters.providerStatuses.length) nextQuery.provider_status = [...filters.providerStatuses]
+  if (props.showGenreFilter && filters.genres.length) nextQuery.genres = [...filters.genres]
+  if (showQuickFilterHasUpcomingEffective.value && filters.hasUpcoming) nextQuery.has_upcoming = '1'
+  if (showQuickFilterNewOnlyEffective.value && filters.newOnly) nextQuery.is_new = '1'
+  if (showQuickFilterMissingRatingEffective.value && filters.missingRating) nextQuery.missing_rating = '1'
+  if (showQuickFilterInWatchlistEffective.value && filters.inWatchlist) nextQuery.in_watchlist = '1'
 
   if (JSON.stringify(nextQuery) !== JSON.stringify(route.query)) {
     router.replace({ query: nextQuery })
@@ -554,25 +595,27 @@ function toggleAdvanced() {
 }
 
 function applyAdvanced() {
-  filters.mediaType = props.showMediaTypeFilter ? staged.mediaType : 'all'
-  filters.statuses = effectiveShowStatusFilter.value ? [...staged.statuses] : []
-  filters.providerStatuses = effectiveShowProviderStatusFilter.value ? [...staged.providerStatuses] : []
-  filters.genres = effectiveShowGenreFilter.value ? [...staged.genres] : []
-  filters.hasUpcoming = effectiveShowQuickFilterHasUpcoming.value ? staged.hasUpcoming : false
-  filters.newOnly = effectiveShowQuickFilterNewOnly.value ? staged.newOnly : false
-  filters.missingRating = effectiveShowQuickFilterMissingRating.value ? staged.missingRating : false
+  filters.mediaType = showMediaTypeControl.value ? staged.mediaType : (props.mediaType || 'all')
+  filters.statuses = props.showStatusFilter ? [...staged.statuses] : []
+  filters.providerStatuses = props.showProviderStatusFilter ? [...staged.providerStatuses] : []
+  filters.genres = props.showGenreFilter ? [...staged.genres] : []
+  filters.hasUpcoming = showQuickFilterHasUpcomingEffective.value ? staged.hasUpcoming : false
+  filters.newOnly = showQuickFilterNewOnlyEffective.value ? staged.newOnly : false
+  filters.missingRating = showQuickFilterMissingRatingEffective.value ? staged.missingRating : false
+  filters.inWatchlist = showQuickFilterInWatchlistEffective.value ? staged.inWatchlist : false
   advancedOpen.value = false
   commitInteraction()
 }
 
 function clearAdvanced() {
-  staged.mediaType = 'all'
+  staged.mediaType = showMediaTypeControl.value ? 'all' : (props.mediaType || 'all')
   staged.statuses = []
   staged.providerStatuses = []
   staged.genres = []
   staged.hasUpcoming = false
   staged.newOnly = false
   staged.missingRating = false
+  staged.inWatchlist = false
   applyAdvanced()
 }
 
@@ -586,22 +629,47 @@ function setSort(nextSort) {
   if (!directionOverridden.value) {
     filters.direction = getDefaultDirection(nextSort)
   }
+  if (sortMenuRef.value?.open) {
+    sortMenuRef.value.open = false
+  }
   commitInteraction()
 }
 
 watch(
-  [resolvedSortOptions, defaultSort],
+  [resolvedSortOptions, resolvedDefaultSort],
   () => {
     if (resolvedSortOptions.value.some((option) => option.value === filters.sort)) {
       return
     }
-    filters.sort = defaultSort.value
+    filters.sort = resolvedDefaultSort.value
     if (!directionOverridden.value) {
       filters.direction = getDefaultDirection(filters.sort)
     }
     commitInteraction()
   },
   { deep: true }
+)
+
+watch(
+  effectiveMediaType,
+  () => {
+    if (resolvedSortOptions.value.some((option) => option.value === filters.sort)) return
+    filters.sort = resolvedDefaultSort.value
+    if (!directionOverridden.value) {
+      filters.direction = getDefaultDirection(filters.sort)
+    }
+  }
+)
+
+watch(
+  () => props.mediaType,
+  () => {
+    if (showMediaTypeControl.value) {
+      return
+    }
+    filters.mediaType = props.mediaType || 'all'
+    staged.mediaType = props.mediaType || 'all'
+  }
 )
 
 function setDirection(nextDirection) {
@@ -616,6 +684,18 @@ function toggleStagedMediaType(nextType) {
     return
   }
   staged.mediaType = nextType
+}
+
+function dedupeSortKeys(values) {
+  const seen = new Set()
+  const keys = []
+  for (const value of values || []) {
+    const key = String(value || '').trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    keys.push(key)
+  }
+  return keys
 }
 </script>
 

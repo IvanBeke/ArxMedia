@@ -11,16 +11,19 @@
     </div>
 
     <MediaFilterBar
-      :show-media-type-filter="true"
+      media-type="all"
       :show-status-filter="false"
       :show-provider-status-filter="false"
       :show-genre-filter="true"
       :show-quick-filter-has-upcoming="false"
       :show-quick-filter-new-only="false"
       :show-quick-filter-missing-rating="false"
+      :show-quick-filter-in-watchlist="false"
       :show-search="true"
       :show-sort="true"
       :show-direction="true"
+      default-sort-key="added_at"
+      :apply-media-type-exclusive-sorts="false"
       search-placeholder="Search by title"
       :sync-url="true"
       @change="onFilterBarChange"
@@ -72,7 +75,7 @@ const loadingMore = ref(false)
 const appliedFilters = ref({
   search: '',
   sort: 'added_at',
-  direction: 'desc',
+  direction: 'asc',
   mediaType: 'all',
   statuses: [],
   providerStatuses: [],
@@ -80,6 +83,7 @@ const appliedFilters = ref({
   hasUpcoming: false,
   newOnly: false,
   missingRating: false,
+  inWatchlist: false,
 })
 const currentPage = ref(1)
 const totalPages = ref(1)

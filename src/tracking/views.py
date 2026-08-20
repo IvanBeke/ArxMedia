@@ -3,8 +3,24 @@ from datetime import date, timedelta
 
 from accounts.privacy import can_view_account_content, get_viewer_relationship
 from django.db import IntegrityError
-from django.db.models import Avg, Count, DateTimeField, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
-from django.db.models.functions import Coalesce, Lower
+from django.db.models import (
+    Avg,
+    Case,
+    Count,
+    DateField,
+    DateTimeField,
+    Exists,
+    ExpressionWrapper,
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce, Greatest, Lower
 from django.utils import timezone
 from media.tmdb import tmdb
 from rest_framework import generics, permissions, status
@@ -94,6 +110,153 @@ def _parse_multi_param(query_params, key: str) -> list[str]:
     return values
 
 
+def _collect_media_ids(queryset) -> tuple[set[int], set[int]]:
+    pairs = queryset.values_list('media_type', 'tmdb_id').distinct()
+    movie_ids: set[int] = set()
+    tv_ids: set[int] = set()
+    for media_type, tmdb_id in pairs:
+        if media_type == MediaType.MOVIE:
+            movie_ids.add(tmdb_id)
+        elif media_type == MediaType.TV:
+            tv_ids.add(tmdb_id)
+    return movie_ids, tv_ids
+
+
+def _build_user_media_sets(user, movie_ids: set[int], tv_ids: set[int]) -> dict[str, set[int]]:
+    movie_watched_ids = set(
+        WatchEntry.objects.filter(
+            user=user,
+            media_type=WatchEntryMediaType.MOVIE,
+            tmdb_id__in=movie_ids,
+        ).values_list('tmdb_id', flat=True)
+    )
+    movie_watchlist_ids = set(
+        Watchlist.objects.filter(
+            user=user,
+            media_type=MediaType.MOVIE,
+            tmdb_id__in=movie_ids,
+        ).values_list('tmdb_id', flat=True)
+    )
+    tv_watchlist_ids = set(
+        Watchlist.objects.filter(
+            user=user,
+            media_type=MediaType.TV,
+            tmdb_id__in=tv_ids,
+        ).values_list('tmdb_id', flat=True)
+    )
+    tv_status_rows = UserTvShowStatus.objects.filter(
+        user=user,
+        tmdb_id__in=tv_ids,
+    ).values_list('tmdb_id', 'status')
+
+    tv_watching_ids: set[int] = set()
+    tv_watched_ids: set[int] = set()
+    tv_dropped_ids: set[int] = set()
+    tv_plan_to_watch_ids: set[int] = set()
+
+    for tmdb_id, show_status in tv_status_rows:
+        if show_status == TvShowStatus.WATCHING:
+            tv_watching_ids.add(tmdb_id)
+        elif show_status == TvShowStatus.WATCHED:
+            tv_watched_ids.add(tmdb_id)
+        elif show_status == TvShowStatus.DROPPED:
+            tv_dropped_ids.add(tmdb_id)
+        elif show_status == TvShowStatus.PLAN_TO_WATCH:
+            tv_plan_to_watch_ids.add(tmdb_id)
+
+    tv_with_status_ids = tv_watching_ids | tv_watched_ids | tv_dropped_ids | tv_plan_to_watch_ids
+    tv_plan_to_watch_ids |= (tv_watchlist_ids - tv_with_status_ids)
+
+    movie_plan_to_watch_ids = movie_watchlist_ids - movie_watched_ids
+    movie_none_ids = movie_ids - movie_watched_ids - movie_plan_to_watch_ids
+    tv_none_ids = tv_ids - tv_watching_ids - tv_watched_ids - tv_dropped_ids - tv_plan_to_watch_ids
+
+    return {
+        'movie_watched': movie_watched_ids,
+        'movie_plan_to_watch': movie_plan_to_watch_ids,
+        'movie_none': movie_none_ids,
+        'tv_watching': tv_watching_ids,
+        'tv_watched': tv_watched_ids,
+        'tv_dropped': tv_dropped_ids,
+        'tv_plan_to_watch': tv_plan_to_watch_ids,
+        'tv_none': tv_none_ids,
+        'watchlist_movie': movie_watchlist_ids,
+        'watchlist_tv': tv_watchlist_ids,
+    }
+
+
+def _apply_status_filter(queryset, user, selected_statuses: list[str]):
+    normalized = {value.strip().lower() for value in selected_statuses if value and value.strip()}
+    if not normalized:
+        return queryset
+
+    movie_ids, tv_ids = _collect_media_ids(queryset)
+    if not movie_ids and not tv_ids:
+        return queryset
+
+    sets = _build_user_media_sets(user, movie_ids, tv_ids)
+    status_q = Q()
+
+    if 'plan_to_watch' in normalized:
+        status_q |= Q(media_type=MediaType.MOVIE, tmdb_id__in=sets['movie_plan_to_watch'])
+        status_q |= Q(media_type=MediaType.TV, tmdb_id__in=sets['tv_plan_to_watch'])
+    if 'watching' in normalized:
+        status_q |= Q(media_type=MediaType.TV, tmdb_id__in=sets['tv_watching'])
+    if 'watched' in normalized:
+        status_q |= Q(media_type=MediaType.MOVIE, tmdb_id__in=sets['movie_watched'])
+        status_q |= Q(media_type=MediaType.TV, tmdb_id__in=sets['tv_watched'])
+    if 'dropped' in normalized:
+        status_q |= Q(media_type=MediaType.TV, tmdb_id__in=sets['tv_dropped'])
+
+    if not status_q:
+        return queryset.none()
+    return queryset.filter(status_q)
+
+
+def _apply_missing_rating_filter(queryset, user):
+    movie_ids, tv_ids = _collect_media_ids(queryset)
+    if not movie_ids and not tv_ids:
+        return queryset
+
+    sets = _build_user_media_sets(user, movie_ids, tv_ids)
+    rating_rows = Rating.objects.filter(
+        user=user,
+        media_type__in=(MediaType.MOVIE, MediaType.TV),
+        tmdb_id__in=(movie_ids | tv_ids),
+    ).values_list('media_type', 'tmdb_id')
+
+    rated_movie_ids: set[int] = set()
+    rated_tv_ids: set[int] = set()
+    for media_type, tmdb_id in rating_rows:
+        if media_type == MediaType.MOVIE:
+            rated_movie_ids.add(tmdb_id)
+        elif media_type == MediaType.TV:
+            rated_tv_ids.add(tmdb_id)
+
+    eligible_movie_ids = (movie_ids - sets['movie_plan_to_watch']) - rated_movie_ids
+    eligible_tv_ids = (tv_ids - sets['tv_plan_to_watch']) - rated_tv_ids
+
+    return queryset.filter(
+        Q(media_type=MediaType.MOVIE, tmdb_id__in=eligible_movie_ids)
+        | Q(media_type=MediaType.TV, tmdb_id__in=eligible_tv_ids)
+    )
+
+
+def _apply_in_watchlist_filter(queryset, user):
+    movie_ids = Watchlist.objects.filter(
+        user=user,
+        media_type=MediaType.MOVIE,
+    ).values_list('tmdb_id', flat=True)
+    tv_ids = Watchlist.objects.filter(
+        user=user,
+        media_type=MediaType.TV,
+    ).values_list('tmdb_id', flat=True)
+    return queryset.filter(
+        Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
+        | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
+    )
+
+
 def _build_tv_runtime_map(tmdb_ids: list[int]) -> dict[int, int]:
     if not tmdb_ids:
         return {}
@@ -127,13 +290,25 @@ def _normalize_sort(sort_raw: str | None, direction_raw: str | None, default_sor
     return sort_value, direction
 
 
-def _annotate_media_sort_fields(queryset):
+def _annotate_media_sort_fields(queryset, user=None):
     from media.models import Episode, Movie, TVShow
 
     movie_lookup = Movie.objects.filter(tmdb_id=OuterRef('tmdb_id'))
     tv_lookup = TVShow.objects.filter(tmdb_id=OuterRef('tmdb_id'))
 
-    return queryset.annotate(
+    tv_status_lookup = UserTvShowStatus.objects.none()
+    movie_watch_lookup = WatchEntry.objects.none()
+    if user and user.is_authenticated:
+        tv_status_lookup = UserTvShowStatus.objects.filter(user=user, tmdb_id=OuterRef('tmdb_id'))
+        movie_watch_lookup = WatchEntry.objects.filter(
+            user=user,
+            media_type=WatchEntryMediaType.MOVIE,
+            tmdb_id=OuterRef('tmdb_id'),
+        ).annotate(event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())).order_by('-event_at', '-id')
+
+    today = timezone.now().date()
+
+    annotated = queryset.annotate(
         movie_title=Subquery(movie_lookup.values('title')[:1]),
         tv_title=Subquery(tv_lookup.values('name')[:1]),
         movie_release_date=Subquery(movie_lookup.values('release_date')[:1]),
@@ -152,6 +327,19 @@ def _annotate_media_sort_fields(queryset):
         tv_vote_average=Subquery(tv_lookup.values('vote_average')[:1]),
         movie_vote_count=Subquery(movie_lookup.values('vote_count')[:1]),
         tv_vote_count=Subquery(tv_lookup.values('vote_count')[:1]),
+        tv_episode_runtime=Subquery(tv_lookup.values('episode_runtime')[:1]),
+        tv_started_at=Subquery(tv_status_lookup.values('started_at')[:1]),
+        tv_last_watched_at=Subquery(tv_status_lookup.values('last_watched_at')[:1]),
+        tv_progress_percent=Subquery(tv_status_lookup.values('progress_percent')[:1]),
+        tv_watched_episodes=Subquery(tv_status_lookup.values('watched_episodes')[:1]),
+        tv_next_episode_date=Subquery(
+            Episode.objects.filter(
+                season__show__tmdb_id=OuterRef('tmdb_id'),
+                season__season_number__gt=0,
+                air_date__gte=today,
+            ).order_by('air_date', 'season__season_number', 'episode_number').values('air_date')[:1]
+        ),
+        movie_watched_date=Subquery(movie_watch_lookup.values('event_at')[:1]),
     ).annotate(
         resolved_title=Lower(Coalesce('movie_title', 'tv_title', Value(''))),
         resolved_date=Coalesce('movie_release_date', 'tv_first_air_date'),
@@ -159,11 +347,34 @@ def _annotate_media_sort_fields(queryset):
         resolved_total_episodes=Coalesce('movie_total_episodes', 'tv_total_episodes'),
         resolved_vote_average=Coalesce('movie_vote_average', 'tv_vote_average', Value(0.0)),
         resolved_vote_count=Coalesce('movie_vote_count', 'tv_vote_count', Value(0)),
+        resolved_watched_date=Coalesce('movie_watched_date', 'tv_last_watched_at'),
+        resolved_started_date=Coalesce('movie_watched_date', 'tv_started_at'),
+        resolved_progress_percent=Coalesce(
+            'tv_progress_percent',
+            Case(
+                When(movie_watched_date__isnull=False, then=Value(100)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        ),
+        resolved_episodes_left=Greatest(
+            Value(0),
+            Coalesce('tv_total_episodes', Value(0)) - Coalesce('tv_watched_episodes', Value(0)),
+            output_field=IntegerField(),
+        ),
+        resolved_next_episode_date=Coalesce('tv_next_episode_date', Value(None, output_field=DateField())),
+    )
+
+    return annotated.annotate(
+        resolved_time_left=ExpressionWrapper(
+            Coalesce(F('resolved_episodes_left'), Value(0)) * Coalesce(F('tv_episode_runtime'), Value(0)),
+            output_field=IntegerField(),
+        ),
     )
 
 
-def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_desc: bool = False):
-    queryset = _annotate_media_sort_fields(queryset)
+def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_desc: bool = False, user=None):
+    queryset = _annotate_media_sort_fields(queryset, user=user)
 
     id_order = '-id' if id_desc else 'id'
 
@@ -177,10 +388,29 @@ def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_
             return queryset.order_by('-media_type', 'resolved_title', id_order)
         return queryset.order_by('media_type', 'resolved_title', id_order)
 
-    if sort_key in ('release_date', 'first_air_date', 'air_date'):
+    if sort_key in ('release_date', 'next_episode_date', 'watched_date', 'started_date', 'last_watched'):
+        date_field = 'resolved_date'
+        if sort_key == 'next_episode_date':
+            date_field = 'resolved_next_episode_date'
+        elif sort_key in ('watched_date', 'last_watched'):
+            date_field = 'resolved_watched_date'
+        elif sort_key == 'started_date':
+            date_field = 'resolved_started_date'
         if direction == 'desc':
-            return queryset.order_by(F('resolved_date').desc(nulls_last=True), 'resolved_title', id_order)
-        return queryset.order_by(F('resolved_date').asc(nulls_last=True), 'resolved_title', id_order)
+            return queryset.order_by(F(date_field).desc(nulls_last=True), 'resolved_title', id_order)
+
+        if sort_key == 'next_episode_date':
+            return queryset.order_by(
+                Case(
+                    When(resolved_next_episode_date__isnull=True, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                ),
+                F(date_field).asc(nulls_last=True),
+                'resolved_title',
+                id_order,
+            )
+        return queryset.order_by(F(date_field).asc(nulls_last=True), 'resolved_title', id_order)
 
     field_by_sort = {
         'runtime': 'resolved_runtime',
@@ -189,6 +419,9 @@ def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_
         'vote_average': 'resolved_vote_average',
         'vote_count': 'resolved_vote_count',
         'added_at': 'added_at',
+        'progress_percent': 'resolved_progress_percent',
+        'episodes_left': 'resolved_episodes_left',
+        'time_left': 'resolved_time_left',
     }
     field_name = field_by_sort.get(sort_key, 'added_at')
 
@@ -381,6 +614,10 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
                 | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
             ).distinct()
 
+        missing_rating = _parse_bool_param(self.request.query_params.get('missing_rating'))
+        if missing_rating is True:
+            qs = _apply_missing_rating_filter(qs, self.request.user)
+
         sort_key, direction = _normalize_sort(
             self.request.query_params.get('sort'),
             self.request.query_params.get('direction'),
@@ -388,13 +625,14 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
             default_direction='asc',
         )
         valid_sorts = {
-            'added_at', 'title', 'media_type', 'release_date', 'first_air_date', 'air_date',
-            'rating', 'runtime', 'total_episodes', 'vote_count'
+            'added_at', 'title', 'release_date',
+            'rating', 'runtime', 'total_episodes', 'vote_count',
+            'watched_date', 'started_date', 'last_watched', 'progress_percent', 'episodes_left', 'time_left', 'next_episode_date'
         }
         if sort_key not in valid_sorts:
             sort_key = 'added_at'
 
-        return _apply_secondary_title_ordering(qs, sort_key, direction)
+        return _apply_secondary_title_ordering(qs, sort_key, direction, user=self.request.user)
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -934,7 +1172,12 @@ def _apply_progress_filters(items, request):
 def _sort_progress_items(items, sort_by: str, direction: str):
     sort_key = (sort_by or 'time_left').strip().lower()
     direction_key = (direction or '').strip().lower()
-    default_direction = 'desc' if sort_key == 'last_watched' else 'asc'
+    default_direction_by_sort = {
+        'last_watched': 'desc',
+        'release_date': 'desc',
+        'next_episode_date': 'desc',
+    }
+    default_direction = default_direction_by_sort.get(sort_key, 'asc')
     final_direction = direction_key if direction_key in ('asc', 'desc') else default_direction
 
     if sort_key == 'last_watched':
@@ -970,7 +1213,7 @@ def _sort_progress_items(items, sort_by: str, direction: str):
     if sort_key == 'title':
         return sorted(items, key=lambda item: item['show_name'].lower(), reverse=final_direction == 'desc')
 
-    if sort_key == 'air_date':
+    if sort_key == 'next_episode_date':
         return sorted(
             items,
             key=lambda item: (
@@ -979,6 +1222,40 @@ def _sort_progress_items(items, sort_by: str, direction: str):
                 item['show_name'].lower(),
             ),
             reverse=final_direction == 'desc',
+        )
+
+    if sort_key == 'release_date':
+        return sorted(
+            items,
+            key=lambda item: (
+                item['release_date'] is None,
+                item['release_date'] or date.max,
+                item['show_name'].lower(),
+            ),
+            reverse=final_direction == 'desc',
+        )
+
+    if sort_key == 'started_date':
+        def started_ts(item):
+            value = item['started_at']
+            return value.timestamp() if value is not None else None
+
+        if final_direction == 'desc':
+            return sorted(
+                items,
+                key=lambda item: (
+                    started_ts(item) is None,
+                    -(started_ts(item) or 0),
+                    item['show_name'].lower(),
+                ),
+            )
+        return sorted(
+            items,
+            key=lambda item: (
+                started_ts(item) is None,
+                started_ts(item) or 0,
+                item['show_name'].lower(),
+            ),
         )
 
     if sort_key == 'episodes_left':
@@ -1183,6 +1460,7 @@ def progress_list(request):
         progress_items.append({
             'tmdb_id': row['tmdb_id'],
             'show_name': show.name,
+            'release_date': show.first_air_date,
             'poster_path': show.poster_path,
             'poster_url': show.poster_url,
             'number_of_seasons': show.number_of_seasons,
@@ -1457,6 +1735,18 @@ class ListItemListCreateView(generics.ListCreateAPIView):
                 | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
             ).distinct()
 
+        selected_statuses = _parse_multi_param(self.request.query_params, 'status')
+        if selected_statuses:
+            queryset = _apply_status_filter(queryset, self.request.user, selected_statuses)
+
+        missing_rating = _parse_bool_param(self.request.query_params.get('missing_rating'))
+        if missing_rating is True:
+            queryset = _apply_missing_rating_filter(queryset, self.request.user)
+
+        in_watchlist = _parse_bool_param(self.request.query_params.get('in_watchlist'))
+        if in_watchlist is True:
+            queryset = _apply_in_watchlist_filter(queryset, self.request.user)
+
         sort_key, direction = _normalize_sort(
             self.request.query_params.get('sort'),
             self.request.query_params.get('direction'),
@@ -1464,13 +1754,14 @@ class ListItemListCreateView(generics.ListCreateAPIView):
             default_direction='asc',
         )
         valid_sorts = {
-            'added_at', 'title', 'media_type', 'release_date', 'first_air_date', 'air_date',
-            'rating', 'runtime', 'total_episodes', 'vote_count'
+            'added_at', 'title', 'release_date',
+            'rating', 'runtime', 'total_episodes', 'vote_count',
+            'watched_date', 'started_date', 'last_watched', 'progress_percent', 'episodes_left', 'time_left', 'next_episode_date'
         }
         if sort_key not in valid_sorts:
             sort_key = 'added_at'
 
-        queryset = _apply_secondary_title_ordering(queryset, sort_key, direction)
+        queryset = _apply_secondary_title_ordering(queryset, sort_key, direction, user=self.request.user)
         return queryset
 
     def perform_create(self, serializer):

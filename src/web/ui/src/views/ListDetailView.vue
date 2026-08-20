@@ -62,16 +62,19 @@
       </section>
 
       <MediaFilterBar
-        :show-media-type-filter="true"
-        :show-status-filter="false"
+        media-type="all"
+        :show-status-filter="true"
         :show-provider-status-filter="false"
         :show-genre-filter="true"
         :show-quick-filter-has-upcoming="false"
         :show-quick-filter-new-only="false"
-        :show-quick-filter-missing-rating="false"
+        :show-quick-filter-missing-rating="true"
+        :show-quick-filter-in-watchlist="true"
         :show-search="true"
         :show-sort="true"
         :show-direction="true"
+        default-sort-key="added_at"
+        :apply-media-type-exclusive-sorts="true"
         search-placeholder="Search list items by title"
         :sync-url="true"
         @change="onFilterBarChange"
@@ -327,7 +330,7 @@ let collaboratorDebounce = null
 const appliedFilters = ref({
   search: '',
   sort: 'added_at',
-  direction: 'desc',
+  direction: 'asc',
   mediaType: 'all',
   statuses: [],
   providerStatuses: [],
@@ -335,6 +338,7 @@ const appliedFilters = ref({
   hasUpcoming: false,
   newOnly: false,
   missingRating: false,
+  inWatchlist: false,
 })
 const feedbackMsg = ref('')
 const feedbackKind = ref('success')
@@ -465,7 +469,10 @@ async function loadItems() {
       direction: filterState.direction,
       ...(filterState.search ? { search: filterState.search } : {}),
       ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
+      ...(filterState.statuses.length ? { status: filterState.statuses } : {}),
       ...(filterState.genres.length ? { genres: filterState.genres } : {}),
+      ...(filterState.missingRating ? { missing_rating: true } : {}),
+      ...(filterState.inWatchlist ? { in_watchlist: true } : {}),
     }
     const data = await trackingAPI.getListItems(route.params.id, params)
     items.value = data?.results || data || []
