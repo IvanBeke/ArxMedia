@@ -374,6 +374,12 @@ async function loadJobs() {
   jobs.value = data.results || data || []
 }
 
+function latestProcessingJob() {
+  return jobs.value
+    .filter((job) => job?.status === DATA_TRANSFER_STATUS.PROCESSING)
+    .sort((a, b) => instantEpochMs(b.created_at) - instantEpochMs(a.created_at))[0] || null
+}
+
 function humanStatus(value) {
   return String(value || '').replaceAll('_', ' ')
 }
@@ -423,6 +429,10 @@ function openAwaitingJobModal(job) {
 
 onMounted(async () => {
   await loadJobs()
+  const processingJob = latestProcessingJob()
+  if (processingJob?.id) {
+    await pollJob(processingJob.id)
+  }
 })
 
 onUnmounted(() => {
