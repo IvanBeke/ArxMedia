@@ -532,9 +532,8 @@ class MediaTests(TestCase):
         self.assertIn('metadata_updated_at', response.data)
         mock_sync_movie.assert_called_once_with(550)
 
-    @patch('media.views.refresh_all_statuses_for_show')
     @patch('media.views.tmdb.sync_tv_show')
-    def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show, mock_refresh_statuses):
+    def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show):
         show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones', number_of_seasons=2, number_of_episodes=10)
         show.seasons.create(tmdb_id=139900, season_number=0, name='Specials')
         mock_sync_tv_show.return_value = show
@@ -543,8 +542,7 @@ class MediaTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['tmdb_id'], 1399)
         self.assertIn('metadata_updated_at', response.data)
-        mock_sync_tv_show.assert_called_once_with(1399)
-        mock_refresh_statuses.assert_called_once_with(1399, current_user_id=self.user.id)
+        mock_sync_tv_show.assert_called_once_with(1399, user_id=self.user.id)
 
     def test_movie_and_tv_detail_include_metadata_updated_at(self):
         Movie.objects.create(tmdb_id=777, title='Movie Detail')
@@ -589,3 +587,55 @@ class MediaTests(TestCase):
         self.assertEqual(mock_sync_season.call_count, 3)
         synced_seasons = sorted(call.args[1] for call in mock_sync_season.call_args_list)
         self.assertEqual(synced_seasons, [0, 1, 2])
+
+    @patch('tracking.status_sync.refresh_all_statuses_for_show')
+    @patch('media.tmdb.tmdb.sync_season')
+    @patch('media.tmdb.tmdb.get_tv_show')
+    def test_sync_tv_show_refreshes_all_statuses_with_user(self, mock_get_tv_show, mock_sync_season, mock_refresh_statuses):
+        mock_get_tv_show.return_value = {
+            'id': 556,
+            'name': 'Status Sync Show',
+            'overview': 'status refresh test',
+            'first_air_date': '2020-01-01',
+            'number_of_seasons': 1,
+            'number_of_episodes': 8,
+            'vote_average': 7.2,
+            'vote_count': 50,
+            'original_language': 'en',
+            'status': 'Returning Series',
+            'networks': [],
+            'episode_run_time': [45],
+            'genres': [],
+            'seasons': [{'season_number': 1}],
+        }
+
+        show = tmdb.sync_tv_show(556, user_id=self.user.id)
+
+        self.assertEqual(show.tmdb_id, 556)
+        mock_sync_season.assert_called_once_with(show, 1)
+        mock_refresh_statuses.assert_called_once_with(556, current_user_id=self.user.id)
+
+    @patch('media.tmdb.tmdb.sync_episode_credits')
+    @patch('media.tmdb.tmdb.get_season')
+    def test_sync_season_refreshes_episode_credits_after_upsert(self, mock_get_season, mock_sync_episode_credits):
+        show = TVShow.objects.create(tmdb_id=4242, name='Credits Show', number_of_seasons=1, number_of_episodes=1)
+        mock_get_season.return_value = {
+            'id': 424201,
+            'season_number': 1,
+            'name': 'Season 1',
+            'air_date': '2024-01-01',
+            'episode_count': 1,
+            'episodes': [
+                {
+                    'id': 424211,
+                    'episode_number': 1,
+                    'name': 'Episode 1',
+                    'air_date': '2024-01-02',
+                    'runtime': 42,
+                }
+            ],
+        }
+
+        tmdb.sync_season(show, 1)
+
+        mock_sync_episode_credits.assert_called_once_with(4242, 1, 1, show=show)

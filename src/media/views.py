@@ -6,7 +6,6 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
-from tracking.status_sync import refresh_all_statuses_for_show
 
 from .models import EpisodeCredit, Movie, TVShow
 from .serializers import MovieSerializer, SeasonBriefSerializer, SeasonSerializer, TVShowSerializer
@@ -376,27 +375,12 @@ def refresh_movie_metadata(request, tmdb_id):
 @permission_classes([permissions.IsAuthenticated])
 def refresh_tv_metadata(request, tmdb_id):
     try:
-        show = tmdb.sync_tv_show(tmdb_id)
+        show = tmdb.sync_tv_show(tmdb_id, user_id=request.user.id)
     except Exception:
         logger.warning('Failed to refresh TV show %s from TMDB', tmdb_id, exc_info=True)
         return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
 
-    for season in show.seasons.all():
-        season_number = int(season.season_number)
-        for episode_number in season.episodes.values_list('episode_number', flat=True):
-            try:
-                tmdb.sync_episode_credits(int(tmdb_id), season_number, int(episode_number), show=show)
-            except Exception:
-                logger.warning(
-                    'Failed to refresh episode credits for show %s season %s episode %s from TMDB',
-                    tmdb_id,
-                    season_number,
-                    episode_number,
-                    exc_info=True,
-                )
-
     show.refresh_from_db()
-    refresh_all_statuses_for_show(int(tmdb_id), current_user_id=request.user.id)
     return Response(_serialize_tv_show_detail(show))
 
 

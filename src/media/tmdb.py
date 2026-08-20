@@ -140,7 +140,7 @@ class TMDBService:
             movie.genres.add(genre)
         return movie
 
-    def sync_tv_show(self, tmdb_id):
+    def sync_tv_show(self, tmdb_id, user_id=None):
         """Fetch TV show from TMDB and save/update locally, including all seasons and episodes."""
         data = self.get_tv_show(tmdb_id)
         networks = ', '.join([n['name'] for n in data.get('networks', [])])
@@ -183,6 +183,13 @@ class TMDBService:
                 self.sync_season(show, season_number)
             except Exception as exc:
                 logger.warning('Failed to sync season %s for tv %s: %s', season_number, tmdb_id, exc)
+
+        try:
+            from tracking.status_sync import refresh_all_statuses_for_show
+
+            refresh_all_statuses_for_show(int(tmdb_id), current_user_id=user_id)
+        except Exception as exc:
+            logger.warning('Failed to refresh statuses for tv %s: %s', tmdb_id, exc)
 
         return show
 
@@ -229,6 +236,16 @@ class TMDBService:
                 EpisodeCredit.objects.update_or_create(
                     episode=episode,
                     defaults=credit_defaults,
+                )
+            try:
+                self.sync_episode_credits(show.tmdb_id, season_number, ep_data['episode_number'], show=show)
+            except Exception as exc:
+                logger.warning(
+                    'Failed to sync episode credits for tv %s season %s episode %s: %s',
+                    show.tmdb_id,
+                    season_number,
+                    ep_data['episode_number'],
+                    exc,
                 )
         return season
 
