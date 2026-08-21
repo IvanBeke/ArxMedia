@@ -26,49 +26,6 @@ def _parse_range(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-def shows_calendar(request):
-    start, end = _parse_range(request)
-    episodes = Episode.objects.select_related('season__show').filter(
-        air_date__gte=start,
-        air_date__lt=end,
-    ).order_by('air_date', 'season__show__name', 'season__season_number', 'episode_number')
-
-    data = []
-    for ep in episodes:
-        data.append({
-            'air_date': ep.air_date,
-            'tmdb_id': ep.season.show.tmdb_id,
-            'show_name': ep.season.show.name,
-            'poster_url': ep.season.show.poster_url,
-            'season_number': ep.season.season_number,
-            'episode_number': ep.episode_number,
-            'episode_name': ep.name,
-        })
-    return Response({'results': data})
-
-
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def movies_calendar(request):
-    start, end = _parse_range(request)
-    movies = Movie.objects.filter(
-        release_date__gte=start,
-        release_date__lt=end,
-    ).order_by('release_date', 'title')
-
-    data = []
-    for movie in movies:
-        data.append({
-            'release_date': movie.release_date,
-            'tmdb_id': movie.tmdb_id,
-            'title': movie.title,
-            'poster_url': movie.poster_url,
-        })
-    return Response({'results': data})
-
-
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
 def my_calendar(request):
     start, end = _parse_range(request)
 
@@ -96,6 +53,8 @@ def my_calendar(request):
         season__show__tmdb_id__in=watching_tv_ids,
         air_date__gte=start,
         air_date__lt=end,
+    ).exclude(
+        season__season_number=0,
     )
 
     movie_items = [{

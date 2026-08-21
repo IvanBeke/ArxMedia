@@ -18,39 +18,9 @@ class CalendarTests(TestCase):
         token = RefreshToken.for_user(self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
 
-    def test_shows_calendar_endpoint(self):
-        show = TVShow.objects.create(tmdb_id=200, name='Calendar Show')
-        season = Season.objects.create(show=show, tmdb_id=201, season_number=1, name='Season 1')
-        Episode.objects.create(
-            season=season,
-            tmdb_id=202,
-            episode_number=1,
-            name='Pilot',
-            air_date=timezone.localdate() + timedelta(days=1),
-        )
-
-        response = self.client.get('/api/calendar/shows/?days=7')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('results', response.data)
-
-    def test_shows_calendar_requires_auth(self):
+    def test_calendar_requires_auth(self):
         anon = APIClient()
-        response = anon.get('/api/calendar/shows/?days=7')
-        self.assertEqual(response.status_code, 401)
-
-    def test_movies_calendar_endpoint(self):
-        Movie.objects.create(
-            tmdb_id=300,
-            title='Calendar Movie',
-            release_date=timezone.localdate() + timedelta(days=2),
-        )
-        response = self.client.get('/api/calendar/movies/?days=7')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('results', response.data)
-
-    def test_movies_calendar_requires_auth(self):
-        anon = APIClient()
-        response = anon.get('/api/calendar/movies/?days=7')
+        response = anon.get('/api/calendar/?days=30')
         self.assertEqual(response.status_code, 401)
 
     def test_my_calendar_includes_watchlist_movies(self):
@@ -61,7 +31,7 @@ class CalendarTests(TestCase):
         )
         UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=movie.tmdb_id, status='plan_to_watch')
 
-        response = self.client.get('/api/calendar/my/?days=30')
+        response = self.client.get('/api/calendar/?days=30')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['kind'], 'movie')
@@ -107,8 +77,41 @@ class CalendarTests(TestCase):
             status_changed_at=timezone.now(),
         )
 
-        response = self.client.get('/api/calendar/my/?days=30')
+        response = self.client.get('/api/calendar/?days=30')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['kind'], 'episode')
         self.assertEqual(response.data['results'][0]['tmdb_id'], watched_show.tmdb_id)
+
+    def test_my_calendar_excludes_specials_season(self):
+        show = TVShow.objects.create(tmdb_id=601, name='Watching Show With Specials')
+        main_season = Season.objects.create(show=show, tmdb_id=602, season_number=1, name='Season 1')
+        specials_season = Season.objects.create(show=show, tmdb_id=603, season_number=0, name='Specials')
+        Episode.objects.create(
+            season=main_season,
+            tmdb_id=604,
+            episode_number=1,
+            name='Regular Episode',
+            air_date=timezone.localdate() + timedelta(days=6),
+        )
+        Episode.objects.create(
+            season=specials_season,
+            tmdb_id=605,
+            episode_number=1,
+            name='Special Episode',
+            air_date=timezone.localdate() + timedelta(days=7),
+        )
+        UserMediaStatus.objects.create(
+            user=self.user,
+            media_type='tv',
+            tmdb_id=show.tmdb_id,
+            status='watching',
+            watched_episodes=1,
+            total_episodes=1,
+        )
+
+        response = self.client.get('/api/calendar/?days=30')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['season_number'], 1)
+        self.assertEqual(response.data['results'][0]['episode_name'], 'Regular Episode')

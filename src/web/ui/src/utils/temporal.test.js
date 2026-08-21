@@ -7,6 +7,7 @@ import {
   localDateTimeInputToIso,
   plainDateToUserInstantIso,
   toLocalDateTimeInput,
+  weekBounds,
 } from './temporal'
 
 beforeAll(() => {
@@ -39,5 +40,21 @@ describe('temporal utils', () => {
   it('converts plain date to midnight instant for selected timezone', () => {
     expect(plainDateToUserInstantIso('2026-03-10', 'UTC')).toBe('2026-03-10T00:00:00Z')
     expect(plainDateToUserInstantIso('not-a-date', 'UTC')).toBe('')
+  })
+
+  it('returns monday-to-sunday bounds for week containing value', () => {
+    const midWeek = weekBounds('2026-08-19')
+    expect(midWeek.start.toString()).toBe('2026-08-17')
+    expect(midWeek.end.toString()).toBe('2026-08-23')
+
+    const sunday = weekBounds('2026-08-23')
+    expect(sunday.start.toString()).toBe('2026-08-17')
+    expect(sunday.end.toString()).toBe('2026-08-23')
+
+    const yearBoundary = weekBounds('2027-01-01')
+    expect(yearBoundary.start.toString()).toBe('2026-12-28')
+    expect(yearBoundary.end.toString()).toBe('2027-01-03')
+
+    expect(weekBounds('not-a-date')).toBeNull()
   })
 })

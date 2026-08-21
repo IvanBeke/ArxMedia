@@ -191,3 +191,13 @@ export function monthBounds(value) {
   const end = start.add({ months: 1 }).subtract({ days: 1 })
   return { start, end }
 }
+
+export function weekBounds(value) {
+  const plainDate = parsePlainDate(value)
+  if (!plainDate) {
+    return null
+  }
+  const start = plainDate.subtract({ days: plainDate.dayOfWeek - 1 })
+  const end = start.add({ days: 6 })
+  return { start, end }
+}

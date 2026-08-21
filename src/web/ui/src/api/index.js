@@ -203,9 +203,7 @@ export const trackingAPI = {
 }
 
 export const calendarAPI = {
-  getShows: (params) => api.get('/calendar/shows/', { params }),
-  getMovies: (params) => api.get('/calendar/movies/', { params }),
-  getMy: (params) => api.get('/calendar/my/', { params }),
+  get: (params) => api.get('/calendar/', { params }),
 }
 
 // Social

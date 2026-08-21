@@ -1,5 +1,5 @@
 <template>
-  <component :is="tag" :class="classes">
+  <component :is="tag" :class="classes" :style="style">
     {{ displayValue }}
   </component>
 </template>
@@ -16,16 +16,22 @@ const props = defineProps({
   as: { type: String, default: 'span' },
 })
 
-const season = computed(() => Number(props.seasonNumber))
-const episode = computed(() => Number(props.episodeNumber))
+const PRESET_SIZES = new Set(['xs', 's', 'sm'])
 
 const displayValue = computed(() => {
-  if (!Number.isInteger(season.value) || season.value <= 0) return props.fallback
-  if (!Number.isInteger(episode.value) || episode.value <= 0) return props.fallback
-  return `S${String(season.value).padStart(2, '0')}·E${String(episode.value).padStart(2, '0')}`
+  const season = Number(props.seasonNumber)
+  const episode = Number(props.episodeNumber)
+  if (!Number.isInteger(season) || season <= 0 || !Number.isInteger(episode) || episode <= 0) {
+    return props.fallback
+  }
+  return `S${String(season).padStart(2, '0')}·E${String(episode).padStart(2, '0')}`
 })
 
 const tag = computed(() => props.as || 'span')
+
+const isPresetSize = computed(() => PRESET_SIZES.has(props.size))
+
+const style = computed(() => (isPresetSize.value ? undefined : { fontSize: props.size }))
 
 const classes = computed(() => {
   if (props.variant === 'plain') {
