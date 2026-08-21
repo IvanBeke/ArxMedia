@@ -72,7 +72,12 @@
 
     <!-- Upcoming Row -->
     <div class="mb-8">
-      <h2 class="section-title mb-4">Upcoming</h2>
+      <RouterLink to="/calendar" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
+        <span>Upcoming</span>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </RouterLink>
       <div v-if="loadingUpcoming" class="flex gap-4">
         <div v-for="n in 3" :key="n" class="w-40 h-60 skeleton rounded-lg flex-shrink-0"></div>
       </div>
@@ -101,7 +106,12 @@
     </div>
 
     <div class="mb-8">
-      <h2 class="section-title mb-4">Recent Activity</h2>
+      <RouterLink to="/history" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
+        <span>Recent Activity</span>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </RouterLink>
       <div v-if="loadingStats" class="space-y-2">
         <div v-for="n in 5" :key="n" class="h-14 skeleton rounded-lg"></div>
       </div>
