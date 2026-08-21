@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 from .choices import (
     DataImportMode,
@@ -63,23 +64,57 @@ class Rating(models.Model):
         return f'{self.user.username} rated {self.media_type} {self.tmdb_id}: {self.score}/10'
 
 
-class Watchlist(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='watchlist_entries'
-    )
-    media_type = models.CharField(max_length=10, choices=MediaType.choices)
-    tmdb_id = models.IntegerField()
-    notes = models.TextField(blank=True)
-    added_at = models.DateTimeField(auto_now_add=True)
+class UserMediaStatusQuerySet(models.QuerySet):
+    def for_user(self, user):
+        return self.filter(user=user)
 
-    class Meta:
-        unique_together = ('user', 'media_type', 'tmdb_id')
-        indexes = [
-            models.Index(fields=['user', 'added_at']),
-        ]
+    def for_media(self, media_type: str):
+        return self.filter(media_type=media_type)
 
-    def __str__(self):
-        return f'{self.user.username} watchlist: {self.media_type} {self.tmdb_id}'
+    def planning(self):
+        return self.filter(status=TvShowStatus.PLAN_TO_WATCH)
+
+    def shows(self):
+        return self.filter(media_type=MediaType.TV)
+
+    def movies(self):
+        return self.filter(media_type=MediaType.MOVIE)
+
+
+class UserMediaStatusManager(models.Manager.from_queryset(UserMediaStatusQuerySet)):  # type: ignore[misc]
+    def set_planning(self, user, media_type: str, tmdb_id: int):
+        now = timezone.now()
+        defaults = {
+            'status': TvShowStatus.PLAN_TO_WATCH,
+            'status_changed_at': now,
+        }
+        obj, _ = self.update_or_create(
+            user=user,
+            media_type=media_type,
+            tmdb_id=tmdb_id,
+            defaults=defaults,
+        )
+        return obj
+
+    def clear_planning(self, user, media_type: str, tmdb_id: int):
+        self.filter(
+            user=user,
+            media_type=media_type,
+            tmdb_id=tmdb_id,
+            status=TvShowStatus.PLAN_TO_WATCH,
+        ).delete()
+
+    def set_status(self, user, media_type: str, tmdb_id: int, status: str):
+        obj, _ = self.update_or_create(
+            user=user,
+            media_type=media_type,
+            tmdb_id=tmdb_id,
+            defaults={
+                'status': status,
+                'status_changed_at': timezone.now(),
+            },
+        )
+        return obj
 
 
 class Review(models.Model):
@@ -146,10 +181,11 @@ class ListCollaborator(models.Model):
         return f'{self.custom_list.name} collaborator: {self.user.username}'
 
 
-class UserTvShowStatus(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='tv_show_statuses')
+class UserMediaStatus(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='media_statuses')
+    media_type = models.CharField(max_length=10, choices=MediaType.choices)
     tmdb_id = models.IntegerField()
-    status = models.CharField(max_length=20, choices=TvShowStatus.choices, default=TvShowStatus.NONE)
+    status = models.CharField(max_length=20, choices=TvShowStatus.choices)
     watched_episodes = models.IntegerField(default=0)
     total_episodes = models.IntegerField(default=0)
     progress_percent = models.IntegerField(default=0)
@@ -159,18 +195,39 @@ class UserTvShowStatus(models.Model):
     plan_to_watch_at = models.DateTimeField(null=True, blank=True)
     last_watched_at = models.DateTimeField(null=True, blank=True)
     status_changed_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    objects = UserMediaStatusManager()
+
     class Meta:
-        unique_together = ('user', 'tmdb_id')
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'media_type', 'tmdb_id'], name='uniq_user_media_status_entry'),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(media_type=MediaType.MOVIE, status__in=[
+                        TvShowStatus.PLAN_TO_WATCH,
+                        TvShowStatus.WATCHED,
+                        TvShowStatus.DROPPED,
+                    ])
+                    | models.Q(media_type=MediaType.TV, status__in=[
+                        TvShowStatus.PLAN_TO_WATCH,
+                        TvShowStatus.WATCHING,
+                        TvShowStatus.WATCHED,
+                        TvShowStatus.DROPPED,
+                    ])
+                ),
+                name='media_status_status_matches_media_type',
+            ),
+        ]
         indexes = [
-            models.Index(fields=['user', 'status']),
+            models.Index(fields=['user', 'media_type', 'status']),
             models.Index(fields=['user', 'updated_at']),
         ]
 
     def __str__(self):
-        return f'{self.user.username} TV {self.tmdb_id}: {self.status}'
+        return f'{self.user.username} {self.media_type} {self.tmdb_id}: {self.status}'
 
 
 class DataTransferJob(models.Model):

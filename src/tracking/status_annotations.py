@@ -3,7 +3,7 @@ from django.db.models.functions import Coalesce
 from media.models import Episode, TVShow
 
 from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType
-from .models import Rating, UserTvShowStatus, WatchEntry, Watchlist
+from .models import Rating, UserMediaStatus, WatchEntry
 
 FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
 
@@ -19,6 +19,46 @@ def _as_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _resolve_movie_status(show_status_row, watched_at):
+    if show_status_row:
+        return show_status_row['status'], show_status_row['status_changed_at']
+    if watched_at:
+        return TvShowStatus.WATCHED, watched_at
+    return None, None
+
+
+def _build_tv_result_from_status_row(show_status, rating_data):
+    return {
+        'status': show_status['status'],
+        'status_changed_at': show_status['status_changed_at'],
+        'watched_at': show_status['last_watched_at'],
+        'rating': rating_data.get('rating'),
+        'rated_at': rating_data.get('rated_at'),
+        'progress': {
+            'watched_episodes': show_status['watched_episodes'],
+            'total_episodes': show_status['total_episodes'],
+            'percent': show_status['progress_percent'],
+        },
+    }
+
+
+def _build_tv_result_without_status(show_status_row, rating_data):
+    status_value = show_status_row['status'] if show_status_row else None
+    changed_at = show_status_row['status_changed_at'] if show_status_row else None
+    return {
+        'status': status_value,
+        'status_changed_at': changed_at,
+        'watched_at': None,
+        'rating': None,
+        'rated_at': None,
+        'progress': {
+            'watched_episodes': 0,
+            'total_episodes': 0,
+            'percent': 0,
+        },
+    }
 
 
 def annotate_media_user_status(user, media_items):
@@ -55,19 +95,15 @@ def annotate_media_user_status(user, media_items):
         for row in rating_rows
     }
 
-    watchlist_rows = Watchlist.objects.filter(
-        user=user,
-        media_type=MediaType.MOVIE,
+    movie_status_rows = UserMediaStatus.objects.for_user(user).movies().filter(
         tmdb_id__in=movie_ids,
-    ).values('tmdb_id', 'added_at')
-    movie_watchlist_map = {row['tmdb_id']: row['added_at'] for row in watchlist_rows}
+    ).values('tmdb_id', 'status', 'status_changed_at', 'last_watched_at')
+    movie_status_map = {row['tmdb_id']: row for row in movie_status_rows}
 
-    tv_watchlist_rows = Watchlist.objects.filter(
-        user=user,
-        media_type=MediaType.TV,
+    tv_status_rows = UserMediaStatus.objects.for_user(user).shows().filter(
         tmdb_id__in=tv_ids,
-    ).values('tmdb_id', 'added_at')
-    tv_watchlist_map = {row['tmdb_id']: row['added_at'] for row in tv_watchlist_rows}
+    ).values('tmdb_id', 'status', 'status_changed_at', 'last_watched_at', 'watched_episodes', 'total_episodes', 'progress_percent')
+    tv_status_map = {row['tmdb_id']: row for row in tv_status_rows}
 
     movie_watched_rows = WatchEntry.objects.filter(
         user=user,
@@ -78,73 +114,28 @@ def annotate_media_user_status(user, media_items):
     ).values('tmdb_id').annotate(last_watched_at=Max('event_at'))
     movie_watched_map = {row['tmdb_id']: row['last_watched_at'] for row in movie_watched_rows}
 
-    show_rows = UserTvShowStatus.objects.filter(
-        user=user,
-        tmdb_id__in=tv_ids,
-    ).values(
-        'tmdb_id',
-        'status',
-        'status_changed_at',
-        'last_watched_at',
-        'watched_episodes',
-        'total_episodes',
-        'progress_percent',
-    )
-    show_map = {row['tmdb_id']: row for row in show_rows}
-
     result = {}
     for media_type, tmdb_id in normalized_items:
         rating_data = rating_map.get((media_type, tmdb_id), {})
         if media_type == MediaType.MOVIE:
+            show_status = movie_status_map.get(tmdb_id)
             watched_at = movie_watched_map.get(tmdb_id)
-            plan_to_watch_at = movie_watchlist_map.get(tmdb_id)
-            if watched_at:
-                status = TvShowStatus.WATCHED
-                status_changed_at = watched_at
-            elif plan_to_watch_at:
-                status = TvShowStatus.PLAN_TO_WATCH
-                status_changed_at = plan_to_watch_at
-            else:
-                status = TvShowStatus.NONE
-                status_changed_at = None
+            status, status_changed_at = _resolve_movie_status(show_status, watched_at)
 
             result[(media_type, tmdb_id)] = {
                 'status': status,
                 'status_changed_at': status_changed_at,
-                'watched_at': watched_at,
+                'watched_at': watched_at if status == TvShowStatus.WATCHED else None,
                 'rating': rating_data.get('rating'),
                 'rated_at': rating_data.get('rated_at'),
             }
             continue
 
-        show_status = show_map.get(tmdb_id)
-        if show_status:
-            result[(media_type, tmdb_id)] = {
-                'status': show_status['status'],
-                'status_changed_at': show_status['status_changed_at'],
-                'watched_at': show_status['last_watched_at'],
-                'rating': rating_data.get('rating'),
-                'rated_at': rating_data.get('rated_at'),
-                'progress': {
-                    'watched_episodes': show_status['watched_episodes'],
-                    'total_episodes': show_status['total_episodes'],
-                    'percent': show_status['progress_percent'],
-                },
-            }
+        show_status = tv_status_map.get(tmdb_id)
+        if show_status and show_status['status'] != TvShowStatus.PLAN_TO_WATCH:
+            result[(media_type, tmdb_id)] = _build_tv_result_from_status_row(show_status, rating_data)
         else:
-            plan_to_watch_at = tv_watchlist_map.get(tmdb_id)
-            result[(media_type, tmdb_id)] = {
-                'status': TvShowStatus.PLAN_TO_WATCH if plan_to_watch_at else TvShowStatus.NONE,
-                'status_changed_at': plan_to_watch_at,
-                'watched_at': None,
-                'rating': rating_data.get('rating'),
-                'rated_at': rating_data.get('rated_at'),
-                'progress': {
-                    'watched_episodes': 0,
-                    'total_episodes': 0,
-                    'percent': 0,
-                },
-            }
+            result[(media_type, tmdb_id)] = _build_tv_result_without_status(show_status, rating_data)
 
     return result
 
@@ -219,7 +210,7 @@ def annotate_season_user_status(user, season_items):
                 status_value = SeasonStatus.WATCHING
             status_changed_at = last_watched_at
         else:
-            status_value = SeasonStatus.NONE
+            status_value = None
             status_changed_at = None
 
         result[key] = {

@@ -4,10 +4,10 @@ from typing import Any
 
 from django.utils import timezone
 from media.models import Movie, Season, TVShow
+from media.tmdb import tmdb
 
 from ..choices import DataImportMode, MediaType, TvShowStatus, WatchEntryMediaType
-from ..models import DataTransferJob, Rating, UserTvShowStatus, WatchEntry, Watchlist
-from .system import sync_tmdb_metadata_item
+from ..models import DataTransferJob, Rating, UserMediaStatus, WatchEntry
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def _watch_entry_key(media_type: str, tmdb_id: int, season_number: int | None = 
     return (media_type, int(tmdb_id), season_number, episode_number)
 
 
-def _watchlist_key(media_type: str, tmdb_id: int):
+def _planning_key(media_type: str, tmdb_id: int):
     return (media_type, int(tmdb_id))
 
 
@@ -165,21 +165,6 @@ def _import_watch_entry_by_mode(
     return result in ('created', 'updated')
 
 
-def _import_watchlist_by_mode(user, media_type: str, tmdb_id: int, notes: str, import_mode: str) -> bool:
-    existing = Watchlist.objects.filter(user=user, media_type=media_type, tmdb_id=tmdb_id).first()
-    if existing:
-        if import_mode == DataImportMode.NEW_ITEMS:
-            return False
-        if existing.notes != notes:
-            existing.notes = notes
-            existing.save(update_fields=['notes'])
-            return True
-        return False
-
-    Watchlist.objects.create(user=user, media_type=media_type, tmdb_id=tmdb_id, notes=notes)
-    return True
-
-
 def _import_rating_by_mode(user, media_type: str, tmdb_id: int, score: int, import_mode: str) -> bool:
     existing = Rating.objects.filter(user=user, media_type=media_type, tmdb_id=tmdb_id).first()
     if existing:
@@ -195,42 +180,73 @@ def _import_rating_by_mode(user, media_type: str, tmdb_id: int, score: int, impo
     return True
 
 
-def _import_tv_status_by_mode(user, tmdb_id: int, status_value: str, status_at, progress: int | None, import_mode: str) -> bool:
-    existing = UserTvShowStatus.objects.filter(user=user, tmdb_id=tmdb_id).first()
+def _import_tv_status_by_mode(
+    user,
+    media_type: str,
+    tmdb_id: int,
+    status_value: str,
+    status_at,
+    progress: int | None,
+    import_mode: str,
+) -> bool:
+    tv_allowed_statuses = (
+        TvShowStatus.WATCHING,
+        TvShowStatus.WATCHED,
+        TvShowStatus.DROPPED,
+        TvShowStatus.PLAN_TO_WATCH,
+    )
+    movie_allowed_statuses = (
+        TvShowStatus.WATCHED,
+        TvShowStatus.DROPPED,
+        TvShowStatus.PLAN_TO_WATCH,
+    )
+    if media_type == MediaType.TV:
+        allowed_statuses_set = set(tv_allowed_statuses)
+    elif media_type == MediaType.MOVIE:
+        allowed_statuses_set = set(movie_allowed_statuses)
+    else:
+        return False
+
+    if status_value not in allowed_statuses_set:
+        return False
+
+    effective_status_at = status_at or timezone.now()
+
+    existing = UserMediaStatus.objects.filter(user=user, media_type=media_type, tmdb_id=tmdb_id).first()
     if existing and import_mode == DataImportMode.NEW_ITEMS:
         return False
 
     payload: dict[str, Any] = {'status': status_value}
     if status_value == TvShowStatus.WATCHED:
-        payload['completed_at'] = status_at
-    elif status_value == TvShowStatus.PLAN_TO_WATCH:
-        payload['plan_to_watch_at'] = status_at
+        payload['completed_at'] = effective_status_at
     elif status_value == TvShowStatus.DROPPED:
-        payload['dropped_at'] = status_at
+        payload['dropped_at'] = effective_status_at
+    elif status_value == TvShowStatus.PLAN_TO_WATCH:
+        payload['plan_to_watch_at'] = effective_status_at
 
-    if status_value in (TvShowStatus.WATCHING, TvShowStatus.WATCHED):
-        payload['last_watched_at'] = status_at
+    if media_type == MediaType.TV and status_value in (TvShowStatus.WATCHING, TvShowStatus.WATCHED):
+        payload['last_watched_at'] = effective_status_at
         if existing is None:
-            payload['started_at'] = status_at
+            payload['started_at'] = effective_status_at
 
-    payload['status_changed_at'] = status_at
-    if progress is not None:
+    payload['status_changed_at'] = effective_status_at
+    if progress is not None and media_type == MediaType.TV:
         payload['watched_episodes'] = progress
 
     if existing is None:
         defaults = {
             'status': status_value,
-            'watched_episodes': progress or 0,
+            'watched_episodes': progress or 0 if media_type == MediaType.TV else 0,
             'total_episodes': 0,
             'progress_percent': 0,
-            'started_at': status_at if status_value in (TvShowStatus.WATCHING, TvShowStatus.WATCHED) else None,
-            'completed_at': status_at if status_value == TvShowStatus.WATCHED else None,
-            'dropped_at': status_at if status_value == TvShowStatus.DROPPED else None,
-            'plan_to_watch_at': status_at if status_value == TvShowStatus.PLAN_TO_WATCH else None,
-            'last_watched_at': status_at if status_value in (TvShowStatus.WATCHING, TvShowStatus.WATCHED) else None,
-            'status_changed_at': status_at,
+            'started_at': effective_status_at if media_type == MediaType.TV and status_value in (TvShowStatus.WATCHING, TvShowStatus.WATCHED) else None,
+            'completed_at': effective_status_at if status_value == TvShowStatus.WATCHED else None,
+            'dropped_at': effective_status_at if status_value == TvShowStatus.DROPPED else None,
+            'plan_to_watch_at': effective_status_at if status_value == TvShowStatus.PLAN_TO_WATCH else None,
+            'last_watched_at': effective_status_at if media_type == MediaType.TV and status_value in (TvShowStatus.WATCHING, TvShowStatus.WATCHED) else None,
+            'status_changed_at': effective_status_at,
         }
-        UserTvShowStatus.objects.create(user=user, tmdb_id=tmdb_id, **defaults)
+        UserMediaStatus.objects.create(user=user, media_type=media_type, tmdb_id=tmdb_id, **defaults)
         return True
 
     changed = False
@@ -245,15 +261,16 @@ def _import_tv_status_by_mode(user, tmdb_id: int, status_value: str, status_at, 
 
 def _mark_show_dropped(user, tmdb_id: int):
     dropped_at = timezone.now()
-    show_status, _ = UserTvShowStatus.objects.get_or_create(
+    UserMediaStatus.objects.update_or_create(
         user=user,
+        media_type=MediaType.TV,
         tmdb_id=tmdb_id,
-        defaults={'status': TvShowStatus.NONE},
+        defaults={
+            'status': TvShowStatus.DROPPED,
+            'dropped_at': dropped_at,
+            'status_changed_at': dropped_at,
+        },
     )
-    show_status.status = TvShowStatus.DROPPED
-    show_status.dropped_at = dropped_at
-    show_status.status_changed_at = dropped_at
-    show_status.save(update_fields=['status', 'dropped_at', 'status_changed_at', 'updated_at'])
 
 
 def _apply_mirror_deletions(job: DataTransferJob, imported_keys: dict, collections_present: set[str]):
@@ -268,12 +285,12 @@ def _apply_mirror_deletions(job: DataTransferJob, imported_keys: dict, collectio
 
     if 'watchlist' in collections_present:
         delete_ids = []
-        for item in Watchlist.objects.filter(user=job.user):
-            key = _watchlist_key(item.media_type, item.tmdb_id)
+        for item in UserMediaStatus.objects.for_user(job.user).planning():
+            key = _planning_key(item.media_type, item.tmdb_id)
             if key not in imported_keys['watchlist']:
                 delete_ids.append(item.id)
         if delete_ids:
-            Watchlist.objects.filter(id__in=delete_ids).delete()
+            UserMediaStatus.objects.filter(id__in=delete_ids).delete()
 
     if 'ratings' in collections_present:
         delete_ids = []
@@ -285,33 +302,57 @@ def _apply_mirror_deletions(job: DataTransferJob, imported_keys: dict, collectio
             Rating.objects.filter(id__in=delete_ids).delete()
 
 
+def _ensure_tv_season_metadata(tmdb_id: int, season_number: int | None, state: dict):
+    if season_number is None:
+        return
+    season_key = (tmdb_id, season_number)
+    if season_key in state['season_checked']:
+        return
+
+    show = TVShow.objects.filter(tmdb_id=tmdb_id).first()
+    if not show:
+        state['metadata_errors'] += 1
+        state['season_checked'].add(season_key)
+        return
+
+    if Season.objects.filter(show=show, season_number=season_number).exists():
+        state['metadata_hits'] += 1
+        state['season_checked'].add(season_key)
+        return
+
+    try:
+        tmdb.sync_season(show, season_number)
+        state['metadata_fetches'] += 1
+    except Exception as exc:
+        state['metadata_errors'] += 1
+        logger.warning('Failed season metadata sync for tv %s season %s: %s', tmdb_id, season_number, exc)
+    state['season_checked'].add(season_key)
+
+
 def _ensure_tmdb_metadata(media_type: str, tmdb_id: int | None) -> bool:
     if not tmdb_id:
         return False
 
     try:
-        if media_type not in (MediaType.MOVIE, MediaType.TV, WatchEntryMediaType.EPISODE):
+        if media_type == MediaType.MOVIE:
+            tmdb.sync_movie(int(tmdb_id))
+        elif media_type in (MediaType.TV, WatchEntryMediaType.EPISODE):
+            tmdb.sync_tv_show(int(tmdb_id))
+        else:
             return False
-
-        sync_tmdb_metadata_item.delay(str(media_type), int(tmdb_id))
         return True
     except Exception as exc:
-        logger.warning('Failed metadata sync enqueue for %s %s: %s', media_type, tmdb_id, exc)
+        logger.warning('Failed metadata sync for %s %s: %s', media_type, tmdb_id, exc)
         return False
 
 
-def _has_tmdb_metadata(media_type: str, tmdb_id: int | None, season_number: int | None = None) -> bool:
+def _has_tmdb_metadata(media_type: str, tmdb_id: int | None) -> bool:
     if not tmdb_id:
         return False
     if media_type == MediaType.MOVIE:
         return Movie.objects.filter(tmdb_id=int(tmdb_id)).exists()
-    if media_type == MediaType.TV:
+    if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE):
         return TVShow.objects.filter(tmdb_id=int(tmdb_id)).exists()
-    if media_type == WatchEntryMediaType.EPISODE:
-        filters: dict[str, int] = {'show__tmdb_id': int(tmdb_id)}
-        if season_number is not None:
-            filters['season_number'] = season_number
-        return Season.objects.filter(**filters).exists()
     return False
 
 
@@ -322,7 +363,7 @@ def _ensure_tmdb_metadata_for_import_item(media_type: str, tmdb_id: int | None, 
     key_media_type = MediaType.TV if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE) else media_type
     key = (key_media_type, tmdb_id)
     if key not in state['metadata_checked']:
-        if _has_tmdb_metadata(media_type, tmdb_id, season_number=season_number):
+        if _has_tmdb_metadata(media_type, tmdb_id):
             state['metadata_hits'] += 1
         else:
             if _ensure_tmdb_metadata(media_type, tmdb_id):
@@ -330,3 +371,6 @@ def _ensure_tmdb_metadata_for_import_item(media_type: str, tmdb_id: int | None, 
             else:
                 state['metadata_errors'] += 1
         state['metadata_checked'].add(key)
+
+    if media_type == WatchEntryMediaType.EPISODE:
+        _ensure_tv_season_metadata(tmdb_id, season_number, state)

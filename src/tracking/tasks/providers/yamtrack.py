@@ -17,13 +17,12 @@ from ..shared import (
     _import_rating_by_mode,
     _import_tv_status_by_mode,
     _import_watch_entry_status_by_mode,
-    _import_watchlist_by_mode,
     _parse_watched_at,
+    _planning_key,
     _rating_key,
     _safe_int,
     _update_job_progress,
     _watch_entry_key,
-    _watchlist_key,
 )
 
 YAMTRACK_ALLOWED_MEDIA_TYPES = {'movie', 'tv', 'season', 'episode'}
@@ -72,7 +71,6 @@ def _yamtrack_tv_status(value: str) -> str | None:
         'Completed': TvShowStatus.WATCHED,
         'In progress': TvShowStatus.WATCHING,
         'Paused': TvShowStatus.WATCHING,
-        'Planning': TvShowStatus.PLAN_TO_WATCH,
         'Dropped': TvShowStatus.DROPPED,
     }
     return mapping.get(value)
@@ -188,7 +186,6 @@ def apply_yamtrack_csv_import(job: DataTransferJob, content: bytes, import_mode:
         season_number = _safe_int(row.get('season_number'))
         episode_number = _safe_int(row.get('episode_number'))
         score = _parse_yamtrack_score(row.get('score'))
-        notes = row.get('notes') or ''
         progress = _parse_yamtrack_progress(row.get('progress'))
         event_at = _yamtrack_row_timestamp(row, 'end_date', 'progressed_at', 'start_date', 'created_at')
         end_at = _parse_watched_at(row.get('end_date'))
@@ -239,8 +236,16 @@ def apply_yamtrack_csv_import(job: DataTransferJob, content: bytes, import_mode:
                 ):
                     row_imported = True
             if status == 'Planning':
-                imported_keys['watchlist'].add(_watchlist_key(MediaType.MOVIE, tmdb_id))
-                if _import_watchlist_by_mode(job.user, MediaType.MOVIE, tmdb_id, notes, import_mode):
+                imported_keys['watchlist'].add(_planning_key(MediaType.MOVIE, tmdb_id))
+                if _import_tv_status_by_mode(
+                    job.user,
+                    MediaType.MOVIE,
+                    tmdb_id,
+                    TvShowStatus.PLAN_TO_WATCH,
+                    event_at,
+                    None,
+                    import_mode,
+                ):
                     row_imported = True
             if score:
                 imported_keys['ratings'].add(_rating_key(MediaType.MOVIE, tmdb_id))
@@ -252,11 +257,19 @@ def apply_yamtrack_csv_import(job: DataTransferJob, content: bytes, import_mode:
             tv_status = _yamtrack_tv_status(status)
             if tv_status:
                 explicit_show_status_ids.add(tmdb_id)
-                if _import_tv_status_by_mode(job.user, tmdb_id, tv_status, event_at, progress, import_mode):
+                if _import_tv_status_by_mode(job.user, MediaType.TV, tmdb_id, tv_status, event_at, progress, import_mode):
                     row_imported = True
             if status == 'Planning':
-                imported_keys['watchlist'].add(_watchlist_key(MediaType.TV, tmdb_id))
-                if _import_watchlist_by_mode(job.user, MediaType.TV, tmdb_id, notes, import_mode):
+                imported_keys['watchlist'].add(_planning_key(MediaType.TV, tmdb_id))
+                if _import_tv_status_by_mode(
+                    job.user,
+                    MediaType.TV,
+                    tmdb_id,
+                    TvShowStatus.PLAN_TO_WATCH,
+                    event_at,
+                    None,
+                    import_mode,
+                ):
                     row_imported = True
             if score:
                 imported_keys['ratings'].add(_rating_key(MediaType.TV, tmdb_id))
@@ -268,7 +281,7 @@ def apply_yamtrack_csv_import(job: DataTransferJob, content: bytes, import_mode:
             tv_status = _yamtrack_tv_status(status)
             if tv_status:
                 explicit_show_status_ids.add(tmdb_id)
-                if _import_tv_status_by_mode(job.user, tmdb_id, tv_status, event_at, progress, import_mode):
+                if _import_tv_status_by_mode(job.user, MediaType.TV, tmdb_id, tv_status, event_at, progress, import_mode):
                     row_imported = True
 
         elif media_type == 'episode':

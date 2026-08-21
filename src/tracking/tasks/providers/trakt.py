@@ -5,20 +5,20 @@ import zipfile
 from typing import Any
 
 from ...choices import DataImportMode, DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
-from ...models import DataTransferJob, UserTvShowStatus
+from ...models import DataTransferJob, UserMediaStatus
 from ..shared import (
     _apply_mirror_deletions,
     _ensure_tmdb_metadata_for_import_item,
     _import_rating_by_mode,
+    _import_tv_status_by_mode,
     _import_watch_entry_by_mode,
-    _import_watchlist_by_mode,
     _mark_show_dropped,
     _parse_watched_at,
+    _planning_key,
     _rating_key,
     _safe_int,
     _update_job_progress,
     _watch_entry_key,
-    _watchlist_key,
 )
 
 
@@ -231,8 +231,16 @@ def _apply_zip_record_by_mode(
             report['records_skipped'] += 1
             return
         _ensure_tmdb_metadata_for_import_item(media_type, tmdb_id, state)
-        imported_keys['watchlist'].add(_watchlist_key(media_type, tmdb_id))
-        _import_watchlist_by_mode(user, media_type, tmdb_id, '', import_mode)
+        imported_keys['watchlist'].add(_planning_key(media_type, tmdb_id))
+        _import_tv_status_by_mode(
+            user,
+            media_type,
+            tmdb_id,
+            TvShowStatus.PLAN_TO_WATCH,
+            None,
+            None,
+            import_mode,
+        )
         report['records_imported'] += 1
         return
 
@@ -269,7 +277,7 @@ def _apply_zip_record_by_mode(
             return
         _ensure_tmdb_metadata_for_import_item(MediaType.TV, tmdb_id, state)
         imported_keys['watch_entries'].add(_watch_entry_key(WatchEntryMediaType.EPISODE, tmdb_id, None, None))
-        if import_mode != DataImportMode.NEW_ITEMS or not UserTvShowStatus.objects.filter(
+        if import_mode != DataImportMode.NEW_ITEMS or not UserMediaStatus.objects.shows().filter(
             user=user,
             tmdb_id=tmdb_id,
             status=TvShowStatus.DROPPED,

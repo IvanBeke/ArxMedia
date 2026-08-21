@@ -7,7 +7,6 @@ class WatchEntryMediaType(models.TextChoices):
 
 
 class TvShowStatus(models.TextChoices):
-    NONE = 'none', 'None'
     PLAN_TO_WATCH = 'plan_to_watch', 'Plan to Watch'
     WATCHING = 'watching', 'Watching'
     WATCHED = 'watched', 'Watched'
@@ -15,7 +14,6 @@ class TvShowStatus(models.TextChoices):
 
 
 class SeasonStatus(models.TextChoices):
-    NONE = 'none', 'None'
     WATCHING = 'watching', 'Watching'
     WATCHED = 'watched', 'Watched'
 

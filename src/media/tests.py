@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
-from tracking.models import Rating, WatchEntry, Watchlist
+from tracking.models import Rating, UserMediaStatus, WatchEntry
 
 from media.models import EpisodeCredit, Genre, Movie, TVShow
 from media.tmdb import tmdb
@@ -179,7 +179,7 @@ class MediaTests(TestCase):
             'total_pages': 1,
             'total_results': 2,
         }
-        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=101)
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=101, status='plan_to_watch')
         WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=102, watched_at='2026-08-01T10:00:00Z')
         Rating.objects.create(user=self.user, media_type='movie', tmdb_id=102, score=9)
 
@@ -202,8 +202,8 @@ class MediaTests(TestCase):
             'total_pages': 1,
             'total_results': 3,
         }
-        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=201)
-        Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=202)
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=201, status='plan_to_watch')
+        UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=202, status='plan_to_watch')
 
         response = self.client.get('/api/media/search/?q=test&type=multi')
         self.assertEqual(response.status_code, 200)
@@ -263,8 +263,8 @@ class MediaTests(TestCase):
             return {'movie_results': [], 'tv_results': []}
 
         mock_find_by_external_id.side_effect = fake_find
-        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=550)
-        Watchlist.objects.create(user=self.user, media_type='tv', tmdb_id=550)
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=550, status='plan_to_watch')
+        UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=550, status='plan_to_watch')
 
         response = self.client.get('/api/media/search/?q=%23550&type=multi')
         self.assertEqual(response.status_code, 200)
@@ -324,7 +324,7 @@ class MediaTests(TestCase):
         season_one.episodes.create(tmdb_id=3, episode_number=2, name='Ep 2')
         season_two.episodes.create(tmdb_id=4, episode_number=1, name='Ep 1')
 
-        # Only specials watched -> show should still be none
+        # Only specials watched -> show status should remain unknown
         WatchEntry.objects.create(
             user=self.user,
             media_type='episode',
@@ -337,8 +337,8 @@ class MediaTests(TestCase):
         response = self.client.get('/api/media/popular/?type=tv')
         self.assertEqual(response.status_code, 200)
         status_payload = response.data['results'][0]['user_status']
-        self.assertEqual(status_payload['status'], 'none')
-        self.assertEqual(status_payload['progress']['total_episodes'], 3)
+        self.assertIsNone(status_payload['status'])
+        self.assertEqual(status_payload['progress']['total_episodes'], 0)
         self.assertEqual(status_payload['progress']['watched_episodes'], 0)
 
         # Watch one non-special -> watching
@@ -471,7 +471,7 @@ class MediaTests(TestCase):
     def test_movie_detail_includes_user_status(self, mock_providers, mock_sync_movie):
         from media.models import Movie
         Movie.objects.create(tmdb_id=777, title='Movie Detail')
-        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=777)
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=777, status='plan_to_watch')
         Rating.objects.create(user=self.user, media_type='movie', tmdb_id=777, score=7)
         mock_providers.return_value = {}
 

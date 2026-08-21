@@ -5,7 +5,7 @@ from django.db.models.functions import Coalesce
 from media.models import Episode, TVShow
 
 from .choices import MediaType, TvShowStatus, WatchEntryMediaType
-from .models import UserTvShowStatus, WatchEntry, Watchlist
+from .models import UserMediaStatus, WatchEntry
 
 FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
 
@@ -22,6 +22,8 @@ def _is_final_tmdb_show_status(tmdb_id: int) -> bool:
 
 
 def refresh_show_status(user_id: int, tmdb_id: int):
+    existing = UserMediaStatus.objects.shows().filter(user_id=user_id, tmdb_id=tmdb_id).first()
+
     watched_data = WatchEntry.objects.filter(
         user_id=user_id,
         media_type=WatchEntryMediaType.EPISODE,
@@ -43,16 +45,7 @@ def refresh_show_status(user_id: int, tmdb_id: int):
         season__season_number__gt=0,
     ).count()
 
-    dropped_at = UserTvShowStatus.objects.filter(
-        user_id=user_id,
-        tmdb_id=tmdb_id,
-    ).values_list('dropped_at', flat=True).first()
-
-    plan_to_watch_at = Watchlist.objects.filter(
-        user_id=user_id,
-        media_type=MediaType.TV,
-        tmdb_id=tmdb_id,
-    ).aggregate(last_added=Max('added_at'))['last_added']
+    dropped_at = existing.dropped_at if existing else None
 
     is_final = _is_final_tmdb_show_status(tmdb_id)
     if watched_episodes > 0:
@@ -62,11 +55,10 @@ def refresh_show_status(user_id: int, tmdb_id: int):
             candidate_status = TvShowStatus.WATCHING
         else:
             candidate_status = TvShowStatus.WATCHING
-    elif plan_to_watch_at:
-        candidate_status = TvShowStatus.PLAN_TO_WATCH
     else:
-        candidate_status = TvShowStatus.NONE
+        candidate_status = None
 
+    status_value: str | None = None
     status_changed_at: datetime | None = None
     if dropped_at and (last_watched_at is None or last_watched_at <= dropped_at):
         status_value = TvShowStatus.DROPPED
@@ -75,17 +67,22 @@ def refresh_show_status(user_id: int, tmdb_id: int):
         status_value = candidate_status
         if status_value == TvShowStatus.WATCHED or status_value == TvShowStatus.WATCHING:
             status_changed_at = last_watched_at
-        elif status_value == TvShowStatus.PLAN_TO_WATCH:
-            status_changed_at = plan_to_watch_at
         else:
             status_changed_at = None
+
+    if status_value is None:
+        if existing and existing.status == TvShowStatus.PLAN_TO_WATCH:
+            return
+        UserMediaStatus.objects.filter(user_id=user_id, media_type=MediaType.TV, tmdb_id=tmdb_id).delete()
+        return
 
     completed_at = None
     if watched_episodes > 0 and is_final and (total_episodes == 0 or watched_episodes >= total_episodes):
         completed_at = last_watched_at
 
-    UserTvShowStatus.objects.update_or_create(
+    UserMediaStatus.objects.update_or_create(
         user_id=user_id,
+        media_type=MediaType.TV,
         tmdb_id=tmdb_id,
         defaults={
             'status': status_value,
@@ -95,7 +92,6 @@ def refresh_show_status(user_id: int, tmdb_id: int):
             'started_at': first_watched_at,
             'completed_at': completed_at,
             'dropped_at': dropped_at,
-            'plan_to_watch_at': plan_to_watch_at,
             'last_watched_at': last_watched_at,
             'status_changed_at': status_changed_at,
         },
@@ -104,18 +100,19 @@ def refresh_show_status(user_id: int, tmdb_id: int):
 
 def refresh_all_statuses_for_show(tmdb_id: int, current_user_id: int | None = None):
     status_user_ids = set(
-        UserTvShowStatus.objects.filter(
+        UserMediaStatus.objects.shows().filter(
             tmdb_id=tmdb_id,
             status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED),
         ).values_list('user_id', flat=True)
     )
+    planning_user_ids = set(UserMediaStatus.objects.shows().planning().filter(tmdb_id=tmdb_id).values_list('user_id', flat=True))
     watch_entry_user_ids = set(
         WatchEntry.objects.filter(
             media_type=WatchEntryMediaType.EPISODE,
             tmdb_id=tmdb_id,
         ).values_list('user_id', flat=True)
     )
-    user_ids = status_user_ids | watch_entry_user_ids
+    user_ids = status_user_ids | watch_entry_user_ids | planning_user_ids
 
     if not user_ids:
         return

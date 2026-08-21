@@ -4,7 +4,7 @@ from celery import shared_task
 from django.core.files.base import ContentFile
 
 from ..choices import DataTransferStatus
-from ..models import DataTransferJob, Rating, Review, WatchEntry, Watchlist
+from ..models import DataTransferJob, Rating, Review, UserMediaStatus, WatchEntry
 
 
 @shared_task(name='tracking.export_user_data')
@@ -16,7 +16,9 @@ def export_user_data(job_id: int) -> dict[str, str]:
     try:
         user = job.user
         watch_history = list(WatchEntry.objects.filter(user=user).values())
-        watchlist = list(Watchlist.objects.filter(user=user).values())
+        watchlist = list(
+            UserMediaStatus.objects.for_user(user).planning().values('media_type', 'tmdb_id', 'status_changed_at')
+        )
         ratings = list(Rating.objects.filter(user=user).values())
         reviews = list(Review.objects.filter(user=user).values())
         payload = {

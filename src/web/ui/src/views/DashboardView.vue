@@ -29,7 +29,7 @@
 
     <!-- Up Next Row -->
     <div class="mb-8">
-      <RouterLink to="/progress" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
+      <RouterLink to="/my-shows" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
         <span>Up Next</span>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -66,7 +66,7 @@
         </div>
       </div>
       <div v-else class="card p-6 text-center">
-        <p class="text-muted text-sm">No shows in progress</p>
+        <p class="text-muted text-sm">My Shows is empty. Add titles to Watchlist or start watching to see them here.</p>
       </div>
     </div>
 

@@ -1,7 +1,16 @@
 from rest_framework import serializers
 
 from .choices import MediaType, WatchEntryMediaType
-from .models import CustomList, DataTransferJob, ListCollaborator, ListItem, Rating, Review, WatchEntry, Watchlist
+from .models import (
+    CustomList,
+    DataTransferJob,
+    ListCollaborator,
+    ListItem,
+    Rating,
+    Review,
+    UserMediaStatus,
+    WatchEntry,
+)
 
 
 class MediaCardSerializer(serializers.ModelSerializer):
@@ -119,18 +128,22 @@ class RatingSerializer(serializers.ModelSerializer):
 
 class WatchlistSerializer(MediaCardSerializer):
     user_status = serializers.SerializerMethodField()
+    added_at = serializers.SerializerMethodField()
 
     class Meta:
-        model = Watchlist
+        model = UserMediaStatus
         fields = [
             'id', 'media_type', 'tmdb_id', 'title', 'poster_path', 'poster_url', 'vote_average',
-            'release_date', 'user_status', 'notes', 'added_at'
+            'release_date', 'user_status', 'added_at'
         ]
         read_only_fields = ['id', 'added_at']
 
     def get_user_status(self, obj):
         status_map = self.context.get('status_map') or {}
         return status_map.get((obj.media_type, obj.tmdb_id))
+
+    def get_added_at(self, obj):
+        return obj.status_changed_at or obj.created_at
 
 class ReviewSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)

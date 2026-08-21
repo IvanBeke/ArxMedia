@@ -3,7 +3,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.db.models import Avg, Count, Q
 from rest_framework import serializers
 from tracking.choices import ListPrivacy
-from tracking.models import CustomList, Rating, WatchEntry, Watchlist
+from tracking.models import CustomList, Rating, UserMediaStatus, WatchEntry
 from tracking.serializers import CustomListSerializer, WatchEntrySerializer
 
 from .privacy import can_view_account_content, get_viewer_relationship
@@ -117,7 +117,7 @@ class PublicUserSerializer(serializers.ModelSerializer):
             ratings_count=Count('id'),
             average_rating=Avg('score'),
         )
-        watchlist_count = Watchlist.objects.filter(user=obj).count()
+        watchlist_count = UserMediaStatus.objects.for_user(obj).planning().count()
         avg_rating = ratings_summary['average_rating']
 
         return {

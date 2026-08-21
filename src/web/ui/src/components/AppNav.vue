@@ -33,7 +33,7 @@
         <div class="hidden md:flex items-center gap-1">
           <template v-if="auth.isAuthenticated">
             <RouterLink to="/search" class="nav-link hidden lg:block">{{ t('nav_discover') }}</RouterLink>
-            <RouterLink to="/progress" class="nav-link">Progress</RouterLink>
+            <RouterLink to="/my-shows" class="nav-link">My Shows</RouterLink>
             <RouterLink to="/history" class="nav-link hidden lg:block">History</RouterLink>
             <RouterLink to="/watchlist" class="nav-link hidden lg:block">Watchlist</RouterLink>
           </template>
@@ -107,7 +107,7 @@
           <div class="flex flex-col gap-1 pb-1">
             <template v-if="auth.isAuthenticated">
               <RouterLink to="/search" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_discover') }}</RouterLink>
-              <RouterLink to="/progress" @click="showMobileMenu = false" class="mobile-nav-link">Progress</RouterLink>
+              <RouterLink to="/my-shows" @click="showMobileMenu = false" class="mobile-nav-link">My Shows</RouterLink>
               <RouterLink to="/history" @click="showMobileMenu = false" class="mobile-nav-link">History</RouterLink>
               <RouterLink to="/watchlist" @click="showMobileMenu = false" class="mobile-nav-link">Watchlist</RouterLink>
               <RouterLink to="/calendar" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_calendar') }}</RouterLink>

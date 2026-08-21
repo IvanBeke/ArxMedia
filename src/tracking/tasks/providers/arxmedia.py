@@ -1,13 +1,13 @@
 import json
 from typing import Any
 
-from ...choices import DataTransferFormat, MediaType
+from ...choices import DataTransferFormat, MediaType, TvShowStatus
 from ...models import DataTransferJob
 from ..shared import (
     _ensure_tmdb_metadata_for_import_item,
     _import_rating_by_mode,
+    _import_tv_status_by_mode,
     _import_watch_entry_by_mode,
-    _import_watchlist_by_mode,
     _parse_watched_at,
     _safe_int,
     _update_job_progress,
@@ -106,11 +106,13 @@ def apply_arxmedia_json_import(job: DataTransferJob, content: bytes, import_mode
             continue
 
         _ensure_tmdb_metadata_for_import_item(media_type, tmdb_id, metadata_state)
-        changed = _import_watchlist_by_mode(
+        changed = _import_tv_status_by_mode(
             job.user,
             media_type,
             tmdb_id,
-            item.get('notes', ''),
+            TvShowStatus.PLAN_TO_WATCH,
+            None,
+            None,
             import_mode,
         )
         if changed:

@@ -48,9 +48,8 @@ from .models import (
     ListItem,
     Rating,
     Review,
-    UserTvShowStatus,
+    UserMediaStatus,
     WatchEntry,
-    Watchlist,
 )
 from .serializers import (
     CustomListSerializer,
@@ -131,28 +130,24 @@ def _build_user_media_sets(user, movie_ids: set[int], tv_ids: set[int]) -> dict[
         ).values_list('tmdb_id', flat=True)
     )
     movie_watchlist_ids = set(
-        Watchlist.objects.filter(
-            user=user,
-            media_type=MediaType.MOVIE,
+        UserMediaStatus.objects.for_user(user).movies().planning().filter(
             tmdb_id__in=movie_ids,
         ).values_list('tmdb_id', flat=True)
     )
     tv_watchlist_ids = set(
-        Watchlist.objects.filter(
-            user=user,
-            media_type=MediaType.TV,
+        UserMediaStatus.objects.for_user(user).shows().planning().filter(
             tmdb_id__in=tv_ids,
         ).values_list('tmdb_id', flat=True)
     )
-    tv_status_rows = UserTvShowStatus.objects.filter(
-        user=user,
+    tv_status_rows = UserMediaStatus.objects.for_user(user).shows().filter(
         tmdb_id__in=tv_ids,
+    ).exclude(
+        status=TvShowStatus.PLAN_TO_WATCH,
     ).values_list('tmdb_id', 'status')
 
     tv_watching_ids: set[int] = set()
     tv_watched_ids: set[int] = set()
     tv_dropped_ids: set[int] = set()
-    tv_plan_to_watch_ids: set[int] = set()
 
     for tmdb_id, show_status in tv_status_rows:
         if show_status == TvShowStatus.WATCHING:
@@ -161,25 +156,13 @@ def _build_user_media_sets(user, movie_ids: set[int], tv_ids: set[int]) -> dict[
             tv_watched_ids.add(tmdb_id)
         elif show_status == TvShowStatus.DROPPED:
             tv_dropped_ids.add(tmdb_id)
-        elif show_status == TvShowStatus.PLAN_TO_WATCH:
-            tv_plan_to_watch_ids.add(tmdb_id)
-
-    tv_with_status_ids = tv_watching_ids | tv_watched_ids | tv_dropped_ids | tv_plan_to_watch_ids
-    tv_plan_to_watch_ids |= (tv_watchlist_ids - tv_with_status_ids)
-
-    movie_plan_to_watch_ids = movie_watchlist_ids - movie_watched_ids
-    movie_none_ids = movie_ids - movie_watched_ids - movie_plan_to_watch_ids
-    tv_none_ids = tv_ids - tv_watching_ids - tv_watched_ids - tv_dropped_ids - tv_plan_to_watch_ids
-
     return {
         'movie_watched': movie_watched_ids,
-        'movie_plan_to_watch': movie_plan_to_watch_ids,
-        'movie_none': movie_none_ids,
+        'movie_plan_to_watch': movie_watchlist_ids,
         'tv_watching': tv_watching_ids,
         'tv_watched': tv_watched_ids,
         'tv_dropped': tv_dropped_ids,
-        'tv_plan_to_watch': tv_plan_to_watch_ids,
-        'tv_none': tv_none_ids,
+        'tv_plan_to_watch': tv_watchlist_ids,
         'watchlist_movie': movie_watchlist_ids,
         'watchlist_tv': tv_watchlist_ids,
     }
@@ -243,14 +226,8 @@ def _apply_missing_rating_filter(queryset, user):
 
 
 def _apply_in_watchlist_filter(queryset, user):
-    movie_ids = Watchlist.objects.filter(
-        user=user,
-        media_type=MediaType.MOVIE,
-    ).values_list('tmdb_id', flat=True)
-    tv_ids = Watchlist.objects.filter(
-        user=user,
-        media_type=MediaType.TV,
-    ).values_list('tmdb_id', flat=True)
+    movie_ids = UserMediaStatus.objects.for_user(user).movies().planning().values_list('tmdb_id', flat=True)
+    tv_ids = UserMediaStatus.objects.for_user(user).shows().planning().values_list('tmdb_id', flat=True)
     return queryset.filter(
         Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
         | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
@@ -296,10 +273,10 @@ def _annotate_media_sort_fields(queryset, user=None):
     movie_lookup = Movie.objects.filter(tmdb_id=OuterRef('tmdb_id'))
     tv_lookup = TVShow.objects.filter(tmdb_id=OuterRef('tmdb_id'))
 
-    tv_status_lookup = UserTvShowStatus.objects.none()
+    tv_status_lookup = UserMediaStatus.objects.none()
     movie_watch_lookup = WatchEntry.objects.none()
     if user and user.is_authenticated:
-        tv_status_lookup = UserTvShowStatus.objects.filter(user=user, tmdb_id=OuterRef('tmdb_id'))
+        tv_status_lookup = UserMediaStatus.objects.shows().filter(user=user, tmdb_id=OuterRef('tmdb_id'))
         movie_watch_lookup = WatchEntry.objects.filter(
             user=user,
             media_type=WatchEntryMediaType.MOVIE,
@@ -516,11 +493,10 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         if not watched_at:
             watched_at = timezone.now()
         instance = serializer.save(user=self.request.user, watched_at=watched_at)
-        Watchlist.objects.filter(
-            user=instance.user,
-            media_type=instance.media_type,
-            tmdb_id=instance.tmdb_id
-        ).delete()
+        if instance.media_type == WatchEntryMediaType.MOVIE:
+            UserMediaStatus.objects.clear_planning(instance.user, MediaType.MOVIE, instance.tmdb_id)
+        elif instance.media_type == WatchEntryMediaType.EPISODE:
+            UserMediaStatus.objects.clear_planning(instance.user, MediaType.TV, instance.tmdb_id)
 
 
 class WatchEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -556,7 +532,7 @@ class RatingListCreateView(generics.ListCreateAPIView):
                 tmdb_id=tmdb_id,
             ).exists()
         else:
-            can_rate = UserTvShowStatus.objects.filter(
+            can_rate = UserMediaStatus.objects.shows().filter(
                 user=self.request.user,
                 tmdb_id=tmdb_id,
                 status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED),
@@ -585,7 +561,9 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Watchlist.objects.filter(user=self.request.user)
+        qs = UserMediaStatus.objects.for_user(self.request.user).planning().annotate(
+            added_at=Coalesce('status_changed_at', 'created_at', output_field=DateTimeField())
+        )
         media_type = (self.request.query_params.get('media_type') or '').strip().lower()
         if media_type in (MediaType.MOVIE, MediaType.TV):
             qs = qs.filter(media_type=media_type)
@@ -670,7 +648,7 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
             ).exists()
         else:
             # For TV shows, check if any episodes watched
-            watched = UserTvShowStatus.objects.filter(
+            watched = UserMediaStatus.objects.shows().filter(
                 user=self.request.user,
                 tmdb_id=tmdb_id,
                 status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED),
@@ -688,7 +666,8 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
         except Exception as exc:
             logger.warning('Failed to sync %s metadata for watchlist tmdb_id=%s: %s', media_type, tmdb_id, exc)
 
-        serializer.save(user=self.request.user)
+        instance = UserMediaStatus.objects.set_planning(self.request.user, media_type, tmdb_id)
+        serializer.instance = instance
 
 
 class WatchlistDetailView(generics.RetrieveDestroyAPIView):
@@ -696,7 +675,9 @@ class WatchlistDetailView(generics.RetrieveDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Watchlist.objects.filter(user=self.request.user)
+        return UserMediaStatus.objects.for_user(self.request.user).planning().annotate(
+            added_at=Coalesce('status_changed_at', 'created_at', output_field=DateTimeField())
+        )
 
 
 class ReviewListCreateView(generics.ListCreateAPIView):
@@ -1000,8 +981,6 @@ def up_next(request):
 
     today = timezone.now().date()
 
-    from .models import UserTvShowStatus
-
     watched_episode_exists = WatchEntry.objects.filter(
         user=request.user,
         media_type=WatchEntryMediaType.EPISODE,
@@ -1027,7 +1006,7 @@ def up_next(request):
         total=Count('id', filter=Q(runtime__isnull=True))
     ).values('total')[:1]
 
-    watched_show_ids = UserTvShowStatus.objects.filter(
+    watched_show_ids = UserMediaStatus.objects.shows().filter(
         user=request.user,
         status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED),
         watched_episodes__gt=0,
@@ -1156,14 +1135,16 @@ def _apply_progress_filters(items, request):
             if provider_status not in provider_status_values:
                 continue
         if selected_genres:
-            item_genres = {genre.lower() for genre in item['genres']}
+            item_genres = {genre.lower() for genre in (item.get('genres') or [])}
             if item_genres.isdisjoint(selected_genres):
                 continue
-        if has_upcoming is not None and item['has_upcoming_episode'] != has_upcoming:
+        if has_upcoming is not None and item.get('has_upcoming_episode', False) != has_upcoming:
             continue
-        if is_new is not None and item['is_new'] != is_new:
+        if is_new is not None and item.get('is_new', False) != is_new:
             continue
         if missing_rating is True and item['user_rating'] is not None:
+            continue
+        if missing_rating is True and item.get('status') == 'plan_to_watch':
             continue
         filtered.append(item)
     return filtered
@@ -1182,7 +1163,7 @@ def _sort_progress_items(items, sort_by: str, direction: str):
 
     if sort_key == 'last_watched':
         def watched_ts(item):
-            value = item['last_watched_at']
+            value = item.get('last_watched_at')
             return value.timestamp() if value is not None else None
 
         if final_direction == 'desc':
@@ -1206,7 +1187,7 @@ def _sort_progress_items(items, sort_by: str, direction: str):
     if sort_key == 'progress_percent':
         return sorted(
             items,
-            key=lambda item: (item['progress_percent'], item['show_name'].lower()),
+            key=lambda item: ((item.get('progress_percent') or 0), item['show_name'].lower()),
             reverse=final_direction == 'desc',
         )
 
@@ -1217,8 +1198,8 @@ def _sort_progress_items(items, sort_by: str, direction: str):
         return sorted(
             items,
             key=lambda item: (
-                item['next_episode']['air_date'] is None,
-                item['next_episode']['air_date'] or date.max,
+                (item.get('next_episode') or {}).get('air_date') is None,
+                (item.get('next_episode') or {}).get('air_date') or date.max,
                 item['show_name'].lower(),
             ),
             reverse=final_direction == 'desc',
@@ -1237,7 +1218,7 @@ def _sort_progress_items(items, sort_by: str, direction: str):
 
     if sort_key == 'started_date':
         def started_ts(item):
-            value = item['started_at']
+            value = item.get('started_at')
             return value.timestamp() if value is not None else None
 
         if final_direction == 'desc':
@@ -1262,9 +1243,9 @@ def _sort_progress_items(items, sort_by: str, direction: str):
         return sorted(
             items,
             key=lambda item: (
-                item['episodes_left'] <= 0,
-                item['episodes_left'] if item['episodes_left'] > 0 else 10**9,
-                item['runtime_left_minutes'] if item['episodes_left'] > 0 else 10**9,
+                (item.get('episodes_left') or 0) <= 0,
+                (item.get('episodes_left') or 0) if (item.get('episodes_left') or 0) > 0 else 10**9,
+                (item.get('runtime_left_minutes') or 0) if (item.get('episodes_left') or 0) > 0 else 10**9,
                 item['show_name'].lower(),
             ),
             reverse=final_direction == 'desc',
@@ -1273,9 +1254,9 @@ def _sort_progress_items(items, sort_by: str, direction: str):
     return sorted(
         items,
         key=lambda item: (
-            item['episodes_left'] <= 0,
-            item['runtime_left_minutes'] if item['episodes_left'] > 0 else 10**9,
-            item['episodes_left'] if item['episodes_left'] > 0 else 10**9,
+            (item.get('episodes_left') or 0) <= 0,
+            (item.get('runtime_left_minutes') or 0) if (item.get('episodes_left') or 0) > 0 else 10**9,
+            (item.get('episodes_left') or 0) if (item.get('episodes_left') or 0) > 0 else 10**9,
             item['show_name'].lower(),
         ),
         reverse=final_direction == 'desc',
@@ -1284,7 +1265,7 @@ def _sort_progress_items(items, sort_by: str, direction: str):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-def progress_list(request):
+def my_shows_list(request):
     from media.models import Episode, TVShow
 
     today = timezone.now().date()
@@ -1339,9 +1320,21 @@ def progress_list(request):
         event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
     ).order_by('-event_at', '-id')
 
-    show_rows = list(
-        UserTvShowStatus.objects.filter(
+    status_tmdb_ids = set(
+        UserMediaStatus.objects.shows().filter(
             user=request.user,
+            status__in=started_statuses,
+        ).values_list('tmdb_id', flat=True)
+    )
+    watchlist_tmdb_ids = set(
+        UserMediaStatus.objects.for_user(request.user).shows().planning().values_list('tmdb_id', flat=True)
+    )
+    progress_tmdb_ids = status_tmdb_ids | watchlist_tmdb_ids
+
+    status_rows = list(
+        UserMediaStatus.objects.shows().filter(
+            user=request.user,
+            tmdb_id__in=status_tmdb_ids,
             status__in=started_statuses,
         ).annotate(
             next_season_number=Subquery(next_episode.values('season__season_number')[:1]),
@@ -1395,7 +1388,7 @@ def progress_list(request):
         )
     )
 
-    if not show_rows:
+    if not progress_tmdb_ids:
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset([], request)
         if page is None:
@@ -1414,7 +1407,8 @@ def progress_list(request):
         response.data['total_watched_minutes'] = 0
         return response
 
-    tmdb_ids = [item['tmdb_id'] for item in show_rows]
+    status_row_by_tmdb_id = {row['tmdb_id']: row for row in status_rows}
+    tmdb_ids = list(progress_tmdb_ids)
     watched_runtime_subquery = Episode.objects.filter(
         season__show__tmdb_id=OuterRef('tmdb_id'),
         season__season_number=OuterRef('season_number'),
@@ -1449,63 +1443,72 @@ def progress_list(request):
 
     new_threshold = today - timedelta(days=7)
     progress_items = []
-    for row in show_rows:
-        show = show_map.get(row['tmdb_id'])
+    for tmdb_id in tmdb_ids:
+        show = show_map.get(tmdb_id)
         if show is None:
             continue
 
+        row = status_row_by_tmdb_id.get(tmdb_id)
+        is_plan_to_watch_only = row is None
+
         raw_networks = [part.strip() for part in (show.networks or '').split(',') if part.strip()]
-        next_air_date = row.get('next_air_date')
+        next_air_date = row.get('next_air_date') if row else None
         is_new = bool(next_air_date and new_threshold <= next_air_date <= today)
-        progress_items.append({
-            'tmdb_id': row['tmdb_id'],
+        item = {
+            'tmdb_id': tmdb_id,
             'show_name': show.name,
             'release_date': show.first_air_date,
             'poster_path': show.poster_path,
             'poster_url': show.poster_url,
             'number_of_seasons': show.number_of_seasons,
-            'status': row['status'],
+            'status': 'plan_to_watch' if is_plan_to_watch_only else row['status'],
             'provider_status': show.status,
-            'progress_percent': row['progress_percent'] or 0,
-            'watched_episodes': row['watched_episodes'] or 0,
-            'total_episodes': row['total_episodes'] or 0,
-            'last_watched_at': row['last_watched_at'],
-            'started_at': row['started_watch_at'] or row['started_at'],
-            'user_rating': rating_map.get(row['tmdb_id']),
+            'user_rating': rating_map.get(tmdb_id),
             'vote_average': show.vote_average,
             'vote_count': show.vote_count,
             'genres': [genre.name for genre in show.genres.all()],
             'networks': raw_networks,
             'episode_runtime': show.episode_runtime,
-            'episodes_left': row['episodes_left'] or 0,
-            'runtime_left_minutes': row['runtime_left_minutes'] or 0,
-            'runtime_left_has_unknown': (row['unknown_runtime_count'] or 0) > 0,
-            'is_new': is_new,
-            'has_upcoming_episode': row['upcoming_air_date'] is not None,
-            'next_episode': {
-                'season_number': row['next_season_number'],
-                'episode_number': row['next_episode_number'],
-                'name': row['next_episode_name'],
-                'still_path': row['next_still_path'],
-                'still_url': f"https://image.tmdb.org/t/p/w300{row['next_still_path']}" if row['next_still_path'] else None,
-                'air_date': row['next_air_date'],
-                'runtime': row['next_runtime'],
-                'episode_type': row['next_episode_type'],
-                'vote_average': row['next_vote_average'],
-                'vote_count': row['next_vote_count'],
-            },
-            'upcoming_episode': {
-                'season_number': row['upcoming_season_number'],
-                'episode_number': row['upcoming_episode_number'],
-                'name': row['upcoming_episode_name'],
-                'episode_type': row['upcoming_episode_type'],
-                'air_date': row['upcoming_air_date'],
-            },
-            'last_watched_episode': {
-                'season_number': row['last_watched_season_number'],
-                'episode_number': row['last_watched_episode_number'],
-            },
-        })
+        }
+
+        if not is_plan_to_watch_only:
+            item.update({
+                'progress_percent': row['progress_percent'] or 0,
+                'watched_episodes': row['watched_episodes'] or 0,
+                'total_episodes': row['total_episodes'] or 0,
+                'last_watched_at': row['last_watched_at'],
+                'started_at': row['started_watch_at'] or row['started_at'],
+                'episodes_left': row['episodes_left'] or 0,
+                'runtime_left_minutes': row['runtime_left_minutes'] or 0,
+                'runtime_left_has_unknown': (row['unknown_runtime_count'] or 0) > 0,
+                'is_new': is_new,
+                'has_upcoming_episode': row['upcoming_air_date'] is not None,
+                'next_episode': {
+                    'season_number': row['next_season_number'],
+                    'episode_number': row['next_episode_number'],
+                    'name': row['next_episode_name'],
+                    'still_path': row['next_still_path'],
+                    'still_url': f"https://image.tmdb.org/t/p/w300{row['next_still_path']}" if row['next_still_path'] else None,
+                    'air_date': row['next_air_date'],
+                    'runtime': row['next_runtime'],
+                    'episode_type': row['next_episode_type'],
+                    'vote_average': row['next_vote_average'],
+                    'vote_count': row['next_vote_count'],
+                },
+                'upcoming_episode': {
+                    'season_number': row['upcoming_season_number'],
+                    'episode_number': row['upcoming_episode_number'],
+                    'name': row['upcoming_episode_name'],
+                    'episode_type': row['upcoming_episode_type'],
+                    'air_date': row['upcoming_air_date'],
+                },
+                'last_watched_episode': {
+                    'season_number': row['last_watched_season_number'],
+                    'episode_number': row['last_watched_episode_number'],
+                },
+            })
+
+        progress_items.append(item)
 
     available_genres = sorted({genre for item in progress_items for genre in item['genres']})
     available_provider_statuses = sorted({
@@ -1544,9 +1547,7 @@ def upcoming(request):
     from django.utils import timezone
     from media.models import Episode
 
-    from .models import UserTvShowStatus
-
-    shows_with_episodes = UserTvShowStatus.objects.filter(
+    shows_with_episodes = UserMediaStatus.objects.shows().filter(
         user=request.user,
         status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED),
         watched_episodes__gt=0,
@@ -1600,21 +1601,18 @@ def drop_show(request):
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
     dropped_at = timezone.now()
-    show_status, _ = UserTvShowStatus.objects.get_or_create(
-        user=request.user,
-        tmdb_id=tmdb_id,
-        defaults={'status': TvShowStatus.NONE},
-    )
-    show_status.status = TvShowStatus.DROPPED
-    show_status.dropped_at = dropped_at
-    show_status.status_changed_at = dropped_at
-    show_status.save(update_fields=['status', 'dropped_at', 'status_changed_at', 'updated_at'])
-
-    Watchlist.objects.filter(
+    UserMediaStatus.objects.update_or_create(
         user=request.user,
         media_type=MediaType.TV,
         tmdb_id=tmdb_id,
-    ).delete()
+        defaults={
+            'status': TvShowStatus.DROPPED,
+            'dropped_at': dropped_at,
+            'status_changed_at': dropped_at,
+        },
+    )
+
+    UserMediaStatus.objects.clear_planning(request.user, MediaType.TV, tmdb_id)
 
     return Response({'dropped': True})
 
@@ -2006,10 +2004,10 @@ def recommendations(request):
         ).values_list('tmdb_id', flat=True)
     )
     watchlist_movies = set(
-        Watchlist.objects.filter(user=request.user, media_type=MediaType.MOVIE).values_list('tmdb_id', flat=True)
+        UserMediaStatus.objects.for_user(request.user).movies().planning().values_list('tmdb_id', flat=True)
     )
     watchlist_tv = set(
-        Watchlist.objects.filter(user=request.user, media_type=MediaType.TV).values_list('tmdb_id', flat=True)
+        UserMediaStatus.objects.for_user(request.user).shows().planning().values_list('tmdb_id', flat=True)
     )
 
     excluded_movies = watched_movies | watchlist_movies

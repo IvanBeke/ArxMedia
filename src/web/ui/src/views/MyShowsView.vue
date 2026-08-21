@@ -2,8 +2,8 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
       <div>
-        <h1 class="font-display text-2xl text-primary font-semibold">Progress</h1>
-        <p class="text-muted text-sm">Track started shows and decide what to watch next.</p>
+        <h1 class="font-display text-2xl text-primary font-semibold">My Shows</h1>
+        <p class="text-muted text-sm">Track your shows and decide what to watch next.</p>
       </div>
       <div class="inline-flex items-center gap-2 rounded-full border border-surface-200 bg-surface-100 px-3 py-1 text-xs text-secondary">
         <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
@@ -56,7 +56,7 @@
     </div>
 
     <div v-else class="card p-10 text-center">
-      <p class="text-sm text-muted mb-3">No started shows match your current filters.</p>
+      <p class="text-sm text-muted mb-3">No shows match your current filters.</p>
       <button class="btn-primary text-sm" @click="resetFilters">Clear filters</button>
     </div>
 
@@ -233,11 +233,11 @@ function syncPageQuery() {
   }
 }
 
-async function loadProgress() {
+async function loadMyShows() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const data = await trackingAPI.getProgress(buildParams())
+    const data = await trackingAPI.getMyShows(buildParams())
     rows.value = data?.results || []
     availableGenres.value = data?.available_genres || []
     availableProviderStatuses.value = data?.available_provider_statuses || []
@@ -252,7 +252,7 @@ async function loadProgress() {
     count.value = 0
     totalWatchedMinutes.value = 0
     totalPages.value = 1
-    errorMsg.value = getApiErrorMessage(error, 'Could not load progress.')
+    errorMsg.value = getApiErrorMessage(error, 'Could not load My Shows.')
   } finally {
     loading.value = false
   }
@@ -311,7 +311,7 @@ function onAddToListDialogClose() {
 }
 
 async function onModalListAdded() {
-  await loadProgress()
+  await loadMyShows()
   closeAddToListModal()
 }
 
@@ -320,7 +320,7 @@ async function drop(tmdbId) {
   rowBusyId.value = tmdbId
   try {
     await trackingAPI.dropShow({ tmdb_id: tmdbId })
-    await loadProgress()
+    await loadMyShows()
   } catch (error) {
     errorMsg.value = getApiErrorMessage(error, 'Could not drop show.')
   } finally {
@@ -334,7 +334,7 @@ async function rate(tmdbId, score) {
   }
   try {
     await trackingAPI.rate({ media_type: MEDIA_TYPE.TV, tmdb_id: tmdbId, score })
-    await loadProgress()
+    await loadMyShows()
   } catch (error) {
     errorMsg.value = getApiErrorMessage(error, 'Could not submit rating.')
   }
@@ -358,7 +358,7 @@ watch(
   [appliedFilters, currentPage],
   async () => {
     syncPageQuery()
-    await loadProgress()
+    await loadMyShows()
   },
   { deep: true }
 )
@@ -367,12 +367,12 @@ watch(
   () => route.query.page,
   async () => {
     currentPage.value = parsePage(route.query.page)
-    await loadProgress()
+    await loadMyShows()
   }
 )
 
 onMounted(async () => {
   currentPage.value = parsePage(route.query.page)
-  await loadProgress()
+  await loadMyShows()
 })
 </script>

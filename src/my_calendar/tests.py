@@ -6,7 +6,7 @@ from django.utils import timezone
 from media.models import Episode, Movie, Season, TVShow
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
-from tracking.models import UserTvShowStatus, WatchEntry, Watchlist
+from tracking.models import UserMediaStatus, WatchEntry
 
 User = get_user_model()
 
@@ -59,7 +59,7 @@ class CalendarTests(TestCase):
             title='My Watchlist Movie',
             release_date=timezone.localdate() + timedelta(days=3),
         )
-        Watchlist.objects.create(user=self.user, media_type='movie', tmdb_id=movie.tmdb_id)
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=movie.tmdb_id, status='plan_to_watch')
 
         response = self.client.get('/api/calendar/my/?days=30')
         self.assertEqual(response.status_code, 200)
@@ -95,8 +95,9 @@ class CalendarTests(TestCase):
             season_number=1,
             episode_number=1,
         )
-        UserTvShowStatus.objects.create(
+        UserMediaStatus.objects.create(
             user=self.user,
+            media_type='tv',
             tmdb_id=dropped_show.tmdb_id,
             status='dropped',
             watched_episodes=1,

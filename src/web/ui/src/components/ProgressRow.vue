@@ -52,13 +52,13 @@
                   </div>
                 </details>
               </div>
-              <p class="show-percent text-2xl font-display text-primary font-semibold">{{ item.progress_percent }}%</p>
+              <p class="show-percent text-2xl font-display text-primary font-semibold">{{ progressPercent(item) }}%</p>
             </div>
           </div>
 
           <div class="mb-3 mt-2">
-            <ProgressBar :pct="item.progress_percent" class="progress-row-bar mb-1.5" />
-            <p class="text-xs text-muted">{{ progressFraction(item) }} watched · {{ item.episodes_left }} episodes left · {{ formatTimeLeft(item) }} left</p>
+            <ProgressBar :pct="progressPercent(item)" class="progress-row-bar mb-1.5" />
+            <p class="text-xs text-muted">{{ progressFraction(item) }} watched · {{ episodesLeft(item) }} episodes left · {{ formatTimeLeft(item) }} left</p>
           </div>
 
           <div class="stats-inline">
@@ -82,7 +82,7 @@
             </div>
           </div>
 
-          <p class="mt-2 text-[11px] text-muted truncate">{{ item.genres.join(', ') }}<span v-if="item.networks.length"> · {{ item.networks.join(', ') }}</span></p>
+          <p class="mt-2 text-[11px] text-muted truncate">{{ genresText(item) }}<span v-if="networks(item).length"> · {{ networks(item).join(', ') }}</span></p>
         </div>
       </section>
 
@@ -194,17 +194,34 @@ function providerShowStatus(value) {
 }
 
 function progressFraction(item) {
-  const watched = item.watched_episodes || 0
-  const total = item.total_episodes || 0
+  const watched = Number(item?.watched_episodes) || 0
+  const total = Number(item?.total_episodes) || 0
   return total > 0 ? `${watched}/${total}` : `${watched}/?`
 }
 
+function progressPercent(item) {
+  return Number(item?.progress_percent) || 0
+}
+
+function episodesLeft(item) {
+  return Number(item?.episodes_left) || 0
+}
+
 function formatTimeLeft(item) {
-  const minutes = Number(item.runtime_left_minutes || 0)
-  const episodesLeft = Number(item.episodes_left || 0)
-  if (episodesLeft <= 0) return '0m'
-  if (!Number.isFinite(minutes) || minutes <= 0) return `${episodesLeft} eps`
+  const minutes = Number(item?.runtime_left_minutes || 0)
+  const remainingEpisodes = episodesLeft(item)
+  if (remainingEpisodes <= 0) return '0m'
+  if (!Number.isFinite(minutes) || minutes <= 0) return `${remainingEpisodes} eps`
   return formatHoursMinutes(minutes, item.runtime_left_has_unknown)
+}
+
+function genresText(item) {
+  const values = Array.isArray(item?.genres) ? item.genres : []
+  return values.join(', ')
+}
+
+function networks(item) {
+  return Array.isArray(item?.networks) ? item.networks : []
 }
 
 function hasLastWatchedEpisodeCode(item) {
