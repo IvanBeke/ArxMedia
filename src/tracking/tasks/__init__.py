@@ -1,3 +1,5 @@
+from media.tmdb import tmdb
+
 from .export import export_user_data
 from .import_pipeline import (
     apply_arxmedia_json_import,
@@ -7,7 +9,6 @@ from .import_pipeline import (
     prepare_trakt_zip_import,
     prepare_yamtrack_csv_import,
 )
-from .shared import tmdb
 from .system import heartbeat, refresh_show_status_for_user, sync_tmdb_changed_items
 
 __all__ = [

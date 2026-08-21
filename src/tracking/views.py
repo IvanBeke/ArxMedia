@@ -225,8 +225,8 @@ def _apply_missing_rating_filter(queryset, user):
         tmdb_id__in=(movie_ids | tv_ids),
     ).values_list('media_type', 'tmdb_id')
 
-    rated_movie_ids: set[int] = set()
-    rated_tv_ids: set[int] = set()
+    rated_movie_ids = set()
+    rated_tv_ids = set()
     for media_type, tmdb_id in rating_rows:
         if media_type == MediaType.MOVIE:
             rated_movie_ids.add(tmdb_id)

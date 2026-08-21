@@ -1,11 +1,15 @@
+import logging
 from datetime import date, timedelta
 
 from celery import shared_task
 from django.utils import timezone
 from media.models import Movie, TVShow
-from media.tmdb import tmdb
+from media.tmdb import TMDBNotFoundError, tmdb
 
+from ..choices import MediaType, WatchEntryMediaType
 from ..status_sync import refresh_show_status
+
+logger = logging.getLogger(__name__)
 
 
 def _fetch_changed_tmdb_ids(fetch_page) -> set[int]:
@@ -46,6 +50,34 @@ def refresh_show_status_for_user(tmdb_id: int, user_id: int) -> dict[str, int]:
         'tmdb_id': tmdb_id,
         'user_id': user_id,
     }
+
+
+@shared_task(name='tracking.sync_tmdb_metadata_item')
+def sync_tmdb_metadata_item(media_type: str, tmdb_id: int) -> dict[str, int | str]:
+    try:
+        if media_type == MediaType.MOVIE:
+            tmdb.sync_movie(int(tmdb_id))
+        elif media_type in {MediaType.TV, WatchEntryMediaType.EPISODE}:
+            tmdb.sync_tv_show(int(tmdb_id), sync_credits=False)
+        else:
+            return {
+                'status': 'skipped',
+                'media_type': media_type,
+                'tmdb_id': int(tmdb_id),
+            }
+
+        return {
+            'status': 'ok',
+            'media_type': media_type,
+            'tmdb_id': int(tmdb_id),
+        }
+    except TMDBNotFoundError:
+        logger.info('TMDB metadata not found for %s %s; skipping.', media_type, tmdb_id)
+        return {
+            'status': 'not_found',
+            'media_type': media_type,
+            'tmdb_id': int(tmdb_id),
+        }
 
 
 def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict[str, int | str]:

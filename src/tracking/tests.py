@@ -2018,9 +2018,8 @@ class DataImportExportTests(BaseTestCase):
         self.assertTrue(Rating.objects.filter(user=self.user, media_type='movie', tmdb_id=606, score=9).exists())
         self.assertTrue(Rating.objects.filter(user=self.user, media_type='tv', tmdb_id=707, score=8).exists())
 
-    @patch('tracking.tasks.tmdb.sync_tv_show')
-    @patch('tracking.tasks.tmdb.sync_movie')
-    def test_zip_import_supports_watchlist_items_wrapper(self, mock_sync_movie, mock_sync_tv_show):
+    @patch('tracking.tasks.shared.sync_tmdb_metadata_item.delay')
+    def test_zip_import_supports_watchlist_items_wrapper(self, mock_sync_metadata_delay):
         watchlist_wrapped = {
             'items': [
                 {'type': 'movie', 'movie': {'ids': {'tmdb': 1404}}},
@@ -2053,11 +2052,14 @@ class DataImportExportTests(BaseTestCase):
 
         self.assertTrue(Watchlist.objects.filter(user=self.user, media_type='movie', tmdb_id=1404).exists())
         self.assertTrue(Watchlist.objects.filter(user=self.user, media_type='tv', tmdb_id=1505).exists())
-        self.assertTrue(mock_sync_movie.called)
-        self.assertTrue(mock_sync_tv_show.called)
+        self.assertEqual(mock_sync_metadata_delay.call_count, 2)
+        self.assertEqual(
+            {call.args for call in mock_sync_metadata_delay.call_args_list},
+            {('movie', 1404), ('tv', 1505)},
+        )
 
-    @patch('tracking.tasks.tmdb.sync_tv_show')
-    def test_zip_import_processes_all_files_and_reports_unsupported(self, mock_sync_tv_show):
+    @patch('tracking.tasks.shared.sync_tmdb_metadata_item.delay')
+    def test_zip_import_processes_all_files_and_reports_unsupported(self, mock_sync_metadata_delay):
         watched_history = [
             {
                 'type': 'movie',
@@ -2100,10 +2102,13 @@ class DataImportExportTests(BaseTestCase):
         self.assertGreaterEqual(job.metadata.get('unsupported_records', 0), 1)
         self.assertEqual(job.metadata.get('files_failed'), 0)
         self.assertGreaterEqual(job.metadata.get('records_imported', 0), 2)
-        self.assertTrue(mock_sync_tv_show.called)
+        self.assertEqual(
+            {call.args for call in mock_sync_metadata_delay.call_args_list},
+            {('movie', 101), ('tv', 505)},
+        )
 
-    @patch('tracking.tasks.tmdb.sync_season')
-    def test_zip_import_syncs_season_metadata_for_episode_history(self, mock_sync_season):
+    @patch('tracking.tasks.shared.sync_tmdb_metadata_item.delay')
+    def test_zip_import_syncs_season_metadata_for_episode_history(self, mock_sync_metadata_delay):
         TVShow.objects.create(tmdb_id=202, name='Existing Show')
         watched_history = [
             {
@@ -2131,7 +2136,7 @@ class DataImportExportTests(BaseTestCase):
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
         apply_trakt_zip_import(response.data['id'])
 
-        self.assertTrue(mock_sync_season.called)
+        mock_sync_metadata_delay.assert_called_once_with('episode', 202)
 
     def test_zip_import_maps_hidden_progress_to_dropped_show_status(self):
         hidden_progress = [
@@ -2167,9 +2172,8 @@ class DataImportExportTests(BaseTestCase):
             ).exists()
         )
 
-    @patch('tracking.tasks.tmdb.sync_tv_show')
-    @patch('tracking.tasks.tmdb.sync_movie')
-    def test_local_import_syncs_metadata_for_items(self, mock_sync_movie, mock_sync_tv_show):
+    @patch('tracking.tasks.shared.sync_tmdb_metadata_item.delay')
+    def test_local_import_syncs_metadata_for_items(self, mock_sync_metadata_delay):
         payload = {
             'watch_history': [
                 {'media_type': 'movie', 'tmdb_id': 111, 'status': 'watched'},
@@ -2195,12 +2199,14 @@ class DataImportExportTests(BaseTestCase):
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
         apply_arxmedia_json_import(response.data['id'])
 
-        self.assertTrue(mock_sync_movie.called)
-        self.assertTrue(mock_sync_tv_show.called)
+        self.assertEqual(mock_sync_metadata_delay.call_count, 4)
+        self.assertEqual(
+            {call.args for call in mock_sync_metadata_delay.call_args_list},
+            {('movie', 111), ('episode', 222), ('tv', 333), ('movie', 444)},
+        )
 
-    @patch('tracking.tasks.tmdb.sync_tv_show')
-    @patch('tracking.tasks.tmdb.sync_movie')
-    def test_local_import_skips_metadata_fetch_when_already_present(self, mock_sync_movie, mock_sync_tv_show):
+    @patch('tracking.tasks.shared.sync_tmdb_metadata_item.delay')
+    def test_local_import_skips_metadata_fetch_when_already_present(self, mock_sync_metadata_delay):
         Movie.objects.create(tmdb_id=111, title='Existing movie')
         TVShow.objects.create(tmdb_id=333, name='Existing show')
 
@@ -2226,11 +2232,24 @@ class DataImportExportTests(BaseTestCase):
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
         apply_arxmedia_json_import(response.data['id'])
 
-        mock_sync_movie.assert_not_called()
-        mock_sync_tv_show.assert_not_called()
+        mock_sync_metadata_delay.assert_not_called()
 
 
 class SystemTaskTests(TestCase):
+    @patch('tracking.tasks.system.tmdb.sync_movie')
+    def test_sync_tmdb_metadata_item_skips_not_found(self, mock_sync_movie):
+        from media.tmdb import TMDBNotFoundError
+
+        mock_sync_movie.side_effect = TMDBNotFoundError('not found')
+
+        from tracking.tasks.system import sync_tmdb_metadata_item
+
+        result = sync_tmdb_metadata_item('movie', 1507001)
+
+        self.assertEqual(result['status'], 'not_found')
+        self.assertEqual(result['media_type'], 'movie')
+        self.assertEqual(result['tmdb_id'], 1507001)
+
     @patch('tracking.tasks.system.tmdb.sync_tv_show')
     @patch('tracking.tasks.system.tmdb.sync_movie')
     @patch('tracking.tasks.system.tmdb.get_tv_changes')

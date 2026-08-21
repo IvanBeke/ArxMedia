@@ -4,10 +4,10 @@ from typing import Any
 
 from django.utils import timezone
 from media.models import Movie, Season, TVShow
-from media.tmdb import tmdb
 
 from ..choices import DataImportMode, MediaType, TvShowStatus, WatchEntryMediaType
 from ..models import DataTransferJob, Rating, UserTvShowStatus, WatchEntry, Watchlist
+from .system import sync_tmdb_metadata_item
 
 logger = logging.getLogger(__name__)
 
@@ -285,57 +285,33 @@ def _apply_mirror_deletions(job: DataTransferJob, imported_keys: dict, collectio
             Rating.objects.filter(id__in=delete_ids).delete()
 
 
-def _ensure_tv_season_metadata(tmdb_id: int, season_number: int | None, state: dict):
-    if season_number is None:
-        return
-    season_key = (tmdb_id, season_number)
-    if season_key in state['season_checked']:
-        return
-
-    show = TVShow.objects.filter(tmdb_id=tmdb_id).first()
-    if not show:
-        state['metadata_errors'] += 1
-        state['season_checked'].add(season_key)
-        return
-
-    if Season.objects.filter(show=show, season_number=season_number).exists():
-        state['metadata_hits'] += 1
-        state['season_checked'].add(season_key)
-        return
-
-    try:
-        tmdb.sync_season(show, season_number)
-        state['metadata_fetches'] += 1
-    except Exception as exc:
-        state['metadata_errors'] += 1
-        logger.warning('Failed season metadata sync for tv %s season %s: %s', tmdb_id, season_number, exc)
-    state['season_checked'].add(season_key)
-
-
 def _ensure_tmdb_metadata(media_type: str, tmdb_id: int | None) -> bool:
     if not tmdb_id:
         return False
 
     try:
-        if media_type == MediaType.MOVIE:
-            tmdb.sync_movie(int(tmdb_id))
-        elif media_type in (MediaType.TV, WatchEntryMediaType.EPISODE):
-            tmdb.sync_tv_show(int(tmdb_id))
-        else:
+        if media_type not in (MediaType.MOVIE, MediaType.TV, WatchEntryMediaType.EPISODE):
             return False
+
+        sync_tmdb_metadata_item.delay(str(media_type), int(tmdb_id))
         return True
     except Exception as exc:
-        logger.warning('Failed metadata sync for %s %s: %s', media_type, tmdb_id, exc)
+        logger.warning('Failed metadata sync enqueue for %s %s: %s', media_type, tmdb_id, exc)
         return False
 
 
-def _has_tmdb_metadata(media_type: str, tmdb_id: int | None) -> bool:
+def _has_tmdb_metadata(media_type: str, tmdb_id: int | None, season_number: int | None = None) -> bool:
     if not tmdb_id:
         return False
     if media_type == MediaType.MOVIE:
         return Movie.objects.filter(tmdb_id=int(tmdb_id)).exists()
-    if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE):
+    if media_type == MediaType.TV:
         return TVShow.objects.filter(tmdb_id=int(tmdb_id)).exists()
+    if media_type == WatchEntryMediaType.EPISODE:
+        filters: dict[str, int] = {'show__tmdb_id': int(tmdb_id)}
+        if season_number is not None:
+            filters['season_number'] = season_number
+        return Season.objects.filter(**filters).exists()
     return False
 
 
@@ -346,7 +322,7 @@ def _ensure_tmdb_metadata_for_import_item(media_type: str, tmdb_id: int | None, 
     key_media_type = MediaType.TV if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE) else media_type
     key = (key_media_type, tmdb_id)
     if key not in state['metadata_checked']:
-        if _has_tmdb_metadata(media_type, tmdb_id):
+        if _has_tmdb_metadata(media_type, tmdb_id, season_number=season_number):
             state['metadata_hits'] += 1
         else:
             if _ensure_tmdb_metadata(media_type, tmdb_id):
@@ -354,6 +330,3 @@ def _ensure_tmdb_metadata_for_import_item(media_type: str, tmdb_id: int | None, 
             else:
                 state['metadata_errors'] += 1
         state['metadata_checked'].add(key)
-
-    if media_type == WatchEntryMediaType.EPISODE:
-        _ensure_tv_season_metadata(tmdb_id, season_number, state)

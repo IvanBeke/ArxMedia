@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 import redis
 import requests
@@ -11,10 +12,15 @@ from .models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
 logger = logging.getLogger(__name__)
 
 
+class TMDBNotFoundError(Exception):
+    pass
+
+
 class TMDBService:
     BASE_URL = getattr(settings, 'TMDB_BASE_URL', 'https://api.themoviedb.org/3')
     API_KEY = getattr(settings, 'TMDB_API_KEY', '')
     CACHE_TTL = 604800  # 7 days
+    REQUEST_RETRIES = 5
 
     def __init__(self):
         self._redis = None
@@ -25,6 +31,16 @@ class TMDBService:
             if url:
                 self._redis = redis.from_url(url, decode_responses=True)
         return self._redis
+
+    def _should_retry_request(self, exc, endpoint: str) -> bool:
+        if not isinstance(exc, requests.HTTPError):
+            return True
+
+        response = exc.response
+        status_code = response.status_code if response is not None else None
+        if status_code == 404:
+            raise TMDBNotFoundError(f'TMDB resource not found for endpoint {endpoint}') from exc
+        return status_code is None or status_code == 429 or status_code >= 500
 
     def _get(self, endpoint, params=None, *, use_cache=True):
         if params is None:
@@ -39,9 +55,24 @@ class TMDBService:
                 return json.loads(cached)
 
         params['api_key'] = self.API_KEY
-        response = requests.get(f'{self.BASE_URL}{endpoint}', params=params)
-        response.raise_for_status()
-        data = response.json()
+
+        response_data = None
+        for attempt in range(self.REQUEST_RETRIES + 1):
+            try:
+                response = requests.get(f'{self.BASE_URL}{endpoint}', params=params)
+                response.raise_for_status()
+                response_data = response.json()
+                break
+            except requests.RequestException as exc:
+                should_retry = self._should_retry_request(exc, endpoint)
+                if not should_retry or attempt >= self.REQUEST_RETRIES:
+                    raise
+                time.sleep(min(30, 2**attempt))
+
+        if response_data is None:
+            raise RuntimeError(f'TMDB request failed without response payload for endpoint {endpoint}')
+
+        data = response_data
 
         if r and use_cache:
             try:
@@ -140,7 +171,7 @@ class TMDBService:
             movie.genres.add(genre)
         return movie
 
-    def sync_tv_show(self, tmdb_id, user_id=None):
+    def sync_tv_show(self, tmdb_id, user_id=None, sync_credits: bool = True):
         """Fetch TV show from TMDB and save/update locally, including all seasons and episodes."""
         data = self.get_tv_show(tmdb_id)
         networks = ', '.join([n['name'] for n in data.get('networks', [])])
@@ -180,7 +211,7 @@ class TMDBService:
 
         for season_number in season_numbers:
             try:
-                self.sync_season(show, season_number)
+                self.sync_season(show, season_number, sync_episode_credits=sync_credits)
             except Exception as exc:
                 logger.warning('Failed to sync season %s for tv %s: %s', season_number, tmdb_id, exc)
 
@@ -193,7 +224,7 @@ class TMDBService:
 
         return show
 
-    def sync_season(self, show, season_number):
+    def sync_season(self, show, season_number, sync_episode_credits: bool = True):
         """Fetch a season from TMDB and save/update locally with all episodes."""
         data = self.get_season(show.tmdb_id, season_number)
         season, _ = Season.objects.update_or_create(
@@ -209,9 +240,10 @@ class TMDBService:
             }
         )
         for ep_data in data.get('episodes', []):
-            episode, _ = Episode.objects.update_or_create(
+            episode_number = ep_data['episode_number']
+            Episode.objects.update_or_create(
                 season=season,
-                episode_number=ep_data['episode_number'],
+                episode_number=episode_number,
                 defaults={
                     'tmdb_id': ep_data.get('id', 0),
                     'name': ep_data.get('name', ''),
@@ -225,28 +257,17 @@ class TMDBService:
                 }
             )
 
-            credit_defaults = {}
-            if 'cast' in ep_data:
-                credit_defaults['cast'] = ep_data.get('cast') or []
-            if 'crew' in ep_data:
-                credit_defaults['crew'] = ep_data.get('crew') or []
-            if 'guest_stars' in ep_data:
-                credit_defaults['guest_stars'] = ep_data.get('guest_stars') or []
-            if credit_defaults:
-                EpisodeCredit.objects.update_or_create(
-                    episode=episode,
-                    defaults=credit_defaults,
-                )
-            try:
-                self.sync_episode_credits(show.tmdb_id, season_number, ep_data['episode_number'], show=show)
-            except Exception as exc:
-                logger.warning(
-                    'Failed to sync episode credits for tv %s season %s episode %s: %s',
-                    show.tmdb_id,
-                    season_number,
-                    ep_data['episode_number'],
-                    exc,
-                )
+            if sync_episode_credits:
+                try:
+                    self.sync_episode_credits(show.tmdb_id, season_number, episode_number, show=show)
+                except Exception as exc:
+                    logger.warning(
+                        'Failed to sync episode credits for tv %s season %s episode %s: %s',
+                        show.tmdb_id,
+                        season_number,
+                        episode_number,
+                        exc,
+                    )
         return season
 
     def sync_episode_credits(self, show_id, season_number, episode_number, *, show=None):
