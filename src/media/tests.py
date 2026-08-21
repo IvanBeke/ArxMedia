@@ -612,7 +612,7 @@ class MediaTests(TestCase):
         show = tmdb.sync_tv_show(556, user_id=self.user.id)
 
         self.assertEqual(show.tmdb_id, 556)
-        mock_sync_season.assert_called_once_with(show, 1)
+        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True)
         mock_refresh_statuses.assert_called_once_with(556, current_user_id=self.user.id)
 
     @patch('media.tmdb.tmdb.sync_episode_credits')
