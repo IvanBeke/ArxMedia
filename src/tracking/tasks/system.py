@@ -56,9 +56,9 @@ def refresh_show_status_for_user(tmdb_id: int, user_id: int) -> dict[str, int]:
 def sync_tmdb_metadata_item(media_type: str, tmdb_id: int) -> dict[str, int | str]:
     try:
         if media_type == MediaType.MOVIE:
-            tmdb.sync_movie(int(tmdb_id))
+            tmdb.sync_movie(int(tmdb_id), use_cache=False)
         elif media_type in {MediaType.TV, WatchEntryMediaType.EPISODE}:
-            tmdb.sync_tv_show(int(tmdb_id), sync_credits=False)
+            tmdb.sync_tv_show(int(tmdb_id), sync_credits=False, use_cache=False)
         else:
             return {
                 'status': 'skipped',
@@ -98,7 +98,7 @@ def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict
     movie_failures = 0
     for tmdb_id in local_movie_ids:
         try:
-            tmdb.sync_movie(tmdb_id)
+            tmdb.sync_movie(tmdb_id, use_cache=False)
             movies_synced += 1
         except Exception:
             movie_failures += 1
@@ -111,7 +111,7 @@ def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict
     episode_credit_failures = 0
     for tmdb_id in local_tv_ids:
         try:
-            show = tmdb.sync_tv_show(tmdb_id)
+            show = tmdb.sync_tv_show(tmdb_id, use_cache=False)
             tv_synced += 1
             seasons_synced += show.seasons.count()
         except Exception:
@@ -122,7 +122,7 @@ def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict
             season_number = int(season.season_number)
             for episode_number in season.episodes.values_list('episode_number', flat=True):
                 try:
-                    tmdb.sync_episode_credits(tmdb_id, season_number, int(episode_number), show=show)
+                    tmdb.sync_episode_credits(tmdb_id, season_number, int(episode_number), show=show, use_cache=False)
                     episode_credits_synced += 1
                 except Exception:
                     episode_credit_failures += 1

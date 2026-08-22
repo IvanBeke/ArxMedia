@@ -1,4 +1,5 @@
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -14,7 +15,7 @@ User = get_user_model()
 
 class MediaTests(TestCase):
     @staticmethod
-    def _fake_tmdb_get(endpoint, params=None):
+    def _fake_tmdb_get(endpoint, params=None, **kwargs):
         if endpoint == '/movie/popular':
             return {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
         if endpoint == '/tv/popular':
@@ -530,7 +531,7 @@ class MediaTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['tmdb_id'], 550)
         self.assertIn('metadata_updated_at', response.data)
-        mock_sync_movie.assert_called_once_with(550)
+        mock_sync_movie.assert_called_once_with(550, use_cache=False)
 
     @patch('media.views.tmdb.sync_tv_show')
     def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show):
@@ -542,7 +543,7 @@ class MediaTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['tmdb_id'], 1399)
         self.assertIn('metadata_updated_at', response.data)
-        mock_sync_tv_show.assert_called_once_with(1399, user_id=self.user.id)
+        mock_sync_tv_show.assert_called_once_with(1399, user_id=self.user.id, use_cache=False)
 
     def test_movie_and_tv_detail_include_metadata_updated_at(self):
         Movie.objects.create(tmdb_id=777, title='Movie Detail')
@@ -612,7 +613,7 @@ class MediaTests(TestCase):
         show = tmdb.sync_tv_show(556, user_id=self.user.id)
 
         self.assertEqual(show.tmdb_id, 556)
-        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True)
+        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True, use_cache=True)
         mock_refresh_statuses.assert_called_once_with(556, current_user_id=self.user.id)
 
     @patch('media.tmdb.tmdb.sync_episode_credits')
@@ -638,4 +639,84 @@ class MediaTests(TestCase):
 
         tmdb.sync_season(show, 1)
 
-        mock_sync_episode_credits.assert_called_once_with(4242, 1, 1, show=show)
+        mock_sync_episode_credits.assert_called_once_with(4242, 1, 1, show=show, use_cache=True)
+
+
+class TMDBUseCacheTests(TestCase):
+    def test_get_without_cache_skips_read_and_overwrites_cached_entry(self):
+        payload = {'id': 550, 'title': 'Fresh Movie'}
+        mock_response = MagicMock()
+        mock_response.json.return_value = payload
+
+        redis_mock = MagicMock()
+        redis_mock.get.return_value = json.dumps({'title': 'Stale Movie'})
+
+        with (
+            patch('media.tmdb.requests.get', return_value=mock_response),
+            patch.object(tmdb, '_get_redis', return_value=redis_mock),
+        ):
+            result = tmdb._get('/movie/550', {'append_to_response': 'credits,videos'}, use_cache=False)
+
+        self.assertEqual(result, payload)
+        redis_mock.get.assert_not_called()
+
+        expected_key = 'tmdb:/movie/550:' + json.dumps({'append_to_response': 'credits,videos'}, sort_keys=True)
+        redis_mock.set.assert_called_once_with(expected_key, json.dumps(payload), ex=tmdb.CACHE_TTL)
+
+    def test_get_with_cache_returns_cached_payload_without_network_call(self):
+        cached_payload = {'id': 550, 'title': 'Cached Movie'}
+
+        redis_mock = MagicMock()
+        redis_mock.get.return_value = json.dumps(cached_payload)
+
+        with (
+            patch('media.tmdb.requests.get') as mock_requests_get,
+            patch.object(tmdb, '_get_redis', return_value=redis_mock),
+        ):
+            result = tmdb._get('/movie/550', {'append_to_response': 'credits,videos'}, use_cache=True)
+
+        self.assertEqual(result, cached_payload)
+        mock_requests_get.assert_not_called()
+        redis_mock.set.assert_not_called()
+
+    @patch('tracking.status_sync.refresh_all_statuses_for_show')
+    @patch('media.tmdb.tmdb.sync_season')
+    @patch('media.tmdb.tmdb.get_tv_show')
+    def test_sync_tv_show_propagates_use_cache_false(self, mock_get_tv_show, mock_sync_season, mock_refresh_statuses):
+        mock_get_tv_show.return_value = {
+            'id': 557,
+            'name': 'No Cache Show',
+            'overview': 'cache bypass test',
+            'first_air_date': '2020-01-01',
+            'number_of_seasons': 1,
+            'number_of_episodes': 4,
+            'vote_average': 6.5,
+            'vote_count': 20,
+            'original_language': 'en',
+            'status': 'Returning Series',
+            'networks': [],
+            'episode_run_time': [40],
+            'genres': [],
+            'seasons': [{'season_number': 1}],
+        }
+
+        show = tmdb.sync_tv_show(557, use_cache=False)
+
+        self.assertEqual(show.tmdb_id, 557)
+        mock_get_tv_show.assert_called_once_with(557, use_cache=False)
+        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True, use_cache=False)
+
+    @patch('media.tmdb.tmdb.get_movie')
+    def test_sync_movie_propagates_use_cache_false(self, mock_get_movie):
+        mock_get_movie.return_value = {
+            'id': 551,
+            'title': 'No Cache Movie',
+            'overview': 'cache bypass test',
+            'release_date': '2020-01-01',
+            'genres': [],
+        }
+
+        movie = tmdb.sync_movie(551, use_cache=False)
+
+        self.assertEqual(movie.tmdb_id, 551)
+        mock_get_movie.assert_called_once_with(551, use_cache=False)

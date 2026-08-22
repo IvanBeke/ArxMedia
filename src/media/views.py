@@ -363,7 +363,7 @@ def tv_detail(request, tmdb_id):
 @permission_classes([permissions.IsAuthenticated])
 def refresh_movie_metadata(request, tmdb_id):
     try:
-        movie = tmdb.sync_movie(tmdb_id)
+        movie = tmdb.sync_movie(tmdb_id, use_cache=False)
     except Exception:
         logger.warning('Failed to refresh movie %s from TMDB', tmdb_id, exc_info=True)
         return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
@@ -375,7 +375,7 @@ def refresh_movie_metadata(request, tmdb_id):
 @permission_classes([permissions.IsAuthenticated])
 def refresh_tv_metadata(request, tmdb_id):
     try:
-        show = tmdb.sync_tv_show(tmdb_id, user_id=request.user.id)
+        show = tmdb.sync_tv_show(tmdb_id, user_id=request.user.id, use_cache=False)
     except Exception:
         logger.warning('Failed to refresh TV show %s from TMDB', tmdb_id, exc_info=True)
         return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)

@@ -2310,8 +2310,8 @@ class SystemTaskTests(TestCase):
         self.assertEqual(result['episode_credits_synced'], 0)
         self.assertEqual(result['episode_credit_failures'], 0)
 
-        mock_sync_movie.assert_called_once_with(11)
-        mock_sync_tv_show.assert_called_once_with(22)
+        mock_sync_movie.assert_called_once_with(11, use_cache=False)
+        mock_sync_tv_show.assert_called_once_with(22, use_cache=False)
 
         self.assertEqual(mock_get_movie_changes.call_count, 2)
         self.assertEqual(mock_get_tv_changes.call_count, 1)
@@ -2353,6 +2353,9 @@ class SystemTaskTests(TestCase):
         self.assertEqual(mock_sync_episode_credits.call_count, 2)
         called_triplets = sorted((c.args[0], c.args[1], c.args[2]) for c in mock_sync_episode_credits.call_args_list)
         self.assertEqual(called_triplets, [(3333, 1, 1), (3333, 1, 2)])
+        for call in mock_sync_episode_credits.call_args_list:
+            self.assertIs(call.kwargs['use_cache'], False)
+            self.assertIs(call.kwargs['show'], show)
         mock_sync_movie.assert_not_called()
 
     @patch('tracking.tasks.system.tmdb.sync_movie')
@@ -2376,6 +2379,19 @@ class SystemTaskTests(TestCase):
         self.assertEqual(result['movies_synced'], 1)
         self.assertEqual(result['movie_failures'], 1)
         self.assertEqual(result['tv_synced'], 0)
+
+    @patch('tracking.tasks.system.tmdb.sync_tv_show')
+    @patch('tracking.tasks.system.tmdb.sync_movie')
+    def test_sync_tmdb_metadata_item_bypasses_cache(self, mock_sync_movie, mock_sync_tv_show):
+        from tracking.tasks.system import sync_tmdb_metadata_item
+
+        result_movie = sync_tmdb_metadata_item('movie', 11)
+        result_tv = sync_tmdb_metadata_item('tv', 22)
+
+        self.assertEqual(result_movie['status'], 'ok')
+        self.assertEqual(result_tv['status'], 'ok')
+        mock_sync_movie.assert_called_once_with(11, use_cache=False)
+        mock_sync_tv_show.assert_called_once_with(22, sync_credits=False, use_cache=False)
 
     def test_celery_beat_schedule_has_daily_tmdb_sync(self):
         schedule_config = settings.CELERY_BEAT_SCHEDULE['tracking-sync-tmdb-changed-items-daily']

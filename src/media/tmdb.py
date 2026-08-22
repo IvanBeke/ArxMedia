@@ -74,9 +74,9 @@ class TMDBService:
 
         data = response_data
 
-        if r and use_cache:
+        if r:
             try:
-                r.set(cache_key, json.dumps(data), nx=True, ex=self.CACHE_TTL)
+                r.set(cache_key, json.dumps(data), ex=self.CACHE_TTL)
             except redis.exceptions.ConnectionError as exc:
                 logger.warning('Redis cache set failed for key %s: %s', cache_key, exc)
 
@@ -94,14 +94,14 @@ class TMDBService:
     def find_by_external_id(self, external_id, external_source):
         return self._get(f'/find/{external_id}', {'external_source': external_source})
 
-    def get_movie(self, tmdb_id):
-        return self._get(f'/movie/{tmdb_id}', {'append_to_response': 'credits,videos'})
+    def get_movie(self, tmdb_id, *, use_cache=True):
+        return self._get(f'/movie/{tmdb_id}', {'append_to_response': 'credits,videos'}, use_cache=use_cache)
 
     def get_movie_credits(self, tmdb_id):
         return self._get(f'/movie/{tmdb_id}/credits')
 
-    def get_tv_show(self, tmdb_id):
-        return self._get(f'/tv/{tmdb_id}', {'append_to_response': 'credits,videos'})
+    def get_tv_show(self, tmdb_id, *, use_cache=True):
+        return self._get(f'/tv/{tmdb_id}', {'append_to_response': 'credits,videos'}, use_cache=use_cache)
 
     def get_tv_aggregate_credits(self, tmdb_id):
         return self._get(f'/tv/{tmdb_id}/aggregate_credits')
@@ -112,11 +112,14 @@ class TMDBService:
     def get_tv_watch_providers(self, tmdb_id):
         return self._get(f'/tv/{tmdb_id}/watch/providers')
 
-    def get_season(self, show_id, season_number):
-        return self._get(f'/tv/{show_id}/season/{season_number}', {'append_to_response': 'credits'})
+    def get_season(self, show_id, season_number, *, use_cache=True):
+        return self._get(f'/tv/{show_id}/season/{season_number}', {'append_to_response': 'credits'}, use_cache=use_cache)
 
-    def get_episode_credits(self, show_id, season_number, episode_number):
-        return self._get(f'/tv/{show_id}/season/{season_number}/episode/{episode_number}/credits')
+    def get_episode_credits(self, show_id, season_number, episode_number, *, use_cache=True):
+        return self._get(
+            f'/tv/{show_id}/season/{season_number}/episode/{episode_number}/credits',
+            use_cache=use_cache,
+        )
 
     def get_trending(self, media_type='all', time_window='week'):
         return self._get(f'/trending/{media_type}/{time_window}')
@@ -147,9 +150,9 @@ class TMDBService:
             use_cache=use_cache,
         )
 
-    def sync_movie(self, tmdb_id):
+    def sync_movie(self, tmdb_id, *, use_cache=True):
         """Fetch movie from TMDB and save/update locally."""
-        data = self.get_movie(tmdb_id)
+        data = self.get_movie(tmdb_id, use_cache=use_cache)
         movie, _ = Movie.objects.update_or_create(
             tmdb_id=tmdb_id,
             defaults={
@@ -171,9 +174,9 @@ class TMDBService:
             movie.genres.add(genre)
         return movie
 
-    def sync_tv_show(self, tmdb_id, user_id=None, sync_credits: bool = True):
+    def sync_tv_show(self, tmdb_id, user_id=None, sync_credits: bool = True, *, use_cache: bool = True):
         """Fetch TV show from TMDB and save/update locally, including all seasons and episodes."""
-        data = self.get_tv_show(tmdb_id)
+        data = self.get_tv_show(tmdb_id, use_cache=use_cache)
         networks = ', '.join([n['name'] for n in data.get('networks', [])])
         runtimes = data.get('episode_run_time') or []
         episode_runtime = next((int(runtime) for runtime in runtimes if isinstance(runtime, int) and runtime > 0), None)
@@ -211,7 +214,7 @@ class TMDBService:
 
         for season_number in season_numbers:
             try:
-                self.sync_season(show, season_number, sync_episode_credits=sync_credits)
+                self.sync_season(show, season_number, sync_episode_credits=sync_credits, use_cache=use_cache)
             except Exception as exc:
                 logger.warning('Failed to sync season %s for tv %s: %s', season_number, tmdb_id, exc)
 
@@ -224,9 +227,9 @@ class TMDBService:
 
         return show
 
-    def sync_season(self, show, season_number, sync_episode_credits: bool = True):
+    def sync_season(self, show, season_number, sync_episode_credits: bool = True, *, use_cache: bool = True):
         """Fetch a season from TMDB and save/update locally with all episodes."""
-        data = self.get_season(show.tmdb_id, season_number)
+        data = self.get_season(show.tmdb_id, season_number, use_cache=use_cache)
         season, _ = Season.objects.update_or_create(
             show=show,
             season_number=season_number,
@@ -259,7 +262,13 @@ class TMDBService:
 
             if sync_episode_credits:
                 try:
-                    self.sync_episode_credits(show.tmdb_id, season_number, episode_number, show=show)
+                    self.sync_episode_credits(
+                        show.tmdb_id,
+                        season_number,
+                        episode_number,
+                        show=show,
+                        use_cache=use_cache,
+                    )
                 except Exception as exc:
                     logger.warning(
                         'Failed to sync episode credits for tv %s season %s episode %s: %s',
@@ -270,20 +279,20 @@ class TMDBService:
                     )
         return season
 
-    def sync_episode_credits(self, show_id, season_number, episode_number, *, show=None):
+    def sync_episode_credits(self, show_id, season_number, episode_number, *, show=None, use_cache: bool = True):
         if show is None:
-            show = TVShow.objects.filter(tmdb_id=show_id).first() or self.sync_tv_show(show_id)
+            show = TVShow.objects.filter(tmdb_id=show_id).first() or self.sync_tv_show(show_id, use_cache=use_cache)
 
         season = show.seasons.filter(season_number=season_number).first()
         if season is None:
-            season = self.sync_season(show, season_number)
+            season = self.sync_season(show, season_number, use_cache=use_cache)
 
         episode = season.episodes.filter(episode_number=episode_number).first()
         if episode is None:
-            season = self.sync_season(show, season_number)
+            season = self.sync_season(show, season_number, use_cache=use_cache)
             episode = season.episodes.get(episode_number=episode_number)
 
-        credits = self.get_episode_credits(show_id, season_number, episode_number)
+        credits = self.get_episode_credits(show_id, season_number, episode_number, use_cache=use_cache)
         episode_credit, _ = EpisodeCredit.objects.update_or_create(
             episode=episode,
             defaults={
