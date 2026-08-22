@@ -1,5 +1,7 @@
 from datetime import datetime
+from functools import partial
 
+from django.db import transaction
 from django.db.models import Count, DateTimeField, Max, Min
 from django.db.models.functions import Coalesce
 from media.models import Episode, TVShow
@@ -126,4 +128,4 @@ def refresh_all_statuses_for_show(tmdb_id: int, current_user_id: int | None = No
         from .tasks.system import refresh_show_status_for_user
 
         for user_id in remaining_user_ids:
-            refresh_show_status_for_user.delay(tmdb_id, user_id)
+            transaction.on_commit(partial(refresh_show_status_for_user.delay, tmdb_id, user_id))

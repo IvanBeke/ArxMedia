@@ -1,11 +1,12 @@
 import logging
 
-from django.db import models
+from django.db import models, transaction
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
+from tracking.tasks import sync_show_episode_credits
 
 from .models import EpisodeCredit, Movie, TVShow
 from .serializers import MovieSerializer, SeasonBriefSerializer, SeasonSerializer, TVShowSerializer
@@ -375,10 +376,23 @@ def refresh_movie_metadata(request, tmdb_id):
 @permission_classes([permissions.IsAuthenticated])
 def refresh_tv_metadata(request, tmdb_id):
     try:
-        show = tmdb.sync_tv_show(tmdb_id, user_id=request.user.id, use_cache=False)
+        show = tmdb.sync_tv_show(
+            tmdb_id,
+            user_id=request.user.id,
+            sync_credits=False,
+            use_cache=False,
+        )
     except Exception:
         logger.warning('Failed to refresh TV show %s from TMDB', tmdb_id, exc_info=True)
         return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
+
+    def _queue_episode_credits_sync(show_id: int) -> None:
+        try:
+            sync_show_episode_credits.delay(show_id)
+        except Exception:
+            logger.warning('Failed to queue episode credits sync for tv %s', show_id, exc_info=True)
+
+    transaction.on_commit(lambda: _queue_episode_credits_sync(tmdb_id))
 
     show.refresh_from_db()
     return Response(_serialize_tv_show_detail(show))

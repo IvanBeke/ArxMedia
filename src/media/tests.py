@@ -533,17 +533,25 @@ class MediaTests(TestCase):
         self.assertIn('metadata_updated_at', response.data)
         mock_sync_movie.assert_called_once_with(550, use_cache=False)
 
+    @patch('media.views.sync_show_episode_credits')
     @patch('media.views.tmdb.sync_tv_show')
-    def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show):
+    def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show, mock_sync_credits_task):
         show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones', number_of_seasons=2, number_of_episodes=10)
         show.seasons.create(tmdb_id=139900, season_number=0, name='Specials')
         mock_sync_tv_show.return_value = show
 
-        response = self.client.post('/api/media/tv/1399/refresh/', {}, format='json')
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post('/api/media/tv/1399/refresh/', {}, format='json')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['tmdb_id'], 1399)
         self.assertIn('metadata_updated_at', response.data)
-        mock_sync_tv_show.assert_called_once_with(1399, user_id=self.user.id, use_cache=False)
+        mock_sync_tv_show.assert_called_once_with(
+            1399,
+            user_id=self.user.id,
+            sync_credits=False,
+            use_cache=False,
+        )
+        mock_sync_credits_task.delay.assert_called_once_with(1399)
 
     def test_movie_and_tv_detail_include_metadata_updated_at(self):
         Movie.objects.create(tmdb_id=777, title='Movie Detail')

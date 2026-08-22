@@ -14,11 +14,13 @@ if _db_url:
             conn_max_age=600,
         )
     }
+    DATABASES['default']['ATOMIC_REQUESTS'] = True
 else:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': str(BASE_DIR / 'db.sqlite3'),
             'CONN_MAX_AGE': 600,
+            'ATOMIC_REQUESTS': True,
         }
     }

@@ -2,7 +2,7 @@ import logging
 from datetime import date, timedelta
 
 from accounts.privacy import can_view_account_content, get_viewer_relationship
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import (
     Avg,
     Case,
@@ -1907,15 +1907,15 @@ class DataImportView(generics.CreateAPIView):
         if source == 'trakt':
             from .tasks import prepare_trakt_zip_import
 
-            prepare_trakt_zip_import.delay(job.id)
+            transaction.on_commit(lambda job_id=job.id: prepare_trakt_zip_import.delay(job_id))
         elif source == 'yamtrack':
             from .tasks import prepare_yamtrack_csv_import
 
-            prepare_yamtrack_csv_import.delay(job.id)
+            transaction.on_commit(lambda job_id=job.id: prepare_yamtrack_csv_import.delay(job_id))
         elif source == 'arxmedia':
             from .tasks import prepare_arxmedia_json_import
 
-            prepare_arxmedia_json_import.delay(job.id)
+            transaction.on_commit(lambda job_id=job.id: prepare_arxmedia_json_import.delay(job_id))
         else:
             _raise_import_error(ImportErrorCode.IMPORT_SOURCE_UNSUPPORTED, 'Unsupported import source configuration.')
         return Response(DataTransferJobSerializer(job, context={'request': request}).data, status=status.HTTP_201_CREATED)
@@ -1935,7 +1935,7 @@ class DataExportView(generics.CreateAPIView):
             status=DataTransferStatus.PENDING,
         )
         from .tasks import export_user_data
-        export_user_data.delay(job.id)
+        transaction.on_commit(lambda job_id=job.id: export_user_data.delay(job_id))
         return Response(DataTransferJobSerializer(job, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
@@ -1973,15 +1973,15 @@ class DataJobConfirmView(generics.GenericAPIView):
         if job.source == 'trakt':
             from .tasks import apply_trakt_zip_import
 
-            apply_trakt_zip_import.delay(job.id)
+            transaction.on_commit(lambda job_id=job.id: apply_trakt_zip_import.delay(job_id))
         elif job.source == 'yamtrack':
             from .tasks import apply_yamtrack_csv_import
 
-            apply_yamtrack_csv_import.delay(job.id)
+            transaction.on_commit(lambda job_id=job.id: apply_yamtrack_csv_import.delay(job_id))
         elif job.source == 'arxmedia':
             from .tasks import apply_arxmedia_json_import
 
-            apply_arxmedia_json_import.delay(job.id)
+            transaction.on_commit(lambda job_id=job.id: apply_arxmedia_json_import.delay(job_id))
         else:
             _raise_import_error(ImportErrorCode.IMPORT_SOURCE_UNSUPPORTED, 'Unsupported import source configuration.')
         serializer = self.get_serializer(job, context={'request': request})

@@ -689,7 +689,8 @@ class RefreshAllShowStatusesTests(BaseTestCase):
         )
         UserMediaStatus.objects.create(user=self.user2, media_type='tv', tmdb_id=7770, status='watching')
 
-        refresh_all_statuses_for_show(7770, current_user_id=self.user.id)
+        with self.captureOnCommitCallbacks(execute=True):
+            refresh_all_statuses_for_show(7770, current_user_id=self.user.id)
 
         mock_refresh_show_status.assert_called_once_with(self.user.id, 7770)
         mock_delay.assert_called_once_with(7770, self.user2.id)
@@ -706,7 +707,8 @@ class RefreshAllShowStatusesTests(BaseTestCase):
         )
         UserMediaStatus.objects.create(user=self.user2, media_type='tv', tmdb_id=7771, status='watching')
 
-        refresh_all_statuses_for_show(7771)
+        with self.captureOnCommitCallbacks(execute=True):
+            refresh_all_statuses_for_show(7771)
 
         mock_refresh_show_status.assert_not_called()
         self.assertEqual(mock_delay.call_count, 2)
@@ -720,7 +722,8 @@ class RefreshAllShowStatusesTests(BaseTestCase):
     def test_watchlist_only_users_are_not_refreshed(self, mock_refresh_show_status, mock_delay):
         UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=7772, status='plan_to_watch', status_changed_at=timezone.now())
 
-        refresh_all_statuses_for_show(7772, current_user_id=self.user.id)
+        with self.captureOnCommitCallbacks(execute=True):
+            refresh_all_statuses_for_show(7772, current_user_id=self.user.id)
 
         mock_refresh_show_status.assert_called_once_with(self.user.id, 7772)
         mock_delay.assert_not_called()
@@ -1843,11 +1846,12 @@ class DataImportExportTests(BaseTestCase):
             source='trakt',
             metadata={'total_items': 3, 'summary': {'watch_history': 1, 'watchlist': 1, 'ratings': 1}},
         )
-        response = self.client.post(
-            f'/api/tracking/data/jobs/{job.id}/confirm/',
-            {'import_mode': 'mirror_imported_set'},
-            format='json',
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                f'/api/tracking/data/jobs/{job.id}/confirm/',
+                {'import_mode': 'mirror_imported_set'},
+                format='json',
+            )
         self.assertEqual(response.status_code, 202)
         job.refresh_from_db()
         self.assertEqual(job.status, 'processing')
@@ -1868,11 +1872,12 @@ class DataImportExportTests(BaseTestCase):
                 'summary': {'watch_history': 1, 'watchlist': 0, 'ratings': 1},
             },
         )
-        response = self.client.post(
-            f'/api/tracking/data/jobs/{job.id}/confirm/',
-            {'import_mode': 'update_existing'},
-            format='json',
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                f'/api/tracking/data/jobs/{job.id}/confirm/',
+                {'import_mode': 'update_existing'},
+                format='json',
+            )
         self.assertEqual(response.status_code, 202)
         job.refresh_from_db()
         self.assertEqual(job.status, 'processing')
@@ -2392,6 +2397,37 @@ class SystemTaskTests(TestCase):
         self.assertEqual(result_tv['status'], 'ok')
         mock_sync_movie.assert_called_once_with(11, use_cache=False)
         mock_sync_tv_show.assert_called_once_with(22, sync_credits=False, use_cache=False)
+
+    @patch('tracking.tasks.system.tmdb.sync_episode_credits')
+    def test_sync_show_episode_credits_syncs_all_local_episodes(self, mock_sync_credits):
+        from tracking.tasks.system import sync_show_episode_credits
+
+        show = TVShow.objects.create(tmdb_id=4444, name='Credits Task Show', number_of_seasons=1)
+        season = Season.objects.create(show=show, tmdb_id=44441, season_number=1, name='Season 1')
+        season.episodes.create(tmdb_id=444411, episode_number=1, name='Episode 1')
+        season.episodes.create(tmdb_id=444412, episode_number=2, name='Episode 2')
+
+        mock_sync_credits.side_effect = [Exception('boom'), None]
+
+        result = sync_show_episode_credits(4444)
+
+        self.assertEqual(result['status'], 'ok')
+        self.assertEqual(result['episode_credits_synced'], 1)
+        self.assertEqual(result['episode_credit_failures'], 1)
+        called_triplets = sorted((c.args[0], c.args[1], c.args[2]) for c in mock_sync_credits.call_args_list)
+        self.assertEqual(called_triplets, [(4444, 1, 1), (4444, 1, 2)])
+        for call in mock_sync_credits.call_args_list:
+            self.assertIs(call.kwargs['use_cache'], False)
+            self.assertEqual(call.kwargs['show'].pk, show.pk)
+
+    @patch('tracking.tasks.system.tmdb.sync_episode_credits')
+    def test_sync_show_episode_credits_skips_missing_show(self, mock_sync_credits):
+        from tracking.tasks.system import sync_show_episode_credits
+
+        result = sync_show_episode_credits(987654)
+
+        self.assertEqual(result['status'], 'missing')
+        mock_sync_credits.assert_not_called()
 
     def test_celery_beat_schedule_has_daily_tmdb_sync(self):
         schedule_config = settings.CELERY_BEAT_SCHEDULE['tracking-sync-tmdb-changed-items-daily']

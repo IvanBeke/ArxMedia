@@ -52,6 +52,32 @@ def refresh_show_status_for_user(tmdb_id: int, user_id: int) -> dict[str, int]:
     }
 
 
+@shared_task(name='tracking.sync_show_episode_credits')
+def sync_show_episode_credits(tmdb_id: int) -> dict[str, int | str]:
+    show = TVShow.objects.filter(tmdb_id=int(tmdb_id)).first()
+    if show is None:
+        logger.info('Skipping episode credits sync; tv %s not found locally.', tmdb_id)
+        return {'status': 'missing', 'tmdb_id': int(tmdb_id)}
+
+    synced = 0
+    failures = 0
+    for season in show.seasons.all():
+        season_number = int(season.season_number)
+        for episode_number in season.episodes.values_list('episode_number', flat=True):
+            try:
+                tmdb.sync_episode_credits(int(tmdb_id), season_number, int(episode_number), show=show, use_cache=False)
+                synced += 1
+            except Exception:
+                failures += 1
+
+    return {
+        'status': 'ok',
+        'tmdb_id': int(tmdb_id),
+        'episode_credits_synced': synced,
+        'episode_credit_failures': failures,
+    }
+
+
 @shared_task(name='tracking.sync_tmdb_metadata_item')
 def sync_tmdb_metadata_item(media_type: str, tmdb_id: int) -> dict[str, int | str]:
     try:

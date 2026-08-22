@@ -9,7 +9,12 @@ from .import_pipeline import (
     prepare_trakt_zip_import,
     prepare_yamtrack_csv_import,
 )
-from .system import heartbeat, refresh_show_status_for_user, sync_tmdb_changed_items
+from .system import (
+    heartbeat,
+    refresh_show_status_for_user,
+    sync_show_episode_credits,
+    sync_tmdb_changed_items,
+)
 
 __all__ = [
     'apply_arxmedia_json_import',
@@ -21,6 +26,7 @@ __all__ = [
     'prepare_trakt_zip_import',
     'prepare_yamtrack_csv_import',
     'refresh_show_status_for_user',
+    'sync_show_episode_credits',
     'sync_tmdb_changed_items',
     'tmdb',
 ]
