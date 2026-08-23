@@ -185,6 +185,15 @@ function getRemoveHistoryConfirmText(entry) {
   return t('remove_history_confirm_movie')
 }
 
+async function refreshTrackingLists() {
+  const [upNextRes, statsRes] = await Promise.all([
+    trackingAPI.getUpNext(),
+    trackingAPI.getStats(),
+  ])
+  upNext.value = upNextRes
+  stats.value = statsRes
+}
+
 async function markNextEpisodeWatched(item) {
   if (!item.next_episode || markingId.value) return
   markingId.value = item.tmdb_id
@@ -194,12 +203,7 @@ async function markNextEpisodeWatched(item) {
       season_number: item.next_episode.season_number,
       episode_number: item.next_episode.episode_number
     })
-    const [upNextRes, statsRes] = await Promise.all([
-      trackingAPI.getUpNext(),
-      trackingAPI.getStats(),
-    ])
-    upNext.value = upNextRes
-    stats.value = statsRes
+    await refreshTrackingLists()
   } catch (e) {
     console.error('Failed to mark episode watched', e)
   } finally {
@@ -213,7 +217,7 @@ async function removeRecentEntry(entry) {
 
   try {
     await trackingAPI.deleteHistory(entry.id)
-    stats.value = await trackingAPI.getStats()
+    await refreshTrackingLists()
   } catch (e) {
     console.error('Failed to delete history entry', e)
   } finally {
