@@ -22,8 +22,8 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'tracking.heartbeat',
         'schedule': 60.0,
     },
-    'tracking-sync-tmdb-changed-items-daily': {
+    'tracking-sync-tmdb-changed-items': {
         'task': 'tracking.sync_tmdb_changed_items',
-        'schedule': crontab(hour=4, minute=0),
+        'schedule': crontab(hour='*/6', minute=0),
     },
 }

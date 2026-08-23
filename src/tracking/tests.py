@@ -2429,12 +2429,12 @@ class SystemTaskTests(TestCase):
         self.assertEqual(result['status'], 'missing')
         mock_sync_credits.assert_not_called()
 
-    def test_celery_beat_schedule_has_daily_tmdb_sync(self):
-        schedule_config = settings.CELERY_BEAT_SCHEDULE['tracking-sync-tmdb-changed-items-daily']
+    def test_celery_beat_schedule_runs_tmdb_sync_every_six_hours(self):
+        schedule_config = settings.CELERY_BEAT_SCHEDULE['tracking-sync-tmdb-changed-items']
 
         self.assertEqual(schedule_config['task'], 'tracking.sync_tmdb_changed_items')
         self.assertIsInstance(schedule_config['schedule'], crontab)
-        self.assertIn(schedule_config['schedule']._orig_hour, (4, '4'))
+        self.assertEqual(schedule_config['schedule']._orig_hour, '*/6')
         self.assertIn(schedule_config['schedule']._orig_minute, (0, '0'))
 
 
