@@ -2,12 +2,13 @@ import { computed, unref } from 'vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { formatDateByLocale } from '@/i18n'
 import { temporalYear } from '@/utils/temporal'
+import { tmdbImageUrl } from '@/utils/images'
 
 function resolvePosterUrl(item) {
   const path = item?.poster_url || item?.poster_path
   if (!path) return null
   if (String(path).startsWith('http')) return path
-  return `https://image.tmdb.org/t/p/w342${path}`
+  return tmdbImageUrl(path, 'w342')
 }
 
 function normalizeStatus(status, watched) {

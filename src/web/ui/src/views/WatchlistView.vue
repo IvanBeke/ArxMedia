@@ -68,6 +68,7 @@ import MediaCard from '@/components/MediaCard.vue'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { useI18n } from '@/i18n'
+import { useFlashMessages } from '@/composables/useFlashMessages'
 
 const items = ref([])
 const loading = ref(true)
@@ -89,17 +90,10 @@ const currentPage = ref(1)
 const totalPages = ref(1)
 const count = ref(0)
 const pageSize = ref(20)
-const quickActionError = ref('')
+const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
-
-function showQuickActionError(message) {
-  quickActionError.value = message
-  setTimeout(() => {
-    quickActionError.value = ''
-  }, 3500)
-}
 
 function handleWatchlistRemoved(payload) {
   const itemId = payload?.tmdb_id || payload?.id

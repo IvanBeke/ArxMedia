@@ -27,6 +27,7 @@
 import { computed } from 'vue'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { temporalYear } from '@/utils/temporal'
+import { tmdbImageUrl } from '@/utils/images'
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -53,6 +54,6 @@ const posterUrl = computed(() => {
   const path = props.item?.poster_path || props.item?.poster_url
   if (!path) return null
   if (path.startsWith('http')) return path
-  return `https://image.tmdb.org/t/p/w185${path}`
+  return tmdbImageUrl(path, 'w185')
 })
 </script>

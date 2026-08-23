@@ -125,6 +125,7 @@ import { authAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useI18n } from '@/i18n'
+import { useFlashMessages } from '@/composables/useFlashMessages'
 import { ACCOUNT_VISIBILITY } from '@/constants/tracking'
 
 const router = useRouter()
@@ -135,7 +136,7 @@ const user = ref(null)
 const loading = ref(true)
 const saving = ref(false)
 const changingPassword = ref(false)
-const successMsg = ref('')
+const { successMsg, showSuccess } = useFlashMessages({ successDurationMs: 3000 })
 const errorMsg = ref('')
 const selectedLocale = ref(prefs.locale)
 
@@ -191,8 +192,7 @@ async function saveProfile() {
       user.value = data
       auth.user = data
       form.value.preferred_region = data.preferred_region || form.value.preferred_region
-      successMsg.value = 'Profile updated successfully!'
-      setTimeout(() => successMsg.value = '', 3000)
+      showSuccess('Profile updated successfully!')
     }
   } catch (error) {
     errorMsg.value = error.detail || 'Failed to update profile'
@@ -206,8 +206,7 @@ async function updateAccountVisibility() {
     const data = await authAPI.updateProfile({ account_visibility: form.value.account_visibility })
     user.value.account_visibility = data.account_visibility
     auth.user.account_visibility = data.account_visibility
-    successMsg.value = `Account visibility set to ${data.account_visibility.replace('_', ' ')}`
-    setTimeout(() => successMsg.value = '', 3000)
+    showSuccess(`Account visibility set to ${data.account_visibility.replace('_', ' ')}`)
   } catch (error) {
     console.error('Failed to update privacy:', error)
   }
@@ -243,13 +242,12 @@ async function changePassword() {
       current_password: passwordForm.value.currentPassword,
       new_password: passwordForm.value.newPassword
     })
-    successMsg.value = 'Password updated successfully!'
+    showSuccess('Password updated successfully!')
     passwordForm.value = {
       currentPassword: '',
       newPassword: '',
       confirmPassword: ''
     }
-    setTimeout(() => successMsg.value = '', 3000)
   } catch (error) {
     if (error?.current_password?.length) {
       errorMsg.value = error.current_password[0]

@@ -8,25 +8,16 @@
       @cancel="handleDatePickerCancel"
     />
 
-    <dialog
+    <ConfirmDialog
       ref="removeHistoryDialog"
-      closedby="any"
-      class="app-dialog tv-detail-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
-      aria-labelledby="tv-remove-history-title"
-      @close="onRemoveHistoryDialogClose"
-      @click="onDialogClick($event, removeHistoryDialog)"
-    >
-      <div class="p-6">
-        <h2 id="tv-remove-history-title" class="text-lg font-display text-primary font-semibold">Remove from watched history?</h2>
-        <p class="mt-2 text-sm text-muted">This will remove all watched episodes for this show from your history. Ratings and list membership are not changed.</p>
-        <div class="mt-5 flex gap-3">
-          <button type="button" class="btn-ghost flex-1" @click="closeRemoveHistoryDialog">Keep history</button>
-          <button type="button" class="btn-ghost flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" :disabled="removingHistory" @click="confirmRemoveWatchedEpisodes">
-            {{ removingHistory ? 'Removing...' : 'Remove' }}
-          </button>
-        </div>
-      </div>
-    </dialog>
+      title="Remove from watched history?"
+      message="This will remove all watched episodes for this show from your history. Ratings and list membership are not changed."
+      confirm-label="Remove"
+      cancel-label="Keep history"
+      loading-label="Removing..."
+      :loading="removingHistory"
+      @confirm="confirmRemoveWatchedEpisodes"
+    />
 
     <div class="relative h-72 md:h-[28rem]">
       <img v-if="show?.backdrop_url" :src="show.backdrop_url" class="w-full h-full object-cover" />
@@ -105,7 +96,7 @@
                   :key="`provider-${p.provider_id}`"
                   class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary"
                 >
-                  <img v-if="p.logo_path" :src="imgUrl(p.logo_path, 'w92')" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
+                  <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92')" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
                   {{ p.provider_name }}
                 </div>
                 <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
@@ -247,8 +238,9 @@
                   :tmdb-id="tmdbId"
                   :season-number="season.season_number"
                   :is-episode-watched="(episodeNumber) => isWatched(season.season_number, episodeNumber)"
-                  :get-episode-watched-at="(episodeNumber) => getEpisodeWatchedAt(season.season_number, episodeNumber)"
+                  :get-episode-watched-at="(episodeNumber) => watchedAt(season.season_number, episodeNumber)"
                   @watch-option="(payload) => handleEpisodeWatchOption(season.season_number, payload)"
+                  @unwatch="(payload) => openEpisodeUnwatchConfirm(season.season_number, payload)"
                 />
 
                 <div v-else class="p-4 text-center text-muted text-sm">No episodes available for this season.</div>
@@ -282,14 +274,20 @@ import AddToListPopover from '@/components/AddToListPopover.vue'
 import SpoilerBlock from '@/components/SpoilerBlock.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
-import { formatDateByLocale, formatDateTimeByLocale, useI18n } from '@/i18n'
+import { useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
+import { tmdbImageUrl } from '@/utils/images'
+import { canRateByStatus, formatUpdatedAtLabel } from '@/utils/mediaStatus'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
-import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
-import { nowInstantIso, plainDateToUserInstantIso, temporalYear } from '@/utils/temporal'
+import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
+import { useFlashMessages } from '@/composables/useFlashMessages'
+import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
+import { temporalYear } from '@/utils/temporal'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -301,30 +299,44 @@ const loading = ref(true)
 const loadingSeasons = ref(false)
 const userRating = ref(0)
 const showStatus = ref(WATCH_ENTRY_STATUS.NONE)
-const successMsg = ref('')
-const errorMsg = ref('')
-const metadataSuccessMsg = ref('')
-const metadataErrorMsg = ref('')
+const metadataFlash = useFlashMessages()
+const {
+  successMsg: metadataSuccessMsg,
+  errorMsg: metadataErrorMsg,
+  showSuccess: showMetadataSuccess,
+  showError: showMetadataError,
+} = metadataFlash
+const { successMsg, errorMsg, showSuccess, showError } = useFlashMessages()
 const refreshingMetadata = ref(false)
 const removeHistoryDialog = ref(null)
 const removingHistory = ref(false)
+const unwatchEpisodeDialog = ref(null)
 
 const activeTab = ref('seasons')
 const expandedSeason = ref(null)
 const seasonEpisodes = ref({})
 const seasonLoading = ref(null)
-const watchedEps = ref(new Set())
-const watchedAtMap = ref(new Map())
 const hasWatchedEpisodes = computed(() => watchedEps.value.size > 0)
+const {
+  handleQuickAction: runQuickAction,
+  handleRemoveWatched: runRemoveWatched,
+} = useMediaCardQuickActions({ onError: showError })
 const {
   showDatePicker,
   pickerInitialValue,
-  pickWatchedDateTime,
-  handleQuickAction: runQuickAction,
-  handleRemoveWatched: runRemoveWatched,
   handleDatePickerConfirm,
   handleDatePickerCancel,
-} = useMediaCardQuickActions({ onError: showError })
+  markFromOption,
+} = useEpisodeWatchActions({ onError: showError })
+const {
+  watchedEps,
+  isWatched,
+  watchedAt,
+  markLocally,
+  unmarkLocally,
+  applyResponse: applyWatchedEpisodes,
+  load: reloadWatchedEpisodes,
+} = useWatchedEpisodes()
 
 const statusMenuOpen = ref(false)
 const statusMenuRef = ref(null)
@@ -337,16 +349,9 @@ const watchButtonLabel = computed(() => {
   return 'Watch'
 })
 
-const metadataUpdatedAtLabel = computed(() => {
-  const value = show.value?.metadata_updated_at
-  if (!value) return 'Unknown'
-  return formatDateTimeByLocale(value, { hour12: false }) || 'Unknown'
-})
+const metadataUpdatedAtLabel = computed(() => formatUpdatedAtLabel(show.value?.metadata_updated_at))
 
-const canRate = computed(() => {
-  const status = show.value?.user_status?.status
-  return status === WATCH_ENTRY_STATUS.WATCHING || status === WATCH_ENTRY_STATUS.WATCHED || status === WATCH_ENTRY_STATUS.DROPPED
-})
+const canRate = computed(() => canRateByStatus(show.value?.user_status?.status))
 
 function syncShowStatusFromUserStatus() {
   const status = show.value?.user_status?.status
@@ -369,105 +374,46 @@ onClickOutside(statusMenuRef, () => {
   statusMenuOpen.value = false
 })
 
-function imgUrl(path, size = 'w185') {
-  return path ? `https://image.tmdb.org/t/p/${size}${path}` : null
-}
-
-function showSuccess(msg) {
-  errorMsg.value = ''
-  successMsg.value = msg
-  setTimeout(() => { successMsg.value = '' }, 2500)
-}
-
-function showMetadataSuccess(msg) {
-  metadataErrorMsg.value = ''
-  metadataSuccessMsg.value = msg
-  setTimeout(() => { metadataSuccessMsg.value = '' }, 2500)
-}
-
-function showMetadataError(msg) {
-  metadataSuccessMsg.value = ''
-  metadataErrorMsg.value = msg
-  setTimeout(() => { metadataErrorMsg.value = '' }, 3500)
-}
-
-function showError(msg) {
-  successMsg.value = ''
-  errorMsg.value = msg
-  setTimeout(() => { errorMsg.value = '' }, 3500)
-}
-
 function toggleStatusMenu() {
   statusMenuOpen.value = !statusMenuOpen.value
-}
-
-function onDialogClick(event, dialogRef) {
-  const dialog = dialogRef?.value
-  closeOnDialogBackdropClick(event, dialog)
 }
 
 function openRemoveHistoryDialog() {
   removeHistoryDialog.value?.showModal()
 }
 
-function closeRemoveHistoryDialog() {
-  if (removeHistoryDialog.value?.open) {
-    removeHistoryDialog.value.close()
-  }
-}
-
-function onRemoveHistoryDialogClose() {
-  removingHistory.value = false
-}
-
-function isWatched(sn, epNum) {
-  return watchedEps.value.has(`${sn}-${epNum}`)
-}
-
-function getEpisodeWatchedAt(sn, epNum) {
-  const key = `${sn}-${epNum}`
-  return watchedAtMap.value.get(key) || ''
-}
-
 async function handleEpisodeWatchOption(sn, payload) {
   const epNum = payload.episodeNumber
-  const option = payload.option
 
-  if (option === 'now') {
-    await markEpisode(sn, epNum)
-    return
-  }
-  if (option === 'release') {
-    let watchedAt = null
-    if (payload.releaseDate) {
-      watchedAt = plainDateToUserInstantIso(payload.releaseDate)
-    }
-    await markEpisode(sn, epNum, watchedAt)
-    return
-  }
-  if (option === 'date') {
-    const watchedAt = await pickWatchedDateTime('')
-    if (watchedAt) {
-      await markEpisode(sn, epNum, watchedAt)
-    }
-  }
+  const finalWatchedAt = await markFromOption(payload.option, {
+    tmdbId: tmdbId.value,
+    seasonNumber: sn,
+    episodeNumber: epNum,
+  }, { releaseDate: payload.releaseDate || '', pickerInitial: watchedAt(sn, epNum) })
+  if (!finalWatchedAt) return
+
+  markLocally(sn, epNum, finalWatchedAt)
+  showSuccess('Episode marked as watched')
+  await refreshShowState(sn)
 }
 
-async function markEpisode(sn, epNum, watchedAt) {
-  const key = `${sn}-${epNum}`
-  if (watchedEps.value.has(key)) {
-    await trackingAPI.unmarkEpisodeWatched({ tmdb_id: tmdbId.value, season_number: sn, episode_number: epNum })
-    watchedEps.value.delete(key)
-    watchedAtMap.value.delete(key)
-    showSuccess('Episode unwatched')
-  } else {
-    await trackingAPI.markEpisodeWatched({ tmdb_id: tmdbId.value, season_number: sn, episode_number: epNum, watched_at: watchedAt })
-    watchedEps.value.add(key)
-    watchedAtMap.value.set(key, watchedAt || nowInstantIso())
-    showSuccess('Episode marked as watched')
-  }
+function openEpisodeUnwatchConfirm(sn, payload) {
+  unwatchEpisodeDialog.value?.open({
+    tmdbId: tmdbId.value,
+    seasonNumber: sn,
+    episodeNumber: payload.episodeNumber,
+  })
+}
+
+async function onEpisodeUnwatched(target) {
+  unmarkLocally(target.seasonNumber, target.episodeNumber)
+  showSuccess('Episode unwatched')
+  await refreshShowState(target.seasonNumber)
+}
+
+async function refreshShowState(sn) {
   delete seasonEpisodes.value[sn]
-  await loadWatchedEpisodes()
+  await reloadWatchedEpisodes(tmdbId.value)
   await loadSeason(sn)
   await loadShow()
 }
@@ -529,26 +475,11 @@ async function toggleSeasonWatched(sn) {
     await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
     showSuccess('Season marked as watched')
   }
-  delete seasonEpisodes.value[sn]
-  await loadWatchedEpisodes()
-  await loadSeason(sn)
-  await loadShow()
+  await refreshShowState(sn)
   const savedExpanded = expandedSeason.value
   expandedSeason.value = null
   await nextTick()
   expandedSeason.value = savedExpanded === sn ? null : savedExpanded
-}
-
-async function loadWatchedEpisodes() {
-  try {
-    const data = await trackingAPI.getWatchedEpisodes(tmdbId.value)
-    if (data?.episodes) {
-      watchedEps.value = new Set(data.episodes.map(e => `${e.season_number}-${e.episode_number}`))
-      watchedAtMap.value = new Map(
-        data.episodes.map(e => [`${e.season_number}-${e.episode_number}`, e.watched_at || ''])
-      )
-    }
-  } catch (err) {}
 }
 
 async function setShowStatus(status) {
@@ -620,10 +551,9 @@ async function confirmRemoveWatchedEpisodes() {
     }
 
     watchedEps.value = new Set()
-    watchedAtMap.value = new Map()
     seasonEpisodes.value = {}
     await loadShow()
-    closeRemoveHistoryDialog()
+    removeHistoryDialog.value?.close()
     showSuccess('Removed watched episodes')
   } finally {
     removingHistory.value = false
@@ -634,7 +564,6 @@ async function handleDropShow() {
   statusMenuOpen.value = false
   await trackingAPI.dropShow({ tmdb_id: tmdbId.value })
   watchedEps.value = new Set()
-  watchedAtMap.value = new Map()
   seasonEpisodes.value = {}
   await loadShow()
   showSuccess('Show dropped')
@@ -701,12 +630,7 @@ onMounted(async () => {
     ])
 
     if (epsRes.status === 'fulfilled' && epsRes.value?.episodes?.length) {
-      watchedEps.value = new Set(
-        epsRes.value.episodes.map(e => `${e.season_number}-${e.episode_number}`)
-      )
-      watchedAtMap.value = new Map(
-        epsRes.value.episodes.map(e => [`${e.season_number}-${e.episode_number}`, e.watched_at || ''])
-      )
+      applyWatchedEpisodes(epsRes.value)
     }
     
     if (ratingRes.status === 'fulfilled') {

@@ -1,5 +1,7 @@
 const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
 
+export const EPOCH_START_ISO = '1970-01-01T00:00:00Z'
+
 function hasTemporal() {
   return typeof globalThis.Temporal !== 'undefined'
 }

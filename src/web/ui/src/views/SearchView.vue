@@ -100,6 +100,7 @@ import UserList from '@/components/UserList.vue'
 import { useAuthStore } from '@/stores/auth'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
+import { useFlashMessages } from '@/composables/useFlashMessages'
 
 const route = useRoute()
 const router = useRouter()
@@ -111,7 +112,7 @@ const trendingTvShows = ref([])
 const loading = ref(false)
 const loadingDefault = ref(true)
 const activeFilter = ref('multi')
-const quickActionError = ref('')
+const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const auth = useAuthStore()
 const { t } = useI18n()
 
@@ -230,13 +231,6 @@ function buildSearchQuery(scope, rawQuery) {
   const scopedValue = scope === SCOPE_VALUE.USERS ? 'users' : mapScopeToFilter(scope)
   const trimmedQuery = String(rawQuery || '').trim()
   return trimmedQuery ? { q: trimmedQuery, scope: scopedValue } : { scope: scopedValue }
-}
-
-function showQuickActionError(message) {
-  quickActionError.value = message
-  setTimeout(() => {
-    quickActionError.value = ''
-  }, 3500)
 }
 
 onMounted(async () => {

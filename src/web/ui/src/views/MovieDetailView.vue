@@ -8,6 +8,8 @@
       @cancel="handleDatePickerCancel"
     />
 
+    <MovieUnwatchDialog ref="unwatchDialog" :on-error="showError" @unwatched="onMovieUnwatched" />
+
     <!-- Backdrop -->
     <div class="relative h-72 md:h-[28rem]">
       <img v-if="movie?.backdrop_url" :src="movie.backdrop_url" class="w-full h-full object-cover" :alt="movie?.title" />
@@ -93,7 +95,7 @@
                   :key="`provider-${p.provider_id}`"
                   class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary"
                 >
-                  <img v-if="p.logo_path" :src="imgUrl(p.logo_path, 'w92')" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
+                  <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92')" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
                   {{ p.provider_name }}
                 </div>
                 <span v-if="!(movie.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
@@ -111,7 +113,22 @@
 
             <!-- Actions -->
             <div v-if="auth.isAuthenticated" class="flex flex-wrap gap-2 mb-4">
+              <button
+                v-if="watchedCount > 0"
+                type="button"
+                class="cursor-pointer p-1 rounded hover:bg-surface-200 text-muted hover:text-brand-400 border-none bg-transparent transition-colors"
+                :title="watchedTooltip"
+                @click="openUnwatchConfirm"
+              >
+                <div class="flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  {{ watchedMessage }}
+                </div>
+              </button>
               <WatchMenu
+                v-else
                 :release-date="movie?.release_date"
                 :button-title="watchedTooltip"
                 @select="handleWatchOption"
@@ -160,7 +177,7 @@
         <p class="text-gray-500 text-xs mb-2">Cast</p>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-sm">
           <div v-for="actor in creditsData.cast" :key="actor.credit_id" class="flex items-center gap-3">
-            <img v-if="actor.profile_path" :src="imgUrl(actor.profile_path, 'w92')" :alt="actor.name" class="w-12 h-12 rounded-md object-cover" />
+            <img v-if="actor.profile_path" :src="tmdbImageUrl(actor.profile_path, 'w92')" :alt="actor.name" class="w-12 h-12 rounded-md object-cover" />
             <div v-else class="w-12 h-12 rounded-md bg-surface-200"></div>
             <div class="min-w-0">
               <p class="text-secondary">{{ actor.name }}</p>
@@ -184,12 +201,17 @@ import AddToListPopover from '@/components/AddToListPopover.vue'
 import SpoilerBlock from '@/components/SpoilerBlock.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
+import MovieUnwatchDialog from '@/components/MovieUnwatchDialog.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
-import { formatDateByLocale, formatDateTimeByLocale, useI18n } from '@/i18n'
+import { formatDateByLocale, useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
+import { useFlashMessages } from '@/composables/useFlashMessages'
+import { tmdbImageUrl } from '@/utils/images'
+import { canRateByStatus, formatUpdatedAtLabel } from '@/utils/mediaStatus'
 import { formatHoursMinutes } from '@/utils/progress'
 import { instantEpochMs, instantFromEpochMs, nowInstantIso, temporalYear } from '@/utils/temporal'
+import { watchedTooltipText } from '@/utils/watchOptions'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -201,16 +223,16 @@ const userRating = ref(0)
 const watchedCount = ref(0)
 const latestWatchedAt = ref('')
 const inWatchlist = ref(false)
-const successMsg = ref('')
-const errorMsg = ref('')
-const metadataSuccessMsg = ref('')
-const metadataErrorMsg = ref('')
+const metadataFlash = useFlashMessages()
+const {
+  successMsg: metadataSuccessMsg,
+  errorMsg: metadataErrorMsg,
+  showSuccess: showMetadataSuccess,
+  showError: showMetadataError,
+} = metadataFlash
+const { successMsg, errorMsg, showSuccess, showError } = useFlashMessages()
+const unwatchDialog = ref(null)
 const refreshingMetadata = ref(false)
-function showError(msg) {
-  successMsg.value = ''
-  errorMsg.value = msg
-  setTimeout(() => { errorMsg.value = '' }, 3500)
-}
 
 const {
   showDatePicker,
@@ -223,19 +245,9 @@ const {
 
 const watchedMessage = computed(() => watchedCount.value > 0 ? `Watched (${watchedCount.value}×)` : 'Mark as Watched')
 
-const watchedTooltip = computed(() => {
-  if (watchedCount.value === 0) return t('tracking_mark_as_watched')
-  if (!latestWatchedAt.value) return t('tracking_watched')
-  const formatted = formatDateTimeByLocale(latestWatchedAt.value)
-  if (!formatted) return t('tracking_watched')
-  return `${t('tracking_watched_on')} ${formatted}`
-})
+const watchedTooltip = computed(() => watchedTooltipText(watchedCount.value > 0, latestWatchedAt.value, t))
 
-const metadataUpdatedAtLabel = computed(() => {
-  const value = movie.value?.metadata_updated_at
-  if (!value) return 'Unknown'
-  return formatDateTimeByLocale(value, { hour12: false }) || 'Unknown'
-})
+const metadataUpdatedAtLabel = computed(() => formatUpdatedAtLabel(movie.value?.metadata_updated_at))
 
 const runtimeLabel = computed(() => {
   const runtime = Number(movie.value?.runtime)
@@ -245,37 +257,45 @@ const runtimeLabel = computed(() => {
   return formatHoursMinutes(runtime)
 })
 
-const canRate = computed(() => {
-  const status = movie.value?.user_status?.status
-  return status === WATCH_ENTRY_STATUS.WATCHED || status === WATCH_ENTRY_STATUS.WATCHING || status === WATCH_ENTRY_STATUS.DROPPED
-})
-
-function imgUrl(path, size = 'w500') {
-  if (!path) return null
-  return `https://image.tmdb.org/t/p/${size}${path}`
-}
+const canRate = computed(() => canRateByStatus(movie.value?.user_status?.status))
 
 function releaseYear(value) {
   if (!value) return ''
   return temporalYear(value) || ''
 }
 
-function showSuccess(msg) {
-  errorMsg.value = ''
-  successMsg.value = msg
-  setTimeout(() => { successMsg.value = '' }, 2500)
+function applyWatchHistory(response) {
+  const entries = response?.results || response || []
+  watchedCount.value = entries.length
+  const watchedDates = entries
+    .map(e => e.watched_at)
+    .filter(Boolean)
+    .map(v => instantEpochMs(v))
+    .filter(v => Number.isFinite(v))
+  if (watchedDates.length) {
+    latestWatchedAt.value = instantFromEpochMs(Math.max(...watchedDates))
+  } else {
+    latestWatchedAt.value = ''
+  }
 }
 
-function showMetadataSuccess(msg) {
-  metadataErrorMsg.value = ''
-  metadataSuccessMsg.value = msg
-  setTimeout(() => { metadataSuccessMsg.value = '' }, 2500)
+async function refreshWatchHistory() {
+  try {
+    const response = await trackingAPI.getHistory({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: route.params.id })
+    applyWatchHistory(response)
+  } catch (e) {
+    console.error('Failed to load watch history:', e)
+  }
 }
 
-function showMetadataError(msg) {
-  metadataSuccessMsg.value = ''
-  metadataErrorMsg.value = msg
-  setTimeout(() => { metadataErrorMsg.value = '' }, 3500)
+function openUnwatchConfirm() {
+  unwatchDialog.value?.open(movie.value)
+}
+
+async function onMovieUnwatched() {
+  await refreshWatchHistory()
+  inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
+  showSuccess('Removed from watched history')
 }
 
 onMounted(async () => {
@@ -296,16 +316,7 @@ onMounted(async () => {
       trackingAPI.getRatings({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: route.params.id })
     ])
     if (histRes.status === 'fulfilled') {
-      const entries = histRes.value.results || histRes.value
-      watchedCount.value = entries.length
-      const watchedDates = entries
-        .map(e => e.watched_at)
-        .filter(Boolean)
-        .map(v => instantEpochMs(v))
-        .filter(v => Number.isFinite(v))
-      if (watchedDates.length) {
-        latestWatchedAt.value = instantFromEpochMs(Math.max(...watchedDates))
-      }
+      applyWatchHistory(histRes.value)
     }
     inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
     if (ratingRes.status === 'fulfilled') {

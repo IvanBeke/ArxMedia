@@ -8,6 +8,8 @@
       @cancel="handleDatePickerCancel"
     />
 
+    <EpisodeUnwatchDialog ref="unwatchDialog" @unwatched="onEpisodeUnwatched" />
+
     <RouterLink :to="backLink" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-6">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
@@ -29,16 +31,25 @@
           variant="plain"
           class="text-brand-500 font-mono text-xl"
         />
+        <button
+          v-if="isWatched"
+          type="button"
+          class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors"
+          :title="watchButtonTooltip"
+          @click="openUnwatchConfirm"
+        >
+          Watched
+        </button>
         <WatchMenu
+          v-else
           :release-date="episodeData?.air_date"
           @select="handleWatchOption"
         >
           <button
-            :class="isWatched ? 'bg-brand-500 text-white' : 'bg-surface-200 text-muted hover:text-primary hover:bg-surface-300'"
-            class="px-3 py-1 rounded-md text-sm font-medium transition-colors"
+            class="bg-surface-200 text-muted hover:text-primary hover:bg-surface-300 px-3 py-1 rounded-md text-sm font-medium transition-colors"
             :title="watchButtonTooltip"
           >
-            {{ isWatched ? 'Watched' : 'Mark watched' }}
+            Mark watched
           </button>
         </WatchMenu>
       </div>
@@ -47,7 +58,7 @@
 
       <div class="flex flex-col md:flex-row gap-6">
         <SpoilerBlock :item-key="`episode-image-${tmdbId}-${seasonNum}-${episodeNum}`" :watched="isWatched" class="w-full md:w-80 aspect-video rounded-lg bg-surface-200 overflow-hidden flex-shrink-0">
-          <img v-if="episodeData.still_path" :src="imgUrl(episodeData.still_path)" :alt="episodeData.name" class="w-full h-full object-cover" />
+          <img v-if="episodeData.still_path" :src="tmdbImageUrl(episodeData.still_path)" :alt="episodeData.name" class="w-full h-full object-cover" />
           <div v-else class="w-full h-full flex items-center justify-center text-gray-600 text-4xl">{{ episodeData.episode_number }}</div>
         </SpoilerBlock>
 
@@ -83,7 +94,7 @@
         <p class="text-gray-500 text-xs mb-2">Cast</p>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-sm">
           <div v-for="actor in creditsData.cast" :key="actor.credit_id" class="flex items-center gap-3">
-            <img v-if="actor.profile_path" :src="imgUrl(actor.profile_path, 'w92')" :alt="actor.name" class="w-12 h-12 rounded-md object-cover" />
+            <img v-if="actor.profile_path" :src="tmdbImageUrl(actor.profile_path, 'w92')" :alt="actor.name" class="w-12 h-12 rounded-md object-cover" />
             <div v-else class="w-12 h-12 rounded-md bg-surface-200"></div>
             <div class="min-w-0">
               <p class="text-secondary">{{ actor.name }}</p>
@@ -97,7 +108,7 @@
         <p class="text-gray-500 text-xs mb-2">Guest stars</p>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-sm">
           <div v-for="star in creditsData.guest_stars" :key="star.credit_id" class="flex items-center gap-3">
-            <img v-if="star.profile_path" :src="imgUrl(star.profile_path, 'w92')" :alt="star.name" class="w-12 h-12 rounded-md object-cover" />
+            <img v-if="star.profile_path" :src="tmdbImageUrl(star.profile_path, 'w92')" :alt="star.name" class="w-12 h-12 rounded-md object-cover" />
             <div v-else class="w-12 h-12 rounded-md bg-surface-200"></div>
             <div class="min-w-0">
               <p class="text-secondary">{{ star.name }}</p>
@@ -124,9 +135,11 @@ import WatchMenu from '@/components/WatchMenu.vue'
 import SpoilerBlock from '@/components/SpoilerBlock.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
-import { formatDateByLocale, formatDateTimeByLocale, useI18n } from '@/i18n'
-import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
-import { nowInstantIso, plainDateToUserInstantIso } from '@/utils/temporal'
+import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
+import { formatDateByLocale, useI18n } from '@/i18n'
+import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
+import { tmdbImageUrl } from '@/utils/images'
+import { watchedTooltipText } from '@/utils/watchOptions'
 
 const route = useRoute()
 
@@ -142,27 +155,17 @@ const episodeData = ref(null)
 const creditsData = ref(null)
 const isWatched = ref(false)
 const watchedAt = ref('')
+const unwatchDialog = ref(null)
 const {
   showDatePicker,
   pickerInitialValue,
-  pickWatchedDateTime,
   handleDatePickerConfirm,
   handleDatePickerCancel,
-} = useWatchedDateTimePicker()
+  markFromOption,
+} = useEpisodeWatchActions()
 const { t } = useI18n()
 
-const watchButtonTooltip = computed(() => {
-  if (!isWatched.value) return t('tracking_mark_as_watched')
-  if (!watchedAt.value) return t('tracking_watched')
-  const formatted = formatDateTimeByLocale(watchedAt.value)
-  if (!formatted) return t('tracking_watched')
-  return `${t('tracking_watched_on')} ${formatted}`
-})
-
-function imgUrl(path, size = 'w500') {
-  if (!path) return null
-  return `https://image.tmdb.org/t/p/${size}${path}`
-}
+const watchButtonTooltip = computed(() => watchedTooltipText(isWatched.value, watchedAt.value, t))
 
 function formatRating(rating) {
   if (!rating) return '0.0'
@@ -200,63 +203,28 @@ async function load() {
   }
 }
 
+function openUnwatchConfirm() {
+  unwatchDialog.value?.open({
+    tmdbId: tmdbId.value,
+    seasonNumber: seasonNum.value,
+    episodeNumber: episodeNum.value,
+  })
+}
+
+function onEpisodeUnwatched() {
+  isWatched.value = false
+  watchedAt.value = ''
+}
+
 async function handleWatchOption(option) {
-  if (option === 'now') {
-    // Just now - mark as watched immediately
-    if (isWatched.value) {
-      await trackingAPI.unmarkEpisodeWatched({
-        tmdb_id: tmdbId.value,
-        season_number: seasonNum.value,
-        episode_number: episodeNum.value
-      })
-      isWatched.value = false
-      watchedAt.value = ''
-    } else {
-      await trackingAPI.markEpisodeWatched({
-        tmdb_id: tmdbId.value,
-        season_number: seasonNum.value,
-        episode_number: episodeNum.value
-      })
-      isWatched.value = true
-      watchedAt.value = nowInstantIso()
-    }
-    return
-  }
-  
-  try {
-    let selectedWatchedAt = null
-    if (option === 'release') {
-      if (episodeData.value?.air_date) {
-        selectedWatchedAt = plainDateToUserInstantIso(episodeData.value.air_date)
-      }
-    } else if (option === 'date') {
-      selectedWatchedAt = await pickWatchedDateTime(watchedAt.value)
-      if (!selectedWatchedAt) {
-        return
-      }
-    }
-    
-    if (isWatched.value) {
-      await trackingAPI.unmarkEpisodeWatched({
-        tmdb_id: tmdbId.value,
-        season_number: seasonNum.value,
-        episode_number: episodeNum.value
-      })
-      isWatched.value = false
-      watchedAt.value = ''
-    } else {
-      await trackingAPI.markEpisodeWatched({
-        tmdb_id: tmdbId.value,
-        season_number: seasonNum.value,
-        episode_number: episodeNum.value,
-        watched_at: selectedWatchedAt
-      })
-      isWatched.value = true
-      watchedAt.value = selectedWatchedAt || nowInstantIso()
-    }
-  } catch (e) {
-    console.error('Failed to toggle:', e)
-  }
+  const finalWatchedAt = await markFromOption(option, {
+    tmdbId: tmdbId.value,
+    seasonNumber: seasonNum.value,
+    episodeNumber: episodeNum.value,
+  }, { releaseDate: episodeData.value?.air_date || '', pickerInitial: watchedAt.value })
+  if (!finalWatchedAt) return
+  isWatched.value = true
+  watchedAt.value = finalWatchedAt
 }
 
 onMounted(load)

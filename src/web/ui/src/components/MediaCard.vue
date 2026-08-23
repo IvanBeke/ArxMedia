@@ -83,43 +83,25 @@
     </template>
   </MediaCardShell>
 
-  <dialog
+  <ConfirmDialog
     ref="removeHistoryDialog"
-    closedby="any"
-    class="app-dialog media-card-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
-    aria-labelledby="media-card-remove-history-title"
-    @click="onDialogClick"
-  >
-    <div class="p-6">
-      <h2 id="media-card-remove-history-title" class="text-lg font-display text-primary font-semibold">Remove from watched history?</h2>
-      <p class="mt-2 text-sm text-muted">{{ removeHistoryConfirmText }}</p>
-      <div class="mt-5 flex gap-3">
-        <button type="button" class="btn-ghost flex-1" @click="closeRemoveHistoryDialog">Keep history</button>
-        <button type="button" class="btn-ghost flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" @click="confirmRemoveHistory">
-          Remove
-        </button>
-      </div>
-    </div>
-  </dialog>
+    title="Remove from watched history?"
+    :message="removeHistoryConfirmText"
+    confirm-label="Remove"
+    cancel-label="Keep history"
+    @confirm="confirmRemoveHistory"
+  />
 
-  <dialog
+  <ConfirmDialog
     ref="removeFromListDialog"
-    closedby="any"
-    class="app-dialog media-card-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
-    aria-labelledby="media-card-remove-list-title"
-    @click="onRemoveFromListDialogClick"
-  >
-    <div class="p-6">
-      <h2 id="media-card-remove-list-title" class="text-lg font-display text-primary font-semibold">Remove from this list?</h2>
-      <p class="mt-2 text-sm text-muted">This removes the item from this list only. It does not remove watch history or ratings.</p>
-      <div class="mt-5 flex gap-3">
-        <button type="button" class="btn-ghost flex-1" @click="closeRemoveFromListDialog">Keep item</button>
-        <button type="button" class="btn-ghost flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" :disabled="removingFromList" @click="confirmRemoveFromList">
-          {{ removingFromList ? 'Removing...' : 'Remove' }}
-        </button>
-      </div>
-    </div>
-  </dialog>
+    title="Remove from this list?"
+    message="This removes the item from this list only. It does not remove watch history or ratings."
+    confirm-label="Remove"
+    cancel-label="Keep item"
+    loading-label="Removing..."
+    :loading="removingFromList"
+    @confirm="confirmRemoveFromList"
+  />
 </template>
 
 <script setup>
@@ -137,7 +119,7 @@ import CardUserRating from '@/components/cards/primitives/CardUserRating.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { useMediaCardModel } from '@/composables/useMediaCardModel'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
-import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { useI18n } from '@/i18n'
@@ -260,35 +242,12 @@ function openRemoveHistoryDialog() {
   removeHistoryDialog.value?.showModal()
 }
 
-function closeRemoveHistoryDialog() {
-  if (removeHistoryDialog.value?.open) {
-    removeHistoryDialog.value.close()
-  }
-}
-
 function confirmRemoveHistory() {
-  closeRemoveHistoryDialog()
   removeWatchedAction()
-}
-
-function onDialogClick(event) {
-  const dialog = removeHistoryDialog.value
-  closeOnDialogBackdropClick(event, dialog, closeRemoveHistoryDialog)
 }
 
 function openRemoveFromListDialog() {
   removeFromListDialog.value?.showModal()
-}
-
-function closeRemoveFromListDialog() {
-  if (removeFromListDialog.value?.open) {
-    removeFromListDialog.value.close()
-  }
-}
-
-function onRemoveFromListDialogClick(event) {
-  const dialog = removeFromListDialog.value
-  closeOnDialogBackdropClick(event, dialog, closeRemoveFromListDialog)
 }
 
 function emitStatusChanged() {
@@ -339,7 +298,7 @@ async function confirmRemoveFromList() {
   removingFromList.value = true
   try {
     await trackingAPI.removeFromList(props.listContextId, props.item.id)
-    closeRemoveFromListDialog()
+    removeFromListDialog.value?.close()
     emit('list-item-removed', {
       list_id: Number(props.listContextId),
       item_id: props.item.id,

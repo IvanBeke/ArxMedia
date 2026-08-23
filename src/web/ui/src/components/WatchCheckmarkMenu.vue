@@ -4,6 +4,8 @@
     :button-title="tooltipText"
     :disabled="disabled"
     :pulsing="pulsing"
+    :direct-trigger="watched"
+    @trigger="$emit('unwatch')"
     @select="(option) => $emit('select', option)"
   >
     <span
@@ -23,7 +25,8 @@
 <script setup>
 import { computed } from 'vue'
 import WatchMenu from '@/components/WatchMenu.vue'
-import { formatDateTimeByLocale, useI18n } from '@/i18n'
+import { useI18n } from '@/i18n'
+import { watchedTooltipText } from '@/utils/watchOptions'
 
 const props = defineProps({
   watched: { type: Boolean, default: false },
@@ -33,15 +36,9 @@ const props = defineProps({
   pulsing: { type: Boolean, default: false },
 })
 
-defineEmits(['select'])
+defineEmits(['select', 'unwatch'])
 
 const { t } = useI18n()
 
-const tooltipText = computed(() => {
-  if (!props.watched) return t('tracking_mark_as_watched')
-  if (!props.watchedAt) return t('tracking_watched')
-  const formatted = formatDateTimeByLocale(props.watchedAt)
-  if (!formatted) return t('tracking_watched')
-  return `${t('tracking_watched_on')} ${formatted}`
-})
+const tooltipText = computed(() => watchedTooltipText(props.watched, props.watchedAt, t))
 </script>

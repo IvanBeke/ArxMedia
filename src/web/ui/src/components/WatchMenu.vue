@@ -46,11 +46,12 @@ const props = defineProps({
   buttonAriaLabel: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
   pulsing: { type: Boolean, default: false },
+  directTrigger: { type: Boolean, default: false },
   buttonClass: { type: String, default: '' },
   menuClass: { type: String, default: '' },
 })
 
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'trigger'])
 const menuVisible = ref(false)
 const menuRootRef = ref(null)
 const { t } = useI18n()
@@ -68,12 +69,17 @@ const menuOptions = computed(() => {
   if (props.releaseDate) {
     options.push({ label: t('watch_option_release'), value: 'release' })
   }
+  options.push({ label: t('watch_option_unknown'), value: 'unknown' })
   options.push({ label: t('watch_option_date'), value: 'date' })
   return options
 })
 
 function toggleMenu() {
   if (props.disabled) {
+    return
+  }
+  if (props.directTrigger) {
+    emit('trigger')
     return
   }
   menuVisible.value = !menuVisible.value

@@ -271,24 +271,16 @@
         </div>
       </dialog>
 
-      <dialog
+      <ConfirmDialog
         ref="deleteListDialog"
-        closedby="any"
-        class="app-dialog list-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
-        aria-labelledby="delete-list-title"
-        @click="onDialogClick($event, deleteListDialog)"
-      >
-        <div class="p-6">
-          <h2 id="delete-list-title" class="text-lg font-display text-primary font-semibold">Delete this list?</h2>
-          <p class="mt-2 text-sm text-muted">This permanently deletes the list and removes all list memberships from it.</p>
-          <div class="mt-5 flex gap-3">
-            <button type="button" class="btn-ghost flex-1" @click="closeDeleteListDialog">Keep list</button>
-            <button type="button" class="btn-ghost flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" :disabled="deletingList" @click="confirmDeleteList">
-              {{ deletingList ? 'Deleting...' : 'Delete' }}
-            </button>
-          </div>
-        </div>
-      </dialog>
+        title="Delete this list?"
+        message="This permanently deletes the list and removes all list memberships from it."
+        confirm-label="Delete"
+        cancel-label="Keep list"
+        loading-label="Deleting..."
+        :loading="deletingList"
+        @confirm="confirmDeleteList"
+      />
 
     </div>
   </div>
@@ -305,6 +297,8 @@ import { formatDateByLocale } from '@/i18n'
 import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
+import { useFlashMessages } from '@/composables/useFlashMessages'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -342,7 +336,7 @@ const appliedFilters = ref({
 })
 const feedbackMsg = ref('')
 const feedbackKind = ref('success')
-const quickActionError = ref('')
+const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const deletingList = ref(false)
 const addingResultKey = ref('')
 
@@ -375,13 +369,6 @@ function showFeedback(message, kind = 'success') {
     if (feedbackMsg.value === message) {
       feedbackMsg.value = ''
     }
-  }, 3500)
-}
-
-function showQuickActionError(message) {
-  quickActionError.value = message
-  setTimeout(() => {
-    quickActionError.value = ''
   }, 3500)
 }
 
@@ -431,12 +418,6 @@ function closeAddModal() {
 
 function openDeleteListDialog() {
   deleteListDialog.value?.showModal()
-}
-
-function closeDeleteListDialog() {
-  if (deleteListDialog.value?.open) {
-    deleteListDialog.value.close()
-  }
 }
 
 async function loadList() {
@@ -511,7 +492,7 @@ async function confirmDeleteList() {
   deletingList.value = true
   try {
     await trackingAPI.deleteList(route.params.id)
-    closeDeleteListDialog()
+    deleteListDialog.value?.close()
     router.push('/lists')
   } catch (error) {
     console.error('Failed to delete list:', error)

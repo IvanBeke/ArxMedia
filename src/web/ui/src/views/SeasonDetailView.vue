@@ -8,6 +8,8 @@
       @cancel="handleDatePickerCancel"
     />
 
+    <EpisodeUnwatchDialog ref="unwatchDialog" @unwatched="onEpisodeUnwatched" />
+
     <!-- Breadcrumb -->
     <router-link :to="{ name: 'tv-detail', params: { id: route.params.id } }" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-6">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -55,6 +57,7 @@
         :is-episode-watched="isEpisodeWatched"
         :get-episode-watched-at="getEpisodeWatchedAt"
         @watch-option="handleEpisodeWatchOption"
+        @unwatch="openUnwatchConfirm"
       />
 
       <div v-else-if="!loading" class="text-center py-16 text-muted">
@@ -73,10 +76,13 @@ import ProgressBar from '@/components/ProgressBar.vue'
 import WatchMenu from '@/components/WatchMenu.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
-import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
+import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
+import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
+import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
-import { nowInstantIso, plainDateToUserInstantIso, temporalYear } from '@/utils/temporal'
+import { temporalYear } from '@/utils/temporal'
+import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
 
 const route = useRoute()
 const tmdbId = computed(() => parseInt(route.params.id))
@@ -85,15 +91,23 @@ const auth = useAuthStore()
 const season = ref(null)
 const loading = ref(true)
 const showName = ref('TV Show')
-const watchedEps = ref(new Set())
-const watchedAtMap = ref(new Map())
+const unwatchDialog = ref(null)
 const {
   showDatePicker,
   pickerInitialValue,
   pickWatchedDateTime,
   handleDatePickerConfirm,
   handleDatePickerCancel,
-} = useWatchedDateTimePicker()
+  markFromOption,
+} = useEpisodeWatchActions()
+const {
+  watchedEps,
+  isWatched,
+  watchedAt,
+  markLocally,
+  unmarkLocally,
+  load: loadWatchedEpisodes,
+} = useWatchedEpisodes()
 
 const seasonProgress = computed(() => {
   if (!season.value?.episodes?.length) return 0
@@ -112,119 +126,56 @@ const seasonProgressFraction = computed(() => {
 })
 
 function isEpisodeWatched(epNum) {
-  return watchedEps.value.has(epNum)
+  return isWatched(seasonNumber.value, epNum)
 }
 
 function getEpisodeWatchedAt(epNum) {
-  return watchedAtMap.value.get(epNum) || ''
+  return watchedAt(seasonNumber.value, epNum)
 }
 
-async function toggleEpisodeWatched(epNum) {
-  const sn = seasonNumber.value
-  if (watchedEps.value.has(epNum)) {
-    watchedEps.value.delete(epNum)
-    watchedAtMap.value.delete(epNum)
-    await trackingAPI.unmarkEpisodeWatched({ tmdb_id: tmdbId.value, season_number: sn, episode_number: epNum })
-  } else {
-    watchedEps.value.add(epNum)
-    await trackingAPI.markEpisodeWatched({ tmdb_id: tmdbId.value, season_number: sn, episode_number: epNum })
-    watchedAtMap.value.set(epNum, nowInstantIso())
-  }
+function openUnwatchConfirm(payload) {
+  unwatchDialog.value?.open({
+    tmdbId: tmdbId.value,
+    seasonNumber: seasonNumber.value,
+    episodeNumber: payload.episodeNumber,
+  })
+}
+
+function onEpisodeUnwatched(target) {
+  unmarkLocally(target.seasonNumber, target.episodeNumber)
 }
 
 async function handleEpisodeWatchOption(payload) {
   const epNum = payload.episodeNumber
-  const option = payload.option
   const sn = seasonNumber.value
 
-  if (option === 'now') {
-    await toggleEpisodeWatched(epNum)
-    return
-  }
+  const finalWatchedAt = await markFromOption(payload.option, {
+    tmdbId: tmdbId.value,
+    seasonNumber: sn,
+    episodeNumber: epNum,
+  }, { releaseDate: payload.releaseDate || '', pickerInitial: getEpisodeWatchedAt(epNum) })
+  if (!finalWatchedAt) return
 
-  let watchedAtValue = null
-  if (option === 'release') {
-    if (payload.releaseDate) {
-      watchedAtValue = plainDateToUserInstantIso(payload.releaseDate)
-    }
-  } else if (option === 'date') {
-    watchedAtValue = await pickWatchedDateTime(getEpisodeWatchedAt(epNum))
-    if (!watchedAtValue) return
-  }
-
-  if (watchedEps.value.has(epNum)) {
-    watchedEps.value.delete(epNum)
-    watchedAtMap.value.delete(epNum)
-    await trackingAPI.unmarkEpisodeWatched({ tmdb_id: tmdbId.value, season_number: sn, episode_number: epNum })
-  } else {
-    watchedEps.value.add(epNum)
-    await trackingAPI.markEpisodeWatched({
-      tmdb_id: tmdbId.value,
-      season_number: sn,
-      episode_number: epNum,
-      watched_at: watchedAtValue,
-    })
-    watchedAtMap.value.set(epNum, watchedAtValue || nowInstantIso())
-  }
+  markLocally(sn, epNum, finalWatchedAt)
 }
 
 async function handleSeasonWatchOption(option) {
-  if (option === 'now') {
-    // Just now - mark season as watched immediately
-    try {
-      await trackingAPI.markSeasonWatched({
-        tmdb_id: tmdbId.value,
-        season_number: seasonNumber.value
-      })
-      // Refresh watched episodes
-      const res = await trackingAPI.getWatchedEpisodes(tmdbId.value)
-      watchedEps.value = new Set(
-        res.episodes
-          .filter(e => e.season_number === seasonNumber.value)
-          .map(e => e.episode_number)
-      )
-      watchedAtMap.value = new Map(
-        res.episodes
-          .filter(e => e.season_number === seasonNumber.value)
-          .map(e => [e.episode_number, e.watched_at || ''])
-      )
-    } catch (e) {
-      console.error('Failed to mark season:', e)
-    }
+  const resolution = await resolveWatchedAtFromOption(option, {
+    releaseDate: season.value?.air_date || '',
+    pickDateTime: () => pickWatchedDateTime(''),
+  })
+  if (resolution.cancelled) {
     return
   }
-  
-  let watchedAt = null
-  let useReleaseDate = false
-  
-  if (option === 'release') {
-    useReleaseDate = true
-  } else if (option === 'date') {
-    watchedAt = await pickWatchedDateTime('')
-    if (!watchedAt) {
-      return
-    }
-  }
-  
+
   try {
     await trackingAPI.markSeasonWatched({
       tmdb_id: tmdbId.value,
       season_number: seasonNumber.value,
-      watched_at: watchedAt,
-      use_release_date: useReleaseDate
+      watched_at: resolution.useReleaseDate ? null : resolution.watchedAt,
+      use_release_date: resolution.useReleaseDate,
     })
-    // Refresh watched episodes
-    const res = await trackingAPI.getWatchedEpisodes(tmdbId.value)
-    watchedEps.value = new Set(
-      res.episodes
-        .filter(e => e.season_number === seasonNumber.value)
-        .map(e => e.episode_number)
-    )
-    watchedAtMap.value = new Map(
-      res.episodes
-        .filter(e => e.season_number === seasonNumber.value)
-        .map(e => [e.episode_number, e.watched_at || ''])
-    )
+    await loadWatchedEpisodes(tmdbId.value, { seasonNumber: seasonNumber.value })
   } catch (e) {
     console.error('Failed to mark season:', getApiErrorMessage(e, 'Could not mark season as watched.'))
   }
@@ -242,24 +193,7 @@ onMounted(async () => {
   }
 
   if (auth.isAuthenticated) {
-    try {
-      const data = await trackingAPI.getWatchedEpisodes(tmdbId.value)
-      if (data?.episodes) {
-        const sn = seasonNumber.value
-        watchedEps.value = new Set(
-          data.episodes
-            .filter(e => e.season_number === sn)
-            .map(e => e.episode_number)
-        )
-        watchedAtMap.value = new Map(
-          data.episodes
-            .filter(e => e.season_number === sn)
-            .map(e => [e.episode_number, e.watched_at || ''])
-        )
-      }
-    } catch (e) {
-      console.error('Failed to load watched episodes:', e)
-    }
+    await loadWatchedEpisodes(tmdbId.value, { seasonNumber: seasonNumber.value })
   }
 })
 </script>

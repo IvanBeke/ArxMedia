@@ -72,6 +72,7 @@ import { onClickOutside } from '@vueuse/core'
 import { trackingAPI } from '@/api'
 import { LIST_PRIVACY } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
+import { useFlashMessages } from '@/composables/useFlashMessages'
 
 const props = defineProps({
   mediaType: { type: String, required: true },
@@ -87,8 +88,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const lists = ref([])
 const newListName = ref('')
-const successMsg = ref('')
-const errorMsg = ref('')
+const { successMsg, errorMsg, showSuccess: setSuccess, showError: setError } = useFlashMessages({ successDurationMs: 1800 })
 const rootRef = ref(null)
 
 const emit = defineEmits(['added'])
@@ -103,19 +103,6 @@ onMounted(async () => {
     await loadLists()
   }
 })
-
-function setSuccess(message) {
-  errorMsg.value = ''
-  successMsg.value = message
-  setTimeout(() => {
-    successMsg.value = ''
-  }, 1800)
-}
-
-function setError(message) {
-  successMsg.value = ''
-  errorMsg.value = message
-}
 
 async function loadLists() {
   loading.value = true

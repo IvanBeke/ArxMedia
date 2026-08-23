@@ -11,6 +11,7 @@
           :watched-at="getEpisodeWatchedAt(ep.episode_number)"
           :release-date="ep.air_date"
           @select="(option) => emitWatchOption(ep, option)"
+          @unwatch="emitUnwatch(ep)"
         />
         <span class="text-muted text-xs font-mono w-6 text-center">{{ String(ep.episode_number).padStart(2, '0') }}</span>
       </div>
@@ -18,7 +19,7 @@
       <RouterLink :to="`/tv/${tmdbId}/season/${seasonNumber}/episode/${ep.episode_number}`" class="flex-shrink-0 w-32 sm:w-40 aspect-video rounded-md bg-surface-200 overflow-hidden mt-1 block">
         <img
           v-if="ep.still_path"
-          :src="imgUrl(ep.still_path)"
+          :src="tmdbImageUrl(ep.still_path)"
           :alt="ep.name"
           class="w-full h-full object-cover"
           loading="lazy"
@@ -50,6 +51,7 @@ import WatchCheckmarkMenu from '@/components/WatchCheckmarkMenu.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import { formatDateByLocale } from '@/i18n'
+import { tmdbImageUrl } from '@/utils/images'
 
 const props = defineProps({
   episodes: { type: Array, default: () => [] },
@@ -59,12 +61,7 @@ const props = defineProps({
   getEpisodeWatchedAt: { type: Function, required: true },
 })
 
-const emit = defineEmits(['watch-option'])
-
-function imgUrl(path) {
-  if (!path) return null
-  return `https://image.tmdb.org/t/p/w500${path}`
-}
+const emit = defineEmits(['watch-option', 'unwatch'])
 
 function emitWatchOption(episode, option) {
   emit('watch-option', {
@@ -72,5 +69,9 @@ function emitWatchOption(episode, option) {
     option,
     releaseDate: episode.air_date || null,
   })
+}
+
+function emitUnwatch(episode) {
+  emit('unwatch', { episodeNumber: episode.episode_number })
 }
 </script>

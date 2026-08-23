@@ -4,7 +4,8 @@ import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions
 import { useWatchedQuickActions } from '@/composables/useWatchedQuickActions'
 import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
 import { getApiErrorMessage } from '@/utils/errors'
-import { nowInstantIso, plainDateToUserInstantIso } from '@/utils/temporal'
+import { nowInstantIso } from '@/utils/temporal'
+import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
 
 export function useMediaCardQuickActions(options = {}) {
   const {
@@ -98,17 +99,15 @@ export function useMediaCardQuickActions(options = {}) {
     try {
       const mediaType = resolveMediaType(item, mediaTypeOverride)
       const actionId = getActionId(item)
-      let watchedAt = null
 
-      if (option === 'release') {
-        const releaseDate = item.release_date
-        watchedAt = releaseDate ? plainDateToUserInstantIso(releaseDate) : null
-      } else if (option === 'date') {
-        watchedAt = await pickWatchedDateTime(item?.user_status?.watched_at || '')
-        if (!watchedAt) {
-          return null
-        }
+      const resolution = await resolveWatchedAtFromOption(option, {
+        releaseDate: item.release_date || '',
+        pickDateTime: () => pickWatchedDateTime(item?.user_status?.watched_at || ''),
+      })
+      if (resolution.cancelled) {
+        return null
       }
+      const watchedAt = resolution.watchedAt
 
       const nextStatus = await markWatched(mediaType, actionId, watchedAt)
       if (!nextStatus) {

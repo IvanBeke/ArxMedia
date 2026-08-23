@@ -38,6 +38,7 @@
 import { ref, onMounted } from 'vue'
 import { mediaAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
+import { useFlashMessages } from '@/composables/useFlashMessages'
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -48,14 +49,7 @@ const items = ref([])
 const loading = ref(true)
 const page = ref(1)
 const totalPages = ref(1)
-const quickActionError = ref('')
-
-function showQuickActionError(message) {
-  quickActionError.value = message
-  setTimeout(() => {
-    quickActionError.value = ''
-  }, 3500)
-}
+const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 
 async function load() {
   loading.value = true
