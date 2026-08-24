@@ -19,9 +19,12 @@ Contributions are welcome, but I may decline changes that do not match how I wan
 
 ```bash
 cp .env.example .env
-docker compose up --build -d
+docker compose up -d
 docker compose exec app python manage.py migrate
 ```
+
+`up -d` auto-builds missing images. Add `--build` only after changing the `Dockerfile`
+or backend dependencies — see the "Dependencies" section in `README.md`.
 
 ## Verification required before opening a PR
 

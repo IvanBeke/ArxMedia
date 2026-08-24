@@ -31,7 +31,8 @@ ArxMedia is a self-hosted media tracking app built with Django REST Framework an
 cp .env.example .env
 # edit .env (at minimum: SECRET_KEY, TMDB_API_KEY, FERNET_KEY, DB password values)
 
-docker compose up --build -d
+# plain `up` auto-builds images that don't exist yet
+docker compose up -d
 docker compose exec app python manage.py migrate
 docker compose exec app python manage.py createsuperuser  # optional
 ```
@@ -74,15 +75,28 @@ docker compose exec app python manage.py <command>
 # run focused tests
 docker compose exec app python manage.py test <module_or_class> --keepdb
 
+# add a backend dependency (updates pyproject.toml + uv.lock)
+docker compose exec app uv add <package>
+
+# add a frontend dependency (updates package.json + pnpm-lock.yaml)
+docker compose exec ui sh -lc "pnpm add <package>"
+
 # regenerate backend lockfile (uv.lock)
 docker compose exec app uv lock
-
-# regenerate frontend lockfile (pnpm-lock.yaml)
-docker compose exec ui sh -lc "pnpm install --no-frozen-lockfile"
 
 # build UI production assets
 docker compose exec ui sh -lc "pnpm install && pnpm build"
 ```
+
+## Dependencies
+
+Backend dependencies are baked into the `app`/`worker`/`beat` images at build time, while source code is bind-mounted from the host. In practice:
+
+- Routine starts and Python/UI code changes need **no rebuild**: `docker compose up -d`.
+- After changing `pyproject.toml`, `uv.lock`, or the `Dockerfile`, rebuild once:
+  `docker compose up -d --build`.
+- The `ui` service has no image of its own; it runs `pnpm install` when it starts, so after
+  adding frontend dependencies run `docker compose restart ui` (no rebuild needed).
 
 ## Production
 

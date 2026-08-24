@@ -23,7 +23,8 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 
 ## Commands agents usually guess wrong
 
-- Start stack: `docker compose up --build -d`
+- Start stack: `docker compose up -d` (auto-builds missing images)
+- Rebuild (`docker compose up -d --build`) only after `Dockerfile` or dependency (`pyproject.toml`/`uv.lock`) changes; see README "Dependencies" section
 - Migrations: `docker compose exec app python manage.py migrate`
 - App command: `docker compose exec app python manage.py <command>`
 - App lint: `docker compose exec app uv run ruff check accounts media tracking social my_calendar web arxmedia --fix`

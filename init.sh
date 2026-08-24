@@ -1,7 +1,7 @@
 #!/bin/bash
 # init.sh - ArxMedia harness verification
 
-set -e
+set -euo pipefail
 
 cd "$(dirname "$0")"
 
@@ -40,11 +40,11 @@ if docker compose ps --format json 2>/dev/null | grep -q '"Service"'; then
     if [ "$RUNNING" -ge 1 ]; then
         echo -e "${GREEN}OK${NC} ($RUNNING/$TOTAL services up)"
     else
-        echo -e "${RED}FAIL${NC} — 0 services running. Run: docker compose up --build -d"
+        echo -e "${RED}FAIL${NC} — 0 services running. Run: docker compose up -d"
         exit 1
     fi
 else
-    echo -e "${YELLOW}WARNING${NC} — Docker Compose not running or not configured. Run: docker compose up --build -d"
+    echo -e "${YELLOW}WARNING${NC} — Docker Compose not running or not configured. Run: docker compose up -d"
 fi
 
 # 3. Check migrations applied
