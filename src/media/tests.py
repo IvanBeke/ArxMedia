@@ -7,8 +7,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from tracking.models import Rating, UserMediaStatus, WatchEntry
 
-from media.models import EpisodeCredit, Genre, Movie, TVShow
-from media.tmdb import tmdb
+from media.models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
+from media.tmdb import _non_empty_defaults, tmdb
 
 User = get_user_model()
 
@@ -142,6 +142,168 @@ class MediaTests(TestCase):
         season = show.seasons.get(season_number=1)
         episode = season.episodes.get(episode_number=1)
         self.assertEqual(episode.episode_type, 'finale')
+
+    def test_non_empty_defaults_drops_only_null_and_empty_containers(self):
+        filtered = _non_empty_defaults(
+            {
+                'overview': '',
+                'poster_path': None,
+                'cast': [],
+                'vote_average': 0,
+                'title': 'Kept',
+                'crew': ['kept'],
+            }
+        )
+        self.assertEqual(filtered, {'vote_average': 0, 'title': 'Kept', 'crew': ['kept']})
+
+    def test_sync_movie_preserves_stored_fields_when_tmdb_returns_empty(self):
+        Movie.objects.create(
+            tmdb_id=550,
+            title='Fight Club',
+            overview='Stored overview',
+            poster_path='/stored.jpg',
+            tagline='Stored tagline',
+            vote_average=7.5,
+        )
+
+        def sparse_payload(endpoint, params=None, **kwargs):
+            if endpoint == '/movie/550':
+                return {
+                    'id': 550,
+                    'title': 'Fight Club',
+                    'overview': '',
+                    'poster_path': None,
+                    'backdrop_path': None,
+                    'release_date': '1999-10-15',
+                    'genres': [],
+                    'vote_average': 8.1,
+                    'vote_count': 100,
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=sparse_payload):
+            movie = tmdb.sync_movie(550)
+
+        movie.refresh_from_db()
+        self.assertEqual(movie.overview, 'Stored overview')
+        self.assertEqual(movie.poster_path, '/stored.jpg')
+        self.assertEqual(movie.tagline, 'Stored tagline')
+        self.assertEqual(movie.vote_average, 8.1)
+
+    def test_sync_movie_creation_stores_sparse_payload(self):
+        def sparse_payload(endpoint, params=None, **kwargs):
+            if endpoint == '/movie/601':
+                return {
+                    'id': 601,
+                    'title': 'Sparse Movie',
+                    'overview': '',
+                    'poster_path': None,
+                    'genres': [],
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=sparse_payload):
+            movie = tmdb.sync_movie(601)
+
+        self.assertEqual(Movie.objects.filter(tmdb_id=601).count(), 1)
+        movie.refresh_from_db()
+        self.assertEqual(movie.title, 'Sparse Movie')
+        self.assertEqual(movie.overview, '')
+        self.assertEqual(movie.poster_path, '')
+
+    def test_sync_tv_show_preserves_stored_fields_when_tmdb_removes_data(self):
+        TVShow.objects.create(
+            tmdb_id=1399,
+            name='Game of Thrones',
+            overview='Stored overview',
+            status='Returning Series',
+            networks='HBO',
+        )
+
+        def sparse_payload(endpoint, params=None, **kwargs):
+            if endpoint == '/tv/1399':
+                return {
+                    'id': 1399,
+                    'name': 'Game of Thrones',
+                    'overview': '',
+                    'networks': [],
+                    'number_of_seasons': 0,
+                    'genres': [],
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=sparse_payload):
+            show = tmdb.sync_tv_show(1399)
+
+        show.refresh_from_db()
+        self.assertEqual(show.overview, 'Stored overview')
+        self.assertEqual(show.status, 'Returning Series')
+        self.assertEqual(show.networks, 'HBO')
+
+    def test_sync_season_preserves_episode_fields_when_tmdb_returns_empty(self):
+        show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones')
+        season = Season.objects.create(
+            show=show,
+            tmdb_id=139901,
+            season_number=1,
+            name='Season 1',
+            overview='Stored season overview',
+            poster_path='/stored-season.jpg',
+            episode_count=10,
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=13990101,
+            episode_number=1,
+            name='Winter Is Coming',
+            overview='Stored episode overview',
+            still_path='/still.jpg',
+        )
+
+        def sparse_payload(endpoint, params=None, **kwargs):
+            if endpoint == '/tv/1399/season/1':
+                return {
+                    'id': 139901,
+                    'season_number': 1,
+                    'name': 'Season 1',
+                    'overview': '',
+                    'poster_path': None,
+                    'episode_count': 10,
+                    'episodes': [
+                        {
+                            'id': 13990101,
+                            'episode_number': 1,
+                            'name': 'Winter Is Coming',
+                            'overview': '',
+                            'still_path': None,
+                            'runtime': None,
+                        }
+                    ],
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=sparse_payload):
+            tmdb.sync_season(show, 1)
+
+        season = show.seasons.get(season_number=1)
+        episode = season.episodes.get(episode_number=1)
+        self.assertEqual(season.overview, 'Stored season overview')
+        self.assertEqual(season.poster_path, '/stored-season.jpg')
+        self.assertEqual(episode.overview, 'Stored episode overview')
+        self.assertEqual(episode.still_path, '/still.jpg')
+
+    def test_sync_episode_credits_preserves_existing_lists_when_tmdb_returns_empty(self):
+        tmdb.sync_tv_show(1399)
+        show = TVShow.objects.get(tmdb_id=1399)
+        episode = show.seasons.get(season_number=1).episodes.get(episode_number=1)
+        credit = episode.credits
+        credit.cast = [{'name': 'Emilia Clarke'}]
+        credit.save(update_fields=['cast'])
+
+        tmdb.sync_episode_credits(1399, 1, 1, show=show)
+
+        credit.refresh_from_db()
+        self.assertEqual(credit.cast, [{'name': 'Emilia Clarke'}])
 
     @patch('media.views.tmdb.sync_season')
     @patch('media.views.tmdb.get_tv_watch_providers')

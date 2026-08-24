@@ -16,6 +16,15 @@ class TMDBNotFoundError(Exception):
     pass
 
 
+def _non_empty_defaults(defaults):
+    """Drop null/empty values so upstream removals never clear stored fields."""
+    return {
+        key: value
+        for key, value in defaults.items()
+        if not (value is None or value == '' or (isinstance(value, list) and not value))
+    }
+
+
 class TMDBService:
     BASE_URL = getattr(settings, 'TMDB_BASE_URL', 'https://api.themoviedb.org/3')
     API_KEY = getattr(settings, 'TMDB_API_KEY', '')
@@ -153,21 +162,23 @@ class TMDBService:
     def sync_movie(self, tmdb_id, *, use_cache=True):
         """Fetch movie from TMDB and save/update locally."""
         data = self.get_movie(tmdb_id, use_cache=use_cache)
+        movie_defaults = {
+            'title': data.get('title', ''),
+            'overview': data.get('overview', ''),
+            'poster_path': data.get('poster_path', '') or '',
+            'backdrop_path': data.get('backdrop_path', '') or '',
+            'release_date': parse_date(data['release_date']) if data.get('release_date') else None,
+            'runtime': data.get('runtime'),
+            'vote_average': data.get('vote_average', 0),
+            'vote_count': data.get('vote_count', 0),
+            'language': data.get('original_language', ''),
+            'tagline': data.get('tagline', ''),
+            'status': data.get('status', ''),
+        }
         movie, _ = Movie.objects.update_or_create(
             tmdb_id=tmdb_id,
-            defaults={
-                'title': data.get('title', ''),
-                'overview': data.get('overview', ''),
-                'poster_path': data.get('poster_path', '') or '',
-                'backdrop_path': data.get('backdrop_path', '') or '',
-                'release_date': parse_date(data['release_date']) if data.get('release_date') else None,
-                'runtime': data.get('runtime'),
-                'vote_average': data.get('vote_average', 0),
-                'vote_count': data.get('vote_count', 0),
-                'language': data.get('original_language', ''),
-                'tagline': data.get('tagline', ''),
-                'status': data.get('status', ''),
-            }
+            defaults=_non_empty_defaults(movie_defaults),
+            create_defaults=movie_defaults,
         )
         for g in data.get('genres', []):
             genre, _ = Genre.objects.get_or_create(tmdb_id=g['id'], defaults={'name': g['name']})
@@ -180,24 +191,26 @@ class TMDBService:
         networks = ', '.join([n['name'] for n in data.get('networks', [])])
         runtimes = data.get('episode_run_time') or []
         episode_runtime = next((int(runtime) for runtime in runtimes if isinstance(runtime, int) and runtime > 0), None)
+        show_defaults = {
+            'name': data.get('name', ''),
+            'overview': data.get('overview', ''),
+            'poster_path': data.get('poster_path', '') or '',
+            'backdrop_path': data.get('backdrop_path', '') or '',
+            'first_air_date': parse_date(data['first_air_date']) if data.get('first_air_date') else None,
+            'last_air_date': parse_date(data['last_air_date']) if data.get('last_air_date') else None,
+            'number_of_seasons': data.get('number_of_seasons', 0),
+            'number_of_episodes': data.get('number_of_episodes', 0),
+            'vote_average': data.get('vote_average', 0),
+            'vote_count': data.get('vote_count', 0),
+            'language': data.get('original_language', ''),
+            'status': data.get('status', ''),
+            'networks': networks,
+            'episode_runtime': episode_runtime,
+        }
         show, _ = TVShow.objects.update_or_create(
             tmdb_id=tmdb_id,
-            defaults={
-                'name': data.get('name', ''),
-                'overview': data.get('overview', ''),
-                'poster_path': data.get('poster_path', '') or '',
-                'backdrop_path': data.get('backdrop_path', '') or '',
-                'first_air_date': parse_date(data['first_air_date']) if data.get('first_air_date') else None,
-                'last_air_date': parse_date(data['last_air_date']) if data.get('last_air_date') else None,
-                'number_of_seasons': data.get('number_of_seasons', 0),
-                'number_of_episodes': data.get('number_of_episodes', 0),
-                'vote_average': data.get('vote_average', 0),
-                'vote_count': data.get('vote_count', 0),
-                'language': data.get('original_language', ''),
-                'status': data.get('status', ''),
-                'networks': networks,
-                'episode_runtime': episode_runtime,
-            }
+            defaults=_non_empty_defaults(show_defaults),
+            create_defaults=show_defaults,
         )
         for g in data.get('genres', []):
             genre, _ = Genre.objects.get_or_create(tmdb_id=g['id'], defaults={'name': g['name']})
@@ -230,34 +243,38 @@ class TMDBService:
     def sync_season(self, show, season_number, sync_episode_credits: bool = True, *, use_cache: bool = True):
         """Fetch a season from TMDB and save/update locally with all episodes."""
         data = self.get_season(show.tmdb_id, season_number, use_cache=use_cache)
+        season_defaults = {
+            'tmdb_id': data.get('id', 0),
+            'name': data.get('name', ''),
+            'overview': data.get('overview', ''),
+            'poster_path': data.get('poster_path', '') or '',
+            'air_date': parse_date(data['air_date']) if data.get('air_date') else None,
+            'episode_count': data.get('episode_count', 0),
+        }
         season, _ = Season.objects.update_or_create(
             show=show,
             season_number=season_number,
-            defaults={
-                'tmdb_id': data.get('id', 0),
-                'name': data.get('name', ''),
-                'overview': data.get('overview', ''),
-                'poster_path': data.get('poster_path', '') or '',
-                'air_date': parse_date(data['air_date']) if data.get('air_date') else None,
-                'episode_count': data.get('episode_count', 0),
-            }
+            defaults=_non_empty_defaults(season_defaults),
+            create_defaults=season_defaults,
         )
         for ep_data in data.get('episodes', []):
             episode_number = ep_data['episode_number']
+            episode_defaults = {
+                'tmdb_id': ep_data.get('id', 0),
+                'name': ep_data.get('name', ''),
+                'overview': ep_data.get('overview', ''),
+                'still_path': ep_data.get('still_path', '') or '',
+                'air_date': parse_date(ep_data['air_date']) if ep_data.get('air_date') else None,
+                'runtime': ep_data.get('runtime'),
+                'vote_average': ep_data.get('vote_average', 0),
+                'vote_count': ep_data.get('vote_count', 0),
+                'episode_type': ep_data.get('episode_type', '') or '',
+            }
             Episode.objects.update_or_create(
                 season=season,
                 episode_number=episode_number,
-                defaults={
-                    'tmdb_id': ep_data.get('id', 0),
-                    'name': ep_data.get('name', ''),
-                    'overview': ep_data.get('overview', ''),
-                    'still_path': ep_data.get('still_path', '') or '',
-                    'air_date': parse_date(ep_data['air_date']) if ep_data.get('air_date') else None,
-                    'runtime': ep_data.get('runtime'),
-                    'vote_average': ep_data.get('vote_average', 0),
-                    'vote_count': ep_data.get('vote_count', 0),
-                    'episode_type': ep_data.get('episode_type', '') or '',
-                }
+                defaults=_non_empty_defaults(episode_defaults),
+                create_defaults=episode_defaults,
             )
 
             if sync_episode_credits:
@@ -293,13 +310,15 @@ class TMDBService:
             episode = season.episodes.get(episode_number=episode_number)
 
         credits = self.get_episode_credits(show_id, season_number, episode_number, use_cache=use_cache)
+        credit_defaults = {
+            'cast': credits.get('cast') or [],
+            'crew': credits.get('crew') or [],
+            'guest_stars': credits.get('guest_stars') or [],
+        }
         episode_credit, _ = EpisodeCredit.objects.update_or_create(
             episode=episode,
-            defaults={
-                'cast': credits.get('cast') or [],
-                'crew': credits.get('crew') or [],
-                'guest_stars': credits.get('guest_stars') or [],
-            },
+            defaults=_non_empty_defaults(credit_defaults),
+            create_defaults=credit_defaults,
         )
         return episode_credit
 
