@@ -1039,6 +1039,174 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(response.data[0]['episode_type'], 'season premiere')
 
 
+class SeasonPosterCardsTests(BaseTestCase):
+    """Season posters surface in cards, falling back to the show poster."""
+
+    def setUp(self):
+        super().setUp()
+        self.show = TVShow.objects.create(
+            tmdb_id=8001,
+            name='Season Poster Show',
+            poster_path='/show-poster.jpg',
+            first_air_date='2024-01-01',
+        )
+        self.season1 = Season.objects.create(
+            show=self.show,
+            tmdb_id=80011,
+            season_number=1,
+            name='Season 1',
+            poster_path='/season1-poster.jpg',
+        )
+        self.season2 = Season.objects.create(
+            show=self.show,
+            tmdb_id=80012,
+            season_number=2,
+            name='Season 2',
+            poster_path='',
+        )
+
+    def test_history_episode_card_uses_season_poster(self):
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=8001,
+            season_number=1,
+            episode_number=1,
+        )
+
+        response = self.client.get('/api/tracking/history/?media_type=episode')
+        self.assertEqual(response.status_code, 200)
+        entries = response.data.get('results', response.data)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['poster_path'], '/season1-poster.jpg')
+        self.assertEqual(entries[0]['poster_url'], 'https://image.tmdb.org/t/p/w500/season1-poster.jpg')
+
+    def test_history_episode_card_falls_back_to_show_poster_when_season_poster_blank(self):
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=8001,
+            season_number=2,
+            episode_number=1,
+        )
+
+        response = self.client.get('/api/tracking/history/?media_type=episode')
+        self.assertEqual(response.status_code, 200)
+        entries = response.data.get('results', response.data)
+        self.assertEqual(entries[0]['poster_path'], '/show-poster.jpg')
+        self.assertEqual(entries[0]['poster_url'], 'https://image.tmdb.org/t/p/w500/show-poster.jpg')
+
+    def test_history_episode_card_falls_back_to_show_poster_when_season_missing(self):
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=8001,
+            season_number=5,
+            episode_number=1,
+        )
+
+        response = self.client.get('/api/tracking/history/?media_type=episode')
+        self.assertEqual(response.status_code, 200)
+        entries = response.data.get('results', response.data)
+        self.assertEqual(entries[0]['poster_path'], '/show-poster.jpg')
+
+    def test_history_movie_card_keeps_movie_poster(self):
+        Movie.objects.create(tmdb_id=8002, title='Poster Movie', poster_path='/movie-poster.jpg')
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='movie',
+            tmdb_id=8002,
+        )
+
+        response = self.client.get('/api/tracking/history/?media_type=movie')
+        self.assertEqual(response.status_code, 200)
+        entries = response.data.get('results', response.data)
+        self.assertEqual(entries[0]['poster_path'], '/movie-poster.jpg')
+
+    def test_up_next_uses_next_season_poster(self):
+        today = timezone.now().date()
+        show = TVShow.objects.create(tmdb_id=8101, name='Up Next Poster Show', poster_path='/un-show.jpg')
+        season1 = Season.objects.create(show=show, tmdb_id=81011, season_number=1, name='Season 1', poster_path='/un-s1.jpg')
+        season2 = Season.objects.create(show=show, tmdb_id=81012, season_number=2, name='Season 2', poster_path='/un-s2.jpg')
+        Episode.objects.create(season=season1, tmdb_id=810111, episode_number=1, name='S1E1', air_date=today - timedelta(days=3))
+        Episode.objects.create(season=season2, tmdb_id=810121, episode_number=1, name='S2E1', air_date=today - timedelta(days=1))
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=8101,
+            season_number=1,
+            episode_number=1,
+        )
+
+        response = self.client.get('/api/tracking/up-next/')
+        self.assertEqual(response.status_code, 200)
+        item = next(entry for entry in response.data if entry['tmdb_id'] == 8101)
+        self.assertEqual(item['next_episode']['season_number'], 2)
+        self.assertEqual(item['poster_path'], '/un-s2.jpg')
+        self.assertEqual(item['poster_url'], 'https://image.tmdb.org/t/p/w500/un-s2.jpg')
+
+    def test_up_next_falls_back_to_show_poster_when_next_season_poster_blank(self):
+        today = timezone.now().date()
+        show = TVShow.objects.create(tmdb_id=8201, name='Blank Season Show', poster_path='/blank-un-show.jpg')
+        season1 = Season.objects.create(show=show, tmdb_id=82011, season_number=1, name='Season 1', poster_path='')
+        Episode.objects.create(season=season1, tmdb_id=820111, episode_number=1, name='E1', air_date=today - timedelta(days=3))
+        Episode.objects.create(season=season1, tmdb_id=820112, episode_number=2, name='E2', air_date=today - timedelta(days=1))
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=8201,
+            season_number=1,
+            episode_number=1,
+        )
+
+        response = self.client.get('/api/tracking/up-next/')
+        self.assertEqual(response.status_code, 200)
+        item = next(entry for entry in response.data if entry['tmdb_id'] == 8201)
+        self.assertEqual(item['poster_path'], '/blank-un-show.jpg')
+        self.assertEqual(item['poster_url'], 'https://image.tmdb.org/t/p/w500/blank-un-show.jpg')
+
+    def test_upcoming_uses_episode_season_poster(self):
+        today = timezone.now().date()
+        show = TVShow.objects.create(tmdb_id=8301, name='Upcoming Poster Show', poster_path='/up-show.jpg')
+        season1 = Season.objects.create(show=show, tmdb_id=83011, season_number=1, name='Season 1', poster_path='/up-s1.jpg')
+        Episode.objects.create(
+            season=season1,
+            tmdb_id=830111,
+            episode_number=2,
+            name='Next Week',
+            air_date=today + timedelta(days=7),
+        )
+        UserMediaStatus.objects.create(
+            user=self.user,
+            media_type='tv',
+            tmdb_id=8301,
+            status='watching',
+            watched_episodes=1,
+        )
+
+        response = self.client.get('/api/tracking/upcoming/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['poster_path'], '/up-s1.jpg')
+        self.assertEqual(response.data[0]['poster_url'], 'https://image.tmdb.org/t/p/w500/up-s1.jpg')
+
+    def test_user_stats_recent_activity_uses_season_poster(self):
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=8001,
+            season_number=1,
+            episode_number=1,
+        )
+
+        response = self.client.get('/api/tracking/stats/')
+        self.assertEqual(response.status_code, 200)
+        recent = response.data['recent_activity']
+        self.assertEqual(len(recent), 1)
+        self.assertEqual(recent[0]['poster_path'], '/season1-poster.jpg')
+        self.assertEqual(recent[0]['poster_url'], 'https://image.tmdb.org/t/p/w500/season1-poster.jpg')
+
+
 class ProgressListTests(BaseTestCase):
     def setUp(self):
         super().setUp()

@@ -52,6 +52,33 @@ class MediaCardSerializer(serializers.ModelSerializer):
         media_cache[cache_key] = media
         return media
 
+    def _get_season(self, obj):
+        media_type = getattr(obj, 'media_type', None)
+        season_number = getattr(obj, 'season_number', None)
+        if media_type != WatchEntryMediaType.EPISODE or not season_number:
+            return None
+
+        cache = getattr(self, '_season_cache', None)
+        if cache is None:
+            cache = {}
+            self._season_cache = cache
+
+        cache_key = (obj.tmdb_id, season_number)
+        if cache_key in cache:
+            return cache[cache_key]
+
+        from media.models import Season
+
+        season_map = self.context.get('season_map') or {}
+        season = season_map.get(cache_key)
+        if season is None:
+            season = Season.objects.filter(
+                show__tmdb_id=obj.tmdb_id,
+                season_number=season_number,
+            ).first()
+        cache[cache_key] = season
+        return season
+
     def get_title(self, obj):
         media = self._get_media(obj)
         if media:
@@ -61,12 +88,16 @@ class MediaCardSerializer(serializers.ModelSerializer):
 
     def get_poster_path(self, obj):
         media = self._get_media(obj)
-        return getattr(media, 'poster_path', '') if media else ''
+        show_path = getattr(media, 'poster_path', '') if media else ''
+        season = self._get_season(obj)
+        if season is not None:
+            return season.poster_path or show_path
+        return show_path
 
     def get_poster_url(self, obj):
-        media = self._get_media(obj)
-        if media and media.poster_path:
-            return f'https://image.tmdb.org/t/p/w500{media.poster_path}'
+        path = self.get_poster_path(obj)
+        if path:
+            return f'https://image.tmdb.org/t/p/w500{path}'
         return None
 
     def get_vote_average(self, obj):

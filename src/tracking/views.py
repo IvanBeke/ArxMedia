@@ -1,5 +1,6 @@
 import logging
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
 
 from accounts.privacy import can_view_account_content, get_viewer_relationship
 from django.db import IntegrityError, transaction
@@ -65,6 +66,9 @@ from .status_annotations import annotate_media_user_status
 from .status_sync import refresh_show_status
 from .tasks.import_commands import ConfirmImportCommand
 
+if TYPE_CHECKING:
+    from media.models import Season
+
 logger = logging.getLogger(__name__)
 
 
@@ -119,6 +123,22 @@ def _collect_media_ids(queryset) -> tuple[set[int], set[int]]:
         elif media_type == MediaType.TV:
             tv_ids.add(tmdb_id)
     return movie_ids, tv_ids
+
+
+def _build_season_map(pairs) -> dict[tuple[int, int], Season | None]:
+    from media.models import Season
+
+    unique_pairs = {(int(tmdb_id), int(season_number)) for tmdb_id, season_number in pairs}
+    season_map: dict[tuple[int, int], Season | None] = {}
+    if not unique_pairs:
+        return season_map
+    pair_show_ids = {tmdb_id for tmdb_id, _ in unique_pairs}
+    seasons_by_show: dict[int, dict[int, Season]] = {}
+    for season in Season.objects.filter(show__tmdb_id__in=pair_show_ids):
+        seasons_by_show.setdefault(season.show.tmdb_id, {})[season.season_number] = season
+    for tmdb_id, season_number in unique_pairs:
+        season_map[(tmdb_id, season_number)] = seasons_by_show.get(tmdb_id, {}).get(season_number)
+    return season_map
 
 
 def _build_user_media_sets(user, movie_ids: set[int], tv_ids: set[int]) -> dict[str, set[int]]:
@@ -463,6 +483,11 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         show_ids = [entry.tmdb_id for entry in items if entry.media_type == WatchEntryMediaType.EPISODE]
         movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
         tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=show_ids)}
+        season_map = _build_season_map(
+            (entry.tmdb_id, entry.season_number)
+            for entry in items
+            if entry.media_type == WatchEntryMediaType.EPISODE and entry.season_number
+        )
         rating_rows = Rating.objects.filter(
             user=request.user,
         ).filter(
@@ -472,7 +497,7 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         rating_map = {(row['media_type'], row['tmdb_id']): row['score'] for row in rating_rows}
 
         context = self.get_serializer_context()
-        context.update({'movie_map': movie_map, 'tv_map': tv_map})
+        context.update({'movie_map': movie_map, 'tv_map': tv_map, 'season_map': season_map})
         serializer = self.get_serializer(items, many=True, context=context)
         data = serializer.data
 
@@ -751,12 +776,10 @@ def user_stats(request):
                 d['show_title'] = season.show.name
                 d['episode_title'] = ep.name if ep else f'Episode {entry.episode_number}'
                 d['title'] = d['episode_title']
-                d['poster_path'] = season.show.poster_path if season.show else ''
             else:
                 d['show_title'] = None
                 d['episode_title'] = f'Episode {entry.episode_number}' if entry.episode_number else f'Episode #{entry.tmdb_id}'
                 d['title'] = d['episode_title']
-                d['poster_path'] = ''
             d['rating'] = rating_map.get((MediaType.TV, entry.tmdb_id))
         recent_data.append(d)
 
@@ -1046,6 +1069,12 @@ def up_next(request):
         for show in TVShow.objects.filter(tmdb_id__in=[item['tmdb_id'] for item in watched_show_rows]).only('tmdb_id', 'name', 'poster_path')
     }
 
+    next_season_map = _build_season_map(
+        (item['tmdb_id'], item['next_season_number'])
+        for item in watched_show_rows
+        if item['next_season_number'] is not None
+    )
+
     up_next_data = []
     new_threshold = today - timedelta(days=7)
     for show_item in watched_show_rows:
@@ -1053,11 +1082,12 @@ def up_next(request):
         if show is None:
             continue
         progress_percent = show_item.get('progress_percent')
+        next_season = next_season_map.get((show_item['tmdb_id'], show_item['next_season_number']))
         up_next_data.append({
             'tmdb_id': show_item['tmdb_id'],
             'show_name': show.name,
-            'poster_path': show.poster_path,
-            'poster_url': show.poster_url,
+            'poster_path': (next_season.poster_path if next_season else '') or show.poster_path,
+            'poster_url': (next_season.poster_url if next_season else None) or show.poster_url,
             'last_watched_at': show_item['last_watched_at'],
             'progress_percent': progress_percent if progress_percent is not None else 0,
             'episodes_left': show_item['episodes_left'],
@@ -1576,8 +1606,8 @@ def upcoming(request):
         upcoming_data.append({
             'tmdb_id': ep.season.show.tmdb_id,
             'show_name': ep.season.show.name,
-            'poster_path': ep.season.show.poster_path,
-            'poster_url': ep.season.show.poster_url,
+            'poster_path': ep.season.poster_path or ep.season.show.poster_path,
+            'poster_url': ep.season.poster_url or ep.season.show.poster_url,
             'season_number': ep.season.season_number,
             'episode_number': ep.episode_number,
             'name': ep.name,
