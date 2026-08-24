@@ -27,6 +27,8 @@
       search-placeholder="Search by show title"
       :provider-status-options="availableProviderStatuses"
       :genre-options="availableGenres"
+      ref="filterBarRef"
+      :page="currentPage"
       :sync-url="true"
       @change="onFilterBarChange"
     />
@@ -130,7 +132,7 @@
 
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
 import AddToListPopover from '@/components/AddToListPopover.vue'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
@@ -143,7 +145,6 @@ import ProgressRow from '@/components/ProgressRow.vue'
 import StarRating from '@/components/StarRating.vue'
 
 const route = useRoute()
-const router = useRouter()
 
 const loading = ref(true)
 const rows = ref([])
@@ -175,6 +176,7 @@ const pageSize = ref(20)
 const activeRow = ref(null)
 const rateDialog = ref(null)
 const addToListDialog = ref(null)
+const filterBarRef = ref(null)
 const modalRating = ref(0)
 const modalBusy = ref(false)
 
@@ -221,16 +223,6 @@ function buildParams() {
 function parsePage(value) {
   const page = Number.parseInt(String(value || '1'), 10)
   return Number.isInteger(page) && page > 0 ? page : 1
-}
-
-function syncPageQuery() {
-  const nextQuery = {
-    ...route.query,
-    page: String(currentPage.value),
-  }
-  if (JSON.stringify(nextQuery) !== JSON.stringify(route.query)) {
-    router.replace({ query: nextQuery })
-  }
 }
 
 async function loadMyShows() {
@@ -341,23 +333,12 @@ async function rate(tmdbId, score) {
 }
 
 function resetFilters() {
-  const nextQuery = { ...route.query, page: '1' }
-  delete nextQuery.search
-  delete nextQuery.sort
-  delete nextQuery.direction
-  delete nextQuery.status
-  delete nextQuery.provider_status
-  delete nextQuery.has_upcoming
-  delete nextQuery.is_new
-  delete nextQuery.missing_rating
-  delete nextQuery.genres
-  router.replace({ query: nextQuery })
+  filterBarRef.value?.clearAll()
 }
 
 watch(
   [appliedFilters, currentPage],
   async () => {
-    syncPageQuery()
     await loadMyShows()
   },
   { deep: true }
@@ -366,7 +347,9 @@ watch(
 watch(
   () => route.query.page,
   async () => {
-    currentPage.value = parsePage(route.query.page)
+    const nextPage = parsePage(route.query.page)
+    if (nextPage === currentPage.value) return
+    currentPage.value = nextPage
     await loadMyShows()
   }
 )

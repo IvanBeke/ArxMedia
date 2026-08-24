@@ -76,6 +76,8 @@
         default-sort-key="added_at"
         :apply-media-type-exclusive-sorts="true"
         search-placeholder="Search list items by title"
+        ref="filterBarRef"
+        :page="currentPage"
         :sync-url="true"
         @change="onFilterBarChange"
       />
@@ -101,10 +103,26 @@
         />
       </section>
 
-      <section v-else class="card p-12 text-center">
-        <p class="text-gray-500 text-lg mb-2">No items in this list yet</p>
-        <p class="text-gray-600 text-sm mb-6">Add movies and shows to get started</p>
-        <button v-if="canEdit" @click="openAddModal" class="btn-primary">Add Items</button>
+      <PaginationControls
+        v-if="!loading"
+        :current-page="currentPage"
+        :total-pages="totalPages"
+        :max-visible-pages="10"
+        :disabled="loadingItems"
+        @go="goToPage"
+      />
+
+      <section v-if="!items.length && !loading && !loadingItems" class="card p-12 text-center">
+        <template v-if="hasActiveFilters">
+          <p class="text-gray-500 text-lg mb-2">No items match your filters</p>
+          <p class="text-gray-600 text-sm mb-6">Try adjusting or clearing the active filters</p>
+          <button class="btn-primary" @click="resetFilters">Clear filters</button>
+        </template>
+        <template v-else>
+          <p class="text-gray-500 text-lg mb-2">No items in this list yet</p>
+          <p class="text-gray-600 text-sm mb-6">Add movies and shows to get started</p>
+          <button v-if="canEdit" @click="openAddModal" class="btn-primary">Add Items</button>
+        </template>
       </section>
 
       <dialog
@@ -292,6 +310,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { authAPI, trackingAPI, mediaAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import MediaCard from '@/components/MediaCard.vue'
+import PaginationControls from '@/components/PaginationControls.vue'
 import { useAuthStore } from '@/stores/auth'
 import { formatDateByLocale } from '@/i18n'
 import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
@@ -339,6 +358,11 @@ const feedbackKind = ref('success')
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const deletingList = ref(false)
 const addingResultKey = ref('')
+const filterBarRef = ref(null)
+const currentPage = ref(1)
+const totalPages = ref(1)
+const pageSize = ref(20)
+const count = ref(0)
 
 const editForm = ref({
   name: '',
@@ -356,6 +380,20 @@ const canEdit = computed(() => {
   const myId = auth.user?.id
   if (!myId) return false
   return (list.value.collaborators || []).includes(myId)
+})
+
+const hasActiveFilters = computed(() => {
+  const filterState = appliedFilters.value
+  return Boolean(
+    filterState.search ||
+    filterState.sort !== 'added_at' ||
+    filterState.direction !== 'asc' ||
+    filterState.mediaType !== 'all' ||
+    filterState.statuses.length ||
+    filterState.genres.length ||
+    filterState.missingRating ||
+    filterState.inWatchlist
+  )
 })
 
 function formatDate(d) {
@@ -448,6 +486,7 @@ async function loadItems() {
     const params = {
       sort: filterState.sort,
       direction: filterState.direction,
+      page: currentPage.value,
       ...(filterState.search ? { search: filterState.search } : {}),
       ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
       ...(filterState.statuses.length ? { status: filterState.statuses } : {}),
@@ -456,19 +495,59 @@ async function loadItems() {
       ...(filterState.inWatchlist ? { in_watchlist: true } : {}),
     }
     const data = await trackingAPI.getListItems(route.params.id, params)
-    items.value = data?.results || data || []
+    const results = data?.results || data || []
+    items.value = Array.isArray(results) ? results : []
+
+    if (Array.isArray(data?.results)) {
+      count.value = Number.isFinite(data.count) ? data.count : data.results.length
+      if (data.results.length > 0 && currentPage.value === 1) {
+        pageSize.value = data.results.length
+      }
+      totalPages.value = Math.max(1, Math.ceil(count.value / pageSize.value))
+    } else {
+      totalPages.value = 1
+    }
+
+    if (currentPage.value > totalPages.value) {
+      currentPage.value = totalPages.value
+      return
+    }
   } catch (error) {
     showFeedback(getApiErrorMessage(error, 'Could not load list items.'), 'error')
     items.value = []
+    count.value = 0
+    totalPages.value = 1
   } finally {
     loadingItems.value = false
   }
 }
 
+function parsePage(value) {
+  const page = Number.parseInt(String(value || '1'), 10)
+  return Number.isInteger(page) && page > 0 ? page : 1
+}
+
+function goToPage(page) {
+  if (!Number.isInteger(page) || page < 1 || page > totalPages.value || page === currentPage.value || loadingItems.value) {
+    return
+  }
+  currentPage.value = page
+}
+
+function resetFilters() {
+  filterBarRef.value?.clearAll()
+}
+
 function onFilterBarChange(payload) {
   const next = payload?.filters
   if (!next) return
+
+  const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
   appliedFilters.value = next
+
+  if (didChange && payload?.source === 'interaction') {
+    currentPage.value = 1
+  }
 }
 
 async function updateList() {
@@ -614,15 +693,26 @@ async function removeCollaborator(userId) {
 
 onMounted(async () => {
   await loadList()
+  currentPage.value = parsePage(route.query.page)
   await loadItems()
 })
 
 watch(
-  appliedFilters,
+  [appliedFilters, currentPage],
   async () => {
     await loadItems()
   },
   { deep: true }
+)
+
+watch(
+  () => route.query.page,
+  async () => {
+    const nextPage = parsePage(route.query.page)
+    if (nextPage === currentPage.value) return
+    currentPage.value = nextPage
+    await loadItems()
+  }
 )
 </script>
 

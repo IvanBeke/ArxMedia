@@ -272,7 +272,9 @@ function stateToQuery() {
   if (!groupByDay.value) {
     query.group_by_day = '0'
   }
-  query.page = String(currentPage.value)
+  if (currentPage.value > 1) {
+    query.page = String(currentPage.value)
+  }
   return query
 }
 

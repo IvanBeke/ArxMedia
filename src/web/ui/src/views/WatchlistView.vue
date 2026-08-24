@@ -25,6 +25,8 @@
       default-sort-key="added_at"
       :apply-media-type-exclusive-sorts="false"
       search-placeholder="Search by title"
+      ref="filterBarRef"
+      :page="currentPage"
       :sync-url="true"
       @change="onFilterBarChange"
     />
@@ -62,7 +64,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
@@ -86,14 +88,14 @@ const appliedFilters = ref({
   missingRating: false,
   inWatchlist: false,
 })
-const currentPage = ref(1)
 const totalPages = ref(1)
 const count = ref(0)
 const pageSize = ref(20)
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const { t } = useI18n()
 const route = useRoute()
-const router = useRouter()
+const filterBarRef = ref(null)
+const currentPage = ref(1)
 
 function handleWatchlistRemoved(payload) {
   const itemId = payload?.tmdb_id || payload?.id
@@ -136,13 +138,8 @@ async function load(page = 1) {
         count.value = pageItems.length
         totalPages.value = 1
       }
-      if (page === 1) {
-        items.value = pageItems
-      } else {
-        items.value = pageItems
-      }
+      items.value = pageItems
       currentPage.value = page
-      syncPageQuery()
     }
   } finally {
     if (showFullLoader) {
@@ -176,30 +173,9 @@ function onFilterBarChange(payload) {
   }
 }
 
-function parsePage(value) {
-  const page = Number.parseInt(String(value || ''), 10)
-  return Number.isInteger(page) && page > 0 ? page : 1
-}
-
-function syncPageQuery() {
-  const nextQuery = {
-    ...route.query,
-    page: String(currentPage.value),
-  }
-  if (JSON.stringify(route.query) !== JSON.stringify(nextQuery)) {
-    router.replace({ query: nextQuery })
-  }
-}
-
-onMounted(async () => {
-  currentPage.value = parsePage(route.query.page)
-  await load(currentPage.value)
-})
-
 watch(
   [appliedFilters, currentPage],
   async () => {
-    syncPageQuery()
     await load(currentPage.value)
   },
   { deep: true }
@@ -215,4 +191,13 @@ watch(
   }
 )
 
+onMounted(async () => {
+  currentPage.value = parsePage(route.query.page)
+  await load(currentPage.value)
+})
+
+function parsePage(value) {
+  const page = Number.parseInt(String(value || ''), 10)
+  return Number.isInteger(page) && page > 0 ? page : 1
+}
 </script>

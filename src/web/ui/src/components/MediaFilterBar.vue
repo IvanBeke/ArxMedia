@@ -212,6 +212,7 @@ const props = defineProps({
   applyMediaTypeExclusiveSorts: { type: Boolean, default: true },
   providerStatusOptions: { type: Array, default: () => [] },
   genreOptions: { type: Array, default: () => [] },
+  page: { type: Number, default: 1 },
   syncUrl: { type: Boolean, default: true },
 })
 
@@ -542,13 +543,28 @@ function emitChange(source) {
   emit('change', { source, filters: payload })
 }
 
-function syncUrl() {
+const filterQueryKeys = ['search', 'sort', 'direction', 'media_type', 'status', 'provider_status', 'has_upcoming', 'is_new', 'missing_rating', 'in_watchlist', 'genres', 'page']
+
+function resolvePageValue(value) {
+  const page = Number.parseInt(String(value ?? 1), 10)
+  return Number.isInteger(page) && page > 0 ? page : 1
+}
+
+function syncUrl(options = {}) {
   if (!props.syncUrl) return
 
-  const keys = ['search', 'sort', 'direction', 'media_type', 'status', 'provider_status', 'has_upcoming', 'is_new', 'missing_rating', 'in_watchlist', 'genres']
+  const { resetPage = false } = options
+  const nextPage = resetPage ? 1 : resolvePageValue(props.page)
+
+  // Owned keys are composed purely from component state (never from the live
+  // route query) so concurrent writes in one tick can never clobber each other.
+  // Foreign query params are preserved as-is.
   const nextQuery = { ...route.query }
-  for (const key of keys) {
+  for (const key of filterQueryKeys) {
     delete nextQuery[key]
+  }
+  if (nextPage > 1) {
+    nextQuery.page = String(nextPage)
   }
 
   if (props.showSearch && filters.search) nextQuery.search = filters.search
@@ -572,7 +588,7 @@ function syncUrl() {
 }
 
 function commitInteraction() {
-  syncUrl()
+  syncUrl({ resetPage: true })
   emitChange('interaction')
 }
 
@@ -618,6 +634,27 @@ function clearAdvanced() {
   staged.inWatchlist = false
   applyAdvanced()
 }
+
+function clearAll() {
+  draftSearch.value = ''
+  filters.search = ''
+  filters.sort = resolvedDefaultSort.value
+  filters.direction = getDefaultDirection(filters.sort)
+  directionOverridden.value = false
+  filters.mediaType = showMediaTypeControl.value ? 'all' : (props.mediaType || 'all')
+  filters.statuses = []
+  filters.providerStatuses = []
+  filters.genres = []
+  filters.hasUpcoming = false
+  filters.newOnly = false
+  filters.missingRating = false
+  filters.inWatchlist = false
+  advancedOpen.value = false
+  syncStagedFromApplied()
+  commitInteraction()
+}
+
+defineExpose({ clearAll })
 
 function applySearch() {
   filters.search = draftSearch.value.trim()
@@ -669,6 +706,14 @@ watch(
     }
     filters.mediaType = props.mediaType || 'all'
     staged.mediaType = props.mediaType || 'all'
+  }
+)
+
+watch(
+  () => props.page,
+  () => {
+    if (!props.syncUrl) return
+    syncUrl()
   }
 )
 
