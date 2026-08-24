@@ -1472,6 +1472,27 @@ class ListItemTests(BaseTestCase):
         response = self.client.get(f'/api/tracking/lists/{lst.id}/items/?sort=media_type')
         self.assertEqual(response.status_code, 200)
 
+    def test_list_items_paginated_envelope(self):
+        lst = CustomList.objects.create(user=self.user, name='Paginated List')
+        for index in range(25):
+            ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=9000 + index)
+
+        first_page = self.client.get(f'/api/tracking/lists/{lst.id}/items/')
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(first_page.data['count'], 25)
+        self.assertEqual(len(first_page.data['results']), 20)
+        self.assertIsNotNone(first_page.data['next'])
+        self.assertIsNone(first_page.data['previous'])
+
+        second_page = self.client.get(f'/api/tracking/lists/{lst.id}/items/?page=2')
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(second_page.data['count'], 25)
+        self.assertEqual(len(second_page.data['results']), 5)
+        self.assertIsNone(second_page.data['next'])
+        page_two_ids = {item['tmdb_id'] for item in second_page.data['results']}
+        page_one_ids = {item['tmdb_id'] for item in first_page.data['results']}
+        self.assertEqual(len(page_one_ids | page_two_ids), 25)
+
     def test_cannot_access_others_list_items(self):
         lst = CustomList.objects.create(user=self.user2, name='Other List', privacy='private')
         response = self.client.get(f'/api/tracking/lists/{lst.id}/items/')

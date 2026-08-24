@@ -105,11 +105,12 @@
 
       <PaginationControls
         v-if="!loading"
-        :current-page="currentPage"
-        :total-pages="totalPages"
+        v-model:page="currentPage"
+        :count="count"
+        :loaded-count="lastLoadedCount"
         :max-visible-pages="10"
         :disabled="loadingItems"
-        @go="goToPage"
+        @go="currentPage = $event"
       />
 
       <section v-if="!items.length && !loading && !loadingItems" class="card p-12 text-center">
@@ -315,8 +316,10 @@ import { useAuthStore } from '@/stores/auth'
 import { formatDateByLocale } from '@/i18n'
 import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
+import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { useQueryPageSync } from '@/composables/useQueryPageSync'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const route = useRoute()
@@ -359,10 +362,9 @@ const { errorMsg: quickActionError, showError: showQuickActionError } = useFlash
 const deletingList = ref(false)
 const addingResultKey = ref('')
 const filterBarRef = ref(null)
-const currentPage = ref(1)
-const totalPages = ref(1)
-const pageSize = ref(20)
 const count = ref(0)
+const lastLoadedCount = ref(0)
+const currentPage = useQueryPageSync(route)
 
 const editForm = ref({
   name: '',
@@ -495,43 +497,23 @@ async function loadItems() {
       ...(filterState.inWatchlist ? { in_watchlist: true } : {}),
     }
     const data = await trackingAPI.getListItems(route.params.id, params)
-    const results = data?.results || data || []
-    items.value = Array.isArray(results) ? results : []
-
-    if (Array.isArray(data?.results)) {
-      count.value = Number.isFinite(data.count) ? data.count : data.results.length
-      if (data.results.length > 0 && currentPage.value === 1) {
-        pageSize.value = data.results.length
-      }
-      totalPages.value = Math.max(1, Math.ceil(count.value / pageSize.value))
-    } else {
-      totalPages.value = 1
-    }
-
-    if (currentPage.value > totalPages.value) {
-      currentPage.value = totalPages.value
+    const paged = normalizePagedResponse(data)
+    items.value = paged.items
+    count.value = paged.count
+    lastLoadedCount.value = paged.loadedCount
+  } catch (error) {
+    const recoveryPage = invalidPageRecovery(error, currentPage.value)
+    if (recoveryPage !== null) {
+      currentPage.value = recoveryPage
       return
     }
-  } catch (error) {
     showFeedback(getApiErrorMessage(error, 'Could not load list items.'), 'error')
     items.value = []
     count.value = 0
-    totalPages.value = 1
+    lastLoadedCount.value = 0
   } finally {
     loadingItems.value = false
   }
-}
-
-function parsePage(value) {
-  const page = Number.parseInt(String(value || '1'), 10)
-  return Number.isInteger(page) && page > 0 ? page : 1
-}
-
-function goToPage(page) {
-  if (!Number.isInteger(page) || page < 1 || page > totalPages.value || page === currentPage.value || loadingItems.value) {
-    return
-  }
-  currentPage.value = page
 }
 
 function resetFilters() {
@@ -693,8 +675,6 @@ async function removeCollaborator(userId) {
 
 onMounted(async () => {
   await loadList()
-  currentPage.value = parsePage(route.query.page)
-  await loadItems()
 })
 
 watch(
@@ -702,17 +682,7 @@ watch(
   async () => {
     await loadItems()
   },
-  { deep: true }
-)
-
-watch(
-  () => route.query.page,
-  async () => {
-    const nextPage = parsePage(route.query.page)
-    if (nextPage === currentPage.value) return
-    currentPage.value = nextPage
-    await loadItems()
-  }
+  { deep: true, immediate: true }
 )
 </script>
 

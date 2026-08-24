@@ -81,11 +81,12 @@
       </template>
 
       <PaginationControls
-        :current-page="currentPage"
-        :total-pages="totalPages"
+        v-model:page="currentPage"
+        :count="count"
+        :loaded-count="lastLoadedCount"
         :max-visible-pages="10"
         :disabled="loading"
-        @go="goToPage"
+        @go="currentPage = $event"
       />
     </div>
 
@@ -111,6 +112,7 @@ import { useI18n } from '@/i18n'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
+import { invalidPageRecovery, normalizePagedResponse, parsePage } from '@/utils/pagination'
 
 const route = useRoute()
 const router = useRouter()
@@ -123,9 +125,8 @@ const activeFilter = ref('all')
 const sortOrder = ref('newest')
 const groupByDay = ref(true)
 const currentPage = ref(1)
-const totalPages = ref(1)
 const count = ref(0)
-const pageSize = ref(20)
+const lastLoadedCount = ref(0)
 const deletingEntryId = ref(null)
 let suppressRouteLoad = false
 
@@ -205,6 +206,11 @@ async function loadHistory() {
     applyHistoryResponse(historyRes)
     stats.value = statsRes
   } catch (e) {
+    const recoveryPage = invalidPageRecovery(e, currentPage.value)
+    if (recoveryPage !== null) {
+      currentPage.value = recoveryPage
+      return
+    }
     console.error('Failed to load history', e)
   } finally {
     loading.value = false
@@ -223,20 +229,10 @@ function buildHistoryParams(page = currentPage.value) {
 }
 
 function applyHistoryResponse(historyRes) {
-  if (Array.isArray(historyRes?.results)) {
-    count.value = Number.isFinite(historyRes.count) ? historyRes.count : historyRes.results.length
-    if (historyRes.results.length > 0) {
-      pageSize.value = historyRes.results.length
-    }
-    totalPages.value = Math.max(1, Math.ceil(count.value / pageSize.value))
-    entries.value = historyRes.results
-    return
-  }
-
-  const list = historyRes || []
-  count.value = list.length
-  totalPages.value = 1
-  entries.value = list
+  const paged = normalizePagedResponse(historyRes)
+  count.value = paged.count
+  lastLoadedCount.value = paged.loadedCount
+  entries.value = paged.items
 }
 
 async function loadHistoryEntries(page = currentPage.value) {
@@ -248,17 +244,15 @@ function queryToState() {
   const mediaType = route.query.media_type
   const order = route.query.order
   const groupByDayQuery = route.query.group_by_day
-  const pageQuery = Number.parseInt(String(route.query.page || ''), 10)
 
   const nextFilter = mediaType === MEDIA_TYPE.MOVIE || mediaType === WATCH_ENTRY_MEDIA_TYPE.EPISODE ? mediaType : 'all'
   const nextOrder = order === 'oldest' ? 'oldest' : 'newest'
   const nextGroupByDay = groupByDayQuery !== '0'
-  const nextPage = Number.isInteger(pageQuery) && pageQuery > 0 ? pageQuery : 1
 
   activeFilter.value = nextFilter
   sortOrder.value = nextOrder
   groupByDay.value = nextGroupByDay
-  currentPage.value = nextPage
+  currentPage.value = parsePage(route.query.page)
 }
 
 function stateToQuery() {
@@ -316,13 +310,6 @@ function toggleSort() {
 
 function toggleDayGrouping() {
   groupByDay.value = !groupByDay.value
-}
-
-function goToPage(page) {
-  if (!Number.isInteger(page) || page < 1 || page > totalPages.value || page === currentPage.value || loading.value) {
-    return
-  }
-  currentPage.value = page
 }
 
 async function deleteEntry(entry) {

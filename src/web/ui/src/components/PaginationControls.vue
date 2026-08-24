@@ -7,7 +7,7 @@
       :disabled="isFirst"
       :class="{ 'opacity-50': isFirst }"
       aria-label="Go to first page"
-      @click="emit('go', 1)"
+      @click="requestGo(1)"
     >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" d="M18 6l-6 6 6 6" />
@@ -20,7 +20,7 @@
       :disabled="isFirst"
       :class="{ 'opacity-50': isFirst }"
       aria-label="Go to previous page"
-      @click="emit('go', currentPage - 1)"
+      @click="requestGo(currentPage - 1)"
     >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6" />
@@ -29,17 +29,17 @@
 
       <span v-if="rangeStart > 1" class="pagination-ellipsis border-r border-surface-200" aria-hidden="true">...</span>
       <button
-        v-for="page in visiblePages"
-        :key="page"
+        v-for="pageNum in visiblePages"
+        :key="pageNum"
         type="button"
         class="pagination-btn border-r border-surface-200"
-        :class="page === currentPage ? 'pagination-btn-active bg-brand-500 text-white hover:bg-brand-500' : ''"
+        :class="pageNum === currentPage ? 'pagination-btn-active bg-brand-500 text-white hover:bg-brand-500' : ''"
         :disabled="disabled"
-        :aria-current="page === currentPage ? 'page' : undefined"
-        :aria-label="`Go to page ${page}`"
-        @click="emit('go', page)"
+        :aria-current="pageNum === currentPage ? 'page' : undefined"
+        :aria-label="`Go to page ${pageNum}`"
+        @click="requestGo(pageNum)"
       >
-        {{ page }}
+        {{ pageNum }}
       </button>
       <span v-if="rangeEnd < totalPages" class="pagination-ellipsis border-r border-surface-200" aria-hidden="true">...</span>
 
@@ -49,7 +49,7 @@
       :disabled="isLast"
       :class="{ 'opacity-50': isLast }"
       aria-label="Go to next page"
-      @click="emit('go', currentPage + 1)"
+      @click="requestGo(currentPage + 1)"
     >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6" />
@@ -61,7 +61,7 @@
       :disabled="isLast"
       :class="{ 'opacity-50': isLast }"
       aria-label="Go to last page"
-      @click="emit('go', totalPages)"
+      @click="requestGo(totalPages)"
     >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l6 6-6 6" />
@@ -113,40 +113,91 @@
 </style>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
-  currentPage: { type: Number, required: true },
-  totalPages: { type: Number, required: true },
+  count: { type: Number, default: 0 },
+  page: { type: Number, default: 1 },
+  loadedCount: { type: Number, default: 0 },
   maxVisiblePages: { type: Number, default: 10 },
   disabled: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['go'])
+const emit = defineEmits(['go', 'update:page', 'update:totalPages'])
 
-const isFirst = computed(() => props.disabled || props.currentPage <= 1)
-const isLast = computed(() => props.disabled || props.currentPage >= props.totalPages)
+// Bootstrap mirror of the server's DRF page size; recalibrated below from the
+// first full page of results. Partial pages must never shrink this value,
+// otherwise totalPages inflates and phantom page links appear.
+const DEFAULT_PAGE_SIZE = 20
+const fullPageSize = ref(DEFAULT_PAGE_SIZE)
+
+watch(
+  [() => props.page, () => props.loadedCount],
+  ([pageValue, loadedValue]) => {
+    if (pageValue === 1 && loadedValue > 0) {
+      fullPageSize.value = loadedValue
+    }
+  },
+  { immediate: true }
+)
+
+const totalPages = computed(() => {
+  if (!Number.isFinite(props.count) || props.count <= 0) {
+    return 1
+  }
+  return Math.max(1, Math.ceil(props.count / fullPageSize.value))
+})
+
+watch(
+  totalPages,
+  (value) => {
+    emit('update:totalPages', value)
+    // Correct the parent's page state when committed data shrank below it.
+    if (props.page > value) {
+      emit('update:page', value)
+    }
+  },
+  { immediate: true }
+)
+
+const currentPage = computed(() => Math.min(Math.max(1, props.page), totalPages.value))
+
+function requestGo(pageNum) {
+  if (
+    props.disabled ||
+    !Number.isInteger(pageNum) ||
+    pageNum < 1 ||
+    pageNum > totalPages.value ||
+    pageNum === currentPage.value
+  ) {
+    return
+  }
+  emit('go', pageNum)
+}
+
+const isFirst = computed(() => props.disabled || currentPage.value <= 1)
+const isLast = computed(() => props.disabled || currentPage.value >= totalPages.value)
 
 const rangeStart = computed(() => {
-  if (props.totalPages <= props.maxVisiblePages) {
+  if (totalPages.value <= props.maxVisiblePages) {
     return 1
   }
   const half = Math.floor(props.maxVisiblePages / 2)
-  const maxStart = props.totalPages - props.maxVisiblePages + 1
-  return Math.max(1, Math.min(props.currentPage - half, maxStart))
+  const maxStart = totalPages.value - props.maxVisiblePages + 1
+  return Math.max(1, Math.min(currentPage.value - half, maxStart))
 })
 
 const rangeEnd = computed(() => {
-  if (props.totalPages <= props.maxVisiblePages) {
-    return props.totalPages
+  if (totalPages.value <= props.maxVisiblePages) {
+    return totalPages.value
   }
   return rangeStart.value + props.maxVisiblePages - 1
 })
 
 const visiblePages = computed(() => {
   const pages = []
-  for (let page = rangeStart.value; page <= rangeEnd.value; page += 1) {
-    pages.push(page)
+  for (let pageNum = rangeStart.value; pageNum <= rangeEnd.value; pageNum += 1) {
+    pages.push(pageNum)
   }
   return pages
 })

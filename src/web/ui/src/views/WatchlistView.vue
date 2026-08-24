@@ -47,11 +47,12 @@
         />
       </div>
       <PaginationControls
-        :current-page="currentPage"
-        :total-pages="totalPages"
+        v-model:page="currentPage"
+        :count="count"
+        :loaded-count="lastLoadedCount"
         :max-visible-pages="10"
         :disabled="loadingMore"
-        @go="goToPage"
+        @go="currentPage = $event"
       />
     </div>
 
@@ -63,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
@@ -71,6 +72,8 @@ import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
+import { useQueryPageSync } from '@/composables/useQueryPageSync'
 
 const items = ref([])
 const loading = ref(true)
@@ -88,14 +91,13 @@ const appliedFilters = ref({
   missingRating: false,
   inWatchlist: false,
 })
-const totalPages = ref(1)
 const count = ref(0)
-const pageSize = ref(20)
+const lastLoadedCount = ref(0)
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const { t } = useI18n()
 const route = useRoute()
 const filterBarRef = ref(null)
-const currentPage = ref(1)
+const currentPage = useQueryPageSync(route)
 
 function handleWatchlistRemoved(payload) {
   const itemId = payload?.tmdb_id || payload?.id
@@ -108,7 +110,8 @@ function handleWatchlistRemoved(payload) {
   })
 }
 
-async function load(page = 1) {
+async function load() {
+  const page = currentPage.value
   const showFullLoader = page === 1 || items.value.length === 0
   if (showFullLoader) {
     loading.value = true
@@ -125,22 +128,19 @@ async function load(page = 1) {
     page,
   }
   try {
-    const data = await trackingAPI.getWatchlist(params)
-    if (data) {
-      const pageItems = data.results || data
-      if (Array.isArray(data.results)) {
-        count.value = Number.isFinite(data.count) ? data.count : data.results.length
-        if (page === 1 && data.results.length > 0) {
-          pageSize.value = data.results.length
-        }
-        totalPages.value = Math.max(1, Math.ceil(count.value / pageSize.value))
-      } else {
-        count.value = pageItems.length
-        totalPages.value = 1
-      }
-      items.value = pageItems
-      currentPage.value = page
+    const paged = normalizePagedResponse(await trackingAPI.getWatchlist(params))
+    if (paged.items.length || paged.count) {
+      count.value = paged.count
+      lastLoadedCount.value = paged.loadedCount
+      items.value = paged.items
     }
+  } catch (error) {
+    const recoveryPage = invalidPageRecovery(error, page)
+    if (recoveryPage !== null) {
+      currentPage.value = recoveryPage
+      return
+    }
+    throw error
   } finally {
     if (showFullLoader) {
       loading.value = false
@@ -150,15 +150,7 @@ async function load(page = 1) {
   }
 }
 
-async function goToPage(page) {
-  if (!Number.isInteger(page) || page < 1 || page > totalPages.value || page === currentPage.value || loading.value || loadingMore.value) {
-    return
-  }
-  await load(page)
-}
-
 function resetPage() {
-  totalPages.value = 1
   currentPage.value = 1
   count.value = 0
 }
@@ -176,28 +168,8 @@ function onFilterBarChange(payload) {
 watch(
   [appliedFilters, currentPage],
   async () => {
-    await load(currentPage.value)
+    await load()
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
-
-watch(
-  () => route.query.page,
-  async () => {
-    const nextPage = parsePage(route.query.page)
-    if (nextPage === currentPage.value) return
-    currentPage.value = nextPage
-    await load(currentPage.value)
-  }
-)
-
-onMounted(async () => {
-  currentPage.value = parsePage(route.query.page)
-  await load(currentPage.value)
-})
-
-function parsePage(value) {
-  const page = Number.parseInt(String(value || ''), 10)
-  return Number.isInteger(page) && page > 0 ? page : 1
-}
 </script>

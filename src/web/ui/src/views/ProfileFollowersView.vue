@@ -32,10 +32,12 @@
           <p class="text-xs text-muted">{{ t('profile_page_indicator', { page, total: totalPages }) }}</p>
 
           <PaginationControls
-            :current-page="page"
-            :total-pages="totalPages"
+            v-model:page="page"
+            v-model:total-pages="totalPages"
+            :count="count"
+            :loaded-count="lastLoadedCount"
             :disabled="loading"
-            @go="goToPage"
+            @go="loadFollowers"
           />
         </div>
       </div>
@@ -51,6 +53,7 @@ import { authAPI } from '@/api'
 import PaginationControls from '@/components/PaginationControls.vue'
 import UserList from '@/components/UserList.vue'
 import { useI18n } from '@/i18n'
+import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -61,47 +64,35 @@ const forbidden = ref(false)
 const page = ref(1)
 const totalPages = ref(1)
 const count = ref(0)
-const PAGE_SIZE = 20
+const lastLoadedCount = ref(0)
 
 const title = computed(() => t('profile_followers_page_title', { username: route.params.username }))
-
-function normalizePagination(data) {
-  if (Array.isArray(data)) {
-    return { results: data, count: data.length }
-  }
-  return {
-    results: data?.results || [],
-    count: Number.isInteger(data?.count) ? data.count : 0,
-  }
-}
 
 async function loadFollowers(nextPage = 1) {
   loading.value = true
   forbidden.value = false
   try {
     const data = await authAPI.getFollowers(route.params.username, { page: nextPage })
-    const normalized = normalizePagination(data)
-    followers.value = normalized.results
-    count.value = normalized.count
+    const paged = normalizePagedResponse(data)
+    followers.value = paged.items
+    count.value = paged.count
+    lastLoadedCount.value = paged.loadedCount
     page.value = nextPage
-    totalPages.value = Math.max(1, Math.ceil(normalized.count / PAGE_SIZE))
   } catch (error) {
+    const recoveryPage = invalidPageRecovery(error, nextPage)
+    if (recoveryPage !== null) {
+      await loadFollowers(recoveryPage)
+      return
+    }
     if (error?.status === 403) {
       forbidden.value = true
     }
     followers.value = []
     count.value = 0
-    totalPages.value = 1
+    lastLoadedCount.value = 0
   } finally {
     loading.value = false
   }
-}
-
-function goToPage(nextPage) {
-  if (!Number.isInteger(nextPage) || nextPage < 1 || nextPage > totalPages.value || nextPage === page.value || loading.value) {
-    return
-  }
-  loadFollowers(nextPage)
 }
 
 watch(

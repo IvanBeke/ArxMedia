@@ -49,11 +49,12 @@
       />
 
       <PaginationControls
-        :current-page="currentPage"
-        :total-pages="totalPages"
+        v-model:page="currentPage"
+        :count="count"
+        :loaded-count="lastLoadedCount"
         :max-visible-pages="10"
         :disabled="loading"
-        @go="goToPage"
+        @go="currentPage = $event"
       />
     </div>
 
@@ -131,12 +132,14 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
 import AddToListPopover from '@/components/AddToListPopover.vue'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import { getApiErrorMessage } from '@/utils/errors'
+import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
+import { useQueryPageSync } from '@/composables/useQueryPageSync'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { formatHoursMinutes } from '@/utils/progress'
 import { MEDIA_TYPE } from '@/constants/tracking'
@@ -170,9 +173,8 @@ const availableProviderStatuses = ref([])
 
 const count = ref(0)
 const totalWatchedMinutes = ref(0)
-const currentPage = ref(1)
-const totalPages = ref(1)
-const pageSize = ref(20)
+const currentPage = useQueryPageSync(route)
+const lastLoadedCount = ref(0)
 const activeRow = ref(null)
 const rateDialog = ref(null)
 const addToListDialog = ref(null)
@@ -196,13 +198,6 @@ function onFilterBarChange(payload) {
   }
 }
 
-function goToPage(page) {
-  if (!Number.isInteger(page) || page < 1 || page > totalPages.value || page === currentPage.value || loading.value) {
-    return
-  }
-  currentPage.value = page
-}
-
 function buildParams() {
   const filterState = appliedFilters.value
   return {
@@ -220,30 +215,28 @@ function buildParams() {
   }
 }
 
-function parsePage(value) {
-  const page = Number.parseInt(String(value || '1'), 10)
-  return Number.isInteger(page) && page > 0 ? page : 1
-}
-
 async function loadMyShows() {
   loading.value = true
   errorMsg.value = ''
   try {
     const data = await trackingAPI.getMyShows(buildParams())
-    rows.value = data?.results || []
+    const paged = normalizePagedResponse(data)
+    rows.value = paged.items
     availableGenres.value = data?.available_genres || []
     availableProviderStatuses.value = data?.available_provider_statuses || []
-    count.value = Number.isFinite(data?.count) ? data.count : rows.value.length
+    count.value = paged.count
+    lastLoadedCount.value = paged.loadedCount
     totalWatchedMinutes.value = Number.isFinite(data?.total_watched_minutes) ? data.total_watched_minutes : 0
-    if (Array.isArray(data?.results) && data.results.length > 0) {
-      pageSize.value = data.results.length
-    }
-    totalPages.value = Math.max(1, Math.ceil(count.value / pageSize.value))
   } catch (error) {
+    const recoveryPage = invalidPageRecovery(error, currentPage.value)
+    if (recoveryPage !== null) {
+      currentPage.value = recoveryPage
+      return
+    }
     rows.value = []
     count.value = 0
     totalWatchedMinutes.value = 0
-    totalPages.value = 1
+    lastLoadedCount.value = 0
     errorMsg.value = getApiErrorMessage(error, 'Could not load My Shows.')
   } finally {
     loading.value = false
@@ -341,21 +334,6 @@ watch(
   async () => {
     await loadMyShows()
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
-
-watch(
-  () => route.query.page,
-  async () => {
-    const nextPage = parsePage(route.query.page)
-    if (nextPage === currentPage.value) return
-    currentPage.value = nextPage
-    await loadMyShows()
-  }
-)
-
-onMounted(async () => {
-  currentPage.value = parsePage(route.query.page)
-  await loadMyShows()
-})
 </script>
