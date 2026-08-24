@@ -109,14 +109,22 @@ const {
   load: loadWatchedEpisodes,
 } = useWatchedEpisodes()
 
+// Watched count comes from the backend (`user_status.progress`) and is
+// adjusted locally as episodes are marked/unmarked.
+const watchedEpisodesCount = ref(0)
+
+function countWatchedInSeasonFromSet(seasonNum) {
+  const prefix = `${seasonNum}-`
+  let count = 0
+  for (const key of watchedEps.value) {
+    if (key.startsWith(prefix)) count++
+  }
+  return count
+}
+
 const seasonProgress = computed(() => {
   if (!season.value?.episodes?.length) return 0
   return computeProgressPercent(watchedEpisodesCount.value, totalEpisodesCount.value)
-})
-
-const watchedEpisodesCount = computed(() => {
-  if (!season.value?.episodes?.length) return 0
-  return season.value.episodes.filter(ep => watchedEps.value.has(ep.episode_number)).length
 })
 
 const totalEpisodesCount = computed(() => season.value?.episodes?.length || 0)
@@ -142,6 +150,9 @@ function openUnwatchConfirm(payload) {
 }
 
 function onEpisodeUnwatched(target) {
+  if (isWatched(target.seasonNumber, target.episodeNumber)) {
+    watchedEpisodesCount.value = Math.max(0, watchedEpisodesCount.value - 1)
+  }
   unmarkLocally(target.seasonNumber, target.episodeNumber)
 }
 
@@ -149,6 +160,7 @@ async function handleEpisodeWatchOption(payload) {
   const epNum = payload.episodeNumber
   const sn = seasonNumber.value
 
+  const wasWatched = isEpisodeWatched(epNum)
   const finalWatchedAt = await markFromOption(payload.option, {
     tmdbId: tmdbId.value,
     seasonNumber: sn,
@@ -157,6 +169,7 @@ async function handleEpisodeWatchOption(payload) {
   if (!finalWatchedAt) return
 
   markLocally(sn, epNum, finalWatchedAt)
+  if (!wasWatched) watchedEpisodesCount.value += 1
 }
 
 async function handleSeasonWatchOption(option) {
@@ -176,6 +189,7 @@ async function handleSeasonWatchOption(option) {
       use_release_date: resolution.useReleaseDate,
     })
     await loadWatchedEpisodes(tmdbId.value, { seasonNumber: seasonNumber.value })
+    watchedEpisodesCount.value = countWatchedInSeasonFromSet(seasonNumber.value)
   } catch (e) {
     console.error('Failed to mark season:', getApiErrorMessage(e, 'Could not mark season as watched.'))
   }
@@ -187,6 +201,7 @@ onMounted(async () => {
     if (data) {
       season.value = data
       showName.value = data.show_name || 'TV Show'
+      watchedEpisodesCount.value = data.user_status?.progress?.watched_episodes ?? 0
     }
   } finally {
     loading.value = false
