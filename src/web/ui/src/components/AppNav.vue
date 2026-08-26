@@ -33,7 +33,29 @@
         <div class="hidden md:flex items-center gap-1">
           <template v-if="auth.isAuthenticated">
             <RouterLink to="/search" class="nav-link hidden lg:block">{{ t('nav_discover') }}</RouterLink>
-            <RouterLink to="/my-shows" class="nav-link">My Shows</RouterLink>
+            <div
+              class="relative"
+              @mouseenter="showLibraryMenu = true"
+              @mouseleave="showLibraryMenu = false"
+            >
+              <button
+                type="button"
+                class="nav-link inline-flex items-center gap-1 cursor-pointer"
+                aria-haspopup="true"
+                :aria-expanded="showLibraryMenu ? 'true' : 'false'"
+              >
+                <span>Library</span>
+                <svg class="w-3 h-3 transition-transform" :class="showLibraryMenu ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+              <Transition name="fade">
+                <div v-if="showLibraryMenu" class="absolute left-0 top-full w-40 bg-surface border border-surface-200 rounded-lg shadow-xl py-1 z-[120]">
+                  <RouterLink to="/my-shows" @click="showLibraryMenu = false" class="dropdown-item">My Shows</RouterLink>
+                  <RouterLink to="/my-movies" @click="showLibraryMenu = false" class="dropdown-item">My Movies</RouterLink>
+                </div>
+              </Transition>
+            </div>
             <RouterLink to="/history" class="nav-link hidden lg:block">History</RouterLink>
             <RouterLink to="/watchlist" class="nav-link hidden lg:block">Watchlist</RouterLink>
           </template>
@@ -108,6 +130,7 @@
             <template v-if="auth.isAuthenticated">
               <RouterLink to="/search" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_discover') }}</RouterLink>
               <RouterLink to="/my-shows" @click="showMobileMenu = false" class="mobile-nav-link">My Shows</RouterLink>
+              <RouterLink to="/my-movies" @click="showMobileMenu = false" class="mobile-nav-link">My Movies</RouterLink>
               <RouterLink to="/history" @click="showMobileMenu = false" class="mobile-nav-link">History</RouterLink>
               <RouterLink to="/watchlist" @click="showMobileMenu = false" class="mobile-nav-link">Watchlist</RouterLink>
               <RouterLink to="/calendar" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_calendar') }}</RouterLink>
@@ -145,6 +168,7 @@ const searchQuery = ref('')
 const searchScope = ref('all')
 const showUserMenu = ref(false)
 const showMobileMenu = ref(false)
+const showLibraryMenu = ref(false)
 const userMenuRef = ref(null)
 const mobileMenuRef = ref(null)
 const mobileMenuButtonRef = ref(null)

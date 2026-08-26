@@ -62,7 +62,7 @@
             <p class="text-xs text-muted">User status</p>
             <div class="flex flex-wrap gap-2">
               <button
-                v-for="statusOption in statusChipOptions"
+                v-for="statusOption in resolvedStatusChipOptions"
                 :key="statusOption.value"
                 type="button"
                 class="chip"
@@ -227,10 +227,16 @@ const directionOverridden = ref(false)
 const draftSearch = ref('')
 const fetchedGenres = ref([])
 
-const statusChipOptions = [
+const tvStatusChipOptions = [
   { label: 'Plan to watch', value: 'plan_to_watch' },
   { label: 'Watching', value: 'watching' },
   { label: 'Completed', value: 'watched' },
+  { label: 'Dropped', value: 'dropped' },
+]
+
+const movieStatusChipOptions = [
+  { label: 'Plan to watch', value: 'plan_to_watch' },
+  { label: 'Watched', value: 'watched' },
   { label: 'Dropped', value: 'dropped' },
 ]
 
@@ -267,6 +273,7 @@ const baseDefaultDirections = {
 }
 
 const sortBaselineKeys = ['added_at', 'title', 'rating', 'vote_count', 'runtime', 'release_date']
+const sortMovieBaselineKeys = ['title', 'rating', 'runtime', 'release_date']
 const sortMovieExclusiveKeys = ['watched_date']
 const sortTvExclusiveKeys = ['time_left', 'episodes_left', 'last_watched', 'started_date', 'progress_percent', 'next_episode_date']
 
@@ -323,10 +330,17 @@ const resolvedGenreOptions = computed(() => {
   return [...new Set([...fromProps, ...fromApi])].sort((a, b) => a.localeCompare(b))
 })
 
+const resolvedStatusChipOptions = computed(() => (
+  effectiveMediaType.value === 'movie' ? movieStatusChipOptions : tvStatusChipOptions
+))
+
 const resolvedSortOptions = computed(() => {
-  const baseline = usesStatusWorkflowSortProfile.value
-    ? ['title', 'release_date']
-    : sortBaselineKeys
+  let baseline
+  if (effectiveMediaType.value === 'movie') {
+    baseline = sortMovieBaselineKeys
+  } else {
+    baseline = usesStatusWorkflowSortProfile.value ? ['title', 'release_date'] : sortBaselineKeys
+  }
   const keys = [...baseline]
   if (props.applyMediaTypeExclusiveSorts) {
     if (effectiveMediaType.value === 'movie') {

@@ -1425,36 +1425,16 @@ def my_shows_list(request):
                 'previous': None,
                 'available_genres': [],
                 'available_provider_statuses': [],
-                'total_watched_minutes': 0,
+                'total_runtime_minutes': 0,
             })
         response = paginator.get_paginated_response(page)
         response.data['available_genres'] = []
         response.data['available_provider_statuses'] = []
-        response.data['total_watched_minutes'] = 0
+        response.data['total_runtime_minutes'] = 0
         return response
 
     status_row_by_tmdb_id = {row['tmdb_id']: row for row in status_rows}
     tmdb_ids = list(progress_tmdb_ids)
-    watched_runtime_subquery = Episode.objects.filter(
-        season__show__tmdb_id=OuterRef('tmdb_id'),
-        season__season_number=OuterRef('season_number'),
-        episode_number=OuterRef('episode_number'),
-    ).values('runtime')[:1]
-    watched_runtime_entries = WatchEntry.objects.filter(
-        user=request.user,
-        media_type=WatchEntryMediaType.EPISODE,
-        tmdb_id__in=tmdb_ids,
-        season_number__isnull=False,
-        episode_number__isnull=False,
-    ).annotate(
-        runtime=Coalesce(Subquery(watched_runtime_subquery, output_field=IntegerField()), Value(0))
-    )
-    watched_runtime_by_show = {
-        row['tmdb_id']: row['total_runtime'] or 0
-        for row in watched_runtime_entries.values('tmdb_id').annotate(
-            total_runtime=Coalesce(Sum('runtime'), Value(0), output_field=IntegerField())
-        )
-    }
 
     shows = TVShow.objects.filter(tmdb_id__in=tmdb_ids).prefetch_related('genres')
     show_map = {show.tmdb_id: show for show in shows}
@@ -1545,7 +1525,15 @@ def my_shows_list(request):
 
     filtered = _apply_progress_filters(progress_items, request)
     sorted_items = _sort_progress_items(filtered, request.query_params.get('sort'), request.query_params.get('direction'))
-    total_watched_minutes = sum(watched_runtime_by_show.get(item['tmdb_id'], 0) for item in filtered)
+    filtered_ids = [item['tmdb_id'] for item in filtered]
+    total_runtime_by_show = {
+        row['season__show__tmdb_id']: row['total'] or 0
+        for row in Episode.objects.filter(
+            season__show__tmdb_id__in=filtered_ids,
+            season__season_number__gt=0,
+        ).values('season__show__tmdb_id').annotate(total=Sum('runtime'))
+    }
+    total_runtime_minutes = sum(total_runtime_by_show.get(tmdb_id, 0) for tmdb_id in filtered_ids)
 
     paginator = PageNumberPagination()
     page = paginator.paginate_queryset(sorted_items, request)
@@ -1557,12 +1545,190 @@ def my_shows_list(request):
             'previous': None,
             'available_genres': available_genres,
             'available_provider_statuses': available_provider_statuses,
-            'total_watched_minutes': total_watched_minutes,
+            'total_runtime_minutes': total_runtime_minutes,
         })
     response = paginator.get_paginated_response(page)
     response.data['available_genres'] = available_genres
     response.data['available_provider_statuses'] = available_provider_statuses
-    response.data['total_watched_minutes'] = total_watched_minutes
+    response.data['total_runtime_minutes'] = total_runtime_minutes
+    return response
+
+
+def _apply_movie_filters(items, request):
+    params = request.query_params
+    search = (params.get('search') or '').strip().lower()
+    status_values = {value.lower() for value in _parse_multi_param(params, 'status')}
+    selected_genres = {value.lower() for value in _parse_multi_param(params, 'genres')}
+    missing_rating = _parse_bool_param(params.get('missing_rating'))
+
+    filtered = []
+    for item in items:
+        if search and search not in item['title'].lower():
+            continue
+        if status_values and item['status'] not in status_values:
+            continue
+        if selected_genres:
+            item_genres = {genre.lower() for genre in (item.get('genres') or [])}
+            if item_genres.isdisjoint(selected_genres):
+                continue
+        if missing_rating is True and item['user_rating'] is not None:
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def _sort_movie_items(items, sort_by: str, direction: str):
+    sort_key = (sort_by or 'watched_date').strip().lower()
+    direction_key = (direction or '').strip().lower()
+    default_direction_by_sort = {
+        'rating': 'desc',
+        'release_date': 'desc',
+        'watched_date': 'desc',
+    }
+    final_direction = direction_key if direction_key in ('asc', 'desc') else default_direction_by_sort.get(sort_key, 'asc')
+
+    def title_key(item):
+        return item['title'].lower()
+
+    if sort_key == 'release_date':
+        return sorted(
+            items,
+            key=lambda item: (
+                item['release_date'] is None,
+                item['release_date'] or date.max,
+                title_key(item),
+            ),
+            reverse=final_direction == 'desc',
+        )
+
+    if sort_key == 'rating':
+        def rating_value(item):
+            score = item.get('user_rating')
+            return -(score or 0) if final_direction == 'desc' else (score or 0)
+
+        return sorted(
+            items,
+            key=lambda item: (item.get('user_rating') is None, rating_value(item), title_key(item)),
+        )
+
+    if sort_key == 'runtime':
+        return sorted(
+            items,
+            key=lambda item: (
+                item.get('runtime') is None,
+                item.get('runtime') or 0,
+                title_key(item),
+            ),
+            reverse=final_direction == 'desc',
+        )
+
+    if sort_key == 'watched_date':
+        def watched_ts(item):
+            value = item.get('last_watched_at')
+            return value.timestamp() if value is not None else None
+
+        if final_direction == 'desc':
+            return sorted(
+                items,
+                key=lambda item: (watched_ts(item) is None, -(watched_ts(item) or 0), title_key(item)),
+            )
+        return sorted(
+            items,
+            key=lambda item: (watched_ts(item) is None, watched_ts(item) or 0, title_key(item)),
+        )
+
+    return sorted(items, key=title_key, reverse=final_direction == 'desc')
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def my_movies_list(request):
+    from media.models import Movie
+
+    status_rows = list(
+        UserMediaStatus.objects.movies().filter(user=request.user).values(
+            'tmdb_id',
+            'status',
+            'last_watched_at',
+        )
+    )
+
+    if not status_rows:
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset([], request)
+        if page is None:
+            return Response({
+                'results': [],
+                'count': 0,
+                'next': None,
+                'previous': None,
+                'available_genres': [],
+                'total_runtime_minutes': 0,
+            })
+        response = paginator.get_paginated_response(page)
+        response.data['available_genres'] = []
+        response.data['total_runtime_minutes'] = 0
+        return response
+
+    status_row_by_tmdb_id = {row['tmdb_id']: row for row in status_rows}
+    tmdb_ids = list(status_row_by_tmdb_id)
+
+    movies = Movie.objects.filter(tmdb_id__in=tmdb_ids).prefetch_related('genres')
+    movie_map = {movie.tmdb_id: movie for movie in movies}
+    rating_map = {
+        row['tmdb_id']: row['score']
+        for row in Rating.objects.filter(
+            user=request.user,
+            media_type=MediaType.MOVIE,
+            tmdb_id__in=tmdb_ids,
+        ).values('tmdb_id', 'score')
+    }
+
+    progress_items = []
+    for tmdb_id in tmdb_ids:
+        movie = movie_map.get(tmdb_id)
+        if movie is None:
+            continue
+
+        row = status_row_by_tmdb_id[tmdb_id]
+        progress_items.append({
+            'tmdb_id': tmdb_id,
+            'title': movie.title,
+            'release_date': movie.release_date,
+            'poster_path': movie.poster_path,
+            'poster_url': movie.poster_url,
+            'runtime': movie.runtime,
+            'genres': [genre.name for genre in movie.genres.all()],
+            'status': row['status'],
+            'user_rating': rating_map.get(tmdb_id),
+            'vote_average': movie.vote_average,
+            'vote_count': movie.vote_count,
+            'last_watched_at': row['last_watched_at'],
+        })
+
+    available_genres = sorted({genre for item in progress_items for genre in item['genres']})
+
+    filtered = _apply_movie_filters(progress_items, request)
+    sorted_items = _sort_movie_items(filtered, request.query_params.get('sort'), request.query_params.get('direction'))
+    total_runtime_minutes = sum(
+        item['runtime'] or 0
+        for item in filtered
+    )
+
+    paginator = PageNumberPagination()
+    page = paginator.paginate_queryset(sorted_items, request)
+    if page is None:
+        return Response({
+            'results': sorted_items,
+            'count': len(sorted_items),
+            'next': None,
+            'previous': None,
+            'available_genres': available_genres,
+            'total_runtime_minutes': total_runtime_minutes,
+        })
+    response = paginator.get_paginated_response(page)
+    response.data['available_genres'] = available_genres
+    response.data['total_runtime_minutes'] = total_runtime_minutes
     return response
 
 
@@ -1618,18 +1784,23 @@ def upcoming(request):
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
-def drop_show(request):
-    """Drop a show while preserving watched episode history."""
+def drop_media(request):
+    """Drop a movie or show while preserving watched history."""
     tmdb_id = request.data.get('tmdb_id')
+    media_type = request.data.get('media_type')
 
     if not tmdb_id:
         return Response({'detail': 'tmdb_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not media_type:
+        return Response({'detail': 'media_type is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if media_type not in (MediaType.MOVIE, MediaType.TV):
+        return Response({'detail': 'media_type must be one of: movie, tv.'}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
     dropped_at = timezone.now()
     UserMediaStatus.objects.update_or_create(
         user=request.user,
-        media_type=MediaType.TV,
+        media_type=media_type,
         tmdb_id=tmdb_id,
         defaults={
             'status': TvShowStatus.DROPPED,
@@ -1637,8 +1808,6 @@ def drop_show(request):
             'status_changed_at': dropped_at,
         },
     )
-
-    UserMediaStatus.objects.clear_planning(request.user, MediaType.TV, tmdb_id)
 
     return Response({'dropped': True})
 
@@ -1930,20 +2099,9 @@ class DataImportView(generics.CreateAPIView):
             import_mode=DataImportMode.NEW_ITEMS,
         )
 
-        if source == 'trakt':
-            from .tasks import prepare_trakt_zip_import
+        from .tasks import prepare_import_job
 
-            transaction.on_commit(lambda job_id=job.id: prepare_trakt_zip_import.delay(job_id))
-        elif source == 'yamtrack':
-            from .tasks import prepare_yamtrack_csv_import
-
-            transaction.on_commit(lambda job_id=job.id: prepare_yamtrack_csv_import.delay(job_id))
-        elif source == 'arxmedia':
-            from .tasks import prepare_arxmedia_json_import
-
-            transaction.on_commit(lambda job_id=job.id: prepare_arxmedia_json_import.delay(job_id))
-        else:
-            _raise_import_error(ImportErrorCode.IMPORT_SOURCE_UNSUPPORTED, 'Unsupported import source configuration.')
+        transaction.on_commit(lambda job_id=job.id: prepare_import_job.delay(job_id))
         return Response(DataTransferJobSerializer(job, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 

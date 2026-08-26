@@ -89,12 +89,30 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(UserMediaStatus.objects.planning().count(), 0)
 
-    def test_drop_show(self):
+    def test_episode_watch_moves_planned_show_to_watching(self):
+        from media.models import Episode, Season, TVShow
+
+        show = TVShow.objects.create(tmdb_id=888, name='Planned Show', number_of_seasons=1)
+        season = Season.objects.create(show=show, tmdb_id=889, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=890, episode_number=1, name='Pilot')
+        UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=888, status='plan_to_watch', status_changed_at=timezone.now())
+        self.assertEqual(UserMediaStatus.objects.planning().count(), 1)
+
+        data = {'media_type': 'episode', 'tmdb_id': 888, 'season_number': 1, 'episode_number': 1}
+        response = self.client.post('/api/tracking/history/', data)
+        self.assertEqual(response.status_code, 201)
+
+        status_row = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=888)
+        self.assertEqual(status_row.status, 'watching')
+        self.assertEqual(status_row.watched_episodes, 1)
+        self.assertEqual(UserMediaStatus.objects.planning().count(), 0)
+
+    def test_drop_media_tv(self):
         WatchEntry.objects.create(
             user=self.user, media_type='episode', tmdb_id=789,
             season_number=1, episode_number=1
         )
-        response = self.client.post('/api/tracking/shows/drop/', {'tmdb_id': 789})
+        response = self.client.post('/api/tracking/media/drop/', {'tmdb_id': 789, 'media_type': 'tv'})
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data['dropped'])
         self.assertEqual(
@@ -111,8 +129,30 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(dropped_status.status, 'dropped')
         self.assertIsNotNone(dropped_status.dropped_at)
 
-    def test_drop_show_not_found(self):
-        response = self.client.post('/api/tracking/shows/drop/', {'tmdb_id': 999})
+    def test_drop_media_movie(self):
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=555, status='plan_to_watch', status_changed_at=timezone.now())
+        response = self.client.post('/api/tracking/media/drop/', {'tmdb_id': 555, 'media_type': 'movie'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['dropped'])
+        dropped_status = UserMediaStatus.objects.get(user=self.user, media_type='movie', tmdb_id=555)
+        self.assertEqual(dropped_status.status, 'dropped')
+        self.assertIsNotNone(dropped_status.dropped_at)
+        self.assertEqual(UserMediaStatus.objects.planning().count(), 0)
+
+    def test_drop_media_requires_tmdb_id(self):
+        response = self.client.post('/api/tracking/media/drop/', {'media_type': 'movie'})
+        self.assertEqual(response.status_code, 400)
+
+    def test_drop_media_requires_media_type(self):
+        response = self.client.post('/api/tracking/media/drop/', {'tmdb_id': 999})
+        self.assertEqual(response.status_code, 400)
+
+    def test_drop_media_rejects_invalid_media_type(self):
+        response = self.client.post('/api/tracking/media/drop/', {'tmdb_id': 999, 'media_type': 'book'})
+        self.assertEqual(response.status_code, 400)
+
+    def test_drop_media_not_found(self):
+        response = self.client.post('/api/tracking/media/drop/', {'tmdb_id': 999, 'media_type': 'tv'})
         self.assertEqual(response.status_code, 200)
 
     def test_history_list_orders_by_watched_at_newest_first(self):
@@ -1432,17 +1472,18 @@ class ProgressListTests(BaseTestCase):
         self.assertTrue(items[0]['has_upcoming_episode'])
         self.assertTrue(items[0]['is_new'])
 
-    def test_progress_list_includes_total_watched_minutes(self):
+    def test_progress_list_includes_total_runtime_minutes(self):
         response = self.client.get('/api/tracking/my-shows/')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('total_watched_minutes', response.data)
-        self.assertEqual(response.data['total_watched_minutes'], 182)
+        self.assertIn('total_runtime_minutes', response.data)
+        # Alpha 42+40+43, Beta 55+55, Gamma 30+30; Delta has no episodes.
+        self.assertEqual(response.data['total_runtime_minutes'], 295)
 
-    def test_progress_list_total_watched_minutes_respects_filters(self):
+    def test_progress_list_total_runtime_minutes_respects_filters(self):
         response = self.client.get('/api/tracking/my-shows/?status=watched')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('total_watched_minutes', response.data)
-        self.assertEqual(response.data['total_watched_minutes'], 110)
+        self.assertIn('total_runtime_minutes', response.data)
+        self.assertEqual(response.data['total_runtime_minutes'], 110)
 
     def test_progress_list_includes_last_watched_episode_code_parts(self):
         response = self.client.get('/api/tracking/my-shows/?search=alpha')
@@ -1502,6 +1543,173 @@ class ProgressListTests(BaseTestCase):
         items = response.data['results']
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]['number_of_seasons'], 1)
+
+
+class MyMoviesTests(BaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.client = APIClient()
+        self.authenticate()
+
+        genre_action = Genre.objects.create(tmdb_id=28, name='Action')
+        genre_drama = Genre.objects.create(tmdb_id=18, name='Drama')
+
+        Movie.objects.create(
+            tmdb_id=5001,
+            title='Alpha Movie',
+            poster_path='/alpha.jpg',
+            release_date=date(2020, 1, 1),
+            runtime=120,
+            vote_average=7.5,
+            vote_count=100,
+        ).genres.add(genre_action)
+
+        Movie.objects.create(
+            tmdb_id=5002,
+            title='Beta Movie',
+            poster_path='/beta.jpg',
+            release_date=date(2021, 6, 15),
+            runtime=90,
+            vote_average=8.0,
+            vote_count=200,
+        ).genres.add(genre_drama)
+
+        Movie.objects.create(
+            tmdb_id=5003,
+            title='Gamma Movie',
+            poster_path='/gamma.jpg',
+            release_date=None,
+            runtime=None,
+            vote_average=6.0,
+            vote_count=50,
+        )
+
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=5001, status='watched')
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=5002, status='plan_to_watch')
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=5003, status='dropped')
+
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='movie',
+            tmdb_id=5001,
+            watched_at=timezone.make_aware(timezone.datetime(2026, 1, 5, 10, 0, 0)),
+        )
+        Rating.objects.create(user=self.user, media_type='movie', tmdb_id=5002, score=9)
+
+    def test_requires_authentication(self):
+        self.client.credentials(HTTP_AUTHORIZATION='')
+        response = self.client.get('/api/tracking/my-movies/')
+        self.assertEqual(response.status_code, 401)
+
+    def test_includes_all_tracked_statuses(self):
+        response = self.client.get('/api/tracking/my-movies/')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual({item['tmdb_id'] for item in items}, {5001, 5002, 5003})
+        status_by_id = {item['tmdb_id']: item['status'] for item in items}
+        self.assertEqual(status_by_id[5001], 'watched')
+        self.assertEqual(status_by_id[5002], 'plan_to_watch')
+        self.assertEqual(status_by_id[5003], 'dropped')
+
+    def test_empty_library_shape(self):
+        UserMediaStatus.objects.all().delete()
+        response = self.client.get('/api/tracking/my-movies/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['results'], [])
+        self.assertEqual(response.data['count'], 0)
+        self.assertEqual(response.data['available_genres'], [])
+        self.assertEqual(response.data['total_runtime_minutes'], 0)
+
+    def test_item_payload_fields(self):
+        response = self.client.get('/api/tracking/my-movies/?search=alpha')
+        items = response.data['results']
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item['title'], 'Alpha Movie')
+        self.assertEqual(item['poster_url'], 'https://image.tmdb.org/t/p/w500/alpha.jpg')
+        self.assertEqual(item['release_date'], date(2020, 1, 1))
+        self.assertEqual(item['runtime'], 120)
+        self.assertEqual(item['genres'], ['Action'])
+        self.assertEqual(item['vote_average'], 7.5)
+        self.assertEqual(item['user_rating'], None)
+
+    def test_filters_status_multi_select(self):
+        response = self.client.get('/api/tracking/my-movies/?status=watched&status=plan_to_watch')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual({item['tmdb_id'] for item in items}, {5001, 5002})
+
+    def test_filters_genres_multi_select(self):
+        response = self.client.get('/api/tracking/my-movies/?genres=Drama&genres=Action')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual({item['tmdb_id'] for item in items}, {5001, 5002})
+
+    def test_filters_search_by_title(self):
+        response = self.client.get('/api/tracking/my-movies/?search=beta')
+        items = response.data['results']
+        self.assertEqual([item['tmdb_id'] for item in items], [5002])
+
+    def test_filters_missing_rating(self):
+        response = self.client.get('/api/tracking/my-movies/?missing_rating=true')
+        items = response.data['results']
+        self.assertEqual({item['tmdb_id'] for item in items}, {5001, 5003})
+
+    def test_default_sort_is_watched_date_desc(self):
+        response = self.client.get('/api/tracking/my-movies/')
+        # Watched movie first, unrated/unwatched ties broken by title.
+        self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5001, 5002, 5003])
+
+    def test_sorts_title_desc(self):
+        response = self.client.get('/api/tracking/my-movies/?sort=title&direction=desc')
+        self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5003, 5002, 5001])
+
+    def test_sorts_release_date_asc_nulls_last(self):
+        response = self.client.get('/api/tracking/my-movies/?sort=release_date&direction=asc')
+        self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5001, 5002, 5003])
+
+    def test_sorts_release_date_defaults_to_desc(self):
+        response = self.client.get('/api/tracking/my-movies/?sort=release_date')
+        self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5003, 5002, 5001])
+
+    def test_sorts_rating_rated_first_on_desc(self):
+        response = self.client.get('/api/tracking/my-movies/?sort=rating&direction=desc')
+        self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5002, 5001, 5003])
+
+    def test_sorts_runtime_asc(self):
+        response = self.client.get('/api/tracking/my-movies/?sort=runtime')
+        self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5002, 5001, 5003])
+
+    def test_sorts_watched_date_watched_first_on_desc(self):
+        response = self.client.get('/api/tracking/my-movies/?sort=watched_date&direction=desc')
+        items = response.data['results']
+        self.assertEqual(items[0]['tmdb_id'], 5001)
+        self.assertIsNotNone(items[0]['last_watched_at'])
+
+    def test_total_runtime_minutes_sums_all_items(self):
+        response = self.client.get('/api/tracking/my-movies/')
+        # Alpha 120 (watched) + Beta 90 (planned) + Gamma null (dropped, counts as 0).
+        self.assertEqual(response.data['total_runtime_minutes'], 210)
+
+    def test_watched_movie_reports_last_watched_at(self):
+        response = self.client.get('/api/tracking/my-movies/?search=alpha')
+        item = response.data['results'][0]
+        self.assertEqual(
+            item['last_watched_at'],
+            timezone.make_aware(timezone.datetime(2026, 1, 5, 10, 0, 0)),
+        )
+
+    def test_available_genres(self):
+        response = self.client.get('/api/tracking/my-movies/')
+        self.assertEqual(response.data['available_genres'], ['Action', 'Drama'])
+
+    def test_pagination_envelope(self):
+        response = self.client.get('/api/tracking/my-movies/?page=1')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('count', response.data)
+        self.assertIn('next', response.data)
+        self.assertIn('previous', response.data)
+        self.assertEqual(len(response.data['results']), 3)
 
 
 class CustomListTests(BaseTestCase):

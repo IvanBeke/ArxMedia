@@ -562,7 +562,7 @@ async function confirmRemoveWatchedEpisodes() {
 
 async function handleDropShow() {
   statusMenuOpen.value = false
-  await trackingAPI.dropShow({ tmdb_id: tmdbId.value })
+  await trackingAPI.dropMedia({ tmdb_id: tmdbId.value, media_type: MEDIA_TYPE.TV })
   watchedEps.value = new Set()
   seasonEpisodes.value = {}
   await loadShow()

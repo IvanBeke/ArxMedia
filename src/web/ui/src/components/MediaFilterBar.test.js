@@ -165,3 +165,57 @@ describe('MediaFilterBar URL sync', () => {
     expect(router.currentRoute.value.query.status).toEqual(['watching'])
   })
 })
+
+describe('MediaFilterBar movie profile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  async function createMovieBar(props = {}) {
+    return createMountedBar({ mediaType: 'movie', defaultSortKey: 'title', ...props })
+  }
+
+  it('shows only the three movie status chips', async () => {
+    const { wrapper } = await createMovieBar()
+
+    await findAdvancedTrigger(wrapper).trigger('click')
+
+    const chips = wrapper
+      .findAll('button.chip')
+      .map((button) => button.text().trim())
+    expect(chips).toEqual(['Plan to watch', 'Watched', 'Dropped'])
+    expect(chips).not.toContain('Watching')
+  })
+
+  it('offers the movie sort options without tv-only or date-added sorts', async () => {
+    const { wrapper } = await createMovieBar()
+
+    const sortDetails = wrapper.findAll('details').find((details) => details.text().includes('Sorted by'))
+    await sortDetails.find('summary').trigger('click')
+
+    const labels = sortDetails
+      .findAll('button.control-option')
+      .map((button) => button.text().replace('✓', '').trim())
+    expect(labels).toEqual(['Title', 'Rating', 'Runtime', 'Release date', 'Watched date'])
+  })
+
+  it('applies a movie status filter to the URL', async () => {
+    const { wrapper, router } = await createMovieBar()
+
+    await applyStatusFilter(wrapper, 'Watched')
+
+    expect(router.currentRoute.value.query).toEqual({ status: ['watched'] })
+  })
+
+  it('keeps the tv status chips for tv media type', async () => {
+    const { wrapper } = await createMountedBar()
+
+    await findAdvancedTrigger(wrapper).trigger('click')
+
+    const chips = wrapper
+      .findAll('button.chip')
+      .map((button) => button.text().trim())
+    expect(chips).toContain('Watching')
+    expect(chips).toHaveLength(4)
+  })
+})

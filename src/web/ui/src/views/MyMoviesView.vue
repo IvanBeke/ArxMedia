@@ -2,30 +2,29 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
       <div>
-        <h1 class="font-display text-2xl text-primary font-semibold">My Shows</h1>
-        <p class="text-muted text-sm">Track your shows and decide what to watch next.</p>
+        <h1 class="font-display text-2xl text-primary font-semibold">My Movies</h1>
+        <p class="text-muted text-sm">Track your movies and decide what to watch next.</p>
       </div>
       <div class="inline-flex items-center gap-2 rounded-full border border-surface-200 bg-surface-100 px-3 py-1 text-xs text-secondary">
         <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
-        <span>{{ count }} shows | {{ watchedTimeLabel }}</span>
+        <span>{{ count }} movies | {{ watchedTimeLabel }}</span>
       </div>
     </div>
 
     <MediaFilterBar
-      media-type="tv"
+      media-type="movie"
       :show-status-filter="true"
-      :show-provider-status-filter="true"
+      :show-provider-status-filter="false"
       :show-genre-filter="true"
-      :show-quick-filter-has-upcoming="true"
-      :show-quick-filter-new-only="true"
+      :show-quick-filter-has-upcoming="false"
+      :show-quick-filter-new-only="false"
       :show-quick-filter-missing-rating="true"
       :show-quick-filter-in-watchlist="false"
       :show-search="true"
       :show-sort="true"
       :show-direction="true"
-      default-sort-key="time_left"
-      search-placeholder="Search by show title"
-      :provider-status-options="availableProviderStatuses"
+      default-sort-key="watched_date"
+      search-placeholder="Search by movie title"
       :genre-options="availableGenres"
       ref="filterBarRef"
       :page="currentPage"
@@ -33,18 +32,20 @@
       @change="onFilterBarChange"
     />
 
-    <div v-if="loading" class="space-y-3">
+    <div v-if="loading" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <div v-for="n in 8" :key="n" class="h-28 rounded-lg skeleton"></div>
     </div>
 
-    <div v-else-if="rows.length" class="space-y-3 md:space-y-4">
-      <ProgressRow
-        v-for="item in rows"
-        :key="item.tmdb_id"
-        :item="item"
-        @changed="loadMyShows"
-        @error="onRowError"
-      />
+    <template v-else-if="rows.length">
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <MovieRow
+          v-for="item in rows"
+          :key="item.tmdb_id"
+          :item="item"
+          @changed="loadMyMovies"
+          @error="onRowError"
+        />
+      </div>
 
       <PaginationControls
         v-model:page="currentPage"
@@ -54,10 +55,10 @@
         :disabled="loading"
         @go="currentPage = $event"
       />
-    </div>
+    </template>
 
     <div v-else class="card p-10 text-center">
-      <p class="text-sm text-muted mb-3">No shows match your current filters.</p>
+      <p class="text-sm text-muted mb-3">No movies match your current filters.</p>
       <button class="btn-primary text-sm" @click="resetFilters">Clear filters</button>
     </div>
 
@@ -70,12 +71,12 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
+import MovieRow from '@/components/MovieRow.vue'
+import PaginationControls from '@/components/PaginationControls.vue'
 import { getApiErrorMessage } from '@/utils/errors'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
 import { formatHoursMinutes } from '@/utils/progress'
-import PaginationControls from '@/components/PaginationControls.vue'
-import ProgressRow from '@/components/ProgressRow.vue'
 
 const route = useRoute()
 
@@ -85,20 +86,15 @@ const errorMsg = ref('')
 
 const appliedFilters = ref({
   search: '',
-  sort: 'time_left',
-  direction: 'asc',
-  mediaType: 'tv',
+  sort: 'watched_date',
+  direction: 'desc',
+  mediaType: 'movie',
   statuses: [],
-  providerStatuses: [],
   genres: [],
-  hasUpcoming: false,
-  newOnly: false,
   missingRating: false,
-  inWatchlist: false,
 })
 
 const availableGenres = ref([])
-const availableProviderStatuses = ref([])
 
 const count = ref(0)
 const totalRuntimeMinutes = ref(0)
@@ -131,23 +127,19 @@ function buildParams() {
     ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
     ...(filterState.search ? { search: filterState.search } : {}),
     ...(filterState.statuses.length ? { status: filterState.statuses } : {}),
-    ...(filterState.providerStatuses.length ? { provider_status: filterState.providerStatuses } : {}),
-    ...(filterState.hasUpcoming ? { has_upcoming: true } : {}),
-    ...(filterState.newOnly ? { is_new: true } : {}),
     ...(filterState.missingRating ? { missing_rating: true } : {}),
     ...(filterState.genres.length ? { genres: filterState.genres } : {}),
   }
 }
 
-async function loadMyShows() {
+async function loadMyMovies() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const data = await trackingAPI.getMyShows(buildParams())
+    const data = await trackingAPI.getMyMovies(buildParams())
     const paged = normalizePagedResponse(data)
     rows.value = paged.items
     availableGenres.value = data?.available_genres || []
-    availableProviderStatuses.value = data?.available_provider_statuses || []
     count.value = paged.count
     lastLoadedCount.value = paged.loadedCount
     totalRuntimeMinutes.value = Number.isFinite(data?.total_runtime_minutes) ? data.total_runtime_minutes : 0
@@ -161,7 +153,7 @@ async function loadMyShows() {
     count.value = 0
     totalRuntimeMinutes.value = 0
     lastLoadedCount.value = 0
-    errorMsg.value = getApiErrorMessage(error, 'Could not load My Shows.')
+    errorMsg.value = getApiErrorMessage(error, 'Could not load My Movies.')
   } finally {
     loading.value = false
   }
@@ -178,7 +170,7 @@ function resetFilters() {
 watch(
   [appliedFilters, currentPage],
   async () => {
-    await loadMyShows()
+    await loadMyMovies()
   },
   { deep: true, immediate: true }
 )

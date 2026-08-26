@@ -22,7 +22,7 @@
             </p>
             <div class="show-headline-meta">
               <div class="show-headline-actions">
-                <details class="control-menu">
+                <details ref="menuRef" class="control-menu">
                   <summary class="row-pill-trigger" title="Manage" aria-label="Manage show">
                     <span>Manage</span>
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -30,27 +30,24 @@
                     </svg>
                   </summary>
                   <div class="control-panel right-0 w-52 p-1.5 menu-panel">
-                    <button
-                      type="button"
-                      class="control-option"
-                      :disabled="rowBusyId === item.tmdb_id"
-                      @click="emit('open-rate', item)"
-                    >
+                    <button type="button" class="control-option" :disabled="busy" @click="openRateDialog">
                       Rate
                     </button>
-                    <button type="button" class="control-option" :disabled="rowBusyId === item.tmdb_id" @click="emit('open-add-to-list', item)">
+                    <button type="button" class="control-option" :disabled="busy" @click="toggleListPopover">
                       Add to list
                     </button>
-                    <button
-                      type="button"
-                      class="control-option control-option-danger"
-                      :disabled="rowBusyId === item.tmdb_id"
-                      @click="emit('drop', item.tmdb_id)"
-                    >
+                    <button type="button" class="control-option control-option-danger" :disabled="busy" @click="drop">
                       Drop show
                     </button>
                   </div>
                 </details>
+                <AddToListPopover
+                  v-if="listPopoverOpen"
+                  :media-type="MEDIA_TYPE.TV"
+                  :tmdb-id="item.tmdb_id"
+                  :start-open="true"
+                  @added="onListAdded"
+                />
               </div>
               <p class="show-percent text-2xl font-display text-primary font-semibold">{{ progressPercent(item) }}%</p>
             </div>
@@ -133,25 +130,137 @@
         </svg>
       </RouterLink>
     </div>
+
+    <dialog
+      ref="rateDialog"
+      closedby="any"
+      class="app-dialog progress-dialog w-full max-w-md rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
+      :aria-labelledby="`progress-rate-title-${item.tmdb_id}`"
+      @click="onDialogClick($event, rateDialog)"
+      @close="onRateDialogClose"
+    >
+      <div class="p-5 md:p-6">
+        <div class="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 :id="`progress-rate-title-${item.tmdb_id}`" class="text-lg font-display text-primary font-semibold">Rate show</h2>
+            <p class="text-xs text-muted mt-1">{{ item.show_name || 'Select your score' }}</p>
+          </div>
+          <button type="button" class="text-muted hover:text-primary" @click="closeRateDialog">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="rounded-lg border border-surface-200 bg-surface px-3 py-3">
+          <p class="text-xs text-muted mb-2">Your rating</p>
+          <StarRating v-model="rating" @update:modelValue="submitRating" />
+        </div>
+
+        <p v-if="savingRating" class="mt-3 text-xs text-muted">Saving rating...</p>
+      </div>
+    </dialog>
   </article>
 </template>
 
 <script setup>
+import { ref } from 'vue'
+import { onClickOutside } from '@vueuse/core'
+import { trackingAPI } from '@/api'
+import AddToListPopover from '@/components/AddToListPopover.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
+import StarRating from '@/components/StarRating.vue'
 import UserRating from '@/components/UserRating.vue'
+import { MEDIA_TYPE } from '@/constants/tracking'
+import { getApiErrorMessage } from '@/utils/errors'
+import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { formatDateByLocale } from '@/i18n'
 import { formatHoursMinutes } from '@/utils/progress'
 import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
 
-defineProps({
+const props = defineProps({
   item: { type: Object, required: true },
-  rowBusyId: { type: Number, default: null },
 })
 
-const emit = defineEmits(['drop', 'open-rate', 'open-add-to-list'])
+const emit = defineEmits(['changed', 'error'])
+
+const busy = ref(false)
+const menuRef = ref(null)
+
+onClickOutside(menuRef, () => {
+  if (!menuRef.value?.open) return
+  menuRef.value.open = false
+})
+const rateDialog = ref(null)
+const rating = ref(0)
+const savingRating = ref(false)
+const listPopoverOpen = ref(false)
+
+function closeMenu() {
+  menuRef.value?.removeAttribute('open')
+}
+
+function onDialogClick(event, dialogRef) {
+  closeOnDialogBackdropClick(event, dialogRef)
+}
+
+function openRateDialog() {
+  rating.value = Number(props.item.user_rating) || 0
+  closeMenu()
+  rateDialog.value?.showModal()
+}
+
+function closeRateDialog() {
+  rateDialog.value?.close()
+}
+
+function onRateDialogClose() {
+  savingRating.value = false
+  rating.value = 0
+}
+
+async function submitRating(score) {
+  if (!Number.isInteger(score) || score < 1 || score > 10 || savingRating.value) {
+    return
+  }
+  savingRating.value = true
+  try {
+    await trackingAPI.rate({ media_type: MEDIA_TYPE.TV, tmdb_id: props.item.tmdb_id, score })
+    closeRateDialog()
+    emit('changed')
+  } catch (error) {
+    emit('error', getApiErrorMessage(error, 'Could not submit rating.'))
+  } finally {
+    savingRating.value = false
+  }
+}
+
+function toggleListPopover() {
+  closeMenu()
+  listPopoverOpen.value = !listPopoverOpen.value
+}
+
+async function onListAdded() {
+  listPopoverOpen.value = false
+  emit('changed')
+}
+
+async function drop() {
+  if (busy.value) return
+  busy.value = true
+  closeMenu()
+  try {
+    await trackingAPI.dropMedia({ tmdb_id: props.item.tmdb_id, media_type: MEDIA_TYPE.TV })
+    emit('changed')
+  } catch (error) {
+    emit('error', getApiErrorMessage(error, 'Could not drop show.'))
+  } finally {
+    busy.value = false
+  }
+}
 
 function hasProviderRating(value) {
   const rating = Number(value)

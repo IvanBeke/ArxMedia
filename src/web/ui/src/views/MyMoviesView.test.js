@@ -2,17 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia } from 'pinia'
-import MyShowsView from '@/views/MyShowsView.vue'
+import MyMoviesView from '@/views/MyMoviesView.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 
-const getMyShows = vi.fn()
+const getMyMovies = vi.fn()
 
 vi.mock('@/api', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...actual,
     trackingAPI: {
-      getMyShows: (...args) => getMyShows(...args),
+      getMyMovies: (...args) => getMyMovies(...args),
     },
     mediaAPI: {
       genres: vi.fn().mockResolvedValue([]),
@@ -20,13 +20,12 @@ vi.mock('@/api', async (importOriginal) => {
   }
 })
 
-function showsPayload(count, rows) {
+function moviesPayload(count, rows) {
   return {
     count,
     results: Array.from({ length: rows }, (_, index) => ({ tmdb_id: index + 1 })),
     available_genres: [],
-    available_provider_statuses: [],
-    total_runtime_minutes: 0,
+    total_watched_minutes: 0,
   }
 }
 
@@ -35,14 +34,14 @@ async function mountView(initialQuery = {}) {
     history: createMemoryHistory(),
     routes: [{ path: '/:pathMatch(.*)*', name: 'catch-all', component: { template: '<div />' } }],
   })
-  await router.push({ path: '/my-shows', query: initialQuery })
+  await router.push({ path: '/my-movies', query: initialQuery })
   await router.isReady()
 
-  const wrapper = mount(MyShowsView, {
+  const wrapper = mount(MyMoviesView, {
     global: {
       plugins: [router, createPinia()],
       stubs: {
-        ProgressRow: true,
+        MovieRow: true,
       },
     },
   })
@@ -62,15 +61,25 @@ function pageNumberTexts(wrapper) {
     .filter((text) => /^\d+$/.test(text))
 }
 
-describe('MyShowsView pagination', () => {
+describe('MyMoviesView', () => {
   beforeEach(() => {
-    getMyShows.mockReset()
+    getMyMovies.mockReset()
+  })
+
+  it('renders the header with the movie count', async () => {
+    getMyMovies.mockResolvedValueOnce(moviesPayload(3, 3))
+
+    const wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('My Movies')
+    expect(wrapper.text()).toContain('3 movies |')
+    expect(getMyMovies).toHaveBeenCalledWith(expect.objectContaining({ sort: 'watched_date', direction: 'desc' }))
   })
 
   it('keeps the real page count after visiting a partial last page', async () => {
-    getMyShows
-      .mockResolvedValueOnce(showsPayload(47, 20))
-      .mockResolvedValueOnce(showsPayload(47, 7))
+    getMyMovies
+      .mockResolvedValueOnce(moviesPayload(47, 20))
+      .mockResolvedValueOnce(moviesPayload(47, 7))
 
     const wrapper = await mountView()
     expect(lastTotalPages(wrapper)).toBe(3)
@@ -78,36 +87,36 @@ describe('MyShowsView pagination', () => {
     wrapper.findComponent(PaginationControls).vm.$emit('go', 3)
     await flushPromises()
 
-    expect(getMyShows).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }))
+    expect(getMyMovies).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }))
     expect(lastTotalPages(wrapper)).toBe(3)
     expect(pageNumberTexts(wrapper)).toEqual(['1', '2', '3'])
-    expect(wrapper.text()).not.toContain('Could not load My Shows.')
+    expect(wrapper.text()).not.toContain('Could not load My Movies.')
   })
 
   it('falls back to page 1 when the API rejects the page as invalid', async () => {
-    getMyShows
+    getMyMovies
       .mockRejectedValueOnce({ detail: 'Invalid page.', status: 404 })
-      .mockResolvedValueOnce(showsPayload(47, 20))
+      .mockResolvedValueOnce(moviesPayload(47, 20))
 
     const wrapper = await mountView({ page: '2' })
 
-    expect(getMyShows).toHaveBeenCalledTimes(2)
-    expect(getMyOffersPage(getMyShows, 0)).toBe(2)
-    expect(getMyOffersPage(getMyShows, 1)).toBe(1)
-    expect(wrapper.text()).not.toContain('Could not load My Shows.')
+    expect(getMyMovies).toHaveBeenCalledTimes(2)
+    expect(callPage(getMyMovies, 0)).toBe(2)
+    expect(callPage(getMyMovies, 1)).toBe(1)
+    expect(wrapper.text()).not.toContain('Could not load My Movies.')
     expect(lastTotalPages(wrapper)).toBe(3)
   })
 
   it('surfaces non-pagination errors as usual', async () => {
-    getMyShows.mockRejectedValueOnce({ detail: 'Server exploded.', status: 500 })
+    getMyMovies.mockRejectedValueOnce({ detail: 'Server exploded.', status: 500 })
 
     const wrapper = await mountView({ page: '2' })
 
-    expect(getMyShows).toHaveBeenCalledTimes(1)
+    expect(getMyMovies).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('Server exploded.')
   })
 })
 
-function getMyOffersPage(mockFn, callIndex) {
+function callPage(mockFn, callIndex) {
   return mockFn.mock.calls[callIndex][0].page
 }
