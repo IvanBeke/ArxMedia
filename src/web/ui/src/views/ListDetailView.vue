@@ -365,6 +365,7 @@ const filterBarRef = ref(null)
 const count = ref(0)
 const lastLoadedCount = ref(0)
 const currentPage = useQueryPageSync(route)
+const hydrated = ref(false)
 
 const editForm = ref({
   name: '',
@@ -526,6 +527,7 @@ function onFilterBarChange(payload) {
 
   const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
   appliedFilters.value = next
+  hydrated.value = true
 
   if (didChange && payload?.source === 'interaction') {
     currentPage.value = 1
@@ -675,11 +677,13 @@ async function removeCollaborator(userId) {
 
 onMounted(async () => {
   await loadList()
+  if (!hydrated.value) hydrated.value = true
 })
 
 watch(
-  [appliedFilters, currentPage],
+  [appliedFilters, currentPage, hydrated],
   async () => {
+    if (!hydrated.value) return
     await loadItems()
   },
   { deep: true, immediate: true }

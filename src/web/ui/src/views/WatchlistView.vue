@@ -64,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
@@ -98,6 +98,7 @@ const { t } = useI18n()
 const route = useRoute()
 const filterBarRef = ref(null)
 const currentPage = useQueryPageSync(route)
+const hydrated = ref(false)
 
 function handleWatchlistRemoved(payload) {
   const itemId = payload?.tmdb_id || payload?.id
@@ -160,14 +161,20 @@ function onFilterBarChange(payload) {
   if (!next) return
   const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
   appliedFilters.value = next
+  hydrated.value = true
   if (didChange && payload?.source === 'interaction') {
     resetPage()
   }
 }
 
+onMounted(() => {
+  if (!hydrated.value) hydrated.value = true
+})
+
 watch(
-  [appliedFilters, currentPage],
+  [appliedFilters, currentPage, hydrated],
   async () => {
+    if (!hydrated.value) return
     await load()
   },
   { deep: true, immediate: true }

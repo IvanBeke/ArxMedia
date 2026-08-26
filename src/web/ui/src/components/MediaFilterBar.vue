@@ -433,7 +433,7 @@ watch(
     applyFiltersState(next)
     emitChange('hydrate')
   },
-  { immediate: true, deep: true }
+  { deep: true }
 )
 
 function getDefaultDirection(sortKey) {
@@ -556,6 +556,12 @@ function emitChange(source) {
   }
   emit('change', { source, filters: payload })
 }
+
+// Synchronous initial hydration — parent receives correct filters before its first load.
+// This serializes hydration before any view's immediate watcher can fetch with defaults.
+const _initialFilters = parseFromQuery(route.query)
+applyFiltersState(_initialFilters)
+emitChange('hydrate')
 
 const filterQueryKeys = ['search', 'sort', 'direction', 'media_type', 'status', 'provider_status', 'has_upcoming', 'is_new', 'missing_rating', 'in_watchlist', 'genres', 'page']
 

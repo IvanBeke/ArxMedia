@@ -66,7 +66,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
@@ -105,6 +105,7 @@ const totalRuntimeMinutes = ref(0)
 const currentPage = useQueryPageSync(route)
 const lastLoadedCount = ref(0)
 const filterBarRef = ref(null)
+const hydrated = ref(false)
 
 const watchedTimeLabel = computed(() => {
   return formatHoursMinutes(totalRuntimeMinutes.value)
@@ -116,6 +117,7 @@ function onFilterBarChange(payload) {
 
   const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
   appliedFilters.value = next
+  hydrated.value = true
 
   if (didChange && payload?.source === 'interaction') {
     currentPage.value = 1
@@ -175,9 +177,14 @@ function resetFilters() {
   filterBarRef.value?.clearAll()
 }
 
+onMounted(() => {
+  if (!hydrated.value) hydrated.value = true
+})
+
 watch(
-  [appliedFilters, currentPage],
+  [appliedFilters, currentPage, hydrated],
   async () => {
+    if (!hydrated.value) return
     await loadMyShows()
   },
   { deep: true, immediate: true }
