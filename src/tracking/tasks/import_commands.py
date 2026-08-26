@@ -2,7 +2,7 @@ from ..choices import DataImportMode, DataTransferJobType
 from ..import_config import expected_format_for_source, source_requires_confirmation
 from ..import_errors import ImportDomainError, ImportErrorCode
 from ..import_state_machine import confirm as confirm_transition
-from ..import_state_machine import fail, finish_apply, finish_prepare, prepare_apply, start_prepare
+from ..import_state_machine import fail, finish_prepare, start_prepare
 from ..models import DataTransferJob
 from .provider_registry import get_import_provider
 
@@ -17,7 +17,7 @@ class PrepareImportCommand:
         try:
             content = job.input_file.read() if job.input_file else b''
             provider = get_import_provider(job.source)
-            report = provider.prepare(content)
+            report = provider.analyze(content)
             finish_prepare(job, report)
             return {'status': job.status}
         except Exception as exc:
@@ -62,25 +62,3 @@ class ConfirmImportCommand:
 
         overwrite_existing = self.import_mode in (DataImportMode.UPDATE_EXISTING, DataImportMode.MIRROR_IMPORTED_SET)
         confirm_transition(self.job, self.import_mode, overwrite_existing)
-
-
-class ApplyImportCommand:
-    def __init__(self, job_id: int):
-        self.job_id = job_id
-
-    def execute(self) -> dict[str, str]:
-        job = DataTransferJob.objects.get(id=self.job_id)
-        try:
-            import_mode = job.import_mode or DataImportMode.NEW_ITEMS
-            if import_mode not in DataImportMode.values:
-                import_mode = DataImportMode.NEW_ITEMS
-
-            prepare_apply(job)
-            content = job.input_file.read() if job.input_file else b''
-            provider = get_import_provider(job.source)
-            provider.apply(job, content, import_mode)
-            finish_apply(job)
-            return {'status': job.status}
-        except Exception as exc:
-            fail(job, str(exc))
-            return {'status': job.status}

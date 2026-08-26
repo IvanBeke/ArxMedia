@@ -517,11 +517,7 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         watched_at = serializer.validated_data.get('watched_at')
         if not watched_at:
             watched_at = timezone.now()
-        instance = serializer.save(user=self.request.user, watched_at=watched_at)
-        if instance.media_type == WatchEntryMediaType.MOVIE:
-            UserMediaStatus.objects.clear_planning(instance.user, MediaType.MOVIE, instance.tmdb_id)
-        elif instance.media_type == WatchEntryMediaType.EPISODE:
-            UserMediaStatus.objects.clear_planning(instance.user, MediaType.TV, instance.tmdb_id)
+        serializer.save(user=self.request.user, watched_at=watched_at)
 
 
 class WatchEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -2000,20 +1996,9 @@ class DataJobConfirmView(generics.GenericAPIView):
         except ImportDomainError as exc:
             raise_import_validation_error(exc)
 
-        if job.source == 'trakt':
-            from .tasks import apply_trakt_zip_import
+        from .tasks import run_import_job
 
-            transaction.on_commit(lambda job_id=job.id: apply_trakt_zip_import.delay(job_id))
-        elif job.source == 'yamtrack':
-            from .tasks import apply_yamtrack_csv_import
-
-            transaction.on_commit(lambda job_id=job.id: apply_yamtrack_csv_import.delay(job_id))
-        elif job.source == 'arxmedia':
-            from .tasks import apply_arxmedia_json_import
-
-            transaction.on_commit(lambda job_id=job.id: apply_arxmedia_json_import.delay(job_id))
-        else:
-            _raise_import_error(ImportErrorCode.IMPORT_SOURCE_UNSUPPORTED, 'Unsupported import source configuration.')
+        transaction.on_commit(lambda job_id=job.id: run_import_job.delay(job_id))
         serializer = self.get_serializer(job, context={'request': request})
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 

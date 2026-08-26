@@ -2,37 +2,31 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..import_errors import ImportDomainError, ImportErrorCode
-from .providers import (
-    analyze_arxmedia_json,
-    analyze_trakt_zip,
-    analyze_yamtrack_csv,
-    apply_arxmedia_json_import,
-    apply_trakt_zip_import,
-    apply_yamtrack_csv_import,
-)
-from .providers.base import ImportProvider
+from .providers.arxmedia import analyze_arxmedia_json, parse_arxmedia_json
+from .providers.trakt import analyze_trakt_zip, parse_trakt_zip
+from .providers.yamtrack import analyze_yamtrack_csv, parse_yamtrack_csv
 
 
-@dataclass
-class FunctionImportProvider:
-    prepare_fn: Callable[[bytes], dict]
-    apply_fn: Callable
+@dataclass(frozen=True)
+class ImportProviderFunctions:
+    analyze_fn: Callable[[bytes], dict]
+    parse_fn: Callable[[bytes], object]
 
-    def prepare(self, content: bytes) -> dict:
-        return self.prepare_fn(content)
+    def analyze(self, content: bytes) -> dict:
+        return self.analyze_fn(content)
 
-    def apply(self, job, content: bytes, import_mode: str) -> None:
-        self.apply_fn(job, content, import_mode)
+    def parse(self, content: bytes):
+        return self.parse_fn(content)
 
 
-_PROVIDERS: dict[str, ImportProvider] = {
-    'arxmedia': FunctionImportProvider(analyze_arxmedia_json, apply_arxmedia_json_import),
-    'trakt': FunctionImportProvider(analyze_trakt_zip, apply_trakt_zip_import),
-    'yamtrack': FunctionImportProvider(analyze_yamtrack_csv, apply_yamtrack_csv_import),
+_PROVIDERS: dict[str, ImportProviderFunctions] = {
+    'arxmedia': ImportProviderFunctions(analyze_arxmedia_json, parse_arxmedia_json),
+    'trakt': ImportProviderFunctions(analyze_trakt_zip, parse_trakt_zip),
+    'yamtrack': ImportProviderFunctions(analyze_yamtrack_csv, parse_yamtrack_csv),
 }
 
 
-def get_import_provider(source: str) -> ImportProvider:
+def get_import_provider(source: str) -> ImportProviderFunctions:
     provider = _PROVIDERS.get(source)
     if provider is None:
         raise ImportDomainError(
@@ -40,3 +34,7 @@ def get_import_provider(source: str) -> ImportProvider:
             message=f'Unsupported import source: {source}',
         )
     return provider
+
+
+def get_import_parser(source: str):
+    return get_import_provider(source).parse_fn

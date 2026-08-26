@@ -1,153 +1,105 @@
-import json
-from typing import Any
+"""ArxMedia JSON import provider: pure parsing only (no DB/TMDB access)."""
 
-from ...choices import DataTransferFormat, MediaType, TvShowStatus
-from ...models import DataTransferJob
-from ..shared import (
-    _ensure_tmdb_metadata_for_import_item,
-    _import_rating_by_mode,
-    _import_tv_status_by_mode,
-    _import_watch_entry_by_mode,
-    _parse_watched_at,
-    _safe_int,
-    _update_job_progress,
+import json
+
+from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
+from ...import_metadata import _parse_watched_at, _safe_int
+from ...import_records import (
+    RATINGS_COLLECTION,
+    WATCH_HISTORY_COLLECTION,
+    WATCHLIST_COLLECTION,
+    ParsedImport,
+    RatingRecord,
+    StatusRecord,
+    WatchEntryRecord,
 )
 
 
-def analyze_arxmedia_json(content: bytes) -> dict:
-    data = json.loads(content.decode('utf-8') or '{}')
-    history = data.get('watch_history', [])
-    watchlist = data.get('watchlist', [])
-    ratings = data.get('ratings', [])
-
+def _report(records: tuple, collections: frozenset[str], invalid_count: int, unit_count: int) -> dict:
+    summary = {
+        'watch_history': sum(1 for r in records if isinstance(r, WatchEntryRecord)),
+        'watchlist': sum(1 for r in records if isinstance(r, StatusRecord) and r.status == TvShowStatus.PLAN_TO_WATCH),
+        'ratings': sum(1 for r in records if isinstance(r, RatingRecord)),
+    }
     return {
         'format': DataTransferFormat.JSON,
-        'records_seen': len(history) + len(watchlist) + len(ratings),
-        'records_imported': 0,
-        'records_skipped': 0,
-        'metadata_hits': 0,
-        'metadata_fetches': 0,
-        'metadata_errors': 0,
-        'summary': {
-            'watch_history': len(history),
-            'watchlist': len(watchlist),
-            'ratings': len(ratings),
-        },
-        'total_items': len(history) + len(watchlist) + len(ratings),
+        'records_seen': unit_count,
+        'invalid_count': invalid_count,
+        'summary': summary,
+        'total_items': unit_count,
     }
 
 
-def apply_arxmedia_json_import(job: DataTransferJob, content: bytes, import_mode: str):
+def parse_arxmedia_json(content: bytes) -> ParsedImport:
     data = json.loads(content.decode('utf-8') or '{}')
     history = data.get('watch_history', [])
     watchlist = data.get('watchlist', [])
     ratings = data.get('ratings', [])
 
-    metadata_state: dict[str, Any] = {
-        'metadata_checked': set(),
-        'season_checked': set(),
-        'metadata_hits': 0,
-        'metadata_fetches': 0,
-        'metadata_errors': 0,
-    }
-    report: dict[str, Any] = {
-        'format': DataTransferFormat.JSON,
-        'records_seen': len(history) + len(watchlist) + len(ratings),
-        'records_imported': 0,
-        'records_skipped': 0,
-        'metadata_hits': 0,
-        'metadata_fetches': 0,
-        'metadata_errors': 0,
-        'summary': {
-            'watch_history': 0,
-            'watchlist': 0,
-            'ratings': 0,
-        },
-        'total_items': job.total_items,
-    }
+    records: list[WatchEntryRecord | StatusRecord | RatingRecord] = []
+    invalid_count = 0
 
     for item in history:
-        media_type = item.get('media_type', MediaType.MOVIE)
+        media_type = item.get('media_type', WatchEntryMediaType.MOVIE)
         tmdb_id = _safe_int(item.get('tmdb_id'))
-        season_number = _safe_int(item.get('season_number'))
-        episode_number = _safe_int(item.get('episode_number'))
         if not tmdb_id:
-            report['records_skipped'] += 1
-            job.processed_items += 1
-            _update_job_progress(job)
+            invalid_count += 1
             continue
-
-        _ensure_tmdb_metadata_for_import_item(media_type, tmdb_id, metadata_state, season_number=season_number)
-        changed = _import_watch_entry_by_mode(
-            job.user,
-            media_type,
-            tmdb_id,
-            _parse_watched_at(item.get('watched_at')),
-            import_mode,
-            season_number=season_number,
-            episode_number=episode_number,
+        records.append(
+            WatchEntryRecord(
+                media_type=media_type,
+                tmdb_id=tmdb_id,
+                watched_at=_parse_watched_at(item.get('watched_at')),
+                season_number=_safe_int(item.get('season_number')),
+                episode_number=_safe_int(item.get('episode_number')),
+            )
         )
-        if changed:
-            report['records_imported'] += 1
-            report['summary']['watch_history'] += 1
-        else:
-            report['records_skipped'] += 1
-
-        job.processed_items += 1
-        _update_job_progress(job)
 
     for item in watchlist:
         media_type = item.get('media_type', MediaType.MOVIE)
         tmdb_id = _safe_int(item.get('tmdb_id'))
         if not tmdb_id:
-            report['records_skipped'] += 1
-            job.processed_items += 1
-            _update_job_progress(job)
+            invalid_count += 1
             continue
-
-        _ensure_tmdb_metadata_for_import_item(media_type, tmdb_id, metadata_state)
-        changed = _import_tv_status_by_mode(
-            job.user,
-            media_type,
-            tmdb_id,
-            TvShowStatus.PLAN_TO_WATCH,
-            None,
-            None,
-            import_mode,
-        )
-        if changed:
-            report['records_imported'] += 1
-            report['summary']['watchlist'] += 1
-        else:
-            report['records_skipped'] += 1
-
-        job.processed_items += 1
-        _update_job_progress(job)
+        records.append(StatusRecord(media_type=media_type, tmdb_id=tmdb_id, status=TvShowStatus.PLAN_TO_WATCH))
 
     for item in ratings:
         score = _safe_int(item.get('score'))
         media_type = item.get('media_type', MediaType.MOVIE)
         tmdb_id = _safe_int(item.get('tmdb_id'))
         if not score or not tmdb_id:
-            report['records_skipped'] += 1
-            job.processed_items += 1
-            _update_job_progress(job)
+            invalid_count += 1
             continue
+        records.append(RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=score))
 
-        _ensure_tmdb_metadata_for_import_item(media_type, tmdb_id, metadata_state)
-        changed = _import_rating_by_mode(job.user, media_type, tmdb_id, score, import_mode)
-        if changed:
-            report['records_imported'] += 1
-            report['summary']['ratings'] += 1
-        else:
-            report['records_skipped'] += 1
+    collections: set[str] = set()
+    if history:
+        collections.add(WATCH_HISTORY_COLLECTION)
+    if watchlist:
+        collections.add(WATCHLIST_COLLECTION)
+    if ratings:
+        collections.add(RATINGS_COLLECTION)
 
-        job.processed_items += 1
-        _update_job_progress(job)
+    unit_count = len(history) + len(watchlist) + len(ratings)
+    parsed = ParsedImport(
+        records=tuple(records),
+        collections_present=frozenset(collections),
+        invalid_count=invalid_count,
+        report=_report(tuple(records), frozenset(collections), invalid_count, unit_count),
+    )
+    return parsed
 
-    report['metadata_hits'] = metadata_state['metadata_hits']
-    report['metadata_fetches'] = metadata_state['metadata_fetches']
-    report['metadata_errors'] = metadata_state['metadata_errors']
-    report['total_items'] = job.total_items
-    job.metadata = report
-    job.save(update_fields=['total_items', 'processed_items', 'metadata', 'updated_at'])
+
+def analyze_arxmedia_json(content: bytes) -> dict:
+    parsed = parse_arxmedia_json(content)
+    report = dict(parsed.report)
+    report.update(
+        {
+            'records_imported': 0,
+            'records_skipped': parsed.report['records_seen'],
+            'metadata_hits': 0,
+            'metadata_fetches': 0,
+            'metadata_errors': 0,
+        }
+    )
+    return report

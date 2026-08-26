@@ -2,12 +2,9 @@ from media.tmdb import tmdb
 
 from .export import export_user_data
 from .import_pipeline import (
-    apply_arxmedia_json_import,
-    apply_trakt_zip_import,
-    apply_yamtrack_csv_import,
-    prepare_arxmedia_json_import,
-    prepare_trakt_zip_import,
-    prepare_yamtrack_csv_import,
+    prepare_import_job,
+    process_media_item,
+    run_import_job,
 )
 from .system import (
     heartbeat,
@@ -17,15 +14,12 @@ from .system import (
 )
 
 __all__ = [
-    'apply_arxmedia_json_import',
-    'apply_trakt_zip_import',
-    'apply_yamtrack_csv_import',
     'export_user_data',
     'heartbeat',
-    'prepare_arxmedia_json_import',
-    'prepare_trakt_zip_import',
-    'prepare_yamtrack_csv_import',
+    'prepare_import_job',
+    'process_media_item',
     'refresh_show_status_for_user',
+    'run_import_job',
     'sync_show_episode_credits',
     'sync_tmdb_changed_items',
     'tmdb',

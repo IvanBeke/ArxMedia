@@ -1,7 +1,7 @@
 import io
 import json
 import zipfile
-from datetime import timedelta
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
 from celery.schedules import crontab
@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from media.models import Episode, Genre, Movie, Season, TVShow
 from rest_framework.test import APIClient
@@ -1971,6 +1971,15 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(results[0]['id'], new_job.id)
         self.assertEqual(results[1]['id'], old_job.id)
 
+    def _run_import_pipeline(self, job_id):
+        """Run the whole import synchronously (tests only)."""
+        from django.test import override_settings
+
+        from tracking.tasks import run_import_job
+
+        with override_settings(CELERY_TASK_ALWAYS_EAGER=True):
+            run_import_job(job_id)
+
     def test_prepare_zip_import_sets_awaiting_confirmation(self):
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -1985,8 +1994,8 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
-        from tracking.tasks import prepare_trakt_zip_import
-        prepare_trakt_zip_import(response.data['id'])
+        from tracking.tasks import prepare_import_job
+        prepare_import_job(response.data['id'])
 
         job = DataTransferJob.objects.get(id=response.data['id'])
         self.assertEqual(job.status, 'awaiting_confirmation')
@@ -2004,8 +2013,8 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?data_format=csv&source=yamtrack', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
-        from tracking.tasks import prepare_yamtrack_csv_import
-        prepare_yamtrack_csv_import(response.data['id'])
+        from tracking.tasks import prepare_import_job
+        prepare_import_job(response.data['id'])
 
         job = DataTransferJob.objects.get(id=response.data['id'])
         self.assertEqual(job.status, 'awaiting_confirmation')
@@ -2025,7 +2034,7 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post(f'/api/tracking/data/jobs/{job.id}/confirm/', {'import_mode': 'new_items'}, format='json')
         self.assertEqual(response.status_code, 400)
 
-    @patch('tracking.tasks.apply_trakt_zip_import.delay')
+    @patch('tracking.tasks.run_import_job.delay')
     def test_confirm_zip_import_starts_apply_task(self, mock_delay):
         job = DataTransferJob.objects.create(
             user=self.user,
@@ -2048,7 +2057,7 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(job.import_mode, 'mirror_imported_set')
         mock_delay.assert_called_once_with(job.id)
 
-    @patch('tracking.tasks.apply_yamtrack_csv_import.delay')
+    @patch('tracking.tasks.run_import_job.delay')
     def test_confirm_yamtrack_csv_starts_apply_task(self, mock_delay):
         job = DataTransferJob.objects.create(
             user=self.user,
@@ -2090,6 +2099,57 @@ class DataImportExportTests(BaseTestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data.get('error_code'), 'IMPORT_SOURCE_FORMAT_MISMATCH')
+
+    def test_yamtrack_progress_only_episodes_are_watched(self):
+        """Regression: yamtrack exports episode watches as progress events with
+        no status/end_date. Dates import verbatim — epoch stays epoch."""
+        csv_content = self._build_yamtrack_csv([
+            # Real One Piece row shape: empty status/end_date, progressed_at set,
+            # and a placeholder start_date of 1970-01-01.
+            {
+                'source': 'tmdb', 'media_type': 'episode', 'media_id': 37854,
+                'season_number': 1, 'episode_number': 1,
+                'start_date': '1970-01-01 00:00:00+00:00',
+                'progressed_at': '1970-01-01 00:00:00+00:00',
+            },
+        ])
+        upload = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+        job = DataTransferJob.objects.create(
+            user=self.user, job_type='import', data_format='csv', status='processing',
+            input_file=upload, source='yamtrack', import_mode='new_items', total_items=1,
+        )
+        self._run_import_pipeline(job.id)
+
+        entry = WatchEntry.objects.filter(user=self.user, media_type='episode', tmdb_id=37854).first()
+        self.assertIsNotNone(entry)
+        self.assertEqual((entry.season_number, entry.episode_number), (1, 1))
+        self.assertEqual(
+            entry.watched_at,
+            datetime(1970, 1, 1, tzinfo=UTC),
+        )
+
+    def test_yamtrack_multi_episode_show_creates_every_entry(self):
+        """Regression: an item with many episode records must materialize one
+        watch entry per episode, not just the latest one."""
+        episodes = [
+            {
+                'source': 'tmdb', 'media_type': 'episode', 'media_id': 37854,
+                'season_number': season, 'episode_number': episode,
+                'progressed_at': f'1970-01-01 00:00:{episode:02d}+00:00',
+            }
+            for season in (1, 2)
+            for episode in (1, 2, 3)
+        ]
+        csv_content = self._build_yamtrack_csv(episodes)
+        upload = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+        job = DataTransferJob.objects.create(
+            user=self.user, job_type='import', data_format='csv', status='processing',
+            input_file=upload, source='yamtrack', import_mode='new_items', total_items=6,
+        )
+        self._run_import_pipeline(job.id)
+
+        created = WatchEntry.objects.filter(user=self.user, media_type='episode', tmdb_id=37854)
+        self.assertEqual(created.count(), 6)
 
     def test_apply_yamtrack_csv_import_maps_statuses_and_filters_rows(self):
         TVShow.objects.create(tmdb_id=500, name='Mapped Show')
@@ -2147,12 +2207,11 @@ class DataImportExportTests(BaseTestCase):
             total_items=5,
         )
 
-        from tracking.tasks import apply_yamtrack_csv_import
-        apply_yamtrack_csv_import(job.id)
+        self._run_import_pipeline(job.id)
 
         job.refresh_from_db()
         self.assertEqual(job.status, 'done')
-        self.assertEqual(job.processed_items, 5)
+        self.assertEqual(job.processed_items, job.total_items)
         self.assertEqual(job.metadata.get('skipped_non_tmdb'), 1)
 
         show_status = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=500)
@@ -2217,19 +2276,21 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
-        from tracking.tasks import apply_trakt_zip_import, prepare_trakt_zip_import
+        from tracking.tasks import (
+            prepare_import_job,
+        )
 
-        prepare_trakt_zip_import(response.data['id'])
+        prepare_import_job(response.data['id'])
         job = DataTransferJob.objects.get(id=response.data['id'])
         job.import_mode = 'new_items'
         job.status = 'processing'
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
-        apply_trakt_zip_import(response.data['id'])
+        self._run_import_pipeline(response.data['id'])
 
         job = DataTransferJob.objects.get(id=response.data['id'])
         self.assertEqual(job.status, 'done')
-        self.assertEqual(job.total_items, 7)
-        self.assertEqual(job.processed_items, 7)
+        self.assertEqual(job.metadata.get('report', {}).get('records_seen'), 7)
+        self.assertEqual(job.processed_items, job.total_items)
 
         self.assertTrue(WatchEntry.objects.filter(user=self.user, media_type='movie', tmdb_id=101).exists())
         self.assertTrue(
@@ -2267,19 +2328,21 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
-        from tracking.tasks import apply_trakt_zip_import, prepare_trakt_zip_import
+        from tracking.tasks import (
+            prepare_import_job,
+        )
 
-        prepare_trakt_zip_import(response.data['id'])
+        prepare_import_job(response.data['id'])
         job = DataTransferJob.objects.get(id=response.data['id'])
         job.import_mode = 'new_items'
         job.status = 'processing'
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
-        apply_trakt_zip_import(response.data['id'])
+        self._run_import_pipeline(response.data['id'])
 
         job = DataTransferJob.objects.get(id=response.data['id'])
         self.assertEqual(job.status, 'done')
-        self.assertEqual(job.total_items, 2)
-        self.assertEqual(job.processed_items, 2)
+        self.assertEqual(job.metadata.get('report', {}).get('records_seen'), 2)
+        self.assertEqual(job.processed_items, job.total_items)
         self.assertEqual(job.metadata.get('summary', {}).get('watchlist'), 2)
 
         self.assertTrue(UserMediaStatus.objects.filter(user=self.user, media_type='movie', tmdb_id=1404, status='plan_to_watch').exists())
@@ -2314,27 +2377,29 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
-        from tracking.tasks import apply_trakt_zip_import, prepare_trakt_zip_import
+        from tracking.tasks import (
+            prepare_import_job,
+        )
 
-        prepare_trakt_zip_import(response.data['id'])
+        prepare_import_job(response.data['id'])
         job = DataTransferJob.objects.get(id=response.data['id'])
         job.import_mode = 'new_items'
         job.status = 'processing'
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
-        apply_trakt_zip_import(response.data['id'])
+        self._run_import_pipeline(response.data['id'])
 
         job = DataTransferJob.objects.get(id=response.data['id'])
         self.assertEqual(job.status, 'done')
-        self.assertEqual(job.total_items, 3)
-        self.assertEqual(job.processed_items, 3)
+        self.assertEqual(job.metadata.get('report', {}).get('records_seen'), 3)
+        self.assertEqual(job.processed_items, job.total_items)
         self.assertGreaterEqual(job.metadata.get('unsupported_files', 0), 2)
         self.assertGreaterEqual(job.metadata.get('unsupported_records', 0), 1)
         self.assertEqual(job.metadata.get('files_failed'), 0)
         self.assertGreaterEqual(job.metadata.get('records_imported', 0), 2)
         self.assertTrue(mock_sync_tv_show.called)
 
-    @patch('tracking.tasks.tmdb.sync_season')
-    def test_zip_import_syncs_season_metadata_for_episode_history(self, mock_sync_season):
+    @patch('tracking.tasks.tmdb.sync_tv_show')
+    def test_zip_import_syncs_show_metadata_for_episode_history(self, mock_sync_tv_show):
         TVShow.objects.create(tmdb_id=202, name='Existing Show')
         watched_history = [
             {
@@ -2353,16 +2418,16 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
-        from tracking.tasks import apply_trakt_zip_import, prepare_trakt_zip_import
+        from tracking.tasks import prepare_import_job
 
-        prepare_trakt_zip_import(response.data['id'])
+        prepare_import_job(response.data['id'])
         job = DataTransferJob.objects.get(id=response.data['id'])
         job.import_mode = 'new_items'
         job.status = 'processing'
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
-        apply_trakt_zip_import(response.data['id'])
+        self._run_import_pipeline(response.data['id'])
 
-        self.assertTrue(mock_sync_season.called)
+        self.assertTrue(mock_sync_tv_show.called)
 
     def test_zip_import_maps_hidden_progress_to_dropped_show_status(self):
         hidden_progress = [
@@ -2381,14 +2446,16 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
-        from tracking.tasks import apply_trakt_zip_import, prepare_trakt_zip_import
+        from tracking.tasks import (
+            prepare_import_job,
+        )
 
-        prepare_trakt_zip_import(response.data['id'])
+        prepare_import_job(response.data['id'])
         job = DataTransferJob.objects.get(id=response.data['id'])
         job.import_mode = 'new_items'
         job.status = 'processing'
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
-        apply_trakt_zip_import(response.data['id'])
+        self._run_import_pipeline(response.data['id'])
 
         self.assertTrue(
             UserMediaStatus.objects.filter(
@@ -2418,14 +2485,16 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
-        from tracking.tasks import apply_arxmedia_json_import, prepare_arxmedia_json_import
+        from tracking.tasks import (
+            prepare_import_job,
+        )
 
-        prepare_arxmedia_json_import(response.data['id'])
+        prepare_import_job(response.data['id'])
         job = DataTransferJob.objects.get(id=response.data['id'])
         job.import_mode = 'new_items'
         job.status = 'processing'
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
-        apply_arxmedia_json_import(response.data['id'])
+        self._run_import_pipeline(response.data['id'])
 
         self.assertTrue(mock_sync_movie.called)
         self.assertTrue(mock_sync_tv_show.called)
@@ -2434,7 +2503,8 @@ class DataImportExportTests(BaseTestCase):
     @patch('tracking.tasks.tmdb.sync_movie')
     def test_local_import_skips_metadata_fetch_when_already_present(self, mock_sync_movie, mock_sync_tv_show):
         Movie.objects.create(tmdb_id=111, title='Existing movie')
-        TVShow.objects.create(tmdb_id=333, name='Existing show')
+        show = TVShow.objects.create(tmdb_id=333, name='Existing show')
+        Season.objects.create(show=show, tmdb_id=3331, season_number=1, name='Season 1')
 
         payload = {
             'watch_history': [
@@ -2449,17 +2519,187 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
-        from tracking.tasks import apply_arxmedia_json_import, prepare_arxmedia_json_import
+        from tracking.tasks import prepare_import_job
 
-        prepare_arxmedia_json_import(response.data['id'])
+        prepare_import_job(response.data['id'])
         job = DataTransferJob.objects.get(id=response.data['id'])
         job.import_mode = 'new_items'
         job.status = 'processing'
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
-        apply_arxmedia_json_import(response.data['id'])
+        self._run_import_pipeline(response.data['id'])
 
         mock_sync_movie.assert_not_called()
         mock_sync_tv_show.assert_not_called()
+
+    def test_reconcile_command_repairs_history_without_status_row(self):
+        """Regression: imported watch history whose UserMediaStatus row is missing."""
+        from django.core.management import call_command
+
+        Movie.objects.create(tmdb_id=8001, title='Orphan Movie')
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=8001)
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=8002, status='plan_to_watch')
+        UserMediaStatus.objects.filter(media_type='movie', tmdb_id=8001).delete()
+
+        self.assertFalse(UserMediaStatus.objects.filter(media_type='movie', tmdb_id=8001).exists())
+
+        call_command('reconcile_user_media_status', username=self.user.username)
+
+        repaired = UserMediaStatus.objects.get(user=self.user, media_type='movie', tmdb_id=8001)
+        self.assertEqual(repaired.status, 'watched')
+        self.assertIsNotNone(repaired.last_watched_at)
+        # Untouched planning stays.
+        self.assertTrue(UserMediaStatus.objects.filter(media_type='movie', tmdb_id=8002, status='plan_to_watch').exists())
+
+    def test_import_pipeline_is_replayable(self):
+        payload = {
+            'watch_history': [
+                {'media_type': 'movie', 'tmdb_id': 9101},
+                {'media_type': 'episode', 'tmdb_id': 9102, 'season_number': 1, 'episode_number': 1},
+            ],
+            'watchlist': [
+                {'media_type': 'movie', 'tmdb_id': 9103},
+            ],
+            'ratings': [
+                {'media_type': 'movie', 'tmdb_id': 9101, 'score': 7},
+            ],
+        }
+        file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
+        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
+        job_id = response.data['id']
+
+        from tracking.tasks import prepare_import_job
+
+        prepare_import_job(job_id)
+        job = DataTransferJob.objects.get(id=job_id)
+        job.import_mode = 'update_existing'
+        job.status = 'processing'
+        job.save(update_fields=['import_mode', 'status', 'updated_at'])
+
+        self._run_import_pipeline(job_id)
+
+        def snapshot():
+            job.refresh_from_db()
+            return (
+                job.status,
+                sorted(WatchEntry.objects.filter(user=self.user).values_list('media_type', 'tmdb_id', 'season_number', 'episode_number')),
+                sorted(UserMediaStatus.objects.filter(user=self.user).values_list('media_type', 'tmdb_id', 'status')),
+                sorted(Rating.objects.filter(user=self.user).values_list('media_type', 'tmdb_id', 'score')),
+            )
+
+        first = snapshot()
+        self.assertEqual(first[0], 'done')
+
+        # Simulate a retry window: chunks/finalize may re-run while processing.
+        DataTransferJob.objects.filter(id=job_id).update(status='processing')
+        self._run_import_pipeline(job_id)
+        self.assertEqual(snapshot(), first)
+
+    @patch('tracking.tasks.tmdb.sync_movie')
+    def test_import_pipeline_completes_many_items(self, mock_sync_movie):
+        movies = [{'media_type': 'movie', 'tmdb_id': 7000 + index} for index in range(250)]
+        payload = {'watch_history': movies, 'watchlist': [], 'ratings': []}
+        file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
+        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
+        job_id = response.data['id']
+
+        from tracking.tasks import prepare_import_job
+
+        prepare_import_job(job_id)
+        job = DataTransferJob.objects.get(id=job_id)
+        job.import_mode = 'new_items'
+        job.status = 'processing'
+        job.save(update_fields=['import_mode', 'status', 'updated_at'])
+
+        self._run_import_pipeline(job_id)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, 'done')
+        self.assertEqual(job.processed_items, job.total_items)
+        self.assertEqual(WatchEntry.objects.filter(user=self.user).count(), 250)
+        self.assertTrue(mock_sync_movie.called)
+
+    @patch('tracking.tasks.process_media_item.delay')
+    def test_run_import_job_dispatches_tv_items_before_movies(self, mock_delay):
+        payload = {
+            'watch_history': [
+                {'media_type': 'movie', 'tmdb_id': 601},
+                {'media_type': 'episode', 'tmdb_id': 502, 'season_number': 1, 'episode_number': 1},
+            ],
+            'watchlist': [{'media_type': 'movie', 'tmdb_id': 603}],
+            'ratings': [],
+        }
+        file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
+        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
+        job = DataTransferJob.objects.get(id=response.data['id'])
+        job.status = 'processing'
+        job.save(update_fields=['status', 'updated_at'])
+
+        from tracking.tasks import run_import_job
+
+        with override_settings(CELERY_TASK_ALWAYS_EAGER=True):
+            run_import_job(job.id)
+
+        dispatched_types = [call.args[1]['media_type'] for call in mock_delay.call_args_list]
+        tv_positions = [i for i, mt in enumerate(dispatched_types) if mt == 'tv']
+        movie_positions = [i for i, mt in enumerate(dispatched_types) if mt == 'movie']
+        self.assertTrue(tv_positions and movie_positions)
+        self.assertLess(max(tv_positions), min(movie_positions))
+
+    @patch('tracking.status_sync.refresh_all_statuses_for_show')
+    @patch('tracking.tasks.tmdb.sync_tv_show')
+    def test_process_media_item_skips_status_recompute_for_imports(self, mock_sync_tv_show, mock_recompute):
+        from tracking.tasks import process_media_item
+
+        job = DataTransferJob.objects.create(
+            user=self.user, job_type='import', data_format='json', status='processing', source='arxmedia',
+        )
+        process_media_item(job.id, {'media_type': 'tv', 'tmdb_id': 4242, 'records': []}, recompute_status=False)
+
+        self.assertTrue(mock_sync_tv_show.called)
+        self.assertFalse(mock_recompute.called)
+
+    def test_up_next_usable_when_import_finishes(self):
+        """Episodes materialized during the import must be visible to up_next at done."""
+        show = TVShow.objects.create(tmdb_id=4601, name='Ready Show', number_of_seasons=1)
+        season = Season.objects.create(show=show, tmdb_id=4602, season_number=1, name='Season 1')
+        today = timezone.now().date()
+        Episode.objects.create(
+            season=season, tmdb_id=4603, episode_number=1, name='Next Up',
+            air_date=today + timedelta(days=3), runtime=42,
+        )
+        Episode.objects.create(
+            season=season, tmdb_id=4604, episode_number=2, name='Aired Unwatched',
+            air_date=today - timedelta(days=1), runtime=42,
+        )
+
+        csv_content = self._build_yamtrack_csv([
+            {
+                'source': 'tmdb',
+                'media_type': 'episode',
+                'media_id': 4601,
+                'season_number': 1,
+                'episode_number': 1,
+                'status': 'Completed',
+                'end_date': '2026-03-01T10:00:00+00:00',
+            },
+        ])
+        upload = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+        response = self.client.post('/api/tracking/data/import/?data_format=csv&source=yamtrack', {'file': upload}, format='multipart')
+        job_id = response.data['id']
+
+        from tracking.tasks import prepare_import_job
+
+        prepare_import_job(job_id)
+        DataTransferJob.objects.filter(id=job_id).update(status='processing')
+        self._run_import_pipeline(job_id)
+
+        job = DataTransferJob.objects.get(id=job_id)
+        self.assertEqual(job.status, 'done')
+
+        up_next = self.client.get('/api/tracking/up-next/')
+        self.assertEqual(up_next.status_code, 200)
+        self.assertEqual(len(up_next.data), 1)
+        self.assertEqual(up_next.data[0]['show_name'], 'Ready Show')
 
 
 class SystemTaskTests(TestCase):

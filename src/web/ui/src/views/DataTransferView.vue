@@ -81,7 +81,7 @@
               <p class="text-sm text-secondary">Started: <span class="text-primary">{{ formatDateTime(recentJob.created_at) }}</span></p>
               <span class="text-xs font-semibold uppercase tracking-wide" :class="statusClass(recentJob.status)">{{ humanStatus(recentJob.status) }}</span>
             </div>
-            <p class="text-sm text-secondary mt-1">Progress: <span class="text-primary">{{ recentJob.processed_items }} / {{ recentJob.total_items }}</span></p>
+            <p class="text-sm text-secondary mt-1">Progress: <span class="text-primary">{{ recentJob.processed_items }} / {{ progressTotal(recentJob) }}</span><span v-if="stageLabel(recentJob)" class="text-muted"> · {{ stageLabel(recentJob) }}</span></p>
             <p v-if="recentJob.status === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION" class="text-xs text-amber-400 mt-1">Click to pick import mode</p>
             <p v-if="recentJob.error_message" class="text-sm text-red-400 mt-1">{{ recentJob.error_message }}</p>
           </div>
@@ -242,6 +242,15 @@ const modalSummary = computed(() => {
   }
 })
 const modalJob = computed(() => jobs.value.find((item) => item.id === modalJobId.value) || null)
+function progressTotal(job) {
+  return job.total_items || 0
+}
+function stageLabel(job) {
+  if (job.status !== 'processing') return ''
+  const stage = job.metadata?.pipeline?.stage
+  if (stage === 'finalizing') return 'Finalizing'
+  return 'Importing'
+}
 const modalIsPreparing = computed(() => {
   if (!modalJob.value) return false
   return modalJob.value.status === DATA_TRANSFER_STATUS.PENDING || modalJob.value.status === DATA_TRANSFER_STATUS.PROCESSING

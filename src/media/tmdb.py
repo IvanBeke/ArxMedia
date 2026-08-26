@@ -16,6 +16,13 @@ class TMDBNotFoundError(Exception):
     pass
 
 
+def _split_bundled_seasons(season_numbers: list[int], bundled_limit: int) -> tuple[list[int], list[int]]:
+    """Split seasons into those fetchable via append_to_response and leftovers."""
+    bundled = season_numbers[:bundled_limit]
+    remaining = season_numbers[bundled_limit:]
+    return bundled, remaining
+
+
 def _non_empty_defaults(defaults):
     """Drop null/empty values so upstream removals never clear stored fields."""
     return {
@@ -30,6 +37,7 @@ class TMDBService:
     API_KEY = getattr(settings, 'TMDB_API_KEY', '')
     CACHE_TTL = 604800  # 7 days
     REQUEST_RETRIES = 5
+    APPEND_SEASON_LIMIT = 20  # TMDB caps append_to_response sub-requests
 
     def __init__(self):
         self._redis = None
@@ -104,13 +112,22 @@ class TMDBService:
         return self._get(f'/find/{external_id}', {'external_source': external_source})
 
     def get_movie(self, tmdb_id, *, use_cache=True):
-        return self._get(f'/movie/{tmdb_id}', {'append_to_response': 'credits,videos'}, use_cache=use_cache)
+        return self._get(f'/movie/{tmdb_id}', use_cache=use_cache)
 
     def get_movie_credits(self, tmdb_id):
         return self._get(f'/movie/{tmdb_id}/credits')
 
     def get_tv_show(self, tmdb_id, *, use_cache=True):
-        return self._get(f'/tv/{tmdb_id}', {'append_to_response': 'credits,videos'}, use_cache=use_cache)
+        return self._get(f'/tv/{tmdb_id}', use_cache=use_cache)
+
+    def get_tv_show_with_seasons(self, tmdb_id, season_numbers, *, use_cache=True):
+        """Fetch a show plus up to APPEND_SEASON_LIMIT seasons (episodes
+        included) in a single TMDB request via ``append_to_response``."""
+        appends = [f'season/{number}' for number in season_numbers[:self.APPEND_SEASON_LIMIT]]
+        params = {}
+        if appends:
+            params['append_to_response'] = ','.join(appends)
+        return self._get(f'/tv/{tmdb_id}', params or None, use_cache=use_cache)
 
     def get_tv_aggregate_credits(self, tmdb_id):
         return self._get(f'/tv/{tmdb_id}/aggregate_credits')
@@ -185,9 +202,23 @@ class TMDBService:
             movie.genres.add(genre)
         return movie
 
-    def sync_tv_show(self, tmdb_id, user_id=None, sync_credits: bool = True, *, use_cache: bool = True):
+    def sync_tv_show(self, tmdb_id, user_id=None, sync_credits: bool = True, *, recompute_user_statuses: bool = True, use_cache: bool = True):
         """Fetch TV show from TMDB and save/update locally, including all seasons and episodes."""
         data = self.get_tv_show(tmdb_id, use_cache=use_cache)
+        season_numbers = [
+            int(season.get('season_number'))
+            for season in data.get('seasons', [])
+            if isinstance(season.get('season_number'), int)
+        ]
+        if not season_numbers:
+            total_seasons = data.get('number_of_seasons') or 0
+            season_numbers = list(range(1, int(total_seasons) + 1))
+
+        if season_numbers:
+            # Second request bundles every season (episodes included) that fits
+            # within TMDB's append_to_response limit.
+            data = self.get_tv_show_with_seasons(tmdb_id, season_numbers, use_cache=use_cache)
+
         networks = ', '.join([n['name'] for n in data.get('networks', [])])
         runtimes = data.get('episode_run_time') or []
         episode_runtime = next((int(runtime) for runtime in runtimes if isinstance(runtime, int) and runtime > 0), None)
@@ -216,33 +247,43 @@ class TMDBService:
             genre, _ = Genre.objects.get_or_create(tmdb_id=g['id'], defaults={'name': g['name']})
             show.genres.add(genre)
 
-        season_numbers = [
-            int(season.get('season_number'))
-            for season in data.get('seasons', [])
-            if isinstance(season.get('season_number'), int)
-        ]
-        if not season_numbers:
-            total_seasons = data.get('number_of_seasons') or 0
-            season_numbers = list(range(1, int(total_seasons) + 1))
+        # Primary seasons arrive appended to this same response (one request
+        # for show + seasons + episodes); anything beyond the append limit is
+        # fetched per-season.
+        bundled, remaining = _split_bundled_seasons(season_numbers, bundled_limit=self.APPEND_SEASON_LIMIT)
+        for season_number in bundled:
+            season_data = data.get(f'season/{season_number}')
+            if not isinstance(season_data, dict) or not season_data:
+                remaining.append(season_number)
+                continue
+            try:
+                self._upsert_season(show, season_number, season_data, sync_episode_credits=sync_credits)
+            except Exception as exc:
+                logger.warning('Failed to sync season %s for tv %s: %s', season_number, tmdb_id, exc)
 
-        for season_number in season_numbers:
+        for season_number in remaining:
             try:
                 self.sync_season(show, season_number, sync_episode_credits=sync_credits, use_cache=use_cache)
             except Exception as exc:
                 logger.warning('Failed to sync season %s for tv %s: %s', season_number, tmdb_id, exc)
 
-        try:
-            from tracking.status_sync import refresh_all_statuses_for_show
+        if recompute_user_statuses:
+            try:
+                from tracking.status_sync import refresh_all_statuses_for_show
 
-            refresh_all_statuses_for_show(int(tmdb_id), current_user_id=user_id)
-        except Exception as exc:
-            logger.warning('Failed to refresh statuses for tv %s: %s', tmdb_id, exc)
+                refresh_all_statuses_for_show(int(tmdb_id), current_user_id=user_id)
+            except Exception as exc:
+                logger.warning('Failed to refresh statuses for tv %s: %s', tmdb_id, exc)
 
         return show
 
     def sync_season(self, show, season_number, sync_episode_credits: bool = True, *, use_cache: bool = True):
         """Fetch a season from TMDB and save/update locally with all episodes."""
         data = self.get_season(show.tmdb_id, season_number, use_cache=use_cache)
+        return self._upsert_season(show, season_number, data, sync_episode_credits=sync_episode_credits)
+
+    def _upsert_season(self, show, season_number: int, data: dict, sync_episode_credits: bool = True):
+        """Persist one season (with episodes) from a TMDB season payload."""
         season_defaults = {
             'tmdb_id': data.get('id', 0),
             'name': data.get('name', ''),
@@ -284,7 +325,6 @@ class TMDBService:
                         season_number,
                         episode_number,
                         show=show,
-                        use_cache=use_cache,
                     )
                 except Exception as exc:
                     logger.warning(

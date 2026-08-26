@@ -1,12 +1,12 @@
-from .arxmedia import analyze_arxmedia_json, apply_arxmedia_json_import
-from .trakt import analyze_trakt_zip, apply_trakt_zip_import
-from .yamtrack import analyze_yamtrack_csv, apply_yamtrack_csv_import
+from .arxmedia import analyze_arxmedia_json, parse_arxmedia_json
+from .trakt import analyze_trakt_zip, parse_trakt_zip
+from .yamtrack import analyze_yamtrack_csv, parse_yamtrack_csv
 
 __all__ = [
     'analyze_arxmedia_json',
     'analyze_trakt_zip',
     'analyze_yamtrack_csv',
-    'apply_arxmedia_json_import',
-    'apply_trakt_zip_import',
-    'apply_yamtrack_csv_import',
+    'parse_arxmedia_json',
+    'parse_trakt_zip',
+    'parse_yamtrack_csv',
 ]
