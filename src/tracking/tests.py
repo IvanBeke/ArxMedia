@@ -2359,6 +2359,52 @@ class DataImportExportTests(BaseTestCase):
         created = WatchEntry.objects.filter(user=self.user, media_type='episode', tmdb_id=37854)
         self.assertEqual(created.count(), 6)
 
+    def test_yamtrack_movie_dropped_imports_dropped_status(self):
+        csv_content = self._build_yamtrack_csv([
+            {
+                'source': 'tmdb', 'media_type': 'movie', 'media_id': 610,
+                'status': 'Dropped', 'end_date': '2026-01-05 00:00:00+00:00',
+            },
+        ])
+        upload = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+        job = DataTransferJob.objects.create(
+            user=self.user, job_type='import', data_format='csv', status='processing',
+            input_file=upload, source='yamtrack', import_mode='new_items', total_items=1,
+        )
+        self._run_import_pipeline(job.id)
+
+        status_row = UserMediaStatus.objects.get(user=self.user, media_type='movie', tmdb_id=610)
+        self.assertEqual(status_row.status, 'dropped')
+        self.assertIsNotNone(status_row.dropped_at)
+
+    def test_yamtrack_tv_dropped_preserved_with_refreshed_counts(self):
+        show = TVShow.objects.create(tmdb_id=620, name='Dropped Show', number_of_seasons=1)
+        season = Season.objects.create(show=show, tmdb_id=621, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=622, episode_number=1, name='E1')
+
+        csv_content = self._build_yamtrack_csv([
+            {
+                'source': 'tmdb', 'media_type': 'episode', 'media_id': 620,
+                'season_number': 1, 'episode_number': 1,
+                'status': 'Completed', 'end_date': '2026-02-01 10:00:00+00:00',
+            },
+            {
+                'source': 'tmdb', 'media_type': 'tv', 'media_id': 620,
+                'status': 'Dropped',
+            },
+        ])
+        upload = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+        job = DataTransferJob.objects.create(
+            user=self.user, job_type='import', data_format='csv', status='processing',
+            input_file=upload, source='yamtrack', import_mode='new_items', total_items=2,
+        )
+        self._run_import_pipeline(job.id)
+
+        status_row = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=620)
+        self.assertEqual(status_row.status, 'dropped')
+        self.assertEqual(status_row.watched_episodes, 1)
+        self.assertIsNotNone(status_row.dropped_at)
+
     def test_apply_yamtrack_csv_import_maps_statuses_and_filters_rows(self):
         TVShow.objects.create(tmdb_id=500, name='Mapped Show')
         csv_content = self._build_yamtrack_csv([

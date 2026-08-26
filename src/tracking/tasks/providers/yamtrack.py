@@ -2,7 +2,7 @@
 
 import csv
 import io
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
@@ -17,7 +17,7 @@ from ...import_records import (
     WatchEntryRecord,
 )
 
-YAMTRACK_ALLOWED_MEDIA_TYPES = {'movie', 'tv', 'season', 'episode'}
+YAMTRACK_ALLOWED_MEDIA_TYPES = {'movie', 'tv', 'episode'}
 YAMTRACK_ALLOWED_STATUSES = {'Completed', 'In progress', 'Planning', 'Paused', 'Dropped', ''}
 
 
@@ -36,33 +36,13 @@ def _parse_yamtrack_score(value) -> int | None:
     return min(rounded, 10)
 
 
-def _parse_yamtrack_progress(value) -> int | None:
-    parsed = _safe_int(value)
-    if parsed is None or parsed < 0:
-        return None
-    return parsed
-
-
-def _yamtrack_row_timestamp(row: dict, *fields: str) -> datetime | None:
-    """First non-empty timestamp among fields, imported verbatim."""
-    for field in fields:
-        parsed = _parse_watched_at(row.get(field))
-        if parsed:
-            return parsed
-    return None
+# Watched dates come exclusively from end_date; every other timestamp column
+# is yamtrack-internal. Rows without one import with the epoch as "unknown".
+UNKNOWN_WATCHED_DATE = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _yamtrack_watch_entry_status(value: str) -> str | None:
     return {('Completed'): TvShowStatus.WATCHED}.get(value)
-
-
-def _yamtrack_tv_status(value: str) -> str | None:
-    return {
-        ('Completed'): TvShowStatus.WATCHED,
-        ('In progress'): TvShowStatus.WATCHING,
-        ('Paused'): TvShowStatus.WATCHING,
-        ('Dropped'): TvShowStatus.DROPPED,
-    }.get(value)
 
 
 def _yamtrack_collection_from_row(media_type: str, status: str, score: int | None, end_at, progressed_at) -> set[str]:
@@ -108,10 +88,9 @@ def parse_yamtrack_csv(content: bytes) -> ParsedImport:
         season_number = _safe_int(row.get('season_number'))
         episode_number = _safe_int(row.get('episode_number'))
         score = _parse_yamtrack_score(row.get('score'))
-        progress = _parse_yamtrack_progress(row.get('progress'))
         progressed_at = _parse_watched_at(row.get('progressed_at'))
-        event_at = _yamtrack_row_timestamp(row, 'end_date', 'progressed_at', 'start_date', 'created_at')
         end_at = _parse_watched_at(row.get('end_date'))
+        event_at = end_at if end_at is not None else UNKNOWN_WATCHED_DATE
 
         collections.update(_yamtrack_collection_from_row(media_type, status, score, end_at, progressed_at))
 
@@ -146,24 +125,26 @@ def parse_yamtrack_csv(content: bytes) -> ParsedImport:
                 records.append(
                     StatusRecord(media_type=MediaType.MOVIE, tmdb_id=tmdb_id, status=TvShowStatus.PLAN_TO_WATCH, status_at=event_at)
                 )
+            if status == 'Dropped':
+                records.append(
+                    StatusRecord(media_type=MediaType.MOVIE, tmdb_id=tmdb_id, status=TvShowStatus.DROPPED, status_at=event_at)
+                )
             if score:
                 records.append(RatingRecord(media_type=MediaType.MOVIE, tmdb_id=tmdb_id, score=score))
 
         elif media_type == 'tv':
-            tv_status = _yamtrack_tv_status(status)
-            if tv_status:
-                records.append(StatusRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, status=tv_status, status_at=event_at, progress=progress))
+            # Watching/watched are derived from episode history by the
+            # reconciliation pass; only plan/dropped are preserved as-is.
+            if status == 'Dropped':
+                records.append(
+                    StatusRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, status=TvShowStatus.DROPPED, status_at=event_at)
+                )
             if status == 'Planning':
                 records.append(
                     StatusRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, status=TvShowStatus.PLAN_TO_WATCH, status_at=event_at)
                 )
             if score:
                 records.append(RatingRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, score=score))
-
-        elif media_type == 'season':
-            tv_status = _yamtrack_tv_status(status)
-            if tv_status:
-                records.append(StatusRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, status=tv_status, status_at=event_at, progress=progress))
 
         elif media_type == 'episode':
             entry_status = _yamtrack_watch_entry_status(status)
