@@ -210,6 +210,7 @@ const props = defineProps({
   searchPlaceholder: { type: String, default: 'Search by title' },
   advancedLabel: { type: String, default: 'Advanced Filters' },
   applyMediaTypeExclusiveSorts: { type: Boolean, default: true },
+  showOrderSort: { type: Boolean, default: false },
   providerStatusOptions: { type: Array, default: () => [] },
   genreOptions: { type: Array, default: () => [] },
   page: { type: Number, default: 1 },
@@ -242,6 +243,7 @@ const movieStatusChipOptions = [
 
 const sortLabelsByKey = {
   added_at: 'Date added',
+  custom_order: 'Custom order',
   title: 'Title',
   rating: 'Rating',
   vote_count: 'Votes',
@@ -258,6 +260,7 @@ const sortLabelsByKey = {
 
 const baseDefaultDirections = {
   added_at: 'asc',
+  custom_order: 'asc',
   title: 'asc',
   rating: 'desc',
   vote_count: 'desc',
@@ -342,6 +345,9 @@ const resolvedSortOptions = computed(() => {
     baseline = usesStatusWorkflowSortProfile.value ? ['title', 'release_date'] : sortBaselineKeys
   }
   const keys = [...baseline]
+  if (props.showOrderSort) {
+    keys.unshift('custom_order')
+  }
   if (props.applyMediaTypeExclusiveSorts) {
     if (effectiveMediaType.value === 'movie') {
       keys.push(...sortMovieExclusiveKeys)

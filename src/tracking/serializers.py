@@ -219,9 +219,9 @@ class ListItemSerializer(MediaCardSerializer):
         model = ListItem
         fields = [
             'id', 'media_type', 'tmdb_id', 'title', 'poster_path', 'poster_url', 'vote_average',
-            'release_date', 'user_status', 'added_at'
+            'release_date', 'user_status', 'added_at', 'custom_order'
         ]
-        read_only_fields = ['id', 'added_at']
+        read_only_fields = ['id', 'added_at', 'custom_order']
 
     def get_user_status(self, obj):
         status_map = self.context.get('status_map') or {}

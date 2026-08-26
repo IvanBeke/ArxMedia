@@ -371,6 +371,11 @@ def _annotate_media_sort_fields(queryset, user=None):
 
 
 def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_desc: bool = False, user=None):
+    if sort_key == 'custom_order':
+        if direction == 'desc':
+            return queryset.order_by(F('custom_order').desc(nulls_last=True), 'id')
+        return queryset.order_by(F('custom_order').asc(nulls_last=True), 'id')
+
     queryset = _annotate_media_sort_fields(queryset, user=user)
 
     id_order = '-id' if id_desc else 'id'
@@ -1869,7 +1874,7 @@ class CustomListDetailView(generics.RetrieveUpdateDestroyAPIView):
         serializer = self.get_serializer(instance)
         payload = dict(serializer.data)
 
-        items_qs = ListItem.objects.filter(custom_list=instance).select_related('custom_list')
+        items_qs = ListItem.objects.filter(custom_list=instance).select_related('custom_list').order_by('custom_order', 'added_at')
         from media.models import Movie, TVShow
 
         movie_ids = [entry.tmdb_id for entry in items_qs if entry.media_type == MediaType.MOVIE]
@@ -1943,16 +1948,16 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         sort_key, direction = _normalize_sort(
             self.request.query_params.get('sort'),
             self.request.query_params.get('direction'),
-            default_sort='added_at',
+            default_sort='custom_order',
             default_direction='asc',
         )
         valid_sorts = {
-            'added_at', 'title', 'release_date',
+            'added_at', 'custom_order', 'title', 'release_date',
             'rating', 'runtime', 'total_episodes', 'vote_count',
             'watched_date', 'started_date', 'last_watched', 'progress_percent', 'episodes_left', 'time_left', 'next_episode_date'
         }
         if sort_key not in valid_sorts:
-            sort_key = 'added_at'
+            sort_key = 'custom_order'
 
         queryset = _apply_secondary_title_ordering(queryset, sort_key, direction, user=self.request.user)
         return queryset
@@ -1964,32 +1969,15 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         is_collaborator = ListCollaborator.objects.filter(custom_list=custom_list, user=self.request.user).exists()
         if not (is_owner or is_collaborator):
             raise PermissionDenied('You can only add items to your lists or lists where you collaborate.')
-        try:
-            serializer.save(custom_list=custom_list)
-        except IntegrityError:
-            raise ValidationError({'detail': 'Item is already in this list.'})
+        from django.db.models import Max
 
-    def create(self, request, *args, **kwargs):
-        # Support bulk create
-        if isinstance(request.data, list):
-            list_id = self.kwargs.get('list_id')
-            custom_list = CustomList.objects.get(id=list_id)
-            is_owner = custom_list.user_id == request.user.id
-            is_collaborator = ListCollaborator.objects.filter(custom_list=custom_list, user=request.user).exists()
-            if not (is_owner or is_collaborator):
-                raise PermissionDenied('You can only add items to your lists or lists where you collaborate.')
-            items = []
-            for item_data in request.data:
-                items.append(
-                    ListItem(
-                        custom_list=custom_list,
-                        media_type=item_data.get('media_type'),
-                        tmdb_id=item_data.get('tmdb_id')
-                    )
-                )
-            ListItem.objects.bulk_create(items, ignore_conflicts=True)
-            return Response({'added': len(items)}, status=status.HTTP_201_CREATED)
-        return super().create(request, *args, **kwargs)
+        with transaction.atomic():
+            max_order = ListItem.objects.filter(custom_list=custom_list).aggregate(m=Max('custom_order'))['m']
+            next_order = (max_order + 1) if max_order is not None else 0
+            try:
+                serializer.save(custom_list=custom_list, custom_order=next_order)
+            except IntegrityError:
+                raise ValidationError({'detail': 'Item is already in this list.'})
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -2024,6 +2012,55 @@ class ListItemDetailView(generics.RetrieveDestroyAPIView):
             Q(custom_list__user=self.request.user) |
             Q(custom_list__collaboratorships__user=self.request.user)
         ).distinct()
+
+
+class ListItemReorderView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        list_id = self.kwargs.get('list_id')
+        try:
+            custom_list = CustomList.objects.get(id=list_id)
+        except CustomList.DoesNotExist:
+            raise PermissionDenied('List not found.')
+
+        if not _can_access_list(request.user, custom_list):
+            raise PermissionDenied('You do not have permission to access this list.')
+
+        is_owner = custom_list.user_id == request.user.id
+        is_collaborator = ListCollaborator.objects.filter(custom_list=custom_list, user=request.user).exists()
+        if not (is_owner or is_collaborator):
+            raise PermissionDenied('You can only reorder items in your lists or lists where you collaborate.')
+
+        ordered_ids = request.data.get('custom_order')
+        if not isinstance(ordered_ids, list):
+            raise ValidationError({'custom_order': 'custom_order must be a list of item ids.'})
+
+        try:
+            ordered_ids = [int(i) for i in ordered_ids]
+        except (TypeError, ValueError):
+            raise ValidationError({'custom_order': 'custom_order must contain integers.'})
+
+        if len(ordered_ids) != len(set(ordered_ids)):
+            raise ValidationError({'custom_order': 'custom_order must not contain duplicates.'})
+
+        existing_ids = set(ListItem.objects.filter(custom_list=custom_list).values_list('id', flat=True))
+        if set(ordered_ids) != existing_ids:
+            raise ValidationError({'custom_order': 'custom_order must contain all item ids for this list exactly once.'})
+
+        # Update order atomically
+        with transaction.atomic():
+            items_map = {item.id: item for item in ListItem.objects.select_for_update().filter(custom_list=custom_list)}
+            to_update = []
+            for idx, item_id in enumerate(ordered_ids):
+                item = items_map[item_id]
+                if item.custom_order != idx:
+                    item.custom_order = idx
+                    to_update.append(item)
+            if to_update:
+                ListItem.objects.bulk_update(to_update, ['custom_order'])
+
+        return Response({'ordered': True, 'custom_order': ordered_ids})
 
 
 class ListCollaboratorCreateView(generics.CreateAPIView):

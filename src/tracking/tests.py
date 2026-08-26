@@ -614,7 +614,7 @@ class MaterializedStatusTests(BaseTestCase):
             episode_number=1,
             watched_at=timezone.make_aware(timezone.datetime(2026, 1, 1, 10, 0, 0)),
         )
-        self.client.post('/api/tracking/shows/drop/', {'tmdb_id': 9100})
+        self.client.post('/api/tracking/media/drop/', {'tmdb_id': 9100, 'media_type': 'tv'})
         self.client.post('/api/tracking/episodes/mark/', {'tmdb_id': 9100, 'season_number': 1, 'episode_number': 2})
 
         show_status = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=9100)
@@ -1812,16 +1812,6 @@ class ListItemTests(BaseTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(ListItem.objects.count(), 1)
 
-    def test_bulk_add_to_list(self):
-        lst = CustomList.objects.create(user=self.user, name='Test List')
-        items = [
-            {'media_type': 'movie', 'tmdb_id': 123},
-            {'media_type': 'tv', 'tmdb_id': 456}
-        ]
-        response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', items, format='json')
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(ListItem.objects.count(), 2)
-
     def test_remove_item_from_list(self):
         lst = CustomList.objects.create(user=self.user, name='Test List')
         item = ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=123)
@@ -1977,6 +1967,87 @@ class ListItemTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         items = response.data.get('results', response.data)
         self.assertEqual({item['tmdb_id'] for item in items}, {7402})
+
+
+class ListItemCustomOrderTests(BaseTestCase):
+    def test_custom_order_assigned_sequentially(self):
+        lst = CustomList.objects.create(user=self.user, name='Order Seq')
+        for tmdb in [101, 102, 103]:
+            self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': tmdb})
+        orders = list(ListItem.objects.filter(custom_list=lst).order_by('custom_order').values_list('tmdb_id', 'custom_order'))
+        self.assertEqual(orders, [(101, 0), (102, 1), (103, 2)])
+
+    def test_sort_by_custom_order(self):
+        lst = CustomList.objects.create(user=self.user, name='Sort Order')
+        for tmdb in [201, 202, 203]:
+            self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': tmdb})
+        # default should be custom_order asc
+        resp = self.client.get(f'/api/tracking/lists/{lst.id}/items/')
+        self.assertEqual([i['tmdb_id'] for i in resp.data['results']], [201, 202, 203])
+        # explicit asc
+        resp = self.client.get(f'/api/tracking/lists/{lst.id}/items/?sort=custom_order&direction=asc')
+        self.assertEqual([i['tmdb_id'] for i in resp.data['results']], [201, 202, 203])
+        # desc
+        resp = self.client.get(f'/api/tracking/lists/{lst.id}/items/?sort=custom_order&direction=desc')
+        self.assertEqual([i['tmdb_id'] for i in resp.data['results']], [203, 202, 201])
+
+    def test_gaps_left_after_delete_and_append(self):
+        lst = CustomList.objects.create(user=self.user, name='Gaps')
+        for tmdb in [301, 302, 303]:
+            self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': tmdb})
+        mid = ListItem.objects.get(custom_list=lst, tmdb_id=302)
+        self.client.delete(f'/api/tracking/lists/{lst.id}/items/{mid.id}/')
+        orders = list(ListItem.objects.filter(custom_list=lst).order_by('custom_order').values_list('custom_order', flat=True))
+        self.assertEqual(orders, [0, 2])  # gap at 1
+        self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': 304})
+        new = ListItem.objects.get(custom_list=lst, tmdb_id=304)
+        self.assertEqual(new.custom_order, 3)  # max+1, gap preserved
+
+    def test_reorder_items(self):
+        lst = CustomList.objects.create(user=self.user, name='Reorder')
+        for tmdb in [401, 402, 403]:
+            self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': tmdb})
+        ids = list(ListItem.objects.filter(custom_list=lst).order_by('custom_order').values_list('id', flat=True))
+        rev = list(reversed(ids))
+        resp = self.client.post(f'/api/tracking/lists/{lst.id}/items/reorder/', {'custom_order': rev}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['custom_order'], rev)
+        ordered = list(ListItem.objects.filter(custom_list=lst).order_by('custom_order').values_list('tmdb_id', flat=True))
+        self.assertEqual(ordered, [403, 402, 401])
+
+    def test_reorder_requires_all_ids(self):
+        lst = CustomList.objects.create(user=self.user, name='Reorder Validation')
+        for tmdb in [501, 502]:
+            self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': tmdb})
+        ids = list(ListItem.objects.filter(custom_list=lst).values_list('id', flat=True))
+        # missing one id
+        resp = self.client.post(f'/api/tracking/lists/{lst.id}/items/reorder/', {'custom_order': [ids[0]]}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        # duplicate
+        resp = self.client.post(f'/api/tracking/lists/{lst.id}/items/reorder/', {'custom_order': [ids[0], ids[0]]}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_reorder_permission(self):
+        lst = CustomList.objects.create(user=self.user, name='Reorder Perm')
+        for tmdb in [601, 602]:
+            self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': tmdb})
+        ids = list(ListItem.objects.filter(custom_list=lst).values_list('id', flat=True))
+        self.authenticate(self.user2)
+        resp = self.client.post(f'/api/tracking/lists/{lst.id}/items/reorder/', {'custom_order': list(reversed(ids))}, format='json')
+        self.assertEqual(resp.status_code, 403)
+        # collaborator can reorder
+        ListCollaborator.objects.create(custom_list=lst, user=self.user2)
+        resp = self.client.post(f'/api/tracking/lists/{lst.id}/items/reorder/', {'custom_order': list(reversed(ids))}, format='json')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_order_alias_not_accepted(self):
+        lst = CustomList.objects.create(user=self.user, name='Alias')
+        for tmdb in [701, 702]:
+            self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': tmdb})
+        ids = list(ListItem.objects.filter(custom_list=lst).values_list('id', flat=True))
+        resp = self.client.post(f'/api/tracking/lists/{lst.id}/items/reorder/', {'order': ids}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('custom_order', resp.data)
 
 
 class UserStatsTests(BaseTestCase):

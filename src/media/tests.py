@@ -664,7 +664,7 @@ class MediaTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['user_status']['status'], 'watching')
 
-        self.client.post('/api/tracking/shows/drop/', {'tmdb_id': 888})
+        self.client.post('/api/tracking/media/drop/', {'tmdb_id': 888, 'media_type': 'tv'})
         response = self.client.get('/api/media/tv/888/')
         self.assertEqual(response.data['user_status']['status'], 'dropped')
         self.assertIn('status_changed_at', response.data['user_status'])
@@ -851,9 +851,26 @@ class TMDBUseCacheTests(TestCase):
 
     @patch('tracking.status_sync.refresh_all_statuses_for_show')
     @patch('media.tmdb.tmdb.sync_season')
+    @patch('media.tmdb.tmdb.get_tv_show_with_seasons')
     @patch('media.tmdb.tmdb.get_tv_show')
-    def test_sync_tv_show_propagates_use_cache_false(self, mock_get_tv_show, mock_sync_season, mock_refresh_statuses):
+    def test_sync_tv_show_propagates_use_cache_false(self, mock_get_tv_show, mock_get_with_seasons, mock_sync_season, mock_refresh_statuses):
         mock_get_tv_show.return_value = {
+            'id': 557,
+            'name': 'No Cache Show',
+            'overview': 'cache bypass test',
+            'first_air_date': '2020-01-01',
+            'number_of_seasons': 1,
+            'number_of_episodes': 4,
+            'vote_average': 6.5,
+            'vote_count': 20,
+            'original_language': 'en',
+            'status': 'Returning Series',
+            'networks': [],
+            'episode_run_time': [40],
+            'genres': [],
+            'seasons': [{'season_number': 1}],
+        }
+        mock_get_with_seasons.return_value = {
             'id': 557,
             'name': 'No Cache Show',
             'overview': 'cache bypass test',
@@ -874,6 +891,7 @@ class TMDBUseCacheTests(TestCase):
 
         self.assertEqual(show.tmdb_id, 557)
         mock_get_tv_show.assert_called_once_with(557, use_cache=False)
+        mock_get_with_seasons.assert_called_once_with(557, [1], use_cache=False)
         mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True, use_cache=False)
 
     @patch('media.tmdb.tmdb.get_movie')

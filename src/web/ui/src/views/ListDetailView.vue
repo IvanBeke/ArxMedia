@@ -73,7 +73,8 @@
         :show-search="true"
         :show-sort="true"
         :show-direction="true"
-        default-sort-key="added_at"
+        :show-order-sort="true"
+        default-sort-key="custom_order"
         :apply-media-type-exclusive-sorts="true"
         search-placeholder="Search list items by title"
         ref="filterBarRef"
@@ -88,7 +89,31 @@
         </div>
       </Transition>
 
-      <section v-if="items.length" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div v-if="canEdit && items.length" class="flex flex-wrap items-center gap-2">
+        <button
+          v-if="!reorderMode"
+          type="button"
+          class="btn-ghost text-sm inline-flex items-center gap-1.5"
+          :disabled="!canReorder"
+          @click="enterReorderMode"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+          </svg>
+          Reorder
+        </button>
+        <template v-else>
+          <button type="button" class="btn-ghost text-sm" :disabled="savingOrder" @click="cancelReorderMode">Cancel</button>
+          <button type="button" class="btn-primary text-sm" :disabled="savingOrder" @click="exitReorderMode">
+            {{ savingOrder ? 'Saving…' : 'Done' }}
+          </button>
+          <span class="text-xs text-muted">Drag by handle to reorder. Click Done to save.</span>
+          <span v-if="savingOrder" class="text-xs text-brand-300">Saving…</span>
+          <span v-else-if="hasReordered" class="text-xs text-amber-300">Unsaved changes</span>
+        </template>
+      </div>
+
+      <section v-if="items.length && !reorderMode" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <MediaCard
           v-for="item in items"
           :key="item.id"
@@ -103,8 +128,48 @@
         />
       </section>
 
+      <section v-if="items.length && reorderMode" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div
+          v-for="(item, index) in items"
+          :key="item.id"
+          :data-reorder-id="String(item.id)"
+          class="reorder-card group relative select-none"
+          :class="{ 'opacity-100 ring-2 ring-white shadow-2xl scale-[1.03] z-20 brightness-110': dragId === item.id, 'ring-2 ring-brand-400 bg-brand-500/15 shadow-xl scale-[1.02] z-10': dragOverIndex === index && dragId !== item.id }"
+          @dragover.prevent="onDragOver(index)"
+          @dragenter.prevent="onDragOver(index)"
+          @drop.prevent="onDrop(index)"
+          @dragend="onDragEnd"
+        >
+          <div
+            class="reorder-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 inline-flex items-center justify-center gap-2 rounded-full bg-surface-900/85 backdrop-blur border border-white/30 px-6 py-3 text-base font-bold text-white shadow-2xl cursor-grab active:cursor-grabbing"
+            draggable="true"
+            @dragstart="onDragStart(item, $event)"
+            @dragend="onDragEnd"
+            @dragover.prevent="onDragOver(index)"
+            @dragenter.prevent="onDragOver(index)"
+            @drop.prevent="onDrop(index)"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+            </svg>
+            #{{ index + 1 }}
+          </div>
+          <div class="reorder-card-content pointer-events-none">
+            <MediaCard
+              :item="item"
+              :media-type="item.media_type"
+              hide-watchlist-action
+              hide-watched-action
+              :show-list-remove-action="false"
+              :list-context-id="route.params.id"
+              @error="showQuickActionError"
+            />
+          </div>
+        </div>
+      </section>
+
       <PaginationControls
-        v-if="!loading"
+        v-if="!loading && !reorderMode"
         v-model:page="currentPage"
         :count="count"
         :loaded-count="lastLoadedCount"
@@ -345,7 +410,7 @@ const editNameInput = ref(null)
 let collaboratorDebounce = null
 const appliedFilters = ref({
   search: '',
-  sort: 'added_at',
+  sort: 'custom_order',
   direction: 'asc',
   mediaType: 'all',
   statuses: [],
@@ -366,6 +431,12 @@ const count = ref(0)
 const lastLoadedCount = ref(0)
 const currentPage = useQueryPageSync(route)
 const hydrated = ref(false)
+const reorderMode = ref(false)
+const savingOrder = ref(false)
+const dragId = ref(null)
+const dragOverIndex = ref(null)
+const hasReordered = ref(false)
+const originalOrderIds = ref([])
 
 const editForm = ref({
   name: '',
@@ -385,11 +456,16 @@ const canEdit = computed(() => {
   return (list.value.collaborators || []).includes(myId)
 })
 
+const canReorder = computed(() => {
+  if (!canEdit.value) return false
+  return items.value.length > 0
+})
+
 const hasActiveFilters = computed(() => {
   const filterState = appliedFilters.value
   return Boolean(
     filterState.search ||
-    filterState.sort !== 'added_at' ||
+    filterState.sort !== 'custom_order' ||
     filterState.direction !== 'asc' ||
     filterState.mediaType !== 'all' ||
     filterState.statuses.length ||
@@ -483,6 +559,7 @@ async function loadList() {
 }
 
 async function loadItems() {
+  if (reorderMode.value) return
   loadingItems.value = true
   try {
     const filterState = appliedFilters.value
@@ -514,6 +591,176 @@ async function loadItems() {
     lastLoadedCount.value = 0
   } finally {
     loadingItems.value = false
+  }
+}
+
+async function loadAllItemsForReorder() {
+  loadingItems.value = true
+  try {
+    let page = 1
+    let all = []
+    let totalCount = 0
+    while (true) {
+      const data = await trackingAPI.getListItems(route.params.id, { sort: 'custom_order', direction: 'asc', page })
+      const paged = normalizePagedResponse(data)
+      all = all.concat(paged.items)
+      totalCount = paged.count
+      if (!data.next || paged.items.length === 0) break
+      // paginated response has next link; continue until all pages
+      if (all.length >= totalCount) break
+      page += 1
+      if (page > 50) break
+    }
+    items.value = all
+    count.value = totalCount
+    lastLoadedCount.value = all.length
+  } catch (error) {
+    showFeedback(getApiErrorMessage(error, 'Could not load list items.'), 'error')
+  } finally {
+    loadingItems.value = false
+  }
+}
+
+async function enterReorderMode() {
+  if (!canEdit.value) return
+  reorderMode.value = true
+  hasReordered.value = false
+  currentPage.value = 1
+  await loadAllItemsForReorder()
+  originalOrderIds.value = items.value.map((i) => i.id)
+}
+
+async function exitReorderMode() {
+  if (savingOrder.value) return
+  if (!hasReordered.value) {
+    reorderMode.value = false
+    dragId.value = null
+    dragOverIndex.value = null
+    hasReordered.value = false
+    await loadItems()
+    return
+  }
+  const ok = await persistOrder()
+  if (ok) {
+    reorderMode.value = false
+    dragId.value = null
+    dragOverIndex.value = null
+    await loadItems()
+  }
+  // on failure stay in reorderMode so user can retry or Cancel
+}
+
+function cancelReorderMode() {
+  if (savingOrder.value) return
+  reorderMode.value = false
+  dragId.value = null
+  dragOverIndex.value = null
+  hasReordered.value = false
+  // restore original order locally without server call, then reload to ensure consistency
+  if (originalOrderIds.value.length) {
+    const idToItem = new Map(items.value.map((i) => [i.id, i]))
+    const restored = originalOrderIds.value.map((id) => idToItem.get(id)).filter(Boolean)
+    // append any items that were added after entering reorder (should not happen, but keep)
+    const restoredIds = new Set(restored.map((i) => i.id))
+    for (const it of items.value) {
+      if (!restoredIds.has(it.id)) restored.push(it)
+    }
+    items.value = restored
+  }
+  loadItems()
+}
+
+function onDragStart(item, event) {
+  dragId.value = item.id
+  dragOverIndex.value = null
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(item.id))
+  }
+}
+
+function onDragOver(index) {
+  if (dragId.value == null) return
+  dragOverIndex.value = index
+}
+
+function onDragEnd() {
+  dragId.value = null
+  dragOverIndex.value = null
+}
+
+function onDrop(targetIndex) {
+  const fromId = dragId.value
+  dragOverIndex.value = null
+  if (fromId == null) return
+  const fromIndex = items.value.findIndex((i) => i.id === fromId)
+  if (fromIndex === -1 || fromIndex === targetIndex) {
+    dragId.value = null
+    return
+  }
+  // FLIP: capture first positions before DOM update
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const firstEls = prefersReduced ? [] : [...document.querySelectorAll('[data-reorder-id]')]
+  const firstPos = new Map(firstEls.map((el) => [el.getAttribute('data-reorder-id'), el.getBoundingClientRect()]))
+
+  const next = [...items.value]
+  const [moved] = next.splice(fromIndex, 1)
+  next.splice(targetIndex, 0, moved)
+  items.value = next
+  dragId.value = null
+  hasReordered.value = true
+
+  if (prefersReduced || !firstPos.size) return
+  nextTick(() => {
+    const lastEls = [...document.querySelectorAll('[data-reorder-id]')]
+    for (const el of lastEls) {
+      const id = el.getAttribute('data-reorder-id')
+      const first = firstPos.get(id)
+      if (!first) continue
+      const last = el.getBoundingClientRect()
+      const dx = first.left - last.left
+      const dy = first.top - last.top
+      if (dx === 0 && dy === 0) continue
+      el.animate(
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+        { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' }
+      )
+    }
+  })
+}
+
+async function persistOrder() {
+  if (savingOrder.value) return false
+  savingOrder.value = true
+  const orderedIds = items.value.map((i) => i.id)
+  const snapshot = [...items.value]
+  if (!orderedIds.length) {
+    showFeedback('Nothing to save.', 'error')
+    savingOrder.value = false
+    return false
+  }
+  if (!route.params.id) {
+    showFeedback('Could not save order: missing list id.', 'error')
+    savingOrder.value = false
+    return false
+  }
+  try {
+    await trackingAPI.reorderList(route.params.id, orderedIds)
+    showFeedback('Order saved.')
+    hasReordered.value = false
+    originalOrderIds.value = [...orderedIds]
+    return true
+  } catch (error) {
+    showFeedback(getApiErrorMessage(error, 'Could not save order.'), 'error')
+    try {
+      await loadAllItemsForReorder()
+    } catch {
+      // ignore reload failure, fallback to snapshot
+    }
+    if (items.value.length === 0) items.value = snapshot
+    return false
+  } finally {
+    savingOrder.value = false
   }
 }
 
@@ -591,7 +838,11 @@ function handleListItemAdded() {
   searchQuery.value = ''
   searchResults.value = []
   closeAddModal()
-  loadItems()
+  if (reorderMode.value) {
+    loadAllItemsForReorder()
+  } else {
+    loadItems()
+  }
   showFeedback('Item added to list.')
 }
 
@@ -620,7 +871,11 @@ async function addSearchResultToList(result) {
 }
 
 function handleListItemRemoved() {
-  loadItems()
+  if (reorderMode.value) {
+    loadAllItemsForReorder()
+  } else {
+    loadItems()
+  }
   showFeedback('Item removed from list.')
 }
 
@@ -684,6 +939,7 @@ watch(
   [appliedFilters, currentPage, hydrated],
   async () => {
     if (!hydrated.value) return
+    if (reorderMode.value) return
     await loadItems()
   },
   { deep: true, immediate: true }
@@ -694,5 +950,18 @@ watch(
 .list-dialog {
   inset: 0;
   max-height: calc(100vh - 2rem);
+}
+.reorder-card {
+  cursor: grab;
+  transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s;
+}
+.reorder-card:active {
+  cursor: grabbing;
+}
+.reorder-handle {
+  cursor: grab;
+}
+.reorder-handle:active {
+  cursor: grabbing;
 }
 </style>

@@ -23,6 +23,7 @@ urlpatterns = [
     path('media/drop/', views.drop_media, name='drop_media'),
     path('lists/', views.CustomListListCreateView.as_view(), name='custom_lists'),
     path('lists/<int:pk>/', views.CustomListDetailView.as_view(), name='custom_list_detail'),
+    path('lists/<int:list_id>/items/reorder/', views.ListItemReorderView.as_view(), name='list_items_reorder'),
     path('lists/<int:list_id>/items/', views.ListItemListCreateView.as_view(), name='list_items'),
     path('lists/<int:list_id>/items/<int:pk>/', views.ListItemDetailView.as_view(), name='list_item_detail'),
     path('lists/<int:list_id>/collaborators/', views.ListCollaboratorCreateView.as_view(), name='list_collaborator_add'),

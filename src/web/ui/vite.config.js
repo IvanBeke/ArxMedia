@@ -21,14 +21,16 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.js'],
+    pool: 'forks',
+    poolOptions: { forks: { singleFork: true } },
+    isolate: true,
+    deps: { optimizer: { web: { include: ['vue', 'vue-router', 'pinia'] } } },
+    watch: false,
   },
   server: {
     port: 5173,
     host: '0.0.0.0',
-    watch: {
-      usePolling: true,
-      interval: 300,
-    },
+    watch: process.env.VITEST ? { usePolling: false } : { usePolling: true, interval: 300 },
     proxy: {
       '/api': {
         target: 'http://app:8000',

@@ -160,10 +160,14 @@ class ListItem(models.Model):
     media_type = models.CharField(max_length=10, choices=MediaType.choices)
     tmdb_id = models.IntegerField()
     added_at = models.DateTimeField(auto_now_add=True)
+    custom_order = models.PositiveIntegerField(default=0, db_index=True)
 
     class Meta:
         unique_together = ('custom_list', 'media_type', 'tmdb_id')
-        ordering = ['-added_at']
+        ordering = ['custom_order', 'added_at']
+        indexes = [
+            models.Index(fields=['custom_list', 'custom_order']),
+        ]
 
     def __str__(self):
         return f'{self.custom_list.name} - {self.media_type} {self.tmdb_id}'

@@ -257,7 +257,7 @@ class TMDBService:
                 remaining.append(season_number)
                 continue
             try:
-                self._upsert_season(show, season_number, season_data, sync_episode_credits=sync_credits)
+                self._upsert_season(show, season_number, season_data, sync_episode_credits=sync_credits, use_cache=use_cache)
             except Exception as exc:
                 logger.warning('Failed to sync season %s for tv %s: %s', season_number, tmdb_id, exc)
 
@@ -280,9 +280,9 @@ class TMDBService:
     def sync_season(self, show, season_number, sync_episode_credits: bool = True, *, use_cache: bool = True):
         """Fetch a season from TMDB and save/update locally with all episodes."""
         data = self.get_season(show.tmdb_id, season_number, use_cache=use_cache)
-        return self._upsert_season(show, season_number, data, sync_episode_credits=sync_episode_credits)
+        return self._upsert_season(show, season_number, data, sync_episode_credits=sync_episode_credits, use_cache=use_cache)
 
-    def _upsert_season(self, show, season_number: int, data: dict, sync_episode_credits: bool = True):
+    def _upsert_season(self, show, season_number: int, data: dict, sync_episode_credits: bool = True, *, use_cache: bool = True):
         """Persist one season (with episodes) from a TMDB season payload."""
         season_defaults = {
             'tmdb_id': data.get('id', 0),
@@ -325,6 +325,7 @@ class TMDBService:
                         season_number,
                         episode_number,
                         show=show,
+                        use_cache=use_cache,
                     )
                 except Exception as exc:
                     logger.warning(
