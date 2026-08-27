@@ -66,6 +66,15 @@ def _yamtrack_collection_from_row(media_type: str, status: str, score: int | Non
     return collections
 
 
+def _yamtrack_row_timestamp(row: dict, *fields: str) -> datetime | None:
+    """First non-empty timestamp among fields, imported verbatim."""
+    for field in fields:
+        parsed = _parse_watched_at(row.get(field))
+        if parsed:
+            return parsed
+    return None
+
+
 def parse_yamtrack_csv(content: bytes) -> ParsedImport:
     records: list[WatchEntryRecord | StatusRecord | RatingRecord] = []
     invalid_count = 0
@@ -90,7 +99,8 @@ def parse_yamtrack_csv(content: bytes) -> ParsedImport:
         score = _parse_yamtrack_score(row.get('score'))
         progressed_at = _parse_watched_at(row.get('progressed_at'))
         end_at = _parse_watched_at(row.get('end_date'))
-        event_at = end_at if end_at is not None else UNKNOWN_WATCHED_DATE
+        created_at = _parse_watched_at(row.get('created_at'))
+        event_at = end_at or progressed_at or created_at or UNKNOWN_WATCHED_DATE
 
         collections.update(_yamtrack_collection_from_row(media_type, status, score, end_at, progressed_at))
 

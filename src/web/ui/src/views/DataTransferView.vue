@@ -208,7 +208,7 @@ const importModes = [
   {
     value: DATA_IMPORT_MODE.UPDATE_EXISTING,
     tag: 'Recommended',
-    title: 'Update when newer',
+    title: 'Import new items and update existing ones',
     description: 'Adds new items and refreshes existing matching items. Nothing is removed.',
   },
   {
