@@ -185,6 +185,7 @@ function submitSearch() {
 }
 
 function selectPreview(item) {
+  clearQuery()
   emit('select-preview', item)
   panelOpen.value = false
 }
