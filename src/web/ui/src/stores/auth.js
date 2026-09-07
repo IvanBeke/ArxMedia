@@ -32,7 +32,13 @@ export const useAuthStore = defineStore('auth', {
         await this.fetchMe()
         return true
       } catch (e) {
-        this.error = e.detail || 'Login failed'
+        const message =
+          e?.detail ||
+          e?.non_field_errors?.[0] ||
+          (Array.isArray(e) ? e[0] : null) ||
+          (typeof e === 'object' ? Object.values(e).flat().find(Boolean) : null) ||
+          'Login failed'
+        this.error = message
         return false
       } finally {
         this.loading = false

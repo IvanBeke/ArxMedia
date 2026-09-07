@@ -1,7 +1,9 @@
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.db.models import Avg, Count, Q
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from tracking.choices import ListPrivacy
 from tracking.models import CustomList, Rating, UserMediaStatus, WatchEntry
 from tracking.serializers import CustomListSerializer, WatchEntrySerializer
@@ -9,6 +11,21 @@ from tracking.serializers import CustomListSerializer, WatchEntrySerializer
 from .privacy import can_view_account_content, get_viewer_relationship
 
 User = get_user_model()
+
+
+class LoginSerializer(TokenObtainPairSerializer):
+    username_field = User.USERNAME_FIELD
+
+    def validate(self, attrs):
+        username = attrs.get('username')
+        password = attrs.get('password')
+
+        user = authenticate(username=username, password=password)
+        if user is None:
+            raise AuthenticationFailed('Incorrect username or password.')
+
+        data = super().validate(attrs)
+        return data
 
 
 class UserSerializer(serializers.ModelSerializer):

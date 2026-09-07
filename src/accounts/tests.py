@@ -43,6 +43,22 @@ class AccountTests(TestCase):
         self.assertIn('access', response.data)
         self.assertIn('refresh', response.data)
 
+    def test_login_unknown_user(self):
+        response = self.client.post('/api/auth/login/', {
+            'username': 'missing-user',
+            'password': 'testpass123',
+        })
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('Incorrect username or password.', str(response.data))
+
+    def test_login_wrong_password(self):
+        response = self.client.post('/api/auth/login/', {
+            'username': 'testuser',
+            'password': 'wrong-password',
+        })
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('Incorrect username or password.', str(response.data))
+
     def test_get_profile(self):
         self.authenticate()
         response = self.client.get(f'/api/auth/users/{self.user.username}/')

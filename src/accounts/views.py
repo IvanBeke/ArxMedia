@@ -10,6 +10,7 @@ from social.models import Follow
 
 from .privacy import can_view_account_content, get_viewer_relationship
 from .serializers import (
+    LoginSerializer,
     PasswordChangeSerializer,
     PublicUserCardSerializer,
     PublicUserSerializer,
@@ -28,6 +29,7 @@ class RegisterView(generics.CreateAPIView):
 
 
 class LoginView(TokenObtainPairView):
+    serializer_class = LoginSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'auth_login'
 
