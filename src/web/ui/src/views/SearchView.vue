@@ -34,13 +34,25 @@
       :following-label="t('profile_following_count_label')"
     />
 
-    <div v-else-if="results.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-      <MediaCard
-        v-for="item in results"
-        :key="`${item.media_type}-${item.id}`"
-        :item="item"
-        :media-type="item.media_type || MEDIA_TYPE.MOVIE"
-        @error="showQuickActionError"
+    <div v-else-if="results.length">
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <MediaCard
+          v-for="item in results"
+          :key="`${item.media_type}-${item.id}`"
+          :item="item"
+          :media-type="item.media_type || MEDIA_TYPE.MOVIE"
+          @error="showQuickActionError"
+        />
+      </div>
+
+      <PaginationControls
+        v-if="totalPages > 1"
+        :count="totalResults"
+        :page="currentPage"
+        :loaded-count="results.length"
+        :max-visible-pages="10"
+        :disabled="loading"
+        @go="goToPage"
       />
     </div>
 
@@ -97,6 +109,7 @@ import { authAPI, mediaAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import UserList from '@/components/UserList.vue'
+import PaginationControls from '@/components/PaginationControls.vue'
 import { useAuthStore } from '@/stores/auth'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
@@ -112,6 +125,9 @@ const trendingTvShows = ref([])
 const loading = ref(false)
 const loadingDefault = ref(true)
 const activeFilter = ref('multi')
+const currentPage = ref(1)
+const totalPages = ref(1)
+const totalResults = ref(0)
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const auth = useAuthStore()
 const { t } = useI18n()
@@ -127,32 +143,32 @@ const activeScope = ref(SCOPE_VALUE.ALL)
 const isUserScope = ref(false)
 const pageTitle = ref('Discover')
 
-let debounceTimer = null
-function debouncedSearch() {
-  clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(doSearch, 400)
-}
-
-async function doSearch() {
-  if (!query.value.trim()) {
+async function doSearch({ page = 1 } = {}) {
+  const trimmedQuery = query.value.trim()
+  if (!trimmedQuery) {
     results.value = []
     userResults.value = []
+    totalResults.value = 0
+    totalPages.value = 1
+    currentPage.value = 1
     return
   }
 
   loading.value = true
   try {
     if (isUserScope.value) {
-      if (query.value.trim().length < 3) {
+      if (trimmedQuery.length < 3) {
         userResults.value = []
+        totalResults.value = 0
+        totalPages.value = 1
         return
       }
-      userResults.value = await authAPI.searchUsers(query.value.trim())
+      userResults.value = await authAPI.searchUsers(trimmedQuery)
       results.value = []
       return
     }
 
-    const data = await mediaAPI.search(query.value, activeFilter.value)
+    const data = await mediaAPI.search(trimmedQuery, activeFilter.value, page)
     if (data) {
       const type = activeFilter.value
       const typedRows = (data.results || [])
@@ -166,7 +182,11 @@ async function doSearch() {
           ...row,
           media_type: type === 'multi' ? (row.media_type || MEDIA_TYPE.MOVIE) : type,
         }))
+
       results.value = typedRows
+      totalPages.value = Number.isFinite(data.total_pages) ? Math.max(1, data.total_pages) : 1
+      totalResults.value = Number.isFinite(data.total_results) ? data.total_results : typedRows.length
+      currentPage.value = Number.isFinite(data.page) ? Math.min(data.page, totalPages.value) : Math.min(page, totalPages.value)
       userResults.value = []
     }
   } finally {
@@ -197,51 +217,119 @@ function syncPageTitle() {
   pageTitle.value = query.value.trim() ? 'Search' : 'Discover'
 }
 
+function buildSearchQuery(scope, rawQuery, page = 1) {
+  const scopedValue = scope === SCOPE_VALUE.USERS ? 'users' : mapScopeToFilter(scope)
+  const trimmedQuery = String(rawQuery || '').trim()
+  const searchQuery = {}
+
+  if (trimmedQuery) {
+    searchQuery.q = trimmedQuery
+  }
+  if (scope) {
+    searchQuery.scope = scopedValue
+  }
+  if (trimmedQuery && page > 1) {
+    searchQuery.page = String(page)
+  }
+  return searchQuery
+}
+
+function syncRouteFromState() {
+  const nextQuery = buildSearchQuery(activeScope.value, query.value, currentPage.value)
+  const currentScope = route.query.scope || route.query.type || 'all'
+  const currentPageValue = String(route.query.page || '1')
+  const currentSearchValue = String(route.query.q || '').trim()
+
+  if (
+    currentScope === (nextQuery.scope || 'all') &&
+    currentSearchValue === (nextQuery.q || '') &&
+    currentPageValue === String(nextQuery.page || '1')
+  ) {
+    return
+  }
+
+  router.push({ name: 'search', query: nextQuery })
+}
+
+function goToPage(page) {
+  if (!query.value.trim()) return
+  currentPage.value = page
+  doSearch({ page })
+  syncRouteFromState()
+}
+
 function setScope(scope) {
+  const nextPage = 1
   applyScope(scope)
+  currentPage.value = nextPage
   if (query.value.trim()) {
-    doSearch()
+    doSearch({ page: nextPage })
   } else {
     results.value = []
     userResults.value = []
   }
-  router.replace({
-    name: 'search',
-    query: buildSearchQuery(scope, query.value),
-  })
+  syncRouteFromState()
 }
 
 function onSearchSubmit({ query: nextQuery, scope }) {
+  const nextPage = 1
   applyScope(scope)
-  router.replace({
-    name: 'search',
-    query: buildSearchQuery(scope, nextQuery),
-  })
   query.value = nextQuery
+  currentPage.value = nextPage
   syncPageTitle()
   if (nextQuery) {
-    doSearch()
+    doSearch({ page: nextPage })
   } else {
     results.value = []
     userResults.value = []
   }
+  syncRouteFromState()
 }
 
-function buildSearchQuery(scope, rawQuery) {
-  const scopedValue = scope === SCOPE_VALUE.USERS ? 'users' : mapScopeToFilter(scope)
-  const trimmedQuery = String(rawQuery || '').trim()
-  return trimmedQuery ? { q: trimmedQuery, scope: scopedValue } : { scope: scopedValue }
-}
+watch(
+  () => route.query,
+  async (nextQuery) => {
+    const nextScope = mapFilterToScope(nextQuery.scope || nextQuery.type || 'all')
+    const nextValue = String(nextQuery.q || '').trim()
+    const nextPage = Number.parseInt(String(nextQuery.page || '1'), 10) || 1
+    const scopeChanged = activeScope.value !== nextScope
+    const pageChanged = currentPage.value !== nextPage
+    const queryChanged = query.value.trim() !== nextValue
+
+    if (!scopeChanged && !pageChanged && !queryChanged) {
+      syncPageTitle()
+      return
+    }
+
+    applyScope(nextScope)
+    query.value = nextValue
+    currentPage.value = nextPage
+    syncPageTitle()
+
+    if (nextValue) {
+      await doSearch({ page: currentPage.value })
+    } else {
+      results.value = []
+      userResults.value = []
+      totalResults.value = 0
+      totalPages.value = 1
+      currentPage.value = 1
+    }
+  },
+  { immediate: true }
+)
 
 onMounted(async () => {
   const initialScope = mapFilterToScope(route.query.scope || route.query.type || 'all')
   const initialQuery = String(route.query.q || '').trim()
+  const initialPage = Number.parseInt(String(route.query.page || '1'), 10) || 1
   applyScope(initialScope)
   query.value = initialQuery
+  currentPage.value = initialPage
   syncPageTitle()
 
   if (query.value) {
-    doSearch()
+    await doSearch({ page: currentPage.value })
   }
 
   try {
@@ -255,27 +343,4 @@ onMounted(async () => {
     loadingDefault.value = false
   }
 })
-
-watch(
-  () => route.query,
-  (nextQuery) => {
-    const nextScope = mapFilterToScope(nextQuery.scope || nextQuery.type || 'all')
-    const nextValue = String(nextQuery.q || '').trim()
-    const scopeChanged = activeScope.value !== nextScope
-    applyScope(nextScope)
-    if (query.value !== nextValue || scopeChanged) {
-      query.value = nextValue
-      syncPageTitle()
-      if (nextValue) {
-        doSearch()
-      } else {
-        results.value = []
-        userResults.value = []
-      }
-    } else {
-      syncPageTitle()
-    }
-  }
-)
-
 </script>

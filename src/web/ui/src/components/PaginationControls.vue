@@ -134,7 +134,7 @@ const fullPageSize = ref(DEFAULT_PAGE_SIZE)
 watch(
   [() => props.page, () => props.loadedCount],
   ([pageValue, loadedValue]) => {
-    if (pageValue === 1 && loadedValue > 0) {
+    if (pageValue === 1 && loadedValue >= DEFAULT_PAGE_SIZE) {
       fullPageSize.value = loadedValue
     }
   },
