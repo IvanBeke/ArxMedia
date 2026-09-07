@@ -14,54 +14,80 @@
             <div class="flex items-center justify-between gap-2 mb-2">
               <h3 class="text-primary font-medium">Import Trakt ZIP</h3>
             </div>
-            <input
-              ref="zipInput"
-              type="file"
-              class="input text-sm"
-              accept=".zip,application/zip"
-              aria-label="Import Trakt ZIP"
-              @change="clearZipError"
-            />
-            <p class="text-xs text-muted mt-2">For Trakt export ZIP files only.</p>
-            <p v-if="zipError" class="text-xs text-red-400 mt-2">{{ zipError }}</p>
+
+            <div class="space-y-2">
+              <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-surface-200 bg-surface px-3 py-2 text-sm transition-colors hover:border-brand-500/60 hover:bg-surface-200">
+                <span class="min-w-0 flex-1 truncate font-medium text-primary">{{ zipFileName || 'Choose ZIP' }}</span>
+                <span class="inline-flex items-center rounded-md bg-brand-500/15 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-brand-300">Browse</span>
+                <input
+                  ref="zipInput"
+                  type="file"
+                  class="sr-only"
+                  accept=".zip,application/zip"
+                  aria-label="Import Trakt ZIP"
+                  @change="handleZipFileSelect"
+                />
+              </label>
+              <p class="text-xs text-muted">For Trakt export ZIP files only.</p>
+              <p v-if="zipError" class="text-xs text-red-400">{{ zipError }}</p>
+            </div>
+
             <div class="mt-3">
-              <button class="btn-primary text-sm" @click="startZipImport">Upload ZIP</button>
+              <button class="btn-primary text-sm" :disabled="!zipFileName" @click="startZipImport">Upload ZIP</button>
             </div>
           </div>
+
           <div class="rounded-lg border border-surface-200 bg-surface-100 p-4">
             <div class="flex items-center justify-between gap-2 mb-2">
               <h3 class="text-primary font-medium">Import Yamtrack CSV</h3>
             </div>
-            <input
-              ref="yamtrackInput"
-              type="file"
-              class="input text-sm"
-              accept=".csv,text/csv"
-              aria-label="Import Yamtrack CSV"
-              @change="clearYamtrackError"
-            />
-            <p class="text-xs text-muted mt-2">For Yamtrack CSV exports. Imports TMDB rows only.</p>
-            <p v-if="yamtrackError" class="text-xs text-red-400 mt-2">{{ yamtrackError }}</p>
+
+            <div class="space-y-2">
+              <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-surface-200 bg-surface px-3 py-2 text-sm transition-colors hover:border-brand-500/60 hover:bg-surface-200">
+                <span class="min-w-0 flex-1 truncate font-medium text-primary">{{ yamtrackFileName || 'Choose CSV' }}</span>
+                <span class="inline-flex items-center rounded-md bg-brand-500/15 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-brand-300">Browse</span>
+                <input
+                  ref="yamtrackInput"
+                  type="file"
+                  class="sr-only"
+                  accept=".csv,text/csv"
+                  aria-label="Import Yamtrack CSV"
+                  @change="handleYamtrackFileSelect"
+                />
+              </label>
+              <p class="text-xs text-muted">For Yamtrack CSV exports. Imports TMDB rows only.</p>
+              <p v-if="yamtrackError" class="text-xs text-red-400">{{ yamtrackError }}</p>
+            </div>
+
             <div class="mt-3">
-              <button class="btn-primary text-sm" @click="startYamtrackImport">Upload CSV</button>
+              <button class="btn-primary text-sm" :disabled="!yamtrackFileName" @click="startYamtrackImport">Upload CSV</button>
             </div>
           </div>
+
           <div class="rounded-lg border border-surface-200 bg-surface-100 p-4">
             <div class="flex items-center justify-between gap-2 mb-2">
               <h3 class="text-primary font-medium">Import ArxMedia JSON</h3>
             </div>
-            <input
-              ref="jsonInput"
-              type="file"
-              class="input text-sm"
-              accept=".json,application/json"
-              aria-label="Import ArxMedia JSON"
-              @change="clearJsonError"
-            />
-            <p class="text-xs text-muted mt-2">For JSON files exported from this app.</p>
-            <p v-if="jsonError" class="text-xs text-red-400 mt-2">{{ jsonError }}</p>
+
+            <div class="space-y-2">
+              <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-surface-200 bg-surface px-3 py-2 text-sm transition-colors hover:border-brand-500/60 hover:bg-surface-200">
+                <span class="min-w-0 flex-1 truncate font-medium text-primary">{{ jsonFileName || 'Choose JSON' }}</span>
+                <span class="inline-flex items-center rounded-md bg-brand-500/15 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-brand-300">Browse</span>
+                <input
+                  ref="jsonInput"
+                  type="file"
+                  class="sr-only"
+                  accept=".json,application/json"
+                  aria-label="Import ArxMedia JSON"
+                  @change="handleJsonFileSelect"
+                />
+              </label>
+              <p class="text-xs text-muted">For JSON files exported from this app.</p>
+              <p v-if="jsonError" class="text-xs text-red-400">{{ jsonError }}</p>
+            </div>
+
             <div class="mt-3">
-              <button class="btn-primary text-sm" @click="startJsonImport">Upload JSON</button>
+              <button class="btn-primary text-sm" :disabled="!jsonFileName" @click="startJsonImport">Upload JSON</button>
             </div>
           </div>
         </div>
@@ -185,6 +211,9 @@ const jobs = ref([])
 const zipError = ref('')
 const yamtrackError = ref('')
 const jsonError = ref('')
+const zipFileName = ref('')
+const yamtrackFileName = ref('')
+const jsonFileName = ref('')
 const showImportModeModal = ref(false)
 const modalJobId = ref(null)
 const selectedImportMode = ref(DATA_IMPORT_MODE.NEW_ITEMS)
@@ -285,12 +314,28 @@ async function pollJob(jobId) {
   }, 1500)
 }
 
+function handleZipFileSelect(event) {
+  zipError.value = ''
+  zipFileName.value = event?.target?.files?.[0]?.name || ''
+}
+
+function handleYamtrackFileSelect(event) {
+  yamtrackError.value = ''
+  yamtrackFileName.value = event?.target?.files?.[0]?.name || ''
+}
+
+function handleJsonFileSelect(event) {
+  jsonError.value = ''
+  jsonFileName.value = event?.target?.files?.[0]?.name || ''
+}
+
 async function startZipImport() {
   zipError.value = ''
   confirmErrorCode.value = ''
   const file = zipInput.value?.files?.[0]
   if (!file) {
     zipError.value = 'Please choose a Trakt ZIP file before uploading.'
+    zipFileName.value = ''
     return
   }
   if (!file.name.toLowerCase().endsWith('.zip')) {
@@ -302,6 +347,7 @@ async function startZipImport() {
   selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
   modalJobId.value = created.id
   showImportModeModal.value = true
+  zipFileName.value = file.name
   await pollJob(created.id)
 }
 
@@ -311,6 +357,7 @@ async function startYamtrackImport() {
   const file = yamtrackInput.value?.files?.[0]
   if (!file) {
     yamtrackError.value = 'Please choose a Yamtrack CSV file before uploading.'
+    yamtrackFileName.value = ''
     return
   }
   if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -322,6 +369,7 @@ async function startYamtrackImport() {
   selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
   modalJobId.value = created.id
   showImportModeModal.value = true
+  yamtrackFileName.value = file.name
   await pollJob(created.id)
 }
 
@@ -331,6 +379,7 @@ async function startJsonImport() {
   const file = jsonInput.value?.files?.[0]
   if (!file) {
     jsonError.value = 'Please choose an ArxMedia JSON backup before uploading.'
+    jsonFileName.value = ''
     return
   }
   if (!file.name.toLowerCase().endsWith('.json')) {
@@ -342,19 +391,8 @@ async function startJsonImport() {
   selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
   modalJobId.value = created.id
   showImportModeModal.value = true
+  jsonFileName.value = file.name
   await pollJob(created.id)
-}
-
-function clearZipError() {
-  zipError.value = ''
-}
-
-function clearYamtrackError() {
-  yamtrackError.value = ''
-}
-
-function clearJsonError() {
-  jsonError.value = ''
 }
 
 async function startExport() {
