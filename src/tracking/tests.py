@@ -1864,7 +1864,7 @@ class ListItemTests(BaseTestCase):
         response = self.client.get(f'/api/tracking/lists/{lst.id}/items/')
         self.assertEqual(response.status_code, 403)
 
-    def test_list_detail_includes_items_payload(self):
+    def test_list_detail_excludes_items_payload(self):
         lst = CustomList.objects.create(user=self.user, name='Detail List')
         Movie.objects.create(tmdb_id=888, title='Detail Movie', vote_average=8.1, release_date='2021-05-01')
         UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=888, status='plan_to_watch', status_changed_at=timezone.now())
@@ -1872,12 +1872,8 @@ class ListItemTests(BaseTestCase):
 
         response = self.client.get(f'/api/tracking/lists/{lst.id}/')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('items', response.data)
-        self.assertEqual(len(response.data['items']), 1)
-        self.assertEqual(response.data['items'][0]['tmdb_id'], 888)
-        self.assertEqual(response.data['items'][0]['vote_average'], 8.1)
-        self.assertEqual(str(response.data['items'][0]['release_date']), '2021-05-01')
-        self.assertEqual(response.data['items'][0]['user_status']['status'], 'plan_to_watch')
+        self.assertNotIn('items', response.data)
+        self.assertEqual(response.data['item_count'], 1)
 
     def test_duplicate_add_to_list_returns_validation_error(self):
         lst = CustomList.objects.create(user=self.user, name='Unique List')

@@ -273,6 +273,22 @@ def _build_tv_runtime_map(tmdb_ids: list[int]) -> dict[int, int]:
     }
 
 
+def _compute_mixed_runtime_and_counts(queryset):
+    from media.models import Movie
+
+    movie_ids, tv_ids = _collect_media_ids(queryset)
+    movie_runtime = 0
+    if movie_ids:
+        movie_runtime = Movie.objects.filter(tmdb_id__in=movie_ids).aggregate(total=Sum('runtime'))['total'] or 0
+
+    tv_runtime = sum(_build_tv_runtime_map(list(tv_ids)).values())
+    counts = {
+        'movies': queryset.filter(media_type=MediaType.MOVIE).count(),
+        'shows': queryset.filter(media_type=MediaType.TV).count(),
+    }
+    return int(movie_runtime) + int(tv_runtime), counts
+
+
 def _normalize_sort(sort_raw: str | None, direction_raw: str | None, default_sort: str, default_direction: str) -> tuple[str, str]:
     sort_value = (sort_raw or default_sort).strip().lower()
     direction = (direction_raw or '').strip().lower()
@@ -656,10 +672,22 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
         context = self.get_serializer_context()
         context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
+        total_runtime_minutes, counts = _compute_mixed_runtime_and_counts(queryset)
 
         if page is not None:
-            return self.get_paginated_response(serializer.data)
-        return Response(serializer.data)
+            response = self.get_paginated_response(serializer.data)
+            response.data['total_runtime_minutes'] = total_runtime_minutes
+            response.data['counts'] = counts
+            return response
+
+        return Response({
+            'results': serializer.data,
+            'count': queryset.count(),
+            'next': None,
+            'previous': None,
+            'total_runtime_minutes': total_runtime_minutes,
+            'counts': counts,
+        })
 
     def perform_create(self, serializer):
         media_type = serializer.validated_data['media_type']
@@ -1872,24 +1900,7 @@ class CustomListDetailView(generics.RetrieveUpdateDestroyAPIView):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        payload = dict(serializer.data)
-
-        items_qs = ListItem.objects.filter(custom_list=instance).select_related('custom_list').order_by('custom_order', 'added_at')
-        from media.models import Movie, TVShow
-
-        movie_ids = [entry.tmdb_id for entry in items_qs if entry.media_type == MediaType.MOVIE]
-        tv_ids = [entry.tmdb_id for entry in items_qs if entry.media_type == MediaType.TV]
-        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
-        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=tv_ids)}
-        status_map = annotate_media_user_status(
-            request.user,
-            [{'media_type': entry.media_type, 'tmdb_id': entry.tmdb_id} for entry in items_qs],
-        )
-
-        item_context = self.get_serializer_context()
-        item_context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
-        payload['items'] = ListItemSerializer(items_qs, many=True, context=item_context).data
-        return Response(payload)
+        return Response(serializer.data)
 
 
 class ListItemListCreateView(generics.ListCreateAPIView):
@@ -1997,10 +2008,22 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         context = self.get_serializer_context()
         context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
+        total_runtime_minutes, counts = _compute_mixed_runtime_and_counts(queryset)
 
         if page is not None:
-            return self.get_paginated_response(serializer.data)
-        return Response(serializer.data)
+            response = self.get_paginated_response(serializer.data)
+            response.data['total_runtime_minutes'] = total_runtime_minutes
+            response.data['counts'] = counts
+            return response
+
+        return Response({
+            'results': serializer.data,
+            'count': queryset.count(),
+            'next': None,
+            'previous': None,
+            'total_runtime_minutes': total_runtime_minutes,
+            'counts': counts,
+        })
 
 
 class ListItemDetailView(generics.RetrieveDestroyAPIView):

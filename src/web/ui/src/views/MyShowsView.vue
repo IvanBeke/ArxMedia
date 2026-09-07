@@ -5,10 +5,7 @@
         <h1 class="font-display text-2xl text-primary font-semibold">My Shows</h1>
         <p class="text-muted text-sm">Track your shows and decide what to watch next.</p>
       </div>
-      <div class="inline-flex items-center gap-2 rounded-full border border-surface-200 bg-surface-100 px-3 py-1 text-xs text-secondary">
-        <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
-        <span>{{ count }} shows | {{ watchedTimeLabel }}</span>
-      </div>
+      <CountRuntimeBadge :count="count" type-label="shows" :total-minutes="totalRuntimeMinutes" />
     </div>
 
     <MediaFilterBar
@@ -66,14 +63,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
+import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
 import { getApiErrorMessage } from '@/utils/errors'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
-import { formatHoursMinutes } from '@/utils/progress'
 import PaginationControls from '@/components/PaginationControls.vue'
 import ProgressRow from '@/components/ProgressRow.vue'
 
@@ -106,10 +103,6 @@ const currentPage = useQueryPageSync(route)
 const lastLoadedCount = ref(0)
 const filterBarRef = ref(null)
 const hydrated = ref(false)
-
-const watchedTimeLabel = computed(() => {
-  return formatHoursMinutes(totalRuntimeMinutes.value)
-})
 
 function onFilterBarChange(payload) {
   const next = payload?.filters

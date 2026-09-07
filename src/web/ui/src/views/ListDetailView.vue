@@ -32,6 +32,8 @@
             </p>
           </div>
 
+          <CountRuntimeBadge :shows="counts.shows" :movies="counts.movies" :total-minutes="totalRuntimeMinutes" />
+
           <div v-if="canEdit" class="flex gap-2 flex-wrap">
             <button @click="openAddModal" class="btn-ghost text-sm inline-flex items-center whitespace-nowrap border-brand-500/40 text-brand-300 hover:bg-brand-500/10">
               <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -377,6 +379,7 @@ import { authAPI, trackingAPI, mediaAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import MediaCard from '@/components/MediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
+import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
 import { useAuthStore } from '@/stores/auth'
 import { formatDateByLocale } from '@/i18n'
 import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
@@ -429,6 +432,8 @@ const addingResultKey = ref('')
 const filterBarRef = ref(null)
 const count = ref(0)
 const lastLoadedCount = ref(0)
+const totalRuntimeMinutes = ref(0)
+const counts = ref({ shows: 0, movies: 0 })
 const currentPage = useQueryPageSync(route)
 const hydrated = ref(false)
 const reorderMode = ref(false)
@@ -548,7 +553,6 @@ async function loadList() {
         description: data.description || '',
         privacy: data.privacy
       }
-      items.value = data.items || []
     }
   } catch (error) {
     console.error('Failed to load list:', error)
@@ -579,6 +583,11 @@ async function loadItems() {
     items.value = paged.items
     count.value = paged.count
     lastLoadedCount.value = paged.loadedCount
+    totalRuntimeMinutes.value = Number.isFinite(data?.total_runtime_minutes) ? data.total_runtime_minutes : 0
+    counts.value = {
+      shows: Number.isFinite(data?.counts?.shows) ? data.counts.shows : 0,
+      movies: Number.isFinite(data?.counts?.movies) ? data.counts.movies : 0,
+    }
   } catch (error) {
     const recoveryPage = invalidPageRecovery(error, currentPage.value)
     if (recoveryPage !== null) {
@@ -589,6 +598,8 @@ async function loadItems() {
     items.value = []
     count.value = 0
     lastLoadedCount.value = 0
+    totalRuntimeMinutes.value = 0
+    counts.value = { shows: 0, movies: 0 }
   } finally {
     loadingItems.value = false
   }

@@ -6,8 +6,11 @@
       </div>
     </Transition>
 
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="font-display text-2xl text-primary font-semibold">Watchlist</h1>
+    <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
+      <div>
+        <h1 class="font-display text-2xl text-primary font-semibold">Watchlist</h1>
+      </div>
+      <CountRuntimeBadge :shows="counts.shows" :movies="counts.movies" :total-minutes="totalRuntimeMinutes" />
     </div>
 
     <MediaFilterBar
@@ -70,6 +73,7 @@ import { trackingAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
+import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
@@ -93,6 +97,8 @@ const appliedFilters = ref({
 })
 const count = ref(0)
 const lastLoadedCount = ref(0)
+const totalRuntimeMinutes = ref(0)
+const counts = ref({ shows: 0, movies: 0 })
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const { t } = useI18n()
 const route = useRoute()
@@ -129,11 +135,17 @@ async function load() {
     page,
   }
   try {
-    const paged = normalizePagedResponse(await trackingAPI.getWatchlist(params))
+    const data = await trackingAPI.getWatchlist(params)
+    const paged = normalizePagedResponse(data)
     if (paged.items.length || paged.count) {
       count.value = paged.count
       lastLoadedCount.value = paged.loadedCount
       items.value = paged.items
+    }
+    totalRuntimeMinutes.value = Number.isFinite(data?.total_runtime_minutes) ? data.total_runtime_minutes : 0
+    counts.value = {
+      shows: Number.isFinite(data?.counts?.shows) ? data.counts.shows : 0,
+      movies: Number.isFinite(data?.counts?.movies) ? data.counts.movies : 0,
     }
   } catch (error) {
     const recoveryPage = invalidPageRecovery(error, page)
@@ -141,6 +153,8 @@ async function load() {
       currentPage.value = recoveryPage
       return
     }
+    totalRuntimeMinutes.value = 0
+    counts.value = { shows: 0, movies: 0 }
     throw error
   } finally {
     if (showFullLoader) {
