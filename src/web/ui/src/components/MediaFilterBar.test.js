@@ -76,6 +76,20 @@ describe('MediaFilterBar URL sync', () => {
     expect(router.currentRoute.value.query).toEqual({ status: ['watching'] })
   })
 
+  it('pushes filter changes onto browser history so back restores the previous query', async () => {
+    const { router } = await createMountedBar({}, { status: ['dropped'] })
+
+    await router.push({ path: '/my-shows', query: { status: ['watching'] } })
+    await flushPromises()
+
+    expect(router.currentRoute.value.query).toEqual({ status: ['watching'] })
+
+    await router.back()
+    await flushPromises()
+
+    expect(router.currentRoute.value.query).toMatchObject({ status: 'dropped' })
+  })
+
   it('replaces stale filter params instead of merging with them', async () => {
     const { wrapper, router } = await createMountedBar({}, { status: ['dropped'] })
 

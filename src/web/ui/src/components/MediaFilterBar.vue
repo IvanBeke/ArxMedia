@@ -609,7 +609,7 @@ function syncUrl(options = {}) {
   if (showQuickFilterInWatchlistEffective.value && filters.inWatchlist) nextQuery.in_watchlist = '1'
 
   if (JSON.stringify(nextQuery) !== JSON.stringify(route.query)) {
-    router.replace({ query: nextQuery })
+    router.push({ query: nextQuery })
   }
 }
 

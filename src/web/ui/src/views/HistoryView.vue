@@ -292,7 +292,7 @@ function syncUrlWithState() {
     return
   }
 
-  router.replace({ query: nextQuery })
+  router.push({ query: nextQuery })
 }
 
 function setFilter(nextFilter) {
