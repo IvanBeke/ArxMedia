@@ -30,7 +30,7 @@
         <div v-else class="flex-1"></div>
 
         <!-- Desktop nav links -->
-        <div class="hidden md:flex items-center gap-1">
+        <div class="hidden lg:flex items-center gap-1">
           <template v-if="auth.isAuthenticated">
             <RouterLink to="/search" class="nav-link hidden lg:block">{{ t('nav_discover') }}</RouterLink>
             <div
@@ -71,7 +71,7 @@
           <button
             ref="mobileMenuButtonRef"
             @click="showMobileMenu = !showMobileMenu"
-            class="md:hidden p-2 rounded-md text-muted hover:text-primary hover:bg-surface-100 transition-colors"
+            class="lg:hidden p-2 rounded-md text-muted hover:text-primary hover:bg-surface-100 transition-colors"
             aria-label="Open navigation menu"
             aria-haspopup="menu"
             :aria-expanded="showMobileMenu ? 'true' : 'false'"
@@ -125,7 +125,7 @@
       </div>
 
       <Transition name="fade">
-        <div v-if="showMobileMenu" ref="mobileMenuRef" class="md:hidden py-2 border-t border-surface-200">
+        <div v-if="showMobileMenu" ref="mobileMenuRef" class="lg:hidden py-2 border-t border-surface-200">
           <div class="flex flex-col gap-1 pb-1">
             <template v-if="auth.isAuthenticated">
               <RouterLink to="/search" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_discover') }}</RouterLink>
