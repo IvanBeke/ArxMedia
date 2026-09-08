@@ -193,7 +193,7 @@
           </div>
 
           <div v-else-if="show?.seasons?.length" class="space-y-2">
-            <div v-for="season in show.seasons" :key="season.season_number" class="card">
+            <div v-for="season in show.seasons" :key="season.season_number" class="card overflow-visible">
               <div class="w-full flex items-center gap-4 p-4">
                 <div class="w-12 h-16 rounded-md bg-surface-200 overflow-hidden flex-shrink-0 cursor-pointer" @click="toggleSeason(season.season_number)">
                   <img v-if="season.poster_url" :src="season.poster_url" :alt="season.name" class="w-full h-full object-cover" />
