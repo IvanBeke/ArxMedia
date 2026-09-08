@@ -41,6 +41,14 @@ describe('mediaStatus', () => {
     expect(formatUpdatedAtLabel('not-a-date')).toBe('Unknown')
     expect(formatUpdatedAtLabel('2026-08-19T09:07:00Z')).toContain('2026')
   })
+
+  it('formats timestamp labels with a 24-hour clock', async () => {
+    const { formatDateTimeByLocale } = await import('@/i18n')
+    const formatted = formatDateTimeByLocale('2026-08-19T13:07:00Z')
+
+    expect(formatted).toContain('13:07')
+    expect(formatted).not.toMatch(/\b(?:AM|PM)\b/)
+  })
 })
 
 describe('watchedTooltipText', () => {

@@ -3,6 +3,7 @@ import { Temporal as TemporalPolyfill, toTemporalInstant } from '@js-temporal/po
 import {
   formatIsoAsDDMMYYYY,
   formatIsoTimeHHMM,
+  formatTemporalDateTime,
   isoDateKey,
   localDateTimeInputToIso,
   plainDateToUserInstantIso,
@@ -35,6 +36,17 @@ describe('temporal utils', () => {
     const iso = '2026-08-19T09:07:00Z'
     expect(formatIsoAsDDMMYYYY(iso)).toMatch(/^\d{2}\/\d{2}\/\d{4}$/)
     expect(formatIsoTimeHHMM(iso, 'UTC')).toBe('09:07')
+  })
+
+  it('formats localized date times using a 24-hour clock', () => {
+    const formatted = formatTemporalDateTime(
+      '2026-08-19T13:07:00Z',
+      'en-US',
+      { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false },
+    )
+
+    expect(formatted).toContain('13:07')
+    expect(formatted).not.toMatch(/\b(?:AM|PM)\b/)
   })
 
   it('converts plain date to midnight instant for selected timezone', () => {

@@ -168,5 +168,6 @@ export function formatDateTimeByLocale(value, options = {}) {
     hour: '2-digit',
     minute: '2-digit',
     ...options,
+    hour12: false,
   })
 }
