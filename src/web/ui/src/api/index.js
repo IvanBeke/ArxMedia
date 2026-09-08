@@ -201,6 +201,7 @@ export const trackingAPI = {
   listJobs: () => api.get('/tracking/data/jobs/'),
   getJobStatus: (jobId) => api.get(`/tracking/data/jobs/${jobId}/`),
   confirmJobImport: (jobId, importMode) => api.post(`/tracking/data/jobs/${jobId}/confirm/`, { import_mode: importMode }),
+  cancelJobImport: (jobId) => api.post(`/tracking/data/jobs/${jobId}/cancel/`, {}),
 }
 
 export const calendarAPI = {

@@ -2301,6 +2301,48 @@ class ListCollaborationTest(BaseTestCase):
 
 
 class DataImportExportTests(BaseTestCase):
+    def test_mirror_deletion_report_counts_removed_rows(self):
+        from tracking.import_engine import delete_missing_rows
+        from tracking.import_records import (
+            RATINGS_COLLECTION,
+            WATCH_HISTORY_COLLECTION,
+            WATCHLIST_COLLECTION,
+            ParsedImport,
+            RatingRecord,
+            StatusRecord,
+            WatchEntryRecord,
+        )
+
+        stale_history = WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=9001)
+        stale_watchlist = UserMediaStatus.objects.create(
+            user=self.user,
+            media_type='movie',
+            tmdb_id=9002,
+            status='plan_to_watch',
+        )
+        stale_rating = Rating.objects.create(user=self.user, media_type='movie', tmdb_id=9003, score=7)
+        parsed = ParsedImport(
+            records=(
+                WatchEntryRecord(media_type='movie', tmdb_id=1001),
+                StatusRecord(media_type='movie', tmdb_id=1002, status='plan_to_watch'),
+                RatingRecord(media_type='movie', tmdb_id=1003, score=8),
+            ),
+            collections_present=frozenset({WATCH_HISTORY_COLLECTION, WATCHLIST_COLLECTION, RATINGS_COLLECTION}),
+            invalid_count=0,
+            report={},
+        )
+
+        deleted = delete_missing_rows(self.user, parsed)
+
+        self.assertEqual(deleted, {
+            WATCH_HISTORY_COLLECTION: 1,
+            WATCHLIST_COLLECTION: 1,
+            RATINGS_COLLECTION: 1,
+        })
+        self.assertFalse(WatchEntry.objects.filter(id=stale_history.id).exists())
+        self.assertFalse(UserMediaStatus.objects.filter(id=stale_watchlist.id).exists())
+        self.assertFalse(Rating.objects.filter(id=stale_rating.id).exists())
+
     def _build_yamtrack_csv(self, rows):
         header = [
             'source',
@@ -2448,6 +2490,26 @@ class DataImportExportTests(BaseTestCase):
         )
         response = self.client.post(f'/api/tracking/data/jobs/{job.id}/confirm/', {'import_mode': 'new_items'}, format='json')
         self.assertEqual(response.status_code, 400)
+
+    def test_cancel_import_job_prevents_confirmation(self):
+        job = DataTransferJob.objects.create(
+            user=self.user,
+            job_type='import',
+            data_format='zip',
+            status='awaiting_confirmation',
+            source='trakt',
+        )
+        response = self.client.post(f'/api/tracking/data/jobs/{job.id}/cancel/', {}, format='json')
+        self.assertEqual(response.status_code, 200)
+        job.refresh_from_db()
+        self.assertEqual(job.status, 'cancelled')
+
+        confirm_response = self.client.post(
+            f'/api/tracking/data/jobs/{job.id}/confirm/',
+            {'import_mode': 'new_items'},
+            format='json',
+        )
+        self.assertEqual(confirm_response.status_code, 400)
 
     @patch('tracking.tasks.run_import_job.delay')
     def test_confirm_zip_import_starts_apply_task(self, mock_delay):

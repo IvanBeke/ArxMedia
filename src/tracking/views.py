@@ -2328,6 +2328,23 @@ class DataJobConfirmView(generics.GenericAPIView):
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
 
+class DataJobCancelView(generics.GenericAPIView):
+    serializer_class = DataTransferJobSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        job = DataTransferJob.objects.filter(user=request.user, id=kwargs.get('pk')).first()
+        if not job:
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+        from .import_state_machine import cancel
+
+        try:
+            cancel(job)
+        except ImportDomainError as exc:
+            raise_import_validation_error(exc)
+        return Response(self.get_serializer(job, context={'request': request}).data, status=status.HTTP_200_OK)
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def recommendations(request):

@@ -15,6 +15,7 @@ from ...import_records import (
     RatingRecord,
     StatusRecord,
     WatchEntryRecord,
+    add_import_warning,
 )
 
 YAMTRACK_ALLOWED_MEDIA_TYPES = {'movie', 'tv', 'episode'}
@@ -85,6 +86,7 @@ def parse_yamtrack_csv(content: bytes) -> ParsedImport:
         'skipped_missing_tmdb_id': 0,
     }
     collections: set[str] = set()
+    warnings: list[dict] = []
 
     reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig')))
     row_count = 0
@@ -107,18 +109,22 @@ def parse_yamtrack_csv(content: bytes) -> ParsedImport:
         if source != 'tmdb':
             invalid_count += 1
             skip_breakdown['skipped_non_tmdb'] += 1
+            add_import_warning(warnings, 'non_tmdb_source', 'Only rows with source tmdb can be imported.', {'kind': 'csv_row', 'file': 'yamtrack.csv', 'row': row_count + 1, 'column': 'source'})
             continue
         if media_type not in YAMTRACK_ALLOWED_MEDIA_TYPES:
             invalid_count += 1
             skip_breakdown['skipped_unsupported_media_type'] += 1
+            add_import_warning(warnings, 'unsupported_media_type', 'The row uses an unsupported media type.', {'kind': 'csv_row', 'file': 'yamtrack.csv', 'row': row_count + 1, 'column': 'media_type'})
             continue
         if status not in YAMTRACK_ALLOWED_STATUSES:
             invalid_count += 1
             skip_breakdown['skipped_invalid_status'] += 1
+            add_import_warning(warnings, 'invalid_status', 'The row uses a status that cannot be imported.', {'kind': 'csv_row', 'file': 'yamtrack.csv', 'row': row_count + 1, 'column': 'status'})
             continue
         if not tmdb_id:
             invalid_count += 1
             skip_breakdown['skipped_missing_tmdb_id'] += 1
+            add_import_warning(warnings, 'missing_tmdb_id', 'The row does not contain a TMDB ID.', {'kind': 'csv_row', 'file': 'yamtrack.csv', 'row': row_count + 1, 'column': 'media_id'})
             continue
 
         if media_type == 'movie':
@@ -172,6 +178,9 @@ def parse_yamtrack_csv(content: bytes) -> ParsedImport:
                         episode_number=episode_number,
                     )
                 )
+            elif end_at or progressed_at or entry_status:
+                invalid_count += 1
+                add_import_warning(warnings, 'missing_episode_number', 'The episode row is missing a season or episode number.', {'kind': 'csv_row', 'file': 'yamtrack.csv', 'row': row_count + 1, 'column': 'season_number' if season_number is None else 'episode_number'})
 
     summary = {
         'watch_history': sum(1 for r in records if isinstance(r, WatchEntryRecord)),
@@ -185,6 +194,9 @@ def parse_yamtrack_csv(content: bytes) -> ParsedImport:
         'summary': summary,
         'total_items': row_count,
         **skip_breakdown,
+        'warnings': warnings,
+        'warnings_total': invalid_count,
+        'warnings_truncated': invalid_count > len(warnings),
     }
     return ParsedImport(
         records=tuple(records),

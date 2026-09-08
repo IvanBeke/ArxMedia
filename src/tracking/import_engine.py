@@ -403,6 +403,11 @@ def _apply_status_winner(user, record: StatusRecord):
 
 def delete_missing_rows(user, parsed: ParsedImport):
     """Mirror mode: delete tracked rows absent from the imported set."""
+    deleted = {
+        WATCH_HISTORY_COLLECTION: 0,
+        WATCHLIST_COLLECTION: 0,
+        RATINGS_COLLECTION: 0,
+    }
     watch_keys = {record.mirror_key() for record in parsed.watch_entries()}
     plan_keys = {(r.media_type, r.tmdb_id) for r in parsed.statuses() if r.status == TvShowStatus.PLAN_TO_WATCH}
     rating_keys = {(r.media_type, r.tmdb_id) for r in parsed.ratings()}
@@ -415,6 +420,7 @@ def delete_missing_rows(user, parsed: ParsedImport):
             if (entry.media_type, entry.tmdb_id, entry.season_number, entry.episode_number) not in watch_keys
         ]
         if stale_ids:
+            deleted[WATCH_HISTORY_COLLECTION] = len(stale_ids)
             WatchEntry.objects.filter(id__in=stale_ids).delete()
 
     if WATCHLIST_COLLECTION in collections_present:
@@ -424,6 +430,7 @@ def delete_missing_rows(user, parsed: ParsedImport):
             if (item.media_type, item.tmdb_id) not in plan_keys
         ]
         if stale_ids:
+            deleted[WATCHLIST_COLLECTION] = len(stale_ids)
             UserMediaStatus.objects.filter(id__in=stale_ids).delete()
 
     if RATINGS_COLLECTION in collections_present:
@@ -433,18 +440,24 @@ def delete_missing_rows(user, parsed: ParsedImport):
             if (rating.media_type, rating.tmdb_id) not in rating_keys
         ]
         if stale_ids:
+            deleted[RATINGS_COLLECTION] = len(stale_ids)
             Rating.objects.filter(id__in=stale_ids).delete()
+
+    return deleted
 
 
 def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_state: dict | None = None) -> dict:
     state = metadata_state or {}
     report = dict(parsed.report)
     records_seen = report.get('records_seen', 0)
-    records_imported = applied_count + report.get('metadata_only_shows', 0)
+    metadata_only_shows = report.get('metadata_only_shows', 0)
+    records_imported = applied_count + metadata_only_shows
+    valid_records = len(parsed.records) + metadata_only_shows
     report.update(
         {
             'records_imported': records_imported,
-            'records_skipped': max(0, records_seen - records_imported),
+            'records_skipped': max(0, records_seen - valid_records),
+            'records_unchanged': max(0, len(parsed.records) - applied_count),
             'metadata_hits': state.get('metadata_hits', 0),
             'metadata_fetches': state.get('metadata_fetches', 0),
             'metadata_errors': state.get('metadata_errors', 0),

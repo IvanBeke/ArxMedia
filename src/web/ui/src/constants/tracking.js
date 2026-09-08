@@ -39,6 +39,7 @@ export const DATA_TRANSFER_STATUS = Object.freeze({
   AWAITING_CONFIRMATION: 'awaiting_confirmation',
   DONE: 'done',
   FAILED: 'failed',
+  CANCELLED: 'cancelled',
 })
 
 export const DATA_IMPORT_MODE = Object.freeze({

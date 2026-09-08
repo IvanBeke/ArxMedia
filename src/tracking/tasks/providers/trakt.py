@@ -15,6 +15,7 @@ from ...import_records import (
     RatingRecord,
     StatusRecord,
     WatchEntryRecord,
+    add_import_warning,
 )
 
 
@@ -84,6 +85,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
     unsupported_records = 0
     metadata_only_count = 0
     show_ids: set[int] = set()
+    warnings: list[dict] = []
 
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         file_names = sorted((name for name in archive.namelist() if name.lower().endswith('.json')), key=_zip_json_sort_key)
@@ -104,6 +106,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                 files_failed += 1
                 file_report['status'] = 'failed'
                 file_report['error'] = str(exc)
+                add_import_warning(warnings, 'file_parse_error', str(exc), {'kind': 'zip_file', 'file': file_name})
                 files_report.append(file_report)
                 continue
 
@@ -117,6 +120,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                 file_report['records_seen'] += 1
                 if not isinstance(record, dict):
                     invalid_count += 1
+                    add_import_warning(warnings, 'invalid_record', 'The record is not a JSON object.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
                     continue
 
                 if lower.startswith('watched-history-'):
@@ -146,11 +150,13 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                             )
                             continue
                     invalid_count += 1
+                    add_import_warning(warnings, 'invalid_watch_history', 'The watch history record is missing a valid TMDB ID or episode number.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
 
                 elif lower.startswith('watched-movies-'):
                     tmdb_id = _safe_int((record.get('movie') or {}).get('ids', {}).get('tmdb'))
                     if not tmdb_id:
                         invalid_count += 1
+                        add_import_warning(warnings, 'missing_tmdb_id', 'The watched movie record does not contain a TMDB ID.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
                         continue
                     records.append(
                         WatchEntryRecord(
@@ -165,6 +171,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                     media_type, tmdb_id = _media_from_record(record)
                     if not tmdb_id:
                         invalid_count += 1
+                        add_import_warning(warnings, 'missing_tmdb_id', 'The watchlist record does not contain a TMDB ID.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
                         continue
                     records.append(StatusRecord(media_type=media_type, tmdb_id=tmdb_id, status=TvShowStatus.PLAN_TO_WATCH, origin=file_name))
 
@@ -173,6 +180,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                     score = _safe_int(record.get('rating'))
                     if not tmdb_id or not score:
                         invalid_count += 1
+                        add_import_warning(warnings, 'invalid_rating', 'The rating record is missing a TMDB ID or valid rating.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
                         continue
                     records.append(RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=score, origin=file_name))
 
@@ -180,6 +188,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                     media_type, tmdb_id = _media_from_record(record)
                     if not tmdb_id:
                         invalid_count += 1
+                        add_import_warning(warnings, 'missing_tmdb_id', 'The hidden progress record does not contain a TMDB ID.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
                         continue
                     records.append(StatusRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, status=TvShowStatus.DROPPED, origin=file_name))
 
@@ -189,6 +198,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                     tmdb_id = _safe_int((record.get('show') or {}).get('ids', {}).get('tmdb'))
                     if not tmdb_id:
                         invalid_count += 1
+                        add_import_warning(warnings, 'missing_tmdb_id', 'The watched show record does not contain a TMDB ID.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
                         continue
                     metadata_only_count += 1
                     show_ids.add(tmdb_id)
@@ -196,6 +206,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                 else:
                     unsupported_records += 1
                     invalid_count += 1
+                    add_import_warning(warnings, 'unsupported_record', 'This file or record is not supported by the Trakt importer.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
 
             files_report.append(file_report)
 
@@ -216,6 +227,9 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
         'summary': summary,
         'total_items': sum(f['records_seen'] for f in files_report),
         'files': files_report,
+        'warnings': warnings,
+        'warnings_total': invalid_count,
+        'warnings_truncated': invalid_count > len(warnings),
     }
     return ParsedImport(
         records=tuple(records),

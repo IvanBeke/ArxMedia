@@ -175,8 +175,9 @@ def finish_import(job_id: int):
     pipeline['stage'] = 'finalizing'
 
     import_mode = job.import_mode
+    deleted = {}
     if import_mode == DataImportMode.MIRROR_IMPORTED_SET:
-        delete_missing_rows(job.user, parsed)
+        deleted = delete_missing_rows(job.user, parsed)
 
     reconcile_user_media_status(job.user, parsed)
 
@@ -186,6 +187,8 @@ def finish_import(job_id: int):
         applied_count=pipeline.get('applied', 0),
         metadata_state=pipeline.get('metadata_counters') or {},
     )
+    report['deleted'] = deleted
+    report['deleted_total'] = sum(deleted.values())
     metadata = dict(job.metadata or {})
     metadata['report'] = report
     metadata.update(report)

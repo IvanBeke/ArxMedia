@@ -100,8 +100,8 @@
             v-for="recentJob in recentJobs"
             :key="recentJob.id"
             class="rounded-lg border border-surface-200 bg-surface-100 p-3"
-            :class="recentJob.status === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION ? 'cursor-pointer hover:bg-surface-200/70' : ''"
-            @click="openAwaitingJobModal(recentJob)"
+            :class="isJobDetailsOpenable(recentJob) ? 'cursor-pointer hover:bg-surface-200/70' : ''"
+            @click="openJobModal(recentJob)"
           >
             <div class="flex flex-wrap items-center justify-between gap-2">
               <p class="text-sm text-secondary">Started: <span class="text-primary">{{ formatDateTime(recentJob.created_at) }}</span></p>
@@ -109,6 +109,7 @@
             </div>
             <p class="text-sm text-secondary mt-1">Progress: <span class="text-primary">{{ recentJob.processed_items }} / {{ progressTotal(recentJob) }}</span><span v-if="stageLabel(recentJob)" class="text-muted"> · {{ stageLabel(recentJob) }}</span></p>
             <p v-if="recentJob.status === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION" class="text-xs text-amber-400 mt-1">Click to pick import mode</p>
+            <p v-else-if="isJobDetailsOpenable(recentJob)" class="text-xs text-muted mt-1">Click to view import details</p>
             <p v-if="recentJob.error_message" class="text-sm text-red-400 mt-1">{{ recentJob.error_message }}</p>
           </div>
         </div>
@@ -137,12 +138,12 @@
         aria-label="Close import mode modal"
         @click="closeImportModal"
       ></button>
-      <div class="relative w-full max-w-2xl rounded-xl border border-surface-200 bg-surface p-5 shadow-xl">
+       <div class="relative max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-xl border border-surface-200 bg-surface p-5 shadow-xl">
         <div class="flex items-start justify-between gap-4 mb-4">
           <div>
-            <p class="text-xs uppercase tracking-wide text-muted">Last step: pick a mode</p>
-            <h3 class="text-primary text-2xl font-display font-semibold">How should we import it?</h3>
-            <p class="text-sm text-muted mt-1">Choose how imported data interacts with what you already track here.</p>
+            <p class="text-xs uppercase tracking-wide text-muted">{{ modalIsFinished ? 'Import report' : 'Last step: pick a mode' }}</p>
+            <h3 class="text-primary text-2xl font-display font-semibold">{{ modalIsFinished ? 'What happened?' : 'How should we import it?' }}</h3>
+            <p class="text-sm text-muted mt-1">{{ modalIsFinished ? 'A record of what was imported and anything that needs attention.' : 'Choose how imported data interacts with what you already track here.' }}</p>
           </div>
           <button class="text-muted hover:text-primary" @click="closeImportModal">X</button>
         </div>
@@ -161,9 +162,67 @@
           </p>
         </div>
 
-        <div v-else-if="modalJob?.status === DATA_TRANSFER_STATUS.FAILED" class="rounded-lg border border-red-500/40 bg-red-500/10 p-3 mb-4">
-          <p class="text-sm text-red-300">Import analysis failed.</p>
-          <p class="text-xs text-red-200 mt-1">{{ modalJob?.error_message || 'Unknown error while reading import contents.' }}</p>
+        <div v-else-if="modalIsFinished" class="space-y-4">
+          <div class="rounded-lg border border-surface-200 bg-surface-100 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <p class="text-xs uppercase tracking-wide text-muted">Import result</p>
+                <p class="text-primary text-xl font-semibold mt-1">{{ modalJob?.status === DATA_TRANSFER_STATUS.DONE ? 'Import finished' : 'Import did not finish' }}</p>
+              </div>
+              <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide" :class="statusClass(modalJob?.status)">{{ humanStatus(modalJob?.status) }}</span>
+            </div>
+            <p class="text-sm text-secondary mt-3">{{ finishedResultSummary }}</p>
+            <p class="text-xs text-muted mt-2">{{ humanValue(modalJob?.source) }} {{ (modalJob?.data_format || 'file').toUpperCase() }} import · {{ humanValue(modalJob?.import_mode) }}</p>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <div v-for="stat in finishedStats" :key="stat.label" class="rounded-lg border border-surface-200 bg-surface-100 p-3">
+              <p class="text-xs text-muted">{{ stat.label }}</p>
+              <p class="text-lg text-primary font-semibold mt-1">{{ stat.value }}</p>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-surface-200 bg-surface-100 p-4">
+            <p class="text-xs uppercase tracking-wide text-muted">What was imported</p>
+            <div class="mt-3 divide-y divide-surface-200">
+              <div v-for="collection in finishedCollections" :key="collection.label" class="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                <div>
+                  <p class="text-sm text-primary">{{ collection.label }}</p>
+                  <p class="text-xs text-muted">{{ collection.description }}</p>
+                </div>
+                  <p class="text-sm text-primary font-semibold whitespace-nowrap">{{ collection.found }} found</p>
+                  <p v-if="collection.deleted" class="text-xs text-amber-300">{{ collection.deleted }} deleted</p>
+              </div>
+            </div>
+          </div>
+
+          <details v-if="finishedWarningDetails.length" class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+            <summary class="cursor-pointer text-sm font-semibold text-amber-300">Warnings and skipped items ({{ finishedWarningDetails.length }})</summary>
+            <div class="mt-3 space-y-3 border-t border-amber-500/30 pt-3">
+              <div v-for="warning in finishedWarningDetails" :key="warning.key" class="text-xs">
+                <div class="flex items-baseline justify-between gap-3">
+                  <p class="font-medium text-amber-100">{{ warning.label }}</p>
+                  <p class="shrink-0 font-semibold text-amber-300">{{ warning.value }}</p>
+                </div>
+                <p class="mt-1 text-amber-100/70">{{ warning.detail }}</p>
+              </div>
+            </div>
+          </details>
+
+          <div v-if="modalJob?.error_message" class="rounded-lg border border-red-500/40 bg-red-500/10 p-3">
+            <p class="text-sm font-semibold text-red-300">Job error</p>
+            <p class="text-xs text-red-200 mt-1">{{ modalJob.error_message }}</p>
+          </div>
+
+          <details v-if="finishedFiles.length" class="rounded-lg border border-surface-200 bg-surface-100 p-3">
+            <summary class="cursor-pointer text-sm font-medium text-secondary hover:text-primary">Technical file details ({{ finishedFiles.length }})</summary>
+            <div class="mt-3 max-h-48 space-y-2 overflow-y-auto border-t border-surface-200 pt-3">
+              <div v-for="file in finishedFiles" :key="file.file" class="flex items-start justify-between gap-3 text-sm">
+                <span class="min-w-0 truncate text-primary">{{ file.file }}</span>
+                <span class="shrink-0 text-right" :class="file.status === 'failed' ? 'text-red-300' : 'text-secondary'">{{ file.status === 'failed' ? file.error || 'Failed' : `${file.records_seen || 0} records` }}</span>
+              </div>
+            </div>
+          </details>
         </div>
 
         <div v-if="confirmErrorMessage" class="rounded-lg border border-red-500/40 bg-red-500/10 p-3 mb-4">
@@ -187,8 +246,11 @@
         </div>
 
         <div class="mt-5 flex justify-end gap-2">
-          <button type="button" class="btn-ghost text-sm" @click="closeImportModal">Cancel</button>
-          <button v-if="modalCanConfirm" type="button" class="btn-primary text-sm" :disabled="!modalJobId || confirmingImportMode" @click="confirmImportMode">
+          <button type="button" class="btn-ghost text-sm" @click="closeImportModal">Close</button>
+          <button v-if="modalCanConfirm" type="button" class="btn-ghost text-sm border-red-500/40 text-red-300 hover:bg-red-500/10" :disabled="cancellingImport" @click="cancelImportJob">
+            {{ cancellingImport ? 'Cancelling...' : 'Cancel' }}
+          </button>
+           <button v-if="modalCanConfirm" type="button" class="btn-primary text-sm" :disabled="!modalJobId || confirmingImportMode" @click="confirmImportMode">
             {{ confirmingImportMode ? 'Starting import...' : 'Continue import' }}
           </button>
         </div>
@@ -218,6 +280,7 @@ const showImportModeModal = ref(false)
 const modalJobId = ref(null)
 const selectedImportMode = ref(DATA_IMPORT_MODE.NEW_ITEMS)
 const confirmingImportMode = ref(false)
+const cancellingImport = ref(false)
 const confirmErrorCode = ref('')
 
 const confirmErrorMessages = {
@@ -271,6 +334,134 @@ const modalSummary = computed(() => {
   }
 })
 const modalJob = computed(() => jobs.value.find((item) => item.id === modalJobId.value) || null)
+const modalIsFinished = computed(() => [DATA_TRANSFER_STATUS.DONE, DATA_TRANSFER_STATUS.FAILED].includes(modalJob.value?.status))
+const finishedReport = computed(() => modalJob.value?.metadata?.report || modalJob.value?.metadata || {})
+const finishedResultSummary = computed(() => {
+  if (modalJob.value?.status === DATA_TRANSFER_STATUS.FAILED) {
+    return modalJob.value.error_message || 'The import could not be completed.'
+  }
+  const imported = Number(finishedReport.value.records_imported || 0)
+  const skipped = Number(finishedReport.value.records_skipped || 0)
+  const unchanged = Number(finishedReport.value.records_unchanged || 0)
+  const deleted = Number(finishedReport.value.deleted_total || 0)
+  const parts = []
+  if (imported) parts.push(`${imported} records imported`)
+  if (deleted) parts.push(`${deleted} existing records deleted to mirror the import`)
+  if (skipped) parts.push(`${skipped} records skipped`)
+  if (unchanged) parts.push(`${unchanged} records already matched`)
+  return parts.length ? `${parts.join('. ')}.` : 'The import completed without any records to add.'
+})
+const finishedStats = computed(() => [
+  { label: 'Total records', value: finishedReport.value.records_seen ?? modalJob.value?.total_items ?? 0 },
+  { label: 'Imported', value: finishedReport.value.records_imported ?? 0 },
+  { label: 'Skipped', value: finishedReport.value.records_skipped ?? 0 },
+  { label: 'Already matched', value: finishedReport.value.records_unchanged ?? 0 },
+  { label: 'Deleted', value: finishedReport.value.deleted_total ?? 0 },
+  { label: 'Metadata errors', value: finishedReport.value.metadata_errors ?? 0 },
+])
+const finishedCollections = computed(() => {
+  const summary = finishedReport.value.summary || {}
+  return [
+    {
+      label: 'Watch history',
+      description: 'Movies and episodes marked watched',
+      found: Number(summary.watch_history || 0),
+      deleted: Number((finishedReport.value.deleted || {}).watch_history || 0),
+    },
+    {
+      label: 'Watchlist',
+      description: 'Movies and shows saved to watch later',
+      found: Number(summary.watchlist || 0),
+      deleted: Number((finishedReport.value.deleted || {}).watchlist || 0),
+    },
+    {
+      label: 'Ratings',
+      description: 'Ratings included in the import',
+      found: Number(summary.ratings || 0),
+      deleted: Number((finishedReport.value.deleted || {}).ratings || 0),
+    },
+  ]
+})
+const finishedFiles = computed(() => Array.isArray(finishedReport.value.files) ? finishedReport.value.files : [])
+const finishedWarningDetails = computed(() => {
+  const report = finishedReport.value
+  const warnings = []
+  if (Array.isArray(report.warnings)) {
+    report.warnings.forEach((warning, index) => warnings.push({
+      key: `${warning.code || 'warning'}-${index}`,
+      label: humanWarningCode(warning.code),
+      value: formatWarningLocation(warning.location),
+      detail: warning.message || 'This item could not be imported.',
+    }))
+  }
+  const warningDefinitions = {
+    invalid_count: {
+      label: 'Invalid records',
+      detail: 'Rows could not be parsed or did not contain enough valid data to import.',
+    },
+    unsupported_files: {
+      label: 'Unsupported files',
+      detail: 'Files in the export were recognized but are not part of the supported import collections.',
+    },
+    unsupported_records: {
+      label: 'Unsupported records',
+      detail: 'Records belonged to an unsupported type or export section and were not imported.',
+    },
+    skipped_non_tmdb: {
+      label: 'Non-TMDB rows skipped',
+      detail: 'Only rows linked to TMDB media can be imported. Other providers were left out.',
+    },
+    skipped_unsupported_media_type: {
+      label: 'Unsupported media types skipped',
+      detail: 'The row used a media type that this import does not support.',
+    },
+    skipped_invalid_status: {
+      label: 'Invalid statuses skipped',
+      detail: 'The row contained a status that could not be mapped to an ArxMedia status.',
+    },
+    skipped_missing_tmdb_id: {
+      label: 'Rows missing a TMDB ID',
+      detail: 'The row did not include a TMDB ID, so it could not be matched to media.',
+    },
+    files_failed: {
+      label: 'Files failed',
+      detail: 'One or more files could not be read. See the failed file names below.',
+    },
+    metadata_errors: {
+      label: 'Metadata lookups failed',
+      detail: 'Tracking data was retained, but some movie or show metadata could not be refreshed.',
+    },
+  }
+  Object.entries(warningDefinitions).forEach(([key, definition]) => {
+    if (Number(report[key] || 0) > 0) warnings.push({
+      key: `aggregate-${key}`,
+      label: definition.label,
+      value: report[key],
+      detail: definition.detail,
+    })
+  })
+  const failedFiles = finishedFiles.value.filter((file) => file.status === 'failed')
+  failedFiles.forEach((file) => warnings.push({
+    key: `file-${file.file}`,
+    label: file.file,
+    value: 'Failed',
+    detail: file.error || 'The file could not be processed.',
+  }))
+  return warnings
+})
+
+function humanWarningCode(code) {
+  const title = String(code || 'warning').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+  return title.replace('Tmdb', 'TMDB')
+}
+
+function formatWarningLocation(location = {}) {
+  if (location.kind === 'csv_row') return `${location.file || 'CSV file'}, row ${location.row}${location.column ? `, column ${location.column}` : ''}`
+  if (location.kind === 'zip_record') return `${location.file || 'ZIP entry'}, record ${location.record}`
+  if (location.kind === 'zip_file') return `${location.file || 'ZIP entry'}`
+  if (location.kind === 'json_item') return `${location.collection || 'JSON collection'}, item ${location.index}${location.field ? `, field ${location.field}` : ''}`
+  return 'Location not available'
+}
 function progressTotal(job) {
   return job.total_items || 0
 }
@@ -431,9 +622,17 @@ function humanStatus(value) {
   return String(value || '').replaceAll('_', ' ')
 }
 
+function humanValue(value) {
+  return String(value || 'unknown').replaceAll('_', ' ')
+}
+
+function isJobDetailsOpenable(job) {
+  return [DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION, DATA_TRANSFER_STATUS.DONE, DATA_TRANSFER_STATUS.FAILED].includes(job?.status)
+}
+
 function statusClass(value) {
   if (value === DATA_TRANSFER_STATUS.DONE) return 'text-emerald-400'
-  if (value === DATA_TRANSFER_STATUS.FAILED) return 'text-red-400'
+  if (value === DATA_TRANSFER_STATUS.FAILED || value === DATA_TRANSFER_STATUS.CANCELLED) return 'text-red-400'
   if (value === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION) return 'text-amber-400'
   return 'text-blue-400'
 }
@@ -459,6 +658,22 @@ async function confirmImportMode() {
   }
 }
 
+async function cancelImportJob() {
+  if (!modalJobId.value || cancellingImport.value) return
+  cancellingImport.value = true
+  confirmErrorCode.value = ''
+  try {
+    const updated = await trackingAPI.cancelJobImport(modalJobId.value)
+    updateJob(updated)
+    showImportModeModal.value = false
+    modalJobId.value = null
+  } catch (error) {
+    confirmErrorCode.value = String(error?.error_code || '').trim() || 'UNKNOWN_CANCEL_ERROR'
+  } finally {
+    cancellingImport.value = false
+  }
+}
+
 function closeImportModal() {
   showImportModeModal.value = false
   confirmErrorCode.value = ''
@@ -467,8 +682,8 @@ function closeImportModal() {
   }
 }
 
-function openAwaitingJobModal(job) {
-  if (!job || job.status !== DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION) return
+function openJobModal(job) {
+  if (!isJobDetailsOpenable(job)) return
   confirmErrorCode.value = ''
   modalJobId.value = job.id
   showImportModeModal.value = true

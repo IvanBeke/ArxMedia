@@ -12,10 +12,11 @@ from ...import_records import (
     RatingRecord,
     StatusRecord,
     WatchEntryRecord,
+    add_import_warning,
 )
 
 
-def _report(records: tuple, collections: frozenset[str], invalid_count: int, unit_count: int) -> dict:
+def _report(records: tuple, collections: frozenset[str], invalid_count: int, unit_count: int, warnings: list[dict]) -> dict:
     summary = {
         'watch_history': sum(1 for r in records if isinstance(r, WatchEntryRecord)),
         'watchlist': sum(1 for r in records if isinstance(r, StatusRecord) and r.status == TvShowStatus.PLAN_TO_WATCH),
@@ -27,6 +28,9 @@ def _report(records: tuple, collections: frozenset[str], invalid_count: int, uni
         'invalid_count': invalid_count,
         'summary': summary,
         'total_items': unit_count,
+        'warnings': warnings,
+        'warnings_total': invalid_count,
+        'warnings_truncated': invalid_count > len(warnings),
     }
 
 
@@ -38,12 +42,14 @@ def parse_arxmedia_json(content: bytes) -> ParsedImport:
 
     records: list[WatchEntryRecord | StatusRecord | RatingRecord] = []
     invalid_count = 0
+    warnings: list[dict] = []
 
-    for item in history:
+    for index, item in enumerate(history, start=1):
         media_type = item.get('media_type', WatchEntryMediaType.MOVIE)
         tmdb_id = _safe_int(item.get('tmdb_id'))
         if not tmdb_id:
             invalid_count += 1
+            add_import_warning(warnings, 'missing_tmdb_id', 'The item does not contain a TMDB ID.', {'kind': 'json_item', 'collection': 'watch_history', 'index': index, 'field': 'tmdb_id'})
             continue
         records.append(
             WatchEntryRecord(
@@ -55,20 +61,22 @@ def parse_arxmedia_json(content: bytes) -> ParsedImport:
             )
         )
 
-    for item in watchlist:
+    for index, item in enumerate(watchlist, start=1):
         media_type = item.get('media_type', MediaType.MOVIE)
         tmdb_id = _safe_int(item.get('tmdb_id'))
         if not tmdb_id:
             invalid_count += 1
+            add_import_warning(warnings, 'missing_tmdb_id', 'The item does not contain a TMDB ID.', {'kind': 'json_item', 'collection': 'watchlist', 'index': index, 'field': 'tmdb_id'})
             continue
         records.append(StatusRecord(media_type=media_type, tmdb_id=tmdb_id, status=TvShowStatus.PLAN_TO_WATCH))
 
-    for item in ratings:
+    for index, item in enumerate(ratings, start=1):
         score = _safe_int(item.get('score'))
         media_type = item.get('media_type', MediaType.MOVIE)
         tmdb_id = _safe_int(item.get('tmdb_id'))
         if not score or not tmdb_id:
             invalid_count += 1
+            add_import_warning(warnings, 'invalid_rating', 'The rating item is missing a TMDB ID or valid score.', {'kind': 'json_item', 'collection': 'ratings', 'index': index, 'field': 'score' if not score else 'tmdb_id'})
             continue
         records.append(RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=score))
 
@@ -85,7 +93,7 @@ def parse_arxmedia_json(content: bytes) -> ParsedImport:
         records=tuple(records),
         collections_present=frozenset(collections),
         invalid_count=invalid_count,
-        report=_report(tuple(records), frozenset(collections), invalid_count, unit_count),
+        report=_report(tuple(records), frozenset(collections), invalid_count, unit_count, warnings),
     )
     return parsed
 

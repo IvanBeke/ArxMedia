@@ -77,3 +77,18 @@ def fail(job: DataTransferJob, message: str):
     job.status = DataTransferStatus.FAILED
     job.error_message = message
     job.save(update_fields=['status', 'error_message', 'updated_at'])
+
+
+def cancel(job: DataTransferJob):
+    if job.status not in (
+        DataTransferStatus.PENDING,
+        DataTransferStatus.PROCESSING,
+        DataTransferStatus.AWAITING_CONFIRMATION,
+    ):
+        raise ImportDomainError(
+            code=ImportErrorCode.IMPORT_CANCEL_NOT_ALLOWED,
+            message='This import job can no longer be cancelled.',
+        )
+    job.status = DataTransferStatus.CANCELLED
+    job.error_message = ''
+    job.save(update_fields=['status', 'error_message', 'updated_at'])

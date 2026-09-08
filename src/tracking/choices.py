@@ -51,6 +51,7 @@ class DataTransferStatus(models.TextChoices):
     AWAITING_CONFIRMATION = 'awaiting_confirmation', 'Awaiting confirmation'
     DONE = 'done', 'Done'
     FAILED = 'failed', 'Failed'
+    CANCELLED = 'cancelled', 'Cancelled'
 
 
 class DataImportMode(models.TextChoices):
