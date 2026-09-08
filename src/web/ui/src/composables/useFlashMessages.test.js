@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 
 beforeEach(() => {
-  vi.useFakeTimers()
+  vi.stubGlobal('Temporal', undefined)
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 })
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe('useFlashMessages', () => {

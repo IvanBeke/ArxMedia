@@ -22,7 +22,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.js'],
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    forks: { singleFork: true },
     isolate: true,
     deps: { optimizer: { web: { include: ['vue', 'vue-router', 'pinia'] } } },
     watch: false,
