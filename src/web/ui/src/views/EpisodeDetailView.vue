@@ -64,7 +64,7 @@
 
         <div class="flex-1 space-y-4">
           <div class="text-sm text-muted">
-            <span v-if="episodeData.air_date">{{ formatDate(episodeData.air_date) }}</span>
+             <span v-if="episodeData.air_date">{{ formatDateTimeByLocale(episodeData.air_date) }}</span>
             <span v-if="episodeData.air_date && episodeData.runtime"> · </span>
             <span v-if="episodeData.runtime">{{ episodeData.runtime }} min</span>
             <div v-if="episodeData.vote_average" class="flex items-center gap-1 mt-2">
@@ -136,7 +136,7 @@ import SpoilerBlock from '@/components/SpoilerBlock.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
-import { formatDateByLocale, useI18n } from '@/i18n'
+import { formatDateTimeByLocale, useI18n } from '@/i18n'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { tmdbImageUrl } from '@/utils/images'
 import { watchedTooltipText } from '@/utils/watchOptions'
@@ -170,10 +170,6 @@ const watchButtonTooltip = computed(() => watchedTooltipText(isWatched.value, wa
 function formatRating(rating) {
   if (!rating) return '0.0'
   return rating.toFixed(1)
-}
-
-function formatDate(dateStr) {
-  return formatDateByLocale(dateStr)
 }
 
 async function load() {

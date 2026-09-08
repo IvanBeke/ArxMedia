@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class Genre(models.Model):
@@ -63,6 +64,7 @@ class TVShow(models.Model):
     language = models.CharField(max_length=10, blank=True)
     status = models.CharField(max_length=50, blank=True)
     networks = models.CharField(max_length=500, blank=True)
+    external_ids = models.JSONField(default=dict, blank=True)
     episode_runtime = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -92,6 +94,7 @@ class Season(models.Model):
     poster_path = models.CharField(max_length=200, blank=True)
     air_date = models.DateField(null=True, blank=True)
     episode_count = models.IntegerField(default=0)
+    external_ids = models.JSONField(default=dict, blank=True)
 
     class Meta:
         unique_together = ('show', 'season_number')
@@ -114,10 +117,12 @@ class Episode(models.Model):
     overview = models.TextField(blank=True)
     still_path = models.CharField(max_length=200, blank=True)
     air_date = models.DateField(null=True, blank=True)
+    broadcast_start = models.DateTimeField(null=True, blank=True)
     runtime = models.IntegerField(null=True, blank=True)
     vote_average = models.FloatField(default=0)
     vote_count = models.IntegerField(default=0)
     episode_type = models.CharField(max_length=50, blank=True)
+    external_ids = models.JSONField(default=dict, blank=True)
 
     class Meta:
         unique_together = ('season', 'episode_number')
@@ -134,6 +139,20 @@ class Episode(models.Model):
         if self.still_path:
             return f'https://image.tmdb.org/t/p/w300{self.still_path}'
         return None
+
+    @property
+    def local_broadcast_datetime(self):
+        return timezone.localtime(self.broadcast_start) if self.broadcast_start else None
+
+    @property
+    def air_time(self):
+        local_datetime = self.local_broadcast_datetime
+        return local_datetime.strftime('%H:%M') if local_datetime else ''
+
+    @property
+    def display_air_date(self):
+        local_datetime = self.local_broadcast_datetime
+        return local_datetime or self.air_date
 
 
 class EpisodeCredit(models.Model):

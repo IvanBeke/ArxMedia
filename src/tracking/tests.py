@@ -830,6 +830,39 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(response.data[0]['next_episode']['season_number'], 1)
         self.assertEqual(response.data[0]['next_episode']['episode_number'], 4)
 
+    def test_up_next_uses_broadcast_timestamp_over_date_only_ordering(self):
+        show = TVShow.objects.create(tmdb_id=778, name='Timestamp Show')
+        season = Season.objects.create(show=show, tmdb_id=7781, season_number=1, name='Season 1')
+        Episode.objects.create(
+            season=season,
+            tmdb_id=77811,
+            episode_number=1,
+            name='Later Broadcast',
+            air_date='2026-01-01',
+            broadcast_start=timezone.make_aware(timezone.datetime(2026, 1, 1, 23, 0)),
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=77812,
+            episode_number=2,
+            name='Earlier Broadcast',
+            air_date='2026-01-01',
+            broadcast_start=timezone.make_aware(timezone.datetime(2026, 1, 1, 1, 0)),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=778,
+            season_number=1,
+            episode_number=1,
+        )
+
+        response = self.client.get('/api/tracking/up-next/')
+
+        self.assertEqual(response.status_code, 200)
+        item = next(entry for entry in response.data if entry['tmdb_id'] == 778)
+        self.assertEqual(item['next_episode']['episode_number'], 2)
+
     def test_up_next_includes_progress_and_remaining_runtime_fields(self):
         today = timezone.now().date()
         show = TVShow.objects.create(tmdb_id=777, name='Runtime Show')

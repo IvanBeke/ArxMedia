@@ -1,7 +1,7 @@
 """Deterministic import engine.
 
 One media item = one unit of work: ``process_media_item`` syncs its TMDB
-metadata then applies its tracking records. This module holds the pure-ish
+catalog metadata and TVMaze TV enrichment, then applies its tracking records. This module holds the pure-ish
 helpers for that flow: grouping, per-item upserts (signal-free), mirror
 deletion and the canonical status reconciliation.
 """

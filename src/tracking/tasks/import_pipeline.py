@@ -2,7 +2,7 @@
 
     prepare_import_job     (after upload)          -> awaiting_confirmation
     run_import_job         (after user confirms)   -> processing
-      ├─ process_media_item ×N  (sync TMDB for one item, apply its records)
+      ├─ process_media_item ×N  (sync TMDB and TVMaze metadata for one item, apply its records)
       └─ waits for all of them, then calls finish_import():
            ├─ delete_missing_rows   (mirror mode only, explicit call site)
            ├─ reconcile             (canonical statuses; Up Next ready)
@@ -77,8 +77,8 @@ def run_import_job(job_id: int) -> dict[str, str]:
         job.metadata = metadata
         job.save(update_fields=['total_items', 'processed_items', 'metadata', 'updated_at'])
 
-        # Tracking rows become usable as items complete; TMDB calls are
-        # cached, bundled per show, and parallel across workers.
+        # Tracking rows become usable as items complete; TMDB and TVMaze calls
+        # are cached, bundled per show, and parallel across workers.
         results = [process_media_item.delay(job_id, item) for item in items]
         # Orchestrator joins its own dispatched items; the explicit flag
         # opts out of Celery's "never .get() inside a task" guard.
@@ -96,7 +96,7 @@ def run_import_job(job_id: int) -> dict[str, str]:
 
 @shared_task(name='tracking.process_media_item', acks_late=True, reject_on_worker_lost=True)
 def process_media_item(job_id: int, item: dict, recompute_status: bool = False):
-    """Sync TMDB data for one media item, then apply its tracking records."""
+    """Sync TMDB catalog data and TVMaze TV enrichment, then apply tracking records."""
     from media.tmdb import tmdb
 
     job = DataTransferJob.objects.filter(id=job_id).first()
@@ -114,7 +114,7 @@ def process_media_item(job_id: int, item: dict, recompute_status: bool = False):
                     tmdb.sync_tv_show(item['tmdb_id'], sync_credits=False, recompute_user_statuses=recompute_status)
             except Exception as exc:
                 # A bad id must never discard tracking data; count and continue.
-                logger.warning('TMDB sync failed for %s %s: %s', item['media_type'], item['tmdb_id'], exc)
+                logger.warning('TMDB/TVMaze sync failed for %s %s: %s', item['media_type'], item['tmdb_id'], exc)
                 sync_error = True
 
         applied = apply_item_records(

@@ -35,7 +35,7 @@
         </RouterLink>
         <p v-if="ep.overview" class="text-muted text-xs mt-1.5 line-clamp-3">{{ ep.overview }}</p>
         <div class="flex items-center gap-3 mt-2 text-xs text-muted">
-          <span v-if="ep.air_date">{{ formatDateByLocale(ep.air_date) }}</span>
+           <span v-if="ep.air_date">{{ formatDateTimeByLocale(ep.air_date) }}</span>
           <span v-if="ep.runtime">· {{ ep.runtime }} min</span>
           <RatingBadge v-if="ep.vote_average" :value="ep.vote_average" size="xs" />
           <EpisodeTypePill :value="ep.episode_type" size="s" />
@@ -50,7 +50,7 @@ import { RouterLink } from 'vue-router'
 import WatchCheckmarkMenu from '@/components/WatchCheckmarkMenu.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
-import { formatDateByLocale } from '@/i18n'
+import { formatDateTimeByLocale } from '@/i18n'
 import { tmdbImageUrl } from '@/utils/images'
 
 const props = defineProps({

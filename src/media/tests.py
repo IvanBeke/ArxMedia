@@ -1,14 +1,17 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from tracking.models import Rating, UserMediaStatus, WatchEntry
 
 from media.models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
 from media.tmdb import _non_empty_defaults, tmdb
+from media.tvmaze import TVMazeService, tvmaze
 
 User = get_user_model()
 
@@ -82,6 +85,220 @@ class MediaTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         self.tmdb_patcher = patch('media.tmdb.TMDBService._get', side_effect=self._fake_tmdb_get)
         self.tmdb_patcher.start()
+
+    def test_tvmaze_normalizes_timezone_aware_broadcast_start(self):
+        payload = TVMazeService.normalize_episode_from_tvmaze(
+            {'network': {'country': {'timezone': 'America/New_York'}}},
+            {'name': 'Pilot', 'airdate': '2026-01-01', 'airtime': '21:30', 'summary': 'A pilot'},
+        )
+
+        self.assertEqual(payload['broadcast_start'].isoformat(), '2026-01-01T21:30:00-05:00')
+
+    def test_episode_air_time_is_derived_from_broadcast_start(self):
+        show = TVShow.objects.create(tmdb_id=992, name='Air Time Show')
+        episode = show.seasons.create(tmdb_id=9921, season_number=1, name='Season 1').episodes.create(
+            tmdb_id=99211,
+            episode_number=1,
+            name='Episode 1',
+            broadcast_start=timezone.make_aware(timezone.datetime(2026, 1, 1, 21, 30)),
+        )
+
+        self.assertEqual(episode.air_time, '21:30')
+        self.assertEqual(episode.display_air_date.isoformat(), '2026-01-01T21:30:00+01:00')
+
+    def test_episode_display_air_date_falls_back_to_air_date(self):
+        show = TVShow.objects.create(tmdb_id=993, name='Air Date Fallback Show')
+        episode = show.seasons.create(tmdb_id=9931, season_number=1, name='Season 1').episodes.create(
+            tmdb_id=99311,
+            episode_number=1,
+            name='Episode 1',
+            air_date='2026-01-02',
+        )
+
+        self.assertEqual(str(episode.display_air_date), '2026-01-02')
+
+    def test_tvmaze_falls_back_to_current_timezone_for_invalid_timezone(self):
+        broadcast_start = TVMazeService.parse_air_datetime('2026-01-01', '21:30', 'invalid/zone')
+
+        self.assertIsNotNone(broadcast_start)
+        self.assertTrue(timezone.is_aware(broadcast_start))
+
+    @patch.object(TVMazeService, '_request')
+    def test_tvmaze_lookup_prefers_external_ids(self, mock_request):
+        mock_request.return_value = {'id': 101, 'name': 'Matched Show'}
+
+        result = TVMazeService().lookup_show(
+            external_ids={'tvdb_id': 202, 'imdb_id': 'tt303', 'tvrage_id': 404},
+            show_name='Wrong Name',
+        )
+
+        self.assertEqual(result['id'], 101)
+        mock_request.assert_called_once_with('/lookup/shows', {'thetvdb': 202})
+
+    @patch.object(TVMazeService, '_request')
+    def test_tvmaze_lookup_falls_back_through_external_ids_to_name(self, mock_request):
+        mock_request.side_effect = [
+            requests.RequestException('TVDB unavailable'),
+            requests.RequestException('IMDb unavailable'),
+            requests.RequestException('TV Rage unavailable'),
+            [{'show': {'id': 505, 'name': 'Fallback Show', 'premiered': '2020-01-01'}}],
+        ]
+
+        result = TVMazeService().lookup_show(
+            external_ids={'tvdb_id': 202, 'imdb_id': 'tt303', 'tvrage_id': 404},
+            show_name='Fallback Show',
+            year=2020,
+        )
+
+        self.assertEqual(result['id'], 505)
+        self.assertEqual(mock_request.call_args_list[-1].args, ('/search/shows', {'q': 'Fallback Show'}))
+
+    def test_tv_show_request_appends_external_ids(self):
+        with patch.object(tmdb, '_get', return_value={}) as mock_get:
+            tmdb.get_tv_show_with_seasons(1399, [1, 2])
+
+        mock_get.assert_called_once_with(
+            '/tv/1399',
+            {'append_to_response': 'external_ids,season/1,season/2'},
+            use_cache=True,
+        )
+
+    def test_tv_show_request_reserves_append_slot_for_external_ids(self):
+        with patch.object(tmdb, '_get', return_value={}) as mock_get:
+            tmdb.get_tv_show_with_seasons(1399, list(range(1, 25)))
+
+        append_value = mock_get.call_args.args[1]['append_to_response']
+        self.assertEqual(append_value.count('season/'), 19)
+        self.assertTrue(append_value.startswith('external_ids,'))
+
+    def test_tvmaze_external_ids_are_persisted_with_tvmaze_id(self):
+        with patch.object(tmdb, 'get_tv_show', return_value={
+            'id': 888,
+            'name': 'External ID Show',
+            'first_air_date': '2020-01-01',
+            'number_of_seasons': 0,
+            'number_of_episodes': 0,
+            'external_ids': {
+                'tvdb_id': 123,
+                'imdb_id': 'tt456',
+                'tvrage_id': 789,
+                'wikidata_id': 'Q123',
+            },
+            'genres': [],
+            'networks': [],
+        }), patch.object(tmdb, 'get_tv_show_with_seasons', return_value={
+            'id': 888,
+            'name': 'External ID Show',
+            'first_air_date': '2020-01-01',
+            'number_of_seasons': 0,
+            'number_of_episodes': 0,
+            'external_ids': {
+                'tvdb_id': 123,
+                'imdb_id': 'tt456',
+                'tvrage_id': 789,
+                'wikidata_id': 'Q123',
+            },
+            'genres': [],
+            'networks': [],
+        }), patch.object(tmdb, '_resolve_tvmaze', return_value=({'id': 321}, [])):
+            show = tmdb.sync_tv_show(888, recompute_user_statuses=False)
+
+        self.assertEqual(show.external_ids, {
+            'tvdb_id': 123,
+            'imdb_id': 'tt456',
+            'tvrage_id': 789,
+            'tvmaze_id': 321,
+        })
+
+    def test_episode_runtime_uses_tvmaze_when_tmdb_runtime_is_missing(self):
+        show = TVShow.objects.create(tmdb_id=990, name='Runtime Fallback Show')
+        season_data = {
+            'id': 9901,
+            'season_number': 1,
+            'name': 'Season 1',
+            'episodes': [{'id': 99011, 'episode_number': 1, 'name': 'Episode 1'}],
+        }
+
+        with patch.object(tvmaze, 'lookup_season_show', return_value=None):
+            tmdb._upsert_season(
+                show,
+                1,
+                season_data,
+                sync_episode_credits=False,
+                tvmaze_show={'network': {'country': {'timezone': 'UTC'}}},
+                tvmaze_episodes=[{'season': 1, 'number': 1, 'airdate': '2026-01-01', 'airtime': '20:00', 'runtime': 47}],
+            )
+
+        self.assertEqual(show.seasons.get(season_number=1).episodes.get(episode_number=1).runtime, 47)
+
+    def test_episode_runtime_keeps_tmdb_value_over_tvmaze_runtime(self):
+        show = TVShow.objects.create(tmdb_id=991, name='Runtime Precedence Show')
+        season_data = {
+            'id': 9911,
+            'season_number': 1,
+            'name': 'Season 1',
+            'episodes': [{'id': 99111, 'episode_number': 1, 'name': 'Episode 1', 'runtime': 42}],
+        }
+
+        with patch.object(tvmaze, 'lookup_season_show', return_value=None):
+            tmdb._upsert_season(
+                show,
+                1,
+                season_data,
+                sync_episode_credits=False,
+                tvmaze_show={'network': {'country': {'timezone': 'UTC'}}},
+                tvmaze_episodes=[{'season': 1, 'number': 1, 'airdate': '2026-01-01', 'airtime': '20:00', 'runtime': 47}],
+            )
+
+        self.assertEqual(show.seasons.get(season_number=1).episodes.get(episode_number=1).runtime, 42)
+
+    def test_tv_show_runtime_uses_tvmaze_when_tmdb_runtime_is_missing(self):
+        show_data = {
+            'id': 994,
+            'name': 'Show Runtime Fallback',
+            'first_air_date': '2026-01-01',
+            'number_of_seasons': 0,
+            'number_of_episodes': 0,
+            'episode_run_time': [],
+            'genres': [],
+            'networks': [],
+        }
+        with (
+            patch.object(tmdb, 'get_tv_show', return_value=show_data),
+            patch.object(tmdb, 'get_tv_show_with_seasons', return_value=show_data),
+            patch.object(tmdb, '_resolve_tvmaze', return_value=({'id': 9941, 'runtime': 52}, [])),
+        ):
+            show = tmdb.sync_tv_show(994, recompute_user_statuses=False)
+
+        self.assertEqual(show.episode_runtime, 52)
+
+    def test_season_specific_tvmaze_show_matches_different_provider_numbering(self):
+        show = TVShow.objects.create(tmdb_id=30984, name='Bleach')
+        with patch.object(tvmaze, 'lookup_season_show', return_value={'id': 80375, 'network': {'country': {'timezone': 'Asia/Tokyo'}}}), patch.object(
+            tvmaze,
+            'get_show_episodes',
+            return_value=[{'id': 3691961, 'season': 4, 'number': 8, 'name': 'The End Two World', 'airdate': '2026-09-12', 'airtime': '23:00'}],
+        ):
+            tmdb._upsert_season(
+                show,
+                2,
+                {
+                    'id': 295738,
+                    'season_number': 2,
+                    'name': 'Thousand-Year Blood War',
+                    'air_date': '2022-10-10',
+                    'external_ids': {'imdb_id': 'tt14986406'},
+                    'episodes': [{'id': 7470579, 'episode_number': 48, 'name': 'THE END TWO WORLD', 'air_date': '2026-09-12'}],
+                },
+                sync_episode_credits=False,
+                tvmaze_context={},
+            )
+
+        season = show.seasons.get(season_number=2)
+        episode = season.episodes.get(episode_number=48)
+        self.assertEqual(season.external_ids['tvmaze_id'], 80375)
+        self.assertEqual(episode.external_ids['tvmaze_id'], 3691961)
+        self.assertEqual(episode.local_broadcast_datetime.strftime('%H:%M'), '16:00')
 
     def tearDown(self):
         self.tmdb_patcher.stop()
@@ -783,7 +1000,7 @@ class MediaTests(TestCase):
         show = tmdb.sync_tv_show(556, user_id=self.user.id)
 
         self.assertEqual(show.tmdb_id, 556)
-        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True, use_cache=True)
+        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True, use_cache=True, tvmaze_context={})
         mock_refresh_statuses.assert_called_once_with(556, current_user_id=self.user.id)
 
     @patch('media.tmdb.tmdb.sync_episode_credits')
@@ -892,7 +1109,7 @@ class TMDBUseCacheTests(TestCase):
         self.assertEqual(show.tmdb_id, 557)
         mock_get_tv_show.assert_called_once_with(557, use_cache=False)
         mock_get_with_seasons.assert_called_once_with(557, [1], use_cache=False)
-        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True, use_cache=False)
+        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True, use_cache=False, tvmaze_context={})
 
     @patch('media.tmdb.tmdb.get_movie')
     def test_sync_movie_propagates_use_cache_false(self, mock_get_movie):

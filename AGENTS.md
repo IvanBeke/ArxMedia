@@ -45,7 +45,7 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 ## High-signal implementation quirks
 
 - Python runtime is 3.14 (`src/pyproject.toml` + Dockerfile); dependency install uses `uv` in Docker.
-- TMDB is the source of truth for movie/TV metadata; local models are synced/cache-backed (Redis optional).
+- TMDB is the source of truth for movie/TV catalog metadata; TVMaze enriches TV schedules, runtimes, and provider IDs. Local models are synced/cache-backed (Redis optional).
 - Vite dev proxy targets `http://app:8000` (service name), not localhost.
 - UI uses Vue 3 Composition API (`<script setup>`) and `@` alias.
 

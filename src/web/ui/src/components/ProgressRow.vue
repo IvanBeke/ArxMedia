@@ -96,7 +96,7 @@
           />
           <EpisodeTypePill :value="item.next_episode?.episode_type" class="episode-type" />
           <p class="episode-title" :title="item.next_episode?.name || ''">{{ item.next_episode?.name }}</p>
-          <p class="episode-air">{{ item.next_episode?.air_date ? formatDateByLocale(item.next_episode.air_date) : '' }}</p>
+          <p class="episode-air">{{ item.next_episode?.air_date ? formatDateTimeByLocale(item.next_episode.air_date) : '' }}</p>
           <div class="mt-3 flex items-center gap-2">
             <RatingBadge
               v-if="hasProviderRating(item.next_episode?.vote_average)"
@@ -177,7 +177,7 @@ import UserRating from '@/components/UserRating.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
-import { formatDateByLocale } from '@/i18n'
+import { formatDateTimeByLocale } from '@/i18n'
 import { formatHoursMinutes } from '@/utils/progress'
 import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
 

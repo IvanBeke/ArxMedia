@@ -76,7 +76,7 @@
                 :disabled="refreshingMetadata"
                 class="btn-ghost text-xs border border-surface-200 bg-surface-100/70 hover:bg-surface-100"
               >
-                {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB' }}
+                {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB and TVMaze' }}
               </button>
               <span class="text-xs text-muted">
                 Last metadata update: {{ metadataUpdatedAtLabel }}
@@ -380,7 +380,7 @@ async function refreshMetadata() {
     await mediaAPI.refreshMovie(route.params.id)
     movie.value = await mediaAPI.getMovie(route.params.id)
     inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
-    showMetadataSuccess('Metadata updated from TMDB')
+    showMetadataSuccess('Metadata updated from TMDB and TVMaze')
   } catch (error) {
     showMetadataError(getApiErrorMessage(error, 'Could not refresh metadata.'))
   } finally {

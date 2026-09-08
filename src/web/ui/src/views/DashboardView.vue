@@ -96,7 +96,7 @@
             :poster-url="item.poster_url"
             :poster-link-to="getUpcomingPosterLink(item)"
             :title-link-to="`/tv/${item.tmdb_id}`"
-            :meta-text="formatDate(item.air_date)"
+            :meta-text="formatUpcomingDateTime(item.air_date)"
           />
         </div>
       </div>
@@ -140,11 +140,10 @@
 import { ref, onMounted } from 'vue'
 import { trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
-import { formatDateByLocale, useI18n } from '@/i18n'
+import { useI18n } from '@/i18n'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
-import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
 
 const auth = useAuthStore()
 const { t } = useI18n()
@@ -157,9 +156,18 @@ const loadingUpcoming = ref(true)
 const markingId = ref(null)
 const deletingEntryId = ref(null)
 
-function formatDate(d) {
-  if (!d) return ''
-  return formatIsoAsDDMMYYYY(d) || formatDateByLocale(d)
+const upcomingDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+function formatUpcomingDateTime(value) {
+  if (!value) return ''
+  return upcomingDateTimeFormatter.format(new Date(value)).replace(',', '')
 }
 
 function getLink(entry) {

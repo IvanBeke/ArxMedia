@@ -11,9 +11,9 @@ What "good work" means for this project.
 
 ## App principles (Django)
 
-- Models are sync from TMDB — the app does not own media catalog
+- Models are synced from TMDB and enriched with TVMaze — TMDB owns the media catalog; TVMaze supplies TV scheduling and runtime data. The app does not own the external media catalog.
 - JWT auth with 1h access, 7d refresh, rotate tokens
-- Redis cache is optional — TMDB service falls back gracefully
+- Redis cache is optional — TMDB and TVMaze services fall back gracefully
 - DRF with `IsAuthenticatedOrReadOnly` and `PageNumberPagination` (PAGE_SIZE=20)
 - All Django code lives under `src/`
 
@@ -43,7 +43,7 @@ What "good work" means for this project.
 - `src/arxmedia/settings/database.py` contains `DATABASES` and `dj-database-url` fallback logic
 - `src/arxmedia/settings/static_media.py` contains static/media paths and storages
 - `src/arxmedia/settings/api.py` contains password validators, DRF, JWT, and CORS/CSRF trusted origins
-- `src/arxmedia/settings/integrations.py` contains TMDB and Django Vite integration settings
+- `src/arxmedia/settings/integrations.py` contains TMDB, TVMaze, and Django Vite integration settings
 - `src/arxmedia/settings/celery.py` contains Redis-derived Celery broker/backend and beat schedules
 - `src/arxmedia/settings/logging_conf.py` contains `LOG_LEVEL` and Django logging configuration
 
@@ -83,8 +83,9 @@ What "good work" means for this project.
 
 ## External integrations
 
-- TMDB API required for all media search/trending/popular
-- Redis 7 for TMDB response caching (7-day TTL, nx=True) — optional
+- TMDB API required for all media search/trending/popular and catalog synchronization
+- TVMaze API provides optional TV schedule and runtime enrichment during catalog synchronization
+- Redis 7 caches TMDB responses for 7 days and TVMaze responses for 24 hours — optional
 
 ## What "good" looks like
 

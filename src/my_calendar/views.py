@@ -1,5 +1,7 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
+from django.db.models import DateTimeField
+from django.db.models.functions import Cast, Coalesce
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from media.models import Episode, Movie
@@ -49,10 +51,12 @@ def my_calendar(request):
     )
 
     movies = Movie.objects.filter(tmdb_id__in=watchlist_movie_ids, release_date__gte=start, release_date__lt=end)
-    episodes = Episode.objects.select_related('season__show').filter(
+    episodes = Episode.objects.select_related('season__show').annotate(
+        schedule_at=Coalesce('broadcast_start', Cast('air_date', output_field=DateTimeField())),
+    ).filter(
         season__show__tmdb_id__in=watching_tv_ids,
-        air_date__gte=start,
-        air_date__lt=end,
+        schedule_at__gte=timezone.make_aware(datetime.combine(start, time.min), timezone.get_current_timezone()),
+        schedule_at__lt=timezone.make_aware(datetime.combine(end, time.min), timezone.get_current_timezone()),
     ).exclude(
         season__season_number=0,
     )
@@ -67,7 +71,7 @@ def my_calendar(request):
 
     show_items = [{
         'kind': 'episode',
-        'date': ep.air_date,
+        'date': ep.display_air_date,
         'tmdb_id': ep.season.show.tmdb_id,
         'show_name': ep.season.show.name,
         'season_number': ep.season.season_number,
@@ -77,6 +81,11 @@ def my_calendar(request):
     } for ep in episodes]
 
     combined = movie_items + show_items
-    combined.sort(key=lambda x: (x['date'], x.get('title') or x.get('show_name') or ''))
+    combined.sort(
+        key=lambda x: (
+            x['date'] if isinstance(x['date'], datetime) else datetime.combine(x['date'], time.min),
+            x.get('title') or x.get('show_name') or '',
+        )
+    )
 
     return Response({'results': combined})

@@ -8,6 +8,7 @@ from django.conf import settings
 from django.utils.dateparse import parse_date
 
 from .models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
+from .tvmaze import tvmaze
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +33,26 @@ def _non_empty_defaults(defaults):
     }
 
 
+EXTERNAL_ID_KEYS = ('tvdb_id', 'imdb_id', 'tvrage_id')
+
+
+def _external_ids(data):
+    source = data.get('external_ids') or {}
+    return {
+        key: source[key]
+        for key in EXTERNAL_ID_KEYS
+        if source.get(key)
+    }
+
+
 class TMDBService:
     BASE_URL = getattr(settings, 'TMDB_BASE_URL', 'https://api.themoviedb.org/3')
     API_KEY = getattr(settings, 'TMDB_API_KEY', '')
     CACHE_TTL = 604800  # 7 days
     REQUEST_RETRIES = 5
     APPEND_SEASON_LIMIT = 20  # TMDB caps append_to_response sub-requests
+    EXTERNAL_ID_APPEND_COUNT = 1
+    BUNDLED_SEASON_LIMIT = APPEND_SEASON_LIMIT - EXTERNAL_ID_APPEND_COUNT
 
     def __init__(self):
         self._redis = None
@@ -123,7 +138,7 @@ class TMDBService:
     def get_tv_show_with_seasons(self, tmdb_id, season_numbers, *, use_cache=True):
         """Fetch a show plus up to APPEND_SEASON_LIMIT seasons (episodes
         included) in a single TMDB request via ``append_to_response``."""
-        appends = [f'season/{number}' for number in season_numbers[:self.APPEND_SEASON_LIMIT]]
+        appends = ['external_ids'] + [f'season/{number}' for number in season_numbers[:self.BUNDLED_SEASON_LIMIT]]
         params = {}
         if appends:
             params['append_to_response'] = ','.join(appends)
@@ -139,7 +154,14 @@ class TMDBService:
         return self._get(f'/tv/{tmdb_id}/watch/providers')
 
     def get_season(self, show_id, season_number, *, use_cache=True):
-        return self._get(f'/tv/{show_id}/season/{season_number}', {'append_to_response': 'credits'}, use_cache=use_cache)
+        return self._get(
+            f'/tv/{show_id}/season/{season_number}',
+            {'append_to_response': 'credits,external_ids'},
+            use_cache=use_cache,
+        )
+
+    def get_season_external_ids(self, show_id, season_number, *, use_cache=True):
+        return self._get(f'/tv/{show_id}/season/{season_number}/external_ids', use_cache=use_cache)
 
     def get_episode_credits(self, show_id, season_number, episode_number, *, use_cache=True):
         return self._get(
@@ -205,67 +227,14 @@ class TMDBService:
     def sync_tv_show(self, tmdb_id, user_id=None, sync_credits: bool = True, *, recompute_user_statuses: bool = True, use_cache: bool = True):
         """Fetch TV show from TMDB and save/update locally, including all seasons and episodes."""
         data = self.get_tv_show(tmdb_id, use_cache=use_cache)
-        season_numbers = [
-            int(season.get('season_number'))
-            for season in data.get('seasons', [])
-            if isinstance(season.get('season_number'), int)
-        ]
-        if not season_numbers:
-            total_seasons = data.get('number_of_seasons') or 0
-            season_numbers = list(range(1, int(total_seasons) + 1))
-
-        if season_numbers:
-            # Second request bundles every season (episodes included) that fits
-            # within TMDB's append_to_response limit.
-            data = self.get_tv_show_with_seasons(tmdb_id, season_numbers, use_cache=use_cache)
-
-        networks = ', '.join([n['name'] for n in data.get('networks', [])])
-        runtimes = data.get('episode_run_time') or []
-        episode_runtime = next((int(runtime) for runtime in runtimes if isinstance(runtime, int) and runtime > 0), None)
-        show_defaults = {
-            'name': data.get('name', ''),
-            'overview': data.get('overview', ''),
-            'poster_path': data.get('poster_path', '') or '',
-            'backdrop_path': data.get('backdrop_path', '') or '',
-            'first_air_date': parse_date(data['first_air_date']) if data.get('first_air_date') else None,
-            'last_air_date': parse_date(data['last_air_date']) if data.get('last_air_date') else None,
-            'number_of_seasons': data.get('number_of_seasons', 0),
-            'number_of_episodes': data.get('number_of_episodes', 0),
-            'vote_average': data.get('vote_average', 0),
-            'vote_count': data.get('vote_count', 0),
-            'language': data.get('original_language', ''),
-            'status': data.get('status', ''),
-            'networks': networks,
-            'episode_runtime': episode_runtime,
-        }
-        show, _ = TVShow.objects.update_or_create(
-            tmdb_id=tmdb_id,
-            defaults=_non_empty_defaults(show_defaults),
-            create_defaults=show_defaults,
-        )
-        for g in data.get('genres', []):
-            genre, _ = Genre.objects.get_or_create(tmdb_id=g['id'], defaults={'name': g['name']})
-            show.genres.add(genre)
-
-        # Primary seasons arrive appended to this same response (one request
-        # for show + seasons + episodes); anything beyond the append limit is
-        # fetched per-season.
-        bundled, remaining = _split_bundled_seasons(season_numbers, bundled_limit=self.APPEND_SEASON_LIMIT)
-        for season_number in bundled:
-            season_data = data.get(f'season/{season_number}')
-            if not isinstance(season_data, dict) or not season_data:
-                remaining.append(season_number)
-                continue
-            try:
-                self._upsert_season(show, season_number, season_data, sync_episode_credits=sync_credits, use_cache=use_cache)
-            except Exception as exc:
-                logger.warning('Failed to sync season %s for tv %s: %s', season_number, tmdb_id, exc)
-
-        for season_number in remaining:
-            try:
-                self.sync_season(show, season_number, sync_episode_credits=sync_credits, use_cache=use_cache)
-            except Exception as exc:
-                logger.warning('Failed to sync season %s for tv %s: %s', season_number, tmdb_id, exc)
+        season_numbers = self._season_numbers(data)
+        data = self.get_tv_show_with_seasons(tmdb_id, season_numbers, use_cache=use_cache)
+        show = self._upsert_show(tmdb_id, data)
+        tvmaze_show, _ = self._resolve_tvmaze(show, include_episodes=False)
+        self._apply_tvmaze_metadata(show, tvmaze_show)
+        tvmaze_context: dict[int, tuple[dict | None, list[dict]]] = {}
+        self._sync_show_genres(show, data)
+        self._sync_show_seasons(show, season_numbers, data, sync_credits, use_cache, tvmaze_context)
 
         if recompute_user_statuses:
             try:
@@ -277,65 +246,210 @@ class TMDBService:
 
         return show
 
-    def sync_season(self, show, season_number, sync_episode_credits: bool = True, *, use_cache: bool = True):
-        """Fetch a season from TMDB and save/update locally with all episodes."""
-        data = self.get_season(show.tmdb_id, season_number, use_cache=use_cache)
-        return self._upsert_season(show, season_number, data, sync_episode_credits=sync_episode_credits, use_cache=use_cache)
+    @staticmethod
+    def _season_numbers(data):
+        season_numbers = [
+            int(season['season_number'])
+            for season in data.get('seasons', [])
+            if isinstance(season.get('season_number'), int)
+        ]
+        if not season_numbers:
+            season_numbers = list(range(1, int(data.get('number_of_seasons') or 0) + 1))
+        return season_numbers
 
-    def _upsert_season(self, show, season_number: int, data: dict, sync_episode_credits: bool = True, *, use_cache: bool = True):
-        """Persist one season (with episodes) from a TMDB season payload."""
-        season_defaults = {
-            'tmdb_id': data.get('id', 0),
-            'name': data.get('name', ''),
-            'overview': data.get('overview', ''),
-            'poster_path': data.get('poster_path', '') or '',
-            'air_date': parse_date(data['air_date']) if data.get('air_date') else None,
-            'episode_count': data.get('episode_count', 0),
+    def _upsert_show(self, tmdb_id, data):
+        existing_show = TVShow.objects.filter(tmdb_id=tmdb_id).first()
+        external_ids = dict(existing_show.external_ids or {}) if existing_show else {}
+        external_ids.update(_external_ids(data))
+        runtimes = data.get('episode_run_time') or []
+        episode_runtime = next((r for r in runtimes if isinstance(r, int) and r > 0), None)
+        defaults = {
+            'name': data.get('name', ''), 'overview': data.get('overview', ''),
+            'poster_path': data.get('poster_path', '') or '', 'backdrop_path': data.get('backdrop_path', '') or '',
+            'first_air_date': parse_date(data['first_air_date']) if data.get('first_air_date') else None,
+            'last_air_date': parse_date(data['last_air_date']) if data.get('last_air_date') else None,
+            'number_of_seasons': data.get('number_of_seasons', 0), 'number_of_episodes': data.get('number_of_episodes', 0),
+            'vote_average': data.get('vote_average', 0), 'vote_count': data.get('vote_count', 0),
+            'language': data.get('original_language', ''), 'status': data.get('status', ''),
+            'networks': ', '.join(n['name'] for n in data.get('networks', [])),
+            'external_ids': external_ids, 'episode_runtime': episode_runtime,
         }
-        season, _ = Season.objects.update_or_create(
-            show=show,
-            season_number=season_number,
-            defaults=_non_empty_defaults(season_defaults),
-            create_defaults=season_defaults,
+        show, _ = TVShow.objects.update_or_create(
+            tmdb_id=tmdb_id, defaults=_non_empty_defaults(defaults), create_defaults=defaults
         )
+        return show
+
+    @staticmethod
+    def _sync_show_genres(show, data):
+        for genre_data in data.get('genres', []):
+            genre, _ = Genre.objects.get_or_create(tmdb_id=genre_data['id'], defaults={'name': genre_data['name']})
+            show.genres.add(genre)
+
+    def _sync_show_seasons(self, show, season_numbers, data, sync_credits, use_cache, tvmaze_context):
+        bundled, remaining = _split_bundled_seasons(season_numbers, self.BUNDLED_SEASON_LIMIT)
+        for season_number in bundled:
+            season_data = data.get(f'season/{season_number}')
+            if not isinstance(season_data, dict) or not season_data:
+                remaining.append(season_number)
+                continue
+            self._sync_season_payload(show, season_number, season_data, sync_credits, use_cache, tvmaze_context)
+        for season_number in remaining:
+            self._sync_season_payload(show, season_number, None, sync_credits, use_cache, tvmaze_context)
+
+    def _sync_season_payload(self, show, season_number, data, sync_credits, use_cache, tvmaze_context):
+        try:
+            if data is None:
+                return self.sync_season(show, season_number, sync_episode_credits=sync_credits, use_cache=use_cache, tvmaze_context=tvmaze_context)
+            return self._upsert_season(show, season_number, data, sync_episode_credits=sync_credits, use_cache=use_cache, tvmaze_context=tvmaze_context)
+        except Exception as exc:
+            logger.warning('Failed to sync season %s for tv %s: %s', season_number, show.tmdb_id, exc)
+
+    def sync_season(self, show, season_number, sync_episode_credits: bool = True, *, use_cache: bool = True, tvmaze_context=None):
+        """Fetch a season from TMDB and save/update locally with all episodes."""
+        return self._sync_season(
+            show,
+            season_number,
+            sync_episode_credits=sync_episode_credits,
+            use_cache=use_cache,
+            tvmaze_context=tvmaze_context,
+        )
+
+    def _sync_season(self, show, season_number, *, sync_episode_credits=True, use_cache=True, tvmaze_context=None):
+        data = self.get_season(show.tmdb_id, season_number, use_cache=use_cache)
+        return self._upsert_season(
+            show,
+            season_number,
+            data,
+            sync_episode_credits=sync_episode_credits,
+            use_cache=use_cache,
+            tvmaze_context=tvmaze_context,
+        )
+
+    def _resolve_tvmaze(self, show, *, include_episodes=True):
+        external_ids = dict(show.external_ids or {})
+        try:
+            tvmaze_show = None
+            if external_ids.get('tvmaze_id'):
+                tvmaze_show = tvmaze.lookup_show_by_id(external_ids['tvmaze_id'])
+            if not tvmaze_show:
+                tvmaze_show = tvmaze.lookup_show(
+                    external_ids=external_ids,
+                    show_name=show.name,
+                    year=show.first_air_date.year if show.first_air_date else None,
+                )
+            episodes = tvmaze.get_show_episodes(tvmaze_show['id']) if include_episodes and tvmaze_show and tvmaze_show.get('id') else []
+            if tvmaze_show and tvmaze_show.get('id'):
+                external_ids['tvmaze_id'] = int(tvmaze_show['id'])
+            return tvmaze_show, episodes
+        except Exception as exc:
+            logger.warning('Failed to resolve TVMaze metadata for tv %s: %s', show.tmdb_id, exc)
+            return None, []
+
+    def _apply_tvmaze_metadata(self, show, tvmaze_show):
+        if not tvmaze_show or not tvmaze_show.get('id'):
+            return
+        external_ids = dict(show.external_ids or {})
+        external_ids['tvmaze_id'] = int(tvmaze_show['id'])
+        show.external_ids = external_ids
+        if not show.episode_runtime:
+            show.episode_runtime = tvmaze_show.get('runtime') or tvmaze_show.get('averageRuntime')
+        show.save(update_fields=['external_ids', 'episode_runtime', 'updated_at'])
+
+    def _upsert_season(self, show, season_number: int, data: dict, sync_episode_credits: bool = True, *, use_cache: bool = True, tvmaze_context=None, tvmaze_show=None, tvmaze_episodes=None):
+        """Persist one season (with episodes) from a TMDB season payload."""
+        season = self._upsert_season_record(show, season_number, data, use_cache)
+        tvmaze_show, tvmaze_episodes = self._season_tvmaze_context(show, season, tvmaze_context, tvmaze_show, tvmaze_episodes)
+        episodes_by_number = {(e.get('season'), e.get('number')): e for e in tvmaze_episodes or []}
+        episodes_by_name_date = {
+            (self._normalize_title(e.get('name')), e.get('airdate')): e
+            for e in tvmaze_episodes or []
+            if e.get('airdate')
+        }
         for ep_data in data.get('episodes', []):
             episode_number = ep_data['episode_number']
-            episode_defaults = {
-                'tmdb_id': ep_data.get('id', 0),
-                'name': ep_data.get('name', ''),
-                'overview': ep_data.get('overview', ''),
-                'still_path': ep_data.get('still_path', '') or '',
-                'air_date': parse_date(ep_data['air_date']) if ep_data.get('air_date') else None,
-                'runtime': ep_data.get('runtime'),
-                'vote_average': ep_data.get('vote_average', 0),
-                'vote_count': ep_data.get('vote_count', 0),
-                'episode_type': ep_data.get('episode_type', '') or '',
-            }
-            Episode.objects.update_or_create(
-                season=season,
-                episode_number=episode_number,
-                defaults=_non_empty_defaults(episode_defaults),
-                create_defaults=episode_defaults,
-            )
+            episode = self._upsert_episode_record(season, ep_data)
+            remote_ep = episodes_by_number.get((season_number, episode_number))
+            if remote_ep is None:
+                remote_ep = episodes_by_name_date.get((self._normalize_title(ep_data.get('name')), ep_data.get('air_date')))
+            if remote_ep is None and ep_data.get('air_date'):
+                candidates = [e for e in tvmaze_episodes or [] if e.get('airdate') == ep_data['air_date']]
+                remote_ep = candidates[0] if len(candidates) == 1 else None
+            if remote_ep:
+                tvmaze_payload = tvmaze.normalize_episode_from_tvmaze(tvmaze_show, remote_ep)
+                if tvmaze_payload:
+                    episode.external_ids = dict(episode.external_ids or {})
+                    episode.external_ids['tvmaze_id'] = remote_ep.get('id')
+                    episode.broadcast_start = tvmaze_payload.get('broadcast_start')
+                    episode.runtime = episode.runtime or tvmaze_payload.get('runtime')
+                    episode.save(update_fields=['external_ids', 'broadcast_start', 'runtime'])
 
             if sync_episode_credits:
-                try:
-                    self.sync_episode_credits(
-                        show.tmdb_id,
-                        season_number,
-                        episode_number,
-                        show=show,
-                        use_cache=use_cache,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        'Failed to sync episode credits for tv %s season %s episode %s: %s',
-                        show.tmdb_id,
-                        season_number,
-                        episode_number,
-                        exc,
-                    )
+                self._sync_episode_credits_safely(show, season_number, episode_number, use_cache)
         return season
+
+    def _upsert_season_record(self, show, season_number, data, use_cache):
+        defaults = {
+            'tmdb_id': data.get('id', 0), 'name': data.get('name', ''), 'overview': data.get('overview', ''),
+            'poster_path': data.get('poster_path', '') or '',
+            'air_date': parse_date(data['air_date']) if data.get('air_date') else None,
+            'episode_count': data.get('episode_count', 0), 'external_ids': _external_ids(data),
+        }
+        season, _ = Season.objects.update_or_create(
+            show=show, season_number=season_number,
+            defaults=_non_empty_defaults(defaults), create_defaults=defaults,
+        )
+        if not season.external_ids:
+            season.external_ids = _external_ids(data) or _external_ids(
+                self.get_season_external_ids(show.tmdb_id, season_number, use_cache=use_cache)
+            )
+            season.save(update_fields=['external_ids'])
+        return season
+
+    @staticmethod
+    def _upsert_episode_record(season, data):
+        defaults = {
+            'tmdb_id': data.get('id', 0), 'name': data.get('name', ''), 'overview': data.get('overview', ''),
+            'still_path': data.get('still_path', '') or '',
+            'air_date': parse_date(data['air_date']) if data.get('air_date') else None,
+            'runtime': data.get('runtime'), 'vote_average': data.get('vote_average', 0),
+            'vote_count': data.get('vote_count', 0), 'episode_type': data.get('episode_type', '') or '',
+            'external_ids': _external_ids(data),
+        }
+        episode, _ = Episode.objects.update_or_create(
+            season=season, episode_number=data['episode_number'],
+            defaults=_non_empty_defaults(defaults), create_defaults=defaults,
+        )
+        return episode
+
+    def _season_tvmaze_context(self, show, season, context, tvmaze_show, tvmaze_episodes):
+        context = context if context is not None else {season.season_number: (tvmaze_show, tvmaze_episodes or [])}
+        if season.season_number not in context:
+            resolved = self._resolve_tvmaze_season(show, season)
+            context[season.season_number] = (resolved, tvmaze.get_show_episodes(resolved['id']) if resolved else [])
+        resolved, episodes = context[season.season_number]
+        if resolved and resolved.get('id'):
+            season.external_ids['tvmaze_id'] = int(resolved['id'])
+            season.save(update_fields=['external_ids'])
+        return resolved, episodes
+
+    def _sync_episode_credits_safely(self, show, season_number, episode_number, use_cache):
+        try:
+            self.sync_episode_credits(show.tmdb_id, season_number, episode_number, show=show, use_cache=use_cache)
+        except Exception as exc:
+            logger.warning('Failed to sync episode credits for tv %s season %s episode %s: %s', show.tmdb_id, season_number, episode_number, exc)
+
+    @staticmethod
+    def _normalize_title(value):
+        return ' '.join(str(value or '').casefold().replace('-', ' ').split())
+
+    def _resolve_tvmaze_season(self, show, season):
+        if season.external_ids.get('tvmaze_id'):
+            return tvmaze.lookup_show_by_id(season.external_ids['tvmaze_id'])
+        return tvmaze.lookup_season_show(
+            external_ids=season.external_ids,
+            season_name=f'{show.name} {season.name}',
+            year=season.air_date.year if season.air_date else None,
+        )
 
     def sync_episode_credits(self, show_id, season_number, episode_number, *, show=None, use_cache: bool = True):
         if show is None:

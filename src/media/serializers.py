@@ -42,6 +42,8 @@ class TVShowSerializer(serializers.ModelSerializer):
 
 class EpisodeSerializer(serializers.ModelSerializer):
     still_url = serializers.ReadOnlyField()
+    air_time = serializers.ReadOnlyField()
+    air_date = serializers.ReadOnlyField(source='display_air_date')
     guest_stars = serializers.SerializerMethodField()
     crew = serializers.SerializerMethodField()
 
@@ -49,8 +51,9 @@ class EpisodeSerializer(serializers.ModelSerializer):
         model = Episode
         fields = [
             'id', 'tmdb_id', 'episode_number', 'name', 'overview',
-            'still_path', 'still_url', 'air_date', 'runtime', 
-            'vote_average', 'vote_count', 'episode_type', 'guest_stars', 'crew'
+            'still_path', 'still_url', 'air_date', 'air_time',
+            'broadcast_start', 'runtime', 'vote_average', 'vote_count',
+            'episode_type', 'guest_stars', 'crew'
         ]
 
     def get_guest_stars(self, obj):
