@@ -597,6 +597,25 @@ class SeasonTests(BaseTestCase):
         response = self.client.post('/api/tracking/seasons/unmark/', data)
         self.assertEqual(response.status_code, 200)
 
+    def test_mark_season_watched_returns_episode_records(self):
+        show = TVShow.objects.create(tmdb_id=124, name='Season Show')
+        season = Season.objects.create(show=show, tmdb_id=1241, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=12411, episode_number=1, name='Episode 1')
+        Episode.objects.create(season=season, tmdb_id=12412, episode_number=3, name='Episode 3')
+
+        response = self.client.post('/api/tracking/seasons/mark/', {
+            'tmdb_id': show.tmdb_id,
+            'season_number': season.season_number,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['marked'], 2)
+        self.assertEqual(
+            {(episode['season_number'], episode['episode_number']) for episode in response.data['episodes']},
+            {(1, 1), (1, 3)},
+        )
+        self.assertTrue(all(episode['watched_at'] for episode in response.data['episodes']))
+
     def test_mark_season_zero_watched(self):
         show = TVShow.objects.create(tmdb_id=126, name='Specials Show')
         season = Season.objects.create(show=show, tmdb_id=1260, season_number=0, name='Specials')
@@ -609,7 +628,45 @@ class SeasonTests(BaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['marked'], 1)
-        self.assertEqual(response.data['episodes'][0]['season_number'], 0)
+        self.assertTrue(
+            WatchEntry.objects.filter(
+                user=self.user,
+                media_type='episode',
+                tmdb_id=show.tmdb_id,
+                season_number=0,
+                episode_number=1,
+            ).exists()
+        )
+
+    def test_unmark_season_watched_returns_deleted_episode_records(self):
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=125,
+            season_number=2,
+            episode_number=4,
+            watched_at=timezone.make_aware(timezone.datetime(2026, 1, 1, 10, 0, 0)),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=125,
+            season_number=2,
+            episode_number=7,
+            watched_at=timezone.make_aware(timezone.datetime(2026, 1, 2, 10, 0, 0)),
+        )
+
+        response = self.client.post('/api/tracking/seasons/unmark/', {
+            'tmdb_id': 125,
+            'season_number': 2,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['unmarked'], 2)
+        self.assertEqual(
+            {(episode['season_number'], episode['episode_number']) for episode in response.data['episodes']},
+            {(2, 4), (2, 7)},
+        )
 
     def test_unmark_show_watched(self):
         WatchEntry.objects.create(

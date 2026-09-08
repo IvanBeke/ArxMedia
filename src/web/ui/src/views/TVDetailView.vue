@@ -263,7 +263,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { onClickOutside } from '@vueuse/core'
 import { mediaAPI, trackingAPI } from '@/api'
@@ -335,7 +335,6 @@ const {
   markLocally,
   unmarkLocally,
   applyResponse: applyWatchedEpisodes,
-  load: reloadWatchedEpisodes,
 } = useWatchedEpisodes()
 
 const statusMenuOpen = ref(false)
@@ -394,7 +393,6 @@ async function handleEpisodeWatchOption(sn, payload) {
 
   markLocally(sn, epNum, finalWatchedAt)
   showSuccess('Episode marked as watched')
-  await refreshShowState(sn)
 }
 
 function openEpisodeUnwatchConfirm(sn, payload) {
@@ -408,14 +406,6 @@ function openEpisodeUnwatchConfirm(sn, payload) {
 async function onEpisodeUnwatched(target) {
   unmarkLocally(target.seasonNumber, target.episodeNumber)
   showSuccess('Episode unwatched')
-  await refreshShowState(target.seasonNumber)
-}
-
-async function refreshShowState(sn) {
-  delete seasonEpisodes.value[sn]
-  await reloadWatchedEpisodes(tmdbId.value)
-  await loadSeason(sn)
-  await loadShow()
 }
 
 function toggleSeason(sn) {
@@ -468,18 +458,19 @@ function formatSeasonProgressFraction(sn) {
 async function toggleSeasonWatched(sn) {
   const progress = getSeasonProgress(sn)
   if (progress === 100) {
-    await trackingAPI.unmarkSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
+    const response = await trackingAPI.unmarkSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
+    for (const episode of response?.episodes || []) {
+      unmarkLocally(episode.season_number, episode.episode_number)
+    }
     showSuccess('Season unwatched')
   } else {
-    await trackingAPI.markSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
+    const response = await trackingAPI.markSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
+    for (const episode of response?.episodes || []) {
+      markLocally(episode.season_number, episode.episode_number, episode.watched_at)
+    }
     await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
     showSuccess('Season marked as watched')
   }
-  await refreshShowState(sn)
-  const savedExpanded = expandedSeason.value
-  expandedSeason.value = null
-  await nextTick()
-  expandedSeason.value = savedExpanded === sn ? null : savedExpanded
 }
 
 async function setShowStatus(status) {

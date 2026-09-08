@@ -1059,7 +1059,14 @@ def mark_season_watched(request):
 
     refresh_show_status(request.user.id, tmdb_id)
 
-    return Response({'marked': len(episodes)})
+    watched_episodes = WatchEntry.objects.filter(
+        user=request.user,
+        media_type=WatchEntryMediaType.EPISODE,
+        tmdb_id=tmdb_id,
+        season_number=season_number,
+    ).values('season_number', 'episode_number', 'watched_at')
+
+    return Response({'marked': len(episodes), 'episodes': list(watched_episodes)})
 
 
 @api_view(['POST'])
@@ -1075,14 +1082,16 @@ def unmark_season_watched(request):
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
     season_number = _coerce_int(season_number, 'season_number')
 
-    count, _ = WatchEntry.objects.filter(
+    entries = WatchEntry.objects.filter(
         user=request.user,
         media_type=WatchEntryMediaType.EPISODE,
         tmdb_id=tmdb_id,
         season_number=season_number
-    ).delete()
+    )
+    episodes = list(entries.values('season_number', 'episode_number', 'watched_at'))
+    count, _ = entries.delete()
 
-    return Response({'unmarked': count})
+    return Response({'unmarked': count, 'episodes': episodes})
 
 
 @api_view(['POST'])
