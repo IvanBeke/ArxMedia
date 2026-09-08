@@ -39,7 +39,7 @@ docker compose exec app python manage.py showmigrations
 Then run focused ad-hoc checks for the behavior you changed. Examples:
 
 ```bash
-docker compose exec app python manage.py test <module_or_class> --keepdb
+docker compose exec app python manage.py test
 curl -s "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e '.results'
 ```
 

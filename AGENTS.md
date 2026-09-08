@@ -25,11 +25,12 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 
 - Start stack: `docker compose up -d` (auto-builds missing images)
 - Rebuild (`docker compose up -d --build`) only after `Dockerfile` or dependency (`pyproject.toml`/`uv.lock`) changes; see README "Dependencies" section
+- Create migrations: `docker compose exec app python manage.py makemigrations`
 - Migrations: `docker compose exec app python manage.py migrate`
 - App command: `docker compose exec app python manage.py <command>`
-- App lint: `docker compose exec app uv run ruff check accounts media tracking social my_calendar web arxmedia --fix`
-- App types: `docker compose exec app uv run mypy accounts media tracking social my_calendar web arxmedia`
-- Targeted tests (non-interactive-safe): `docker compose exec app python manage.py test <module_or_class> --keepdb`
+- Project lint: `docker compose exec app uv run ruff check . --fix`
+- Project types: `docker compose exec app uv run mypy .`
+- Full test suite (non-interactive-safe): `docker compose exec app python manage.py test`
 - UI production build (required path):
   `docker compose exec ui sh -lc "pnpm install && pnpm build"`
 

@@ -73,7 +73,7 @@ docker compose exec app python manage.py showmigrations
 docker compose exec app python manage.py <command>
 
 # run focused tests
-docker compose exec app python manage.py test <module_or_class> --keepdb
+docker compose exec app python manage.py test
 
 # add a backend dependency (updates pyproject.toml + uv.lock)
 docker compose exec app uv add <package>
