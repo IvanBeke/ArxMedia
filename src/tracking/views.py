@@ -914,7 +914,7 @@ def mark_episode_watched(request):
     episode_number = request.data.get('episode_number')
     watched_at_str = request.data.get('watched_at')
 
-    if not all([tmdb_id, season_number, episode_number]):
+    if any(value is None for value in (tmdb_id, season_number, episode_number)):
         return Response({'detail': 'tmdb_id, season_number, and episode_number are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
@@ -953,7 +953,7 @@ def unmark_episode_watched(request):
     season_number = request.data.get('season_number')
     episode_number = request.data.get('episode_number')
 
-    if not all([tmdb_id, season_number, episode_number]):
+    if any(value is None for value in (tmdb_id, season_number, episode_number)):
         return Response({'detail': 'tmdb_id, season_number, and episode_number are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
@@ -1002,7 +1002,7 @@ def mark_season_watched(request):
     watched_at_str = request.data.get('watched_at')
     use_release_date = request.data.get('use_release_date', False)
 
-    if not all([tmdb_id, season_number]):
+    if any(value is None for value in (tmdb_id, season_number)):
         return Response({'detail': 'tmdb_id and season_number are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
@@ -1069,7 +1069,7 @@ def unmark_season_watched(request):
     tmdb_id = request.data.get('tmdb_id')
     season_number = request.data.get('season_number')
 
-    if not all([tmdb_id, season_number]):
+    if any(value is None for value in (tmdb_id, season_number)):
         return Response({'detail': 'tmdb_id and season_number are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
