@@ -4,7 +4,7 @@
     <main>
       <RouterView v-slot="{ Component }">
         <Transition name="fade">
-          <component :is="Component" />
+          <component :is="Component" :key="$route.fullPath" />
         </Transition>
       </RouterView>
     </main>
