@@ -34,7 +34,7 @@ dev = [
 [tool.ruff]
 line-length = 120
 target-version = "py314"
-exclude = ["migrations", ".venv"]
+exclude = ["migrations", ".venv", "manage.py"]
 src = ["src"]
 
 [tool.ruff.lint]
@@ -47,7 +47,7 @@ python_version = "3.14"
 warn_unused_ignores = true
 warn_redundant_casts = true
 ignore_missing_imports = true
-exclude = "(^|/)(migrations|\\.venv)/"
+exclude = "(^|/)(migrations|\\.venv)/|(^|/)manage\\.py$"
 plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
 
 [tool.django-stubs]
