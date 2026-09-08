@@ -368,6 +368,7 @@ class TMDBService:
         for ep_data in data.get('episodes', []):
             episode_number = ep_data['episode_number']
             episode = self._upsert_episode_record(season, ep_data)
+            broadcast_start = None
             remote_ep = episodes_by_number.get((season_number, episode_number))
             if remote_ep is None:
                 remote_ep = episodes_by_name_date.get((self._normalize_title(ep_data.get('name')), ep_data.get('air_date')))
@@ -379,9 +380,15 @@ class TMDBService:
                 if tvmaze_payload:
                     episode.external_ids = dict(episode.external_ids or {})
                     episode.external_ids['tvmaze_id'] = remote_ep.get('id')
-                    episode.broadcast_start = tvmaze_payload.get('broadcast_start')
+                    broadcast_start = tvmaze_payload.get('broadcast_start')
+                    if not remote_ep.get('airtime'):
+                        broadcast_start = tvmaze.parse_show_schedule_datetime(tvmaze_show, ep_data.get('air_date'))
                     episode.runtime = episode.runtime or tvmaze_payload.get('runtime')
-                    episode.save(update_fields=['external_ids', 'broadcast_start', 'runtime'])
+            elif tvmaze_show:
+                broadcast_start = tvmaze.parse_show_schedule_datetime(tvmaze_show, ep_data.get('air_date'))
+
+            episode.broadcast_start = broadcast_start
+            episode.save(update_fields=['external_ids', 'broadcast_start', 'runtime'])
 
             if sync_episode_credits:
                 self._sync_episode_credits_safely(show, season_number, episode_number, use_cache)
@@ -425,6 +432,8 @@ class TMDBService:
         context = context if context is not None else {season.season_number: (tvmaze_show, tvmaze_episodes or [])}
         if season.season_number not in context:
             resolved = self._resolve_tvmaze_season(show, season)
+            if resolved is None and show.external_ids.get('tvmaze_id'):
+                resolved = tvmaze.lookup_show_by_id(show.external_ids['tvmaze_id'])
             context[season.season_number] = (resolved, tvmaze.get_show_episodes(resolved['id']) if resolved else [])
         resolved, episodes = context[season.season_number]
         if resolved and resolved.get('id'):

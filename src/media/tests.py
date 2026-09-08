@@ -123,6 +123,17 @@ class MediaTests(TestCase):
         self.assertIsNotNone(broadcast_start)
         self.assertTrue(timezone.is_aware(broadcast_start))
 
+    def test_tvmaze_parses_show_schedule_for_episode_fallback(self):
+        broadcast_start = TVMazeService.parse_show_schedule_datetime(
+            {
+                'schedule': {'time': '22:30'},
+                'network': {'country': {'timezone': 'Asia/Tokyo'}},
+            },
+            '2026-09-09',
+        )
+
+        self.assertEqual(broadcast_start.isoformat(), '2026-09-09T22:30:00+09:00')
+
     @patch.object(TVMazeService, '_request')
     def test_tvmaze_lookup_prefers_external_ids(self, mock_request):
         mock_request.return_value = {'id': 101, 'name': 'Matched Show'}
@@ -299,6 +310,104 @@ class MediaTests(TestCase):
         self.assertEqual(season.external_ids['tvmaze_id'], 80375)
         self.assertEqual(episode.external_ids['tvmaze_id'], 3691961)
         self.assertEqual(episode.local_broadcast_datetime.strftime('%H:%M'), '16:00')
+
+    def test_unmatched_episode_uses_tvmaze_show_schedule(self):
+        show = TVShow.objects.create(tmdb_id=65942, name='Re:ZERO -Starting Life in Another World-')
+        tmdb._upsert_season(
+            show,
+            1,
+            {
+                'id': 6594201,
+                'season_number': 1,
+                'name': 'Season 1',
+                'air_date': '2016-04-04',
+                'episodes': [{
+                    'id': 659420101,
+                    'episode_number': 82,
+                    'name': 'Episode 82',
+                    'air_date': '2026-09-09',
+                }],
+            },
+            sync_episode_credits=False,
+            tvmaze_show={
+                'id': 14459,
+                'schedule': {'time': '22:30'},
+                'network': {'country': {'timezone': 'Asia/Tokyo'}},
+            },
+            tvmaze_episodes=[],
+        )
+
+        episode = show.seasons.get(season_number=1).episodes.get(episode_number=82)
+        self.assertEqual(episode.external_ids, {})
+        self.assertEqual(episode.local_broadcast_datetime.isoformat(), '2026-09-09T15:30:00+02:00')
+
+    def test_matched_episode_without_tvmaze_airtime_uses_show_schedule(self):
+        show = TVShow.objects.create(tmdb_id=65942, name='Re:ZERO -Starting Life in Another World-')
+        tmdb._upsert_season(
+            show,
+            1,
+            {
+                'id': 6594201,
+                'season_number': 1,
+                'name': 'Season 1',
+                'air_date': '2016-04-04',
+                'episodes': [{'id': 659420101, 'episode_number': 1, 'name': 'Episode 1', 'air_date': '2016-04-04'}],
+            },
+            sync_episode_credits=False,
+            tvmaze_show={
+                'id': 14459,
+                'schedule': {'time': '22:30'},
+                'network': {'country': {'timezone': 'Asia/Tokyo'}},
+            },
+            tvmaze_episodes=[{'id': 1, 'season': 1, 'number': 1, 'name': 'Episode 1', 'airdate': '2016-04-04', 'airtime': ''}],
+        )
+
+        episode = show.seasons.get(season_number=1).episodes.get(episode_number=1)
+        self.assertEqual(episode.local_broadcast_datetime.isoformat(), '2016-04-04T15:30:00+02:00')
+
+    def test_season_context_falls_back_to_parent_tvmaze_show(self):
+        show = TVShow.objects.create(
+            tmdb_id=65942,
+            name='Re:ZERO -Starting Life in Another World-',
+            external_ids={'tvmaze_id': 14459},
+        )
+        season = show.seasons.create(tmdb_id=6594201, season_number=1, name='Season 1')
+        with patch.object(tmdb, '_resolve_tvmaze_season', return_value=None), patch.object(
+            tvmaze, 'lookup_show_by_id', return_value={'id': 14459}
+        ) as lookup, patch.object(tvmaze, 'get_show_episodes', return_value=[]):
+            resolved, episodes = tmdb._season_tvmaze_context(show, season, {}, None, None)
+
+        self.assertEqual(resolved['id'], 14459)
+        self.assertEqual(episodes, [])
+        lookup.assert_called_once_with(14459)
+
+    def test_sync_overwrites_existing_episode_broadcast_start(self):
+        show = TVShow.objects.create(tmdb_id=65942, name='Re:ZERO -Starting Life in Another World-')
+        season = show.seasons.create(tmdb_id=6594201, season_number=1, name='Season 1')
+        season.episodes.create(
+            tmdb_id=659420101,
+            episode_number=1,
+            name='Episode 1',
+            air_date='2016-04-04',
+            broadcast_start=timezone.make_aware(timezone.datetime(2016, 4, 4, 0, 0)),
+        )
+
+        tmdb._upsert_season(
+            show,
+            1,
+            {
+                'id': 6594201,
+                'season_number': 1,
+                'name': 'Season 1',
+                'episodes': [{'id': 659420101, 'episode_number': 1, 'name': 'Episode 1', 'air_date': '2016-04-04'}],
+            },
+            sync_episode_credits=False,
+            tvmaze_show={'id': 14459, 'schedule': {'time': '22:30'}, 'network': {'country': {'timezone': 'Asia/Tokyo'}}},
+            tvmaze_episodes=[],
+        )
+
+        episode = season.episodes.get(episode_number=1)
+        self.assertEqual(episode.local_broadcast_datetime.isoformat(), '2016-04-04T15:30:00+02:00')
 
     def tearDown(self):
         self.tmdb_patcher.stop()

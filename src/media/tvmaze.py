@@ -133,6 +133,22 @@ class TVMazeService:
         return timezone.make_aware(naive, tz)
 
     @staticmethod
+    def parse_show_schedule_datetime(show, air_date):
+        if not isinstance(show, dict):
+            return None
+        schedule = show.get('schedule') or {}
+        air_time = schedule.get('time') or ''
+        if not air_time:
+            return None
+        return TVMazeService.parse_air_datetime(
+            air_date,
+            air_time,
+            (show.get('network') or {}).get('country', {}).get('timezone')
+            or (show.get('webChannel') or {}).get('country', {}).get('timezone')
+            or '',
+        )
+
+    @staticmethod
     def normalize_episode_from_tvmaze(show, episode):
         if not isinstance(episode, dict):
             return None
