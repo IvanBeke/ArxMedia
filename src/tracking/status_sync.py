@@ -2,8 +2,9 @@ from datetime import datetime
 from functools import partial
 
 from django.db import transaction
-from django.db.models import Count, DateTimeField, Max, Min
+from django.db.models import Count, DateTimeField, Max, Min, Q
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 from media.models import Episode, TVShow
 
 from .choices import MediaType, TvShowStatus, WatchEntryMediaType
@@ -15,7 +16,20 @@ FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
 def _percent(watched_count: int, total_count: int) -> int:
     if total_count <= 0:
         return 0
-    return round((watched_count / total_count) * 100)
+    return min(100, watched_count * 100 // total_count)
+
+
+def _released_episode_keys(tmdb_id: int) -> set[tuple[int, int]]:
+    now = timezone.now()
+    return set(
+        Episode.objects.filter(
+            season__show__tmdb_id=tmdb_id,
+            season__season_number__gt=0,
+        ).filter(
+            Q(broadcast_start__lte=now)
+            | Q(broadcast_start__isnull=True, air_date__lte=now.date())
+        ).values_list('season__season_number', 'episode_number')
+    )
 
 
 def _is_final_tmdb_show_status(tmdb_id: int) -> bool:
@@ -41,11 +55,7 @@ def refresh_show_status(user_id: int, tmdb_id: int):
     watched_episodes = watched_data.get('watched_episodes') or 0
     first_watched_at = watched_data.get('first_watched_at')
     last_watched_at = watched_data.get('last_watched_at')
-
-    total_episodes = Episode.objects.filter(
-        season__show__tmdb_id=tmdb_id,
-        season__season_number__gt=0,
-    ).count()
+    total_episodes = len(_released_episode_keys(tmdb_id))
 
     dropped_at = existing.dropped_at if existing else None
 

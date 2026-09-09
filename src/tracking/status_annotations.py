@@ -1,5 +1,6 @@
-from django.db.models import Count, DateTimeField, Max, Min
+from django.db.models import Count, DateTimeField, Max, Min, Q
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 from media.models import Episode, TVShow
 
 from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType
@@ -11,7 +12,7 @@ FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
 def _percent(watched_count: int, total_count: int) -> int:
     if total_count <= 0:
         return 0
-    return round((watched_count / total_count) * 100)
+    return min(100, watched_count * 100 // total_count)
 
 
 def _as_int(value):
@@ -158,6 +159,16 @@ def annotate_season_user_status(user, season_items):
     tmdb_ids = {tmdb_id for tmdb_id, _ in normalized_items}
     season_numbers = {season_number for _, season_number in normalized_items}
 
+    now = timezone.now()
+    released_episode_keys = set(
+        Episode.objects.filter(
+            season__show__tmdb_id__in=tmdb_ids,
+            season__season_number__in=season_numbers,
+        ).filter(
+            Q(broadcast_start__lte=now)
+            | Q(broadcast_start__isnull=True, air_date__lte=now.date())
+        ).values_list('season__show__tmdb_id', 'season__season_number', 'episode_number')
+    )
     watched_rows = WatchEntry.objects.filter(
         user=user,
         media_type=WatchEntryMediaType.EPISODE,
@@ -175,19 +186,10 @@ def annotate_season_user_status(user, season_items):
     )
     watched_map = {(row['tmdb_id'], row['season_number']): row for row in watched_rows}
 
-    total_rows = Episode.objects.filter(
-        season__show__tmdb_id__in=tmdb_ids,
-        season__season_number__in=season_numbers,
-    ).values(
-        'season__show__tmdb_id',
-        'season__season_number',
-    ).annotate(
-        total_episodes=Count('id')
-    )
-    total_map = {
-        (row['season__show__tmdb_id'], row['season__season_number']): row['total_episodes']
-        for row in total_rows
-    }
+    total_map = {}
+    for tmdb_id, season_number, _ in released_episode_keys:
+        key = (tmdb_id, season_number)
+        total_map[key] = total_map.get(key, 0) + 1
 
     final_show_ids = {
         tmdb_id

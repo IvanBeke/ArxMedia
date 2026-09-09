@@ -107,6 +107,33 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(status_row.watched_episodes, 1)
         self.assertEqual(UserMediaStatus.objects.planning().count(), 0)
 
+    def test_show_progress_uses_released_episodes_and_floors_percentage(self):
+        show = TVShow.objects.create(tmdb_id=889, name='Released Progress Show')
+        season = Season.objects.create(show=show, tmdb_id=890, season_number=1, name='Season 1')
+        yesterday = timezone.now().date() - timedelta(days=1)
+        tomorrow = timezone.now().date() + timedelta(days=1)
+        for episode_number, air_date in ((1, yesterday), (2, yesterday), (3, yesterday), (4, tomorrow), (5, None)):
+            Episode.objects.create(
+                season=season,
+                tmdb_id=8900 + episode_number,
+                episode_number=episode_number,
+                name=f'Episode {episode_number}',
+                air_date=air_date,
+            )
+
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=show.tmdb_id,
+            season_number=1,
+            episode_number=1,
+        )
+
+        status_row = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=show.tmdb_id)
+        self.assertEqual(status_row.watched_episodes, 1)
+        self.assertEqual(status_row.total_episodes, 3)
+        self.assertEqual(status_row.progress_percent, 33)
+
     def test_drop_media_tv(self):
         WatchEntry.objects.create(
             user=self.user, media_type='episode', tmdb_id=789,
@@ -1003,7 +1030,7 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(item['episodes_left'], 2)
         self.assertEqual(item['runtime_left_minutes'], 30)
         self.assertEqual(item['runtime_left_has_unknown'], True)
-        self.assertEqual(item['progress_percent'], 25)
+        self.assertEqual(item['progress_percent'], 33)
 
     def test_up_next_season_boundary(self):
         # Create season 1 and 2 with episodes
