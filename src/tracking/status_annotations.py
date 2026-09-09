@@ -165,7 +165,8 @@ def annotate_season_user_status(user, season_items):
             season__show__tmdb_id__in=tmdb_ids,
             season__season_number__in=season_numbers,
         ).filter(
-            Q(broadcast_start__lte=now)
+            Q(season__season_number=0)
+            | Q(broadcast_start__lte=now)
             | Q(broadcast_start__isnull=True, air_date__lte=now.date())
         ).values_list('season__show__tmdb_id', 'season__season_number', 'episode_number')
     )

@@ -61,10 +61,8 @@ def refresh_show_status(user_id: int, tmdb_id: int):
 
     is_final = _is_final_tmdb_show_status(tmdb_id)
     if watched_episodes > 0:
-        if total_episodes == 0 and is_final or watched_episodes >= total_episodes and is_final:
+        if total_episodes > 0 and watched_episodes >= total_episodes and is_final:
             candidate_status = TvShowStatus.WATCHED
-        elif total_episodes == 0 and not is_final or watched_episodes >= total_episodes and not is_final:
-            candidate_status = TvShowStatus.WATCHING
         else:
             candidate_status = TvShowStatus.WATCHING
     else:
@@ -89,7 +87,7 @@ def refresh_show_status(user_id: int, tmdb_id: int):
         return
 
     completed_at = None
-    if watched_episodes > 0 and is_final and (total_episodes == 0 or watched_episodes >= total_episodes):
+    if watched_episodes > 0 and total_episodes > 0 and is_final and watched_episodes >= total_episodes:
         completed_at = last_watched_at
 
     UserMediaStatus.objects.update_or_create(

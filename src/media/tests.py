@@ -874,7 +874,7 @@ class MediaTests(TestCase):
         response = self.client.get('/api/media/popular/?type=tv')
         self.assertEqual(response.data['results'][0]['user_status']['status'], 'watching')
 
-        # Watch remaining non-special -> watched
+        # Undated episodes are not released, so the show remains watching.
         WatchEntry.objects.create(
             user=self.user,
             media_type='episode',
@@ -892,7 +892,7 @@ class MediaTests(TestCase):
             watched_at='2026-08-04T10:00:00Z',
         )
         response = self.client.get('/api/media/popular/?type=tv')
-        self.assertEqual(response.data['results'][0]['user_status']['status'], 'watched')
+        self.assertEqual(response.data['results'][0]['user_status']['status'], 'watching')
 
     def test_season_detail_includes_season_zero_own_progress(self):
         show = TVShow.objects.create(tmdb_id=404, name='Show B', number_of_seasons=1, number_of_episodes=2)
