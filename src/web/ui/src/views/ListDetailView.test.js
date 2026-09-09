@@ -164,6 +164,145 @@ describe('ListDetailView custom_order', () => {
     expect(reorderList).toHaveBeenCalledWith('1', [12, 11, 10])
   })
 
+  it('moves a lifted card while the pointer is dragged', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = wrapper.findAll('button').find((b) => b.text().includes('Reorder'))
+    await reorderBtn.trigger('click')
+    await flushPromises()
+
+    const cards = wrapper.findAll('[data-reorder-id]')
+    const sourceCard = cards.find((card) => card.attributes('data-reorder-id') === '10')
+    cards.forEach((card, index) => {
+      card.element.getBoundingClientRect = () => ({
+        left: index * 120,
+        top: 0,
+        width: 100,
+        height: 160,
+        right: index * 120 + 100,
+        bottom: 160,
+      })
+    })
+    const handle = sourceCard.find('.reorder-handle')
+    handle.element.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      width: 100,
+      height: 160,
+      right: 100,
+      bottom: 160,
+    })
+
+    const pointerDown = new Event('pointerdown', { bubbles: true })
+    Object.defineProperties(pointerDown, {
+      button: { value: 0 },
+      clientX: { value: 20 },
+      clientY: { value: 40 },
+    })
+    handle.element.dispatchEvent(pointerDown)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.drag-preview').exists()).toBe(true)
+
+    const pointerMove = new Event('pointermove')
+    Object.defineProperties(pointerMove, {
+      clientX: { value: 250 },
+      clientY: { value: 40 },
+    })
+    window.dispatchEvent(pointerMove)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.drag).toBeTruthy()
+    expect(wrapper.vm.reorderDisplayItems.map((item) => item.id)).toEqual([11, 12, 10])
+
+    window.dispatchEvent(new Event('pointerup'))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.drag-preview').exists()).toBe(false)
+    expect(wrapper.vm.items.map((item) => item.id)).toEqual([11, 12, 10])
+  })
+
+  it('keeps row changes ordered by the pointer position within the target row', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = wrapper.findAll('button').find((b) => b.text().includes('Reorder'))
+    await reorderBtn.trigger('click')
+    await flushPromises()
+
+    wrapper.vm.items = [
+      { id: 10, media_type: 'movie', tmdb_id: 101 },
+      { id: 11, media_type: 'movie', tmdb_id: 102 },
+      { id: 12, media_type: 'movie', tmdb_id: 103 },
+      { id: 13, media_type: 'movie', tmdb_id: 104 },
+      { id: 14, media_type: 'movie', tmdb_id: 105 },
+      { id: 15, media_type: 'movie', tmdb_id: 106 },
+    ]
+    await wrapper.vm.$nextTick()
+    const cards = wrapper.findAll('[data-reorder-id]')
+    cards.forEach((card, index) => {
+      const row = index < 2 ? 0 : 180
+      const column = index % 2
+      card.element.getBoundingClientRect = () => ({
+        left: column * 120,
+        top: row,
+        width: 100,
+        height: 160,
+        right: column * 120 + 100,
+        bottom: row + 160,
+      })
+    })
+    const handle = cards[0].find('.reorder-handle')
+    handle.element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 160, right: 100, bottom: 160 })
+
+    const pointerDown = new Event('pointerdown', { bubbles: true })
+    Object.defineProperties(pointerDown, { button: { value: 0 }, clientX: { value: 20 }, clientY: { value: 40 } })
+    handle.element.dispatchEvent(pointerDown)
+    await wrapper.vm.$nextTick()
+
+    const pointerMove = new Event('pointermove')
+    Object.defineProperties(pointerMove, { clientX: { value: 20 }, clientY: { value: 220 } })
+    window.dispatchEvent(pointerMove)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.reorderDisplayItems.map((item) => item.id)).toEqual([11, 10, 12])
+    window.dispatchEvent(new Event('pointerup'))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.items.map((item) => item.id)).toEqual([11, 10, 12])
+  })
+
+  it('can jump over more than one row', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = wrapper.findAll('button').find((b) => b.text().includes('Reorder'))
+    await reorderBtn.trigger('click')
+    await flushPromises()
+
+    const cards = wrapper.findAll('[data-reorder-id]')
+    cards.forEach((card, index) => {
+      const row = Math.floor(index / 2) * 180
+      const column = index % 2
+      card.element.getBoundingClientRect = () => ({
+        left: column * 120,
+        top: row,
+        width: 100,
+        height: 160,
+        right: column * 120 + 100,
+        bottom: row + 160,
+      })
+    })
+    const handle = cards[0].find('.reorder-handle')
+    handle.element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 160, right: 100, bottom: 160 })
+
+    const pointerDown = new Event('pointerdown', { bubbles: true })
+    Object.defineProperties(pointerDown, { button: { value: 0 }, clientX: { value: 20 }, clientY: { value: 40 } })
+    handle.element.dispatchEvent(pointerDown)
+    await wrapper.vm.$nextTick()
+
+    const pointerMove = new Event('pointermove')
+    Object.defineProperties(pointerMove, { clientX: { value: 20 }, clientY: { value: 400 } })
+    window.dispatchEvent(pointerMove)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.reorderDisplayItems.map((item) => item.id)).toEqual([11, 12, 10])
+    window.dispatchEvent(new Event('pointerup'))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.items.map((item) => item.id)).toEqual([11, 12, 10])
+  })
+
   it('Cancel discards without saving', async () => {
     const wrapper = await mountView()
     await flushPromises()

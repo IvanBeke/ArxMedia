@@ -130,33 +130,35 @@
         />
       </section>
 
-      <section v-if="items.length && reorderMode" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+       <TransitionGroup
+         v-if="items.length && reorderMode"
+         name="reorder-move"
+         tag="section"
+         data-reorder-grid
+          :class="{ 'reorder-motion': drag }"
+         class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
+       >
         <div
-          v-for="(item, index) in items"
-          :key="item.id"
-          :data-reorder-id="String(item.id)"
-          class="reorder-card group relative select-none"
-          :class="{ 'opacity-100 ring-2 ring-white shadow-2xl scale-[1.03] z-20 brightness-110': dragId === item.id, 'ring-2 ring-brand-400 bg-brand-500/15 shadow-xl scale-[1.02] z-10': dragOverIndex === index && dragId !== item.id }"
-          @dragover.prevent="onDragOver(index)"
-          @dragenter.prevent="onDragOver(index)"
-          @drop.prevent="onDrop(index)"
-          @dragend="onDragEnd"
-        >
-          <div
+           v-for="(item, index) in reorderDisplayItems"
+           :key="item.id"
+           :data-reorder-id="String(item.id)"
+           class="reorder-card group relative select-none"
+           :style="drag?.id === item.id ? { height: `${drag.height}px` } : undefined"
+           :class="{ 'drag-placeholder': drag?.id === item.id }"
+         >
+           <div
             class="reorder-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 inline-flex items-center justify-center gap-2 rounded-full bg-surface-900/85 backdrop-blur border border-white/30 px-6 py-3 text-base font-bold text-white shadow-2xl cursor-grab active:cursor-grabbing"
-            draggable="true"
-            @dragstart="onDragStart(item, $event)"
-            @dragend="onDragEnd"
-            @dragover.prevent="onDragOver(index)"
-            @dragenter.prevent="onDragOver(index)"
-            @drop.prevent="onDrop(index)"
+             role="button"
+             tabindex="0"
+             :aria-label="`Drag ${item.title || 'media item'}, position ${index + 1}`"
+              data-reorder-handle
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
             </svg>
             #{{ index + 1 }}
           </div>
-          <div class="reorder-card-content pointer-events-none">
+           <div class="reorder-card-content pointer-events-none">
             <MediaCard
               :item="item"
               :media-type="item.media_type"
@@ -168,7 +170,29 @@
             />
           </div>
         </div>
-      </section>
+       </TransitionGroup>
+
+       <div
+         v-if="drag"
+         class="drag-preview"
+         :style="{ width: `${drag.width}px`, height: `${drag.height}px`, transform: `translate3d(${drag.position.x}px, ${drag.position.y}px, 0)` }"
+         aria-hidden="true"
+       >
+         <MediaCard
+           :item="drag.item"
+           :media-type="drag.item.media_type"
+           hide-watchlist-action
+           hide-watched-action
+           :show-list-remove-action="false"
+           :list-context-id="route.params.id"
+         />
+         <div class="drag-preview-handle inline-flex items-center justify-center gap-2 rounded-full bg-surface-900/85 backdrop-blur border border-white/30 px-6 py-3 text-base font-bold text-white shadow-2xl">
+           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+           </svg>
+           #{{ (drag.targetIndex ?? 0) + 1 }}
+         </div>
+       </div>
 
       <PaginationControls
         v-if="!loading && !reorderMode"
@@ -373,7 +397,7 @@
 </template>
 
 <script setup>
-import { nextTick, ref, onMounted, computed, watch } from 'vue'
+import { nextTick, ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authAPI, trackingAPI, mediaAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
@@ -388,6 +412,9 @@ import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
+import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { attachClosestEdge, extractClosestEdge } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
+import { reorder } from '@atlaskit/pragmatic-drag-and-drop/reorder'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const route = useRoute()
@@ -439,8 +466,8 @@ const currentPage = useQueryPageSync(route)
 const hydrated = ref(false)
 const reorderMode = ref(false)
 const savingOrder = ref(false)
-const dragId = ref(null)
-const dragOverIndex = ref(null)
+const drag = ref(null)
+const dragCleanup = ref([])
 const hasReordered = ref(false)
 const originalOrderIds = ref([])
 
@@ -465,6 +492,14 @@ const canEdit = computed(() => {
 const canReorder = computed(() => {
   if (!canEdit.value) return false
   return items.value.length > 0
+})
+
+const reorderDisplayItems = computed(() => {
+  if (!drag.value || drag.value.targetIndex === drag.value.sourceIndex) return items.value
+  const next = items.value.filter((item) => item.id !== drag.value.id)
+  const [moved] = items.value.filter((item) => item.id === drag.value.id)
+  next.splice(drag.value.targetIndex, 0, moved)
+  return next
 })
 
 const hasActiveFilters = computed(() => {
@@ -646,14 +681,16 @@ async function enterReorderMode() {
   currentPage.value = 1
   await loadAllItemsForReorder()
   originalOrderIds.value = items.value.map((i) => i.id)
+  await nextTick()
+  setupReorderDnD()
 }
 
 async function exitReorderMode() {
   if (savingOrder.value) return
+  cleanupReorderDnD()
   if (!hasReordered.value) {
     reorderMode.value = false
-    dragId.value = null
-    dragOverIndex.value = null
+    drag.value = null
     hasReordered.value = false
     await loadItems()
     return
@@ -661,8 +698,7 @@ async function exitReorderMode() {
   const ok = await persistOrder()
   if (ok) {
     reorderMode.value = false
-    dragId.value = null
-    dragOverIndex.value = null
+    drag.value = null
     await loadItems()
   }
   // on failure stay in reorderMode so user can retry or Cancel
@@ -670,9 +706,9 @@ async function exitReorderMode() {
 
 function cancelReorderMode() {
   if (savingOrder.value) return
+  cleanupReorderDnD()
   reorderMode.value = false
-  dragId.value = null
-  dragOverIndex.value = null
+  drag.value = null
   hasReordered.value = false
   // restore original order locally without server call, then reload to ensure consistency
   if (originalOrderIds.value.length) {
@@ -688,63 +724,66 @@ function cancelReorderMode() {
   loadItems()
 }
 
-function onDragStart(item, event) {
-  dragId.value = item.id
-  dragOverIndex.value = null
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', String(item.id))
-  }
+function cleanupReorderDnD() {
+  dragCleanup.value.splice(0).forEach((cleanup) => cleanup())
+  drag.value = null
 }
 
-function onDragOver(index) {
-  if (dragId.value == null) return
-  dragOverIndex.value = index
-}
-
-function onDragEnd() {
-  dragId.value = null
-  dragOverIndex.value = null
-}
-
-function onDrop(targetIndex) {
-  const fromId = dragId.value
-  dragOverIndex.value = null
-  if (fromId == null) return
-  const fromIndex = items.value.findIndex((i) => i.id === fromId)
-  if (fromIndex === -1 || fromIndex === targetIndex) {
-    dragId.value = null
-    return
-  }
-  // FLIP: capture first positions before DOM update
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const firstEls = prefersReduced ? [] : [...document.querySelectorAll('[data-reorder-id]')]
-  const firstPos = new Map(firstEls.map((el) => [el.getAttribute('data-reorder-id'), el.getBoundingClientRect()]))
-
-  const next = [...items.value]
-  const [moved] = next.splice(fromIndex, 1)
-  next.splice(targetIndex, 0, moved)
-  items.value = next
-  dragId.value = null
-  hasReordered.value = true
-
-  if (prefersReduced || !firstPos.size) return
-  nextTick(() => {
-    const lastEls = [...document.querySelectorAll('[data-reorder-id]')]
-    for (const el of lastEls) {
-      const id = el.getAttribute('data-reorder-id')
-      const first = firstPos.get(id)
-      if (!first) continue
-      const last = el.getBoundingClientRect()
-      const dx = first.left - last.left
-      const dy = first.top - last.top
-      if (dx === 0 && dy === 0) continue
-      el.animate(
-        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
-        { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' }
-      )
-    }
+function setupReorderDnD() {
+  cleanupReorderDnD()
+  const grid = document.querySelector('[data-reorder-grid]')
+  if (!grid) return
+  const itemById = new Map(items.value.map((item) => [String(item.id), item]))
+  const cleanups = [...grid.querySelectorAll('[data-reorder-id]')].flatMap((card) => {
+    const item = itemById.get(card.dataset.reorderId)
+    const handle = card.querySelector('[data-reorder-handle]')
+    if (!item || !handle) return []
+    return [
+      draggable({ element: handle, getInitialData: () => ({ id: item.id }) }),
+      dropTargetForElements({
+        element: card,
+        canDrop: ({ source }) => source.data.id !== item.id,
+        getData: ({ input, element }) => attachClosestEdge(
+          { id: item.id },
+          { input, element, allowedEdges: ['top', 'bottom'] },
+        ),
+      }),
+    ]
   })
+  cleanups.push(monitorForElements({
+    onDragStart: ({ source }) => {
+      const item = itemById.get(String(source.data.id))
+      const card = grid.querySelector(`[data-reorder-id="${source.data.id}"]`)
+      const rect = card?.getBoundingClientRect()
+      if (!item || !rect) return
+      const sourceIndex = items.value.findIndex((candidate) => candidate.id === item.id)
+      drag.value = { id: item.id, item, sourceIndex, targetIndex: sourceIndex, width: rect.width, height: rect.height, position: { x: rect.left, y: rect.top } }
+    },
+    onDrag: ({ location }) => {
+      if (!drag.value) return
+      const input = location.current.input
+      drag.value.position = { x: input.clientX - drag.value.width / 2, y: input.clientY - drag.value.height / 2 }
+      const target = location.current.dropTargets[0]
+      if (!target) return
+      const withoutDragged = items.value.filter((item) => item.id !== drag.value.id)
+      const targetPosition = withoutDragged.findIndex((item) => item.id === target.data.id)
+      if (targetPosition < 0) return
+      const edge = extractClosestEdge(target.data)
+      const insertionIndex = targetPosition + (edge === 'bottom' ? 1 : 0)
+      if (drag.value.targetIndex !== insertionIndex) {
+        drag.value.targetIndex = insertionIndex
+        hasReordered.value = true
+      }
+    },
+    onDrop: () => {
+      if (drag.value) {
+        const finishIndex = Math.min(drag.value.targetIndex, items.value.length - 1)
+        items.value = reorder({ list: items.value, startIndex: drag.value.sourceIndex, finishIndex })
+      }
+      drag.value = null
+    },
+  }))
+  dragCleanup.value = cleanups
 }
 
 async function persistOrder() {
@@ -948,6 +987,10 @@ onMounted(async () => {
   if (!hydrated.value) hydrated.value = true
 })
 
+onBeforeUnmount(() => {
+  cleanupReorderDnD()
+})
+
 watch(
   [appliedFilters, currentPage, hydrated],
   async () => {
@@ -965,16 +1008,47 @@ watch(
   max-height: calc(100vh - 2rem);
 }
 .reorder-card {
-  cursor: grab;
-  transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s;
+  transition: opacity 0.15s, box-shadow 0.15s;
 }
-.reorder-card:active {
-  cursor: grabbing;
+.reorder-motion .reorder-move-move {
+  transition: transform 0.18s cubic-bezier(.2,.8,.2,1);
 }
 .reorder-handle {
   cursor: grab;
+  touch-action: none;
 }
 .reorder-handle:active {
   cursor: grabbing;
+}
+.drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  pointer-events: none;
+  transform-origin: top left;
+  filter: drop-shadow(0 22px 20px rgb(0 0 0 / 0.35));
+  opacity: 0.94;
+  will-change: transform;
+  overflow: visible;
+}
+.drag-preview-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+.drag-placeholder {
+  min-height: 1px;
+  pointer-events: none;
+  border: 1px dashed rgb(139 92 246 / 0.45);
+  border-radius: 0.5rem;
+  background: rgb(139 92 246 / 0.08);
+}
+.drag-placeholder .reorder-handle,
+.drag-placeholder .reorder-card-content {
+  visibility: hidden;
 }
 </style>
