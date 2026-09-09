@@ -187,7 +187,6 @@ class WatchEntryTests(BaseTestCase):
             tmdb_id=50010,
             season_number=1,
             name='Season 1',
-            episode_count=1,
         )
         Episode.objects.create(
             season=season,
@@ -463,7 +462,6 @@ class WatchlistTests(BaseTestCase):
             tmdb_id=3202,
             season_number=1,
             name='Season 1',
-            episode_count=2,
         )
         Episode.objects.create(season=season, tmdb_id=32021, episode_number=1, name='Episode 1', runtime=45)
         Episode.objects.create(season=season, tmdb_id=32022, episode_number=2, name='Episode 2', runtime=50)

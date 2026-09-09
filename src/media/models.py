@@ -92,8 +92,6 @@ class Season(models.Model):
     name = models.CharField(max_length=200)
     overview = models.TextField(blank=True)
     poster_path = models.CharField(max_length=200, blank=True)
-    air_date = models.DateField(null=True, blank=True)
-    episode_count = models.IntegerField(default=0)
     external_ids = models.JSONField(default=dict, blank=True)
 
     class Meta:
@@ -101,6 +99,14 @@ class Season(models.Model):
 
     def __str__(self):
         return f'{self.show.name} - Season {self.season_number}'
+
+    @property
+    def episode_count(self):
+        return self.episodes.count()
+
+    @property
+    def air_date(self):
+        return self.episodes.order_by('episode_number').values_list('air_date', flat=True).first()
 
     @property
     def poster_url(self):

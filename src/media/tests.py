@@ -575,7 +575,6 @@ class MediaTests(TestCase):
             name='Season 1',
             overview='Stored season overview',
             poster_path='/stored-season.jpg',
-            episode_count=10,
         )
         Episode.objects.create(
             season=season,
