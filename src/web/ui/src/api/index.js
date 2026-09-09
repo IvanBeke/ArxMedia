@@ -51,7 +51,8 @@ async function refreshAccessToken(origin) {
     refreshSubscribers = []
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
-    window.location.href = '/login'
+    const redirect = `${window.location.pathname}${window.location.search}`
+    window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`
     throw error
   } finally {
     isRefreshing = false

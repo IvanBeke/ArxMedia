@@ -53,6 +53,12 @@ const form = ref({ username: '', password: '' })
 
 async function submit() {
   const ok = await auth.login(form.value)
-  if (ok) router.push(route.query.redirect || '/dashboard')
+  if (ok) {
+    const redirect = route.query.redirect
+    const destination = typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
+      ? redirect
+      : '/dashboard'
+    router.push(destination)
+  }
 }
 </script>

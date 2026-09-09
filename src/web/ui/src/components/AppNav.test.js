@@ -60,4 +60,17 @@ describe('AppNav', () => {
     await wrapper.findAll('a[href="/watchlist"]').at(-1).trigger('click')
     expect(wrapper.vm.showMobileMenu).toBe(false)
   })
+
+  it('logs out and returns to the home view', async () => {
+    const auth = useAuthStore()
+    auth.user = { username: 'alex' }
+    const wrapper = mountAppNav()
+
+    await wrapper.find('button[aria-label="Open navigation menu"]').trigger('click')
+    await wrapper.findAll('.mobile-nav-link').at(-1).trigger('click')
+    await wrapper.vm.$router.isReady()
+
+    expect(auth.user).toBe(null)
+    expect(wrapper.vm.$router.currentRoute.value.path).toBe('/')
+  })
 })
