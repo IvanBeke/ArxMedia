@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  app-quality:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -28,8 +28,38 @@ jobs:
           cp .env.example .env
           printf '\nDEBUG=True\nALLOWED_HOSTS=localhost,127.0.0.1,app,testserver\n' >> .env
 
-      - name: Build and start services
-        run: docker compose up -d --build
+      - name: Build app image
+        run: docker compose build app
+
+      - name: App lint (ruff)
+        run: docker compose run --rm --no-deps --entrypoint sh app -lc "uv run --extra dev ruff check ."
+
+      - name: App typecheck (mypy)
+        run: docker compose run --rm --no-deps --entrypoint sh app -lc "uv run --extra dev mypy ."
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  app-tests:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Prepare environment file
+        run: |
+          cp .env.example .env
+          printf '\nDEBUG=True\nALLOWED_HOSTS=localhost,127.0.0.1,app,testserver\n' >> .env
+
+      - name: Build and start test services
+        run: docker compose up -d --build db redis app
 
       - name: Apply migrations
         run: docker compose exec -T app python manage.py migrate --noinput
@@ -37,21 +67,36 @@ jobs:
       - name: Migration status
         run: docker compose exec -T app python manage.py showmigrations
 
-      - name: App lint (ruff)
-        run: docker compose exec -T app uv run --extra dev ruff check .
-
-      - name: App lint (mypy)
-        run: docker compose exec -T app uv run --extra dev mypy .
-
       - name: App tests
         run: docker compose exec -T app python manage.py test
-
-      - name: UI tests
-        run: docker compose exec -T ui sh -lc "pnpm test"
-
-      - name: UI typecheck
-        run: docker compose exec -T ui sh -lc "pnpm typecheck"
 
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  ui:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: UI typecheck
+        run: >-
+          docker compose run --rm --no-deps --entrypoint sh ui -lc
+          "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm typecheck"
+
+      - name: UI tests
+        run: >-
+          docker compose run --rm --no-deps --entrypoint sh ui -lc
+          "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm test"
+
+      - name: UI production build
+        run: >-
+          docker compose run --rm --no-deps --entrypoint sh ui -lc
+          "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm build"
