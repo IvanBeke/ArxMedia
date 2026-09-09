@@ -86,6 +86,11 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Prepare environment file
+        run: |
+          cp .env.example .env
+          printf '\nDEBUG=True\nALLOWED_HOSTS=localhost,127.0.0.1,app,testserver\n' >> .env
+
       - name: UI typecheck
         run: >-
           docker compose run --rm --no-deps --entrypoint sh ui -lc
