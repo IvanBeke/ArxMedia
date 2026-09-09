@@ -11,23 +11,22 @@
   />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
 import { useUnwatchConfirm } from '@/composables/useUnwatchConfirm'
+import type { MediaResult } from '@/types/api'
 
-const props = defineProps({
-  onError: { type: Function, default: null },
-})
+const props = withDefaults(defineProps<{ onError?: (message: string) => void }>(), { onError: undefined })
 
-const emit = defineEmits(['unwatched'])
+const emit = defineEmits<{ unwatched: [movie: MediaResult] }>()
 
-function defaultOnError(message) {
+function defaultOnError(message: string) {
   console.error(message)
 }
 
-const { handleRemoveWatched } = useMediaCardQuickActions({ onError: props.onError || defaultOnError })
+const { handleRemoveWatched } = useMediaCardQuickActions({ onError: props.onError ?? defaultOnError })
 
 const { confirmDialog, removing, open, onConfirm } = useUnwatchConfirm({
   emit,

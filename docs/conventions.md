@@ -69,3 +69,4 @@ Code style, patterns, and no-gos for this project.
 - Never run app/UI tooling on host; run through Docker services only
 - App commands: `docker compose exec app ...` (`uv`/`python`)
 - UI build command: `docker compose exec ui sh -lc "pnpm install && pnpm build"`
+- UI type check: `docker compose exec ui sh -lc "pnpm typecheck"`

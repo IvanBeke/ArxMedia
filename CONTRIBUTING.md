@@ -46,6 +46,7 @@ curl -s "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e
 If UI code is touched, also run:
 
 ```bash
+docker compose exec ui sh -lc "pnpm typecheck"
 docker compose exec ui sh -lc "pnpm install && pnpm build"
 ```
 

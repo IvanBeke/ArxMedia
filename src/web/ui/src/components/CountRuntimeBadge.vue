@@ -1,13 +1,15 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { formatHoursMinutes } from '@/utils/progress'
 
-const props = defineProps({
-  shows: { type: Number, default: null },
-  movies: { type: Number, default: null },
-  count: { type: Number, default: null },
-  typeLabel: { type: String, default: null },
-  totalMinutes: { type: Number, default: 0 },
+const props = withDefaults(defineProps<{
+  shows?: number | null
+  movies?: number | null
+  count?: number | null
+  typeLabel?: string | null
+  totalMinutes?: number
+}>(), {
+  shows: null, movies: null, count: null, typeLabel: null, totalMinutes: 0,
 })
 
 const watchedTimeLabel = computed(() => formatHoursMinutes(props.totalMinutes))
@@ -16,7 +18,7 @@ const label = computed(() => {
   const runtimeLabel = watchedTimeLabel.value
 
   if (props.shows !== null && props.movies !== null) {
-    const parts = []
+    const parts: string[] = []
     if (props.shows > 0) parts.push(`${props.shows} show${props.shows === 1 ? '' : 's'}`)
     if (props.movies > 0) parts.push(`${props.movies} movie${props.movies === 1 ? '' : 's'}`)
     if (parts.length) {

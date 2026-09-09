@@ -33,7 +33,7 @@
         <div class="text-right flex items-center gap-4">
           <WatchMenu
             v-if="auth.isAuthenticated"
-            :release-date="season.air_date"
+            :release-date="season.air_date ?? ''"
             @select="handleSeasonWatchOption"
           >
             <div class="text-white text-lg font-medium cursor-pointer">
@@ -67,7 +67,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { mediaAPI, trackingAPI } from '@/api'
@@ -83,15 +83,18 @@ import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
 import { temporalYear } from '@/utils/temporal'
 import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
+import type { WatchedAtOption } from '@/utils/watchOptions'
+
+type EpisodeTarget = { episodeNumber: number }
 
 const route = useRoute()
-const tmdbId = computed(() => parseInt(route.params.id))
-const seasonNumber = computed(() => parseInt(route.params.seasonNumber))
+const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10))
+const seasonNumber = computed(() => Number.parseInt(String(route.params.seasonNumber), 10))
 const auth = useAuthStore()
-const season = ref(null)
+const season = ref<import('@/types/api').Season | null>(null)
 const loading = ref(true)
 const showName = ref('TV Show')
-const unwatchDialog = ref(null)
+const unwatchDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
 const {
   showDatePicker,
   pickerInitialValue,
@@ -113,7 +116,7 @@ const {
 // adjusted locally as episodes are marked/unmarked.
 const watchedEpisodesCount = ref(0)
 
-function countWatchedInSeasonFromSet(seasonNum) {
+function countWatchedInSeasonFromSet(seasonNum: number) {
   const prefix = `${seasonNum}-`
   let count = 0
   for (const key of watchedEps.value) {
@@ -133,15 +136,15 @@ const seasonProgressFraction = computed(() => {
   return formatProgressFraction(watchedEpisodesCount.value, totalEpisodesCount.value)
 })
 
-function isEpisodeWatched(epNum) {
+function isEpisodeWatched(epNum: number) {
   return isWatched(seasonNumber.value, epNum)
 }
 
-function getEpisodeWatchedAt(epNum) {
+function getEpisodeWatchedAt(epNum: number) {
   return watchedAt(seasonNumber.value, epNum)
 }
 
-function openUnwatchConfirm(payload) {
+function openUnwatchConfirm(payload: EpisodeTarget) {
   unwatchDialog.value?.open({
     tmdbId: tmdbId.value,
     seasonNumber: seasonNumber.value,
@@ -149,14 +152,16 @@ function openUnwatchConfirm(payload) {
   })
 }
 
-function onEpisodeUnwatched(target) {
-  if (isWatched(target.seasonNumber, target.episodeNumber)) {
+function onEpisodeUnwatched(target: { seasonNumber: string | number; episodeNumber: string | number }) {
+  const season = Number(target.seasonNumber)
+  const episode = Number(target.episodeNumber)
+  if (isWatched(season, episode)) {
     watchedEpisodesCount.value = Math.max(0, watchedEpisodesCount.value - 1)
   }
-  unmarkLocally(target.seasonNumber, target.episodeNumber)
+  unmarkLocally(season, episode)
 }
 
-async function handleEpisodeWatchOption(payload) {
+async function handleEpisodeWatchOption(payload: EpisodeTarget & { option: WatchedAtOption; releaseDate: string | null }) {
   const epNum = payload.episodeNumber
   const sn = seasonNumber.value
 
@@ -172,7 +177,7 @@ async function handleEpisodeWatchOption(payload) {
   if (!wasWatched) watchedEpisodesCount.value += 1
 }
 
-async function handleSeasonWatchOption(option) {
+async function handleSeasonWatchOption(option: WatchedAtOption) {
   const resolution = await resolveWatchedAtFromOption(option, {
     releaseDate: season.value?.air_date || '',
     pickDateTime: () => pickWatchedDateTime(''),
@@ -185,8 +190,7 @@ async function handleSeasonWatchOption(option) {
     await trackingAPI.markSeasonWatched({
       tmdb_id: tmdbId.value,
       season_number: seasonNumber.value,
-      watched_at: resolution.useReleaseDate ? null : resolution.watchedAt,
-      use_release_date: resolution.useReleaseDate,
+      watched_at: resolution.watchedAt ?? undefined,
     })
     await loadWatchedEpisodes(tmdbId.value, { seasonNumber: seasonNumber.value })
     watchedEpisodesCount.value = countWatchedInSeasonFromSet(seasonNumber.value)

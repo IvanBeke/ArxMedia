@@ -23,15 +23,16 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { temporalYear } from '@/utils/temporal'
 import { tmdbImageUrl } from '@/utils/images'
+import type { MediaResult } from '@/types/api'
 
-const props = defineProps({
-  item: { type: Object, required: true },
-})
+type SearchMediaPreview = MediaResult & { poster_url?: string | null }
+
+const props = defineProps<{ item: SearchMediaPreview }>()
 
 const title = computed(() => props.item?.title || props.item?.name || 'Untitled')
 const year = computed(() => {

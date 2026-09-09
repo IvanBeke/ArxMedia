@@ -66,7 +66,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
@@ -78,11 +78,20 @@ import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
+import type { MediaCard as MediaCardItem, MediaType, QueryParams } from '@/types/api'
 
-const items = ref([])
+interface MediaFilterState {
+  search: string; sort: string; direction: string; mediaType: string; statuses: string[]
+  providerStatuses: string[]; genres: string[]; hasUpcoming: boolean; newOnly: boolean
+  missingRating: boolean; inWatchlist: boolean
+}
+interface MediaFilterChange { filters: MediaFilterState; source: 'hydrate' | 'interaction' }
+interface WatchlistResponseExtras { total_runtime_minutes?: number; counts?: { shows?: number; movies?: number } }
+
+const items = ref<MediaCardItem[]>([])
 const loading = ref(true)
 const loadingMore = ref(false)
-const appliedFilters = ref({
+const appliedFilters = ref<MediaFilterState>({
   search: '',
   sort: 'added_at',
   direction: 'asc',
@@ -102,12 +111,12 @@ const counts = ref({ shows: 0, movies: 0 })
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const { t } = useI18n()
 const route = useRoute()
-const filterBarRef = ref(null)
+const filterBarRef = ref<{ clearAll: () => void } | null>(null)
 const currentPage = useQueryPageSync(route)
 const hydrated = ref(false)
 
-function handleWatchlistRemoved(payload) {
-  const itemId = payload?.tmdb_id || payload?.id
+function handleWatchlistRemoved(payload: { tmdb_id?: number; media_type: MediaType }) {
+  const itemId = payload.tmdb_id
   if (!itemId) {
     return
   }
@@ -126,7 +135,7 @@ async function load() {
     loadingMore.value = true
   }
   const filterState = appliedFilters.value
-  const params = {
+  const params: QueryParams = {
     ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
     ...(filterState.search ? { search: filterState.search } : {}),
     ...(filterState.genres.length ? { genres: filterState.genres } : {}),
@@ -136,16 +145,17 @@ async function load() {
   }
   try {
     const data = await trackingAPI.getWatchlist(params)
-    const paged = normalizePagedResponse(data)
+    const paged = normalizePagedResponse<MediaCardItem>(data)
     if (paged.items.length || paged.count) {
       count.value = paged.count
       lastLoadedCount.value = paged.loadedCount
       items.value = paged.items
     }
-    totalRuntimeMinutes.value = Number.isFinite(data?.total_runtime_minutes) ? data.total_runtime_minutes : 0
+    const extras = data as typeof data & WatchlistResponseExtras
+    totalRuntimeMinutes.value = Number.isFinite(extras.total_runtime_minutes) ? extras.total_runtime_minutes ?? 0 : 0
     counts.value = {
-      shows: Number.isFinite(data?.counts?.shows) ? data.counts.shows : 0,
-      movies: Number.isFinite(data?.counts?.movies) ? data.counts.movies : 0,
+      shows: Number.isFinite(extras.counts?.shows) ? extras.counts?.shows ?? 0 : 0,
+      movies: Number.isFinite(extras.counts?.movies) ? extras.counts?.movies ?? 0 : 0,
     }
   } catch (error) {
     const recoveryPage = invalidPageRecovery(error, page)
@@ -170,13 +180,12 @@ function resetPage() {
   count.value = 0
 }
 
-function onFilterBarChange(payload) {
-  const next = payload?.filters
-  if (!next) return
+function onFilterBarChange(payload: MediaFilterChange) {
+  const next = payload.filters
   const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
   appliedFilters.value = next
   hydrated.value = true
-  if (didChange && payload?.source === 'interaction') {
+  if (didChange && payload.source === 'interaction') {
     resetPage()
   }
 }

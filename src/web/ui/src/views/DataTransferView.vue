@@ -259,17 +259,22 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { trackingAPI } from '@/api'
 import { DATA_IMPORT_MODE, DATA_TRANSFER_FORMAT, DATA_TRANSFER_STATUS } from '@/constants/tracking'
 import { formatDateTimeByLocale } from '@/i18n'
 import { instantEpochMs, nowEpochMs } from '@/utils/temporal'
+import type { DataTransferFileReport, DataTransferJob, DataTransferReport, DataTransferStatus, DataTransferWarning } from '@/types/api'
 
-const zipInput = ref(null)
-const yamtrackInput = ref(null)
-const jsonInput = ref(null)
-const jobs = ref([])
+type ImportMode = (typeof DATA_IMPORT_MODE)[keyof typeof DATA_IMPORT_MODE]
+type ImportModeOption = { value: ImportMode; tag: string; title: string; description: string }
+type FinishedWarning = { key: string; label: string; value: string | number; detail: string }
+
+const zipInput = ref<HTMLInputElement | null>(null)
+const yamtrackInput = ref<HTMLInputElement | null>(null)
+const jsonInput = ref<HTMLInputElement | null>(null)
+const jobs = ref<DataTransferJob[]>([])
 const zipError = ref('')
 const yamtrackError = ref('')
 const jsonError = ref('')
@@ -277,20 +282,20 @@ const zipFileName = ref('')
 const yamtrackFileName = ref('')
 const jsonFileName = ref('')
 const showImportModeModal = ref(false)
-const modalJobId = ref(null)
-const selectedImportMode = ref(DATA_IMPORT_MODE.NEW_ITEMS)
+const modalJobId = ref<number | null>(null)
+const selectedImportMode = ref<ImportMode>(DATA_IMPORT_MODE.NEW_ITEMS)
 const confirmingImportMode = ref(false)
 const cancellingImport = ref(false)
 const confirmErrorCode = ref('')
 
-const confirmErrorMessages = {
+const confirmErrorMessages: Record<string, string> = {
   IMPORT_JOB_NOT_FOUND: 'This import job no longer exists. Please upload the file again.',
   IMPORT_CONFIRM_NOT_ALLOWED: 'This file type cannot be confirmed for import. Upload a valid file and try again.',
   IMPORT_NOT_READY: 'Import analysis is still running. Please wait a moment and try again.',
   IMPORT_MODE_INVALID: 'Please select a valid import mode and try again.',
 }
 
-const importModes = [
+const importModes: ImportModeOption[] = [
   {
     value: DATA_IMPORT_MODE.NEW_ITEMS,
     tag: 'Safe',
@@ -325,17 +330,17 @@ const latestExport = computed(() => {
 })
 const modalSummary = computed(() => {
   const targetJob = jobs.value.find((item) => item.id === modalJobId.value)
-  const summary = targetJob?.metadata?.summary || {}
+  const summary = targetJob?.metadata?.summary
   return {
     total: targetJob?.total_items || 0,
-    history: summary.watch_history || 0,
-    watchlist: summary.watchlist || 0,
-    ratings: summary.ratings || 0,
+    history: summary?.watch_history || 0,
+    watchlist: summary?.watchlist || 0,
+    ratings: summary?.ratings || 0,
   }
 })
 const modalJob = computed(() => jobs.value.find((item) => item.id === modalJobId.value) || null)
-const modalIsFinished = computed(() => [DATA_TRANSFER_STATUS.DONE, DATA_TRANSFER_STATUS.FAILED].includes(modalJob.value?.status))
-const finishedReport = computed(() => modalJob.value?.metadata?.report || modalJob.value?.metadata || {})
+const modalIsFinished = computed(() => modalJob.value?.status === DATA_TRANSFER_STATUS.DONE || modalJob.value?.status === DATA_TRANSFER_STATUS.FAILED)
+const finishedReport = computed<DataTransferReport>(() => modalJob.value?.metadata?.report || modalJob.value?.metadata || {})
 const finishedResultSummary = computed(() => {
   if (modalJob.value?.status === DATA_TRANSFER_STATUS.FAILED) {
     return modalJob.value.error_message || 'The import could not be completed.'
@@ -344,7 +349,7 @@ const finishedResultSummary = computed(() => {
   const skipped = Number(finishedReport.value.records_skipped || 0)
   const unchanged = Number(finishedReport.value.records_unchanged || 0)
   const deleted = Number(finishedReport.value.deleted_total || 0)
-  const parts = []
+  const parts: string[] = []
   if (imported) parts.push(`${imported} records imported`)
   if (deleted) parts.push(`${deleted} existing records deleted to mirror the import`)
   if (skipped) parts.push(`${skipped} records skipped`)
@@ -360,32 +365,33 @@ const finishedStats = computed(() => [
   { label: 'Metadata errors', value: finishedReport.value.metadata_errors ?? 0 },
 ])
 const finishedCollections = computed(() => {
-  const summary = finishedReport.value.summary || {}
+  const summary = finishedReport.value.summary
+  const deleted = finishedReport.value.deleted
   return [
     {
       label: 'Watch history',
       description: 'Movies and episodes marked watched',
-      found: Number(summary.watch_history || 0),
-      deleted: Number((finishedReport.value.deleted || {}).watch_history || 0),
+      found: Number(summary?.watch_history || 0),
+      deleted: Number(deleted?.watch_history || 0),
     },
     {
       label: 'Watchlist',
       description: 'Movies and shows saved to watch later',
-      found: Number(summary.watchlist || 0),
-      deleted: Number((finishedReport.value.deleted || {}).watchlist || 0),
+      found: Number(summary?.watchlist || 0),
+      deleted: Number(deleted?.watchlist || 0),
     },
     {
       label: 'Ratings',
       description: 'Ratings included in the import',
-      found: Number(summary.ratings || 0),
-      deleted: Number((finishedReport.value.deleted || {}).ratings || 0),
+      found: Number(summary?.ratings || 0),
+      deleted: Number(deleted?.ratings || 0),
     },
   ]
 })
-const finishedFiles = computed(() => Array.isArray(finishedReport.value.files) ? finishedReport.value.files : [])
+const finishedFiles = computed<DataTransferFileReport[]>(() => Array.isArray(finishedReport.value.files) ? finishedReport.value.files : [])
 const finishedWarningDetails = computed(() => {
   const report = finishedReport.value
-  const warnings = []
+  const warnings: FinishedWarning[] = []
   if (Array.isArray(report.warnings)) {
     report.warnings.forEach((warning, index) => warnings.push({
       key: `${warning.code || 'warning'}-${index}`,
@@ -394,7 +400,7 @@ const finishedWarningDetails = computed(() => {
       detail: warning.message || 'This item could not be imported.',
     }))
   }
-  const warningDefinitions = {
+  const warningDefinitions: Record<string, Omit<FinishedWarning, 'key' | 'value'>> = {
     invalid_count: {
       label: 'Invalid records',
       detail: 'Rows could not be parsed or did not contain enough valid data to import.',
@@ -436,7 +442,7 @@ const finishedWarningDetails = computed(() => {
     if (Number(report[key] || 0) > 0) warnings.push({
       key: `aggregate-${key}`,
       label: definition.label,
-      value: report[key],
+      value: String(report[key]),
       detail: definition.detail,
     })
   })
@@ -450,22 +456,22 @@ const finishedWarningDetails = computed(() => {
   return warnings
 })
 
-function humanWarningCode(code) {
+function humanWarningCode(code: string | undefined) {
   const title = String(code || 'warning').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
   return title.replace('Tmdb', 'TMDB')
 }
 
-function formatWarningLocation(location = {}) {
+function formatWarningLocation(location: DataTransferWarning['location'] = {}) {
   if (location.kind === 'csv_row') return `${location.file || 'CSV file'}, row ${location.row}${location.column ? `, column ${location.column}` : ''}`
   if (location.kind === 'zip_record') return `${location.file || 'ZIP entry'}, record ${location.record}`
   if (location.kind === 'zip_file') return `${location.file || 'ZIP entry'}`
   if (location.kind === 'json_item') return `${location.collection || 'JSON collection'}, item ${location.index}${location.field ? `, field ${location.field}` : ''}`
   return 'Location not available'
 }
-function progressTotal(job) {
+function progressTotal(job: DataTransferJob) {
   return job.total_items || 0
 }
-function stageLabel(job) {
+function stageLabel(job: DataTransferJob) {
   if (job.status !== 'processing') return ''
   const stage = job.metadata?.pipeline?.stage
   if (stage === 'finalizing') return 'Finalizing'
@@ -481,10 +487,10 @@ const confirmErrorMessage = computed(() => {
   return confirmErrorMessages[confirmErrorCode.value] || 'We could not start this import. Please try again.'
 })
 
-let timer = null
+let timer: ReturnType<typeof setInterval> | null = null
 
-async function pollJob(jobId) {
-  if (timer) clearInterval(timer)
+async function pollJob(jobId: number) {
+  if (timer !== null) clearInterval(timer)
   timer = setInterval(async () => {
     try {
       const status = await trackingAPI.getJobStatus(jobId)
@@ -494,30 +500,34 @@ async function pollJob(jobId) {
         || status?.status === DATA_TRANSFER_STATUS.DONE
         || status?.status === DATA_TRANSFER_STATUS.FAILED
       ) {
-        clearInterval(timer)
+        if (timer !== null) clearInterval(timer)
         timer = null
         await loadJobs()
       }
     } catch {
-      clearInterval(timer)
+      if (timer !== null) clearInterval(timer)
       timer = null
     }
   }, 1500)
 }
 
-function handleZipFileSelect(event) {
+function selectedFileName(event: Event): string {
+  return event.target instanceof HTMLInputElement ? event.target.files?.[0]?.name || '' : ''
+}
+
+function handleZipFileSelect(event: Event) {
   zipError.value = ''
-  zipFileName.value = event?.target?.files?.[0]?.name || ''
+  zipFileName.value = selectedFileName(event)
 }
 
-function handleYamtrackFileSelect(event) {
+function handleYamtrackFileSelect(event: Event) {
   yamtrackError.value = ''
-  yamtrackFileName.value = event?.target?.files?.[0]?.name || ''
+  yamtrackFileName.value = selectedFileName(event)
 }
 
-function handleJsonFileSelect(event) {
+function handleJsonFileSelect(event: Event) {
   jsonError.value = ''
-  jsonFileName.value = event?.target?.files?.[0]?.name || ''
+  jsonFileName.value = selectedFileName(event)
 }
 
 async function startZipImport() {
@@ -592,8 +602,7 @@ async function startExport() {
   await pollJob(created.id)
 }
 
-function updateJob(updatedJob) {
-  if (!updatedJob?.id) return
+function updateJob(updatedJob: DataTransferJob) {
   const idx = jobs.value.findIndex((item) => item.id === updatedJob.id)
   if (idx >= 0) {
     jobs.value[idx] = updatedJob
@@ -602,14 +611,14 @@ function updateJob(updatedJob) {
   }
 }
 
-function selectImportMode(mode) {
+function selectImportMode(mode: ImportMode) {
   selectedImportMode.value = mode
   confirmErrorCode.value = ''
 }
 
 async function loadJobs() {
   const data = await trackingAPI.listJobs()
-  jobs.value = data.results || data || []
+  jobs.value = data
 }
 
 function latestProcessingJob() {
@@ -618,26 +627,26 @@ function latestProcessingJob() {
     .sort((a, b) => instantEpochMs(b.created_at) - instantEpochMs(a.created_at))[0] || null
 }
 
-function humanStatus(value) {
+function humanStatus(value: DataTransferStatus | undefined) {
   return String(value || '').replaceAll('_', ' ')
 }
 
-function humanValue(value) {
+function humanValue(value: string | undefined) {
   return String(value || 'unknown').replaceAll('_', ' ')
 }
 
-function isJobDetailsOpenable(job) {
-  return [DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION, DATA_TRANSFER_STATUS.DONE, DATA_TRANSFER_STATUS.FAILED].includes(job?.status)
+function isJobDetailsOpenable(job: DataTransferJob) {
+  return job.status === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION || job.status === DATA_TRANSFER_STATUS.DONE || job.status === DATA_TRANSFER_STATUS.FAILED
 }
 
-function statusClass(value) {
+function statusClass(value: DataTransferStatus | undefined) {
   if (value === DATA_TRANSFER_STATUS.DONE) return 'text-emerald-400'
   if (value === DATA_TRANSFER_STATUS.FAILED || value === DATA_TRANSFER_STATUS.CANCELLED) return 'text-red-400'
   if (value === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION) return 'text-amber-400'
   return 'text-blue-400'
 }
 
-function formatDateTime(value) {
+function formatDateTime(value: string) {
   return formatDateTimeByLocale(value)
 }
 
@@ -652,7 +661,7 @@ async function confirmImportMode() {
     modalJobId.value = null
     await pollJob(updated.id)
   } catch (error) {
-    confirmErrorCode.value = String(error?.error_code || '').trim() || 'UNKNOWN_CONFIRM_ERROR'
+    confirmErrorCode.value = getErrorCode(error) || 'UNKNOWN_CONFIRM_ERROR'
   } finally {
     confirmingImportMode.value = false
   }
@@ -668,7 +677,7 @@ async function cancelImportJob() {
     showImportModeModal.value = false
     modalJobId.value = null
   } catch (error) {
-    confirmErrorCode.value = String(error?.error_code || '').trim() || 'UNKNOWN_CANCEL_ERROR'
+    confirmErrorCode.value = getErrorCode(error) || 'UNKNOWN_CANCEL_ERROR'
   } finally {
     cancellingImport.value = false
   }
@@ -682,7 +691,13 @@ function closeImportModal() {
   }
 }
 
-function openJobModal(job) {
+function getErrorCode(error: unknown): string {
+  return typeof error === 'object' && error !== null && 'error_code' in error && typeof error.error_code === 'string'
+    ? error.error_code.trim()
+    : ''
+}
+
+function openJobModal(job: DataTransferJob) {
   if (!isJobDetailsOpenable(job)) return
   confirmErrorCode.value = ''
   modalJobId.value = job.id
@@ -698,6 +713,6 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (timer) clearInterval(timer)
+  if (timer !== null) clearInterval(timer)
 })
 </script>

@@ -46,7 +46,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { authAPI } from '@/api'
@@ -54,11 +54,12 @@ import PaginationControls from '@/components/PaginationControls.vue'
 import UserList from '@/components/UserList.vue'
 import { useI18n } from '@/i18n'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
+import type { ApiError, UserCard } from '@/types/api'
 
 const route = useRoute()
 const { t } = useI18n()
 
-const followers = ref([])
+const followers = ref<UserCard[]>([])
 const loading = ref(true)
 const forbidden = ref(false)
 const page = ref(1)
@@ -66,25 +67,26 @@ const totalPages = ref(1)
 const count = ref(0)
 const lastLoadedCount = ref(0)
 
-const title = computed(() => t('profile_followers_page_title', { username: route.params.username }))
+const username = computed(() => String(route.params.username ?? ''))
+const title = computed(() => t('profile_followers_page_title', { username: username.value }))
 
 async function loadFollowers(nextPage = 1) {
   loading.value = true
   forbidden.value = false
   try {
-    const data = await authAPI.getFollowers(route.params.username, { page: nextPage })
-    const paged = normalizePagedResponse(data)
+    const data = await authAPI.getFollowers(username.value, { page: nextPage })
+    const paged = normalizePagedResponse<UserCard>(data)
     followers.value = paged.items
     count.value = paged.count
     lastLoadedCount.value = paged.loadedCount
     page.value = nextPage
-  } catch (error) {
+  } catch (error: unknown) {
     const recoveryPage = invalidPageRecovery(error, nextPage)
     if (recoveryPage !== null) {
       await loadFollowers(recoveryPage)
       return
     }
-    if (error?.status === 403) {
+    if ((error as ApiError).status === 403) {
       forbidden.value = true
     }
     followers.value = []

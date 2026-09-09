@@ -82,7 +82,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { Search, X } from '@lucide/vue'
@@ -90,32 +90,47 @@ import { authAPI, mediaAPI } from '@/api'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import SearchMediaPreviewRow from '@/components/SearchMediaPreviewRow.vue'
 import UserRowCompact from '@/components/UserRowCompact.vue'
+import type { MediaResult, UserCard } from '@/types/api'
 
-const props = defineProps({
-  modelValue: { type: String, default: '' },
-  scope: { type: String, default: 'all' },
-  placeholder: { type: String, default: 'Search movies, shows, users, or #id...' },
-  autofocus: { type: Boolean, default: false },
-  compact: { type: Boolean, default: false },
-  enablePreview: { type: Boolean, default: true },
-  inlineScopeSelector: { type: Boolean, default: false },
-  submitOnClear: { type: Boolean, default: false },
-  maxPreviewResults: { type: Number, default: 10 },
+type SearchScope = 'all' | 'movies' | 'shows' | 'users'
+type SearchSubmit = { query: string; scope: SearchScope }
+type SearchMediaPreview = MediaResult & { kind?: undefined; poster_url?: string | null }
+type SearchUserPreview = UserCard & { kind: 'user' }
+type SearchPreviewItem = SearchMediaPreview | SearchUserPreview
+
+const props = withDefaults(defineProps<{
+  modelValue?: string
+  scope?: SearchScope
+  placeholder?: string
+  autofocus?: boolean
+  compact?: boolean
+  enablePreview?: boolean
+  inlineScopeSelector?: boolean
+  submitOnClear?: boolean
+  maxPreviewResults?: number
+}>(), {
+  modelValue: '', scope: 'all', placeholder: 'Search movies, shows, users, or #id...', autofocus: false,
+  compact: false, enablePreview: true, inlineScopeSelector: false, submitOnClear: false, maxPreviewResults: 10,
 })
 
-const emit = defineEmits(['update:modelValue', 'update:scope', 'submit', 'select-preview'])
+const emit = defineEmits<{
+  'update:modelValue': [value: string]
+  'update:scope': [value: SearchScope]
+  submit: [payload: SearchSubmit]
+  'select-preview': [item: SearchPreviewItem]
+}>()
 
-const rootRef = ref(null)
-const inputRef = ref(null)
-const localQuery = ref(props.modelValue || '')
-const localScope = ref(props.scope || 'all')
-const panelOpen = ref(false)
-const loadingPreview = ref(false)
-const previewItems = ref([])
-let debounceTimer = null
+const rootRef = ref<HTMLElement | null>(null)
+const inputRef = ref<HTMLInputElement | null>(null)
+const localQuery = ref<string>(props.modelValue)
+const localScope = ref<SearchScope>(props.scope)
+const panelOpen = ref<boolean>(false)
+const loadingPreview = ref<boolean>(false)
+const previewItems = ref<SearchPreviewItem[]>([])
+let debounceTimer: ReturnType<typeof setTimeout> | undefined
 let requestId = 0
 
-const scopeOptions = [
+const scopeOptions: { label: string; value: SearchScope }[] = [
   { label: 'All', value: 'all' },
   { label: 'Movies', value: 'movies' },
   { label: 'Shows', value: 'shows' },
@@ -150,15 +165,15 @@ function openPanel() {
   debouncedPreview()
 }
 
-function onInput(event) {
-  localQuery.value = event.target.value
+function onInput(event: Event) {
+  localQuery.value = (event.target as HTMLInputElement).value
   emit('update:modelValue', localQuery.value)
   if (shouldLoadPreview.value) {
     debouncedPreview()
   }
 }
 
-function setScope(scope) {
+function setScope(scope: SearchScope) {
   localScope.value = scope
   emit('update:scope', scope)
   nextTick(() => {
@@ -195,13 +210,15 @@ function submitSearch() {
   panelOpen.value = false
 }
 
-function selectPreview(item) {
+function selectPreview(item: SearchPreviewItem) {
   resetQuery()
   emit('select-preview', item)
   panelOpen.value = false
 }
 
-function previewKey(item, index) {
+defineExpose({ selectPreview })
+
+function previewKey(item: SearchPreviewItem, index: number): string {
   if (item.kind === 'user') {
     return `user-${item.id || item.username || index}`
   }
@@ -213,7 +230,7 @@ function debouncedPreview() {
   debounceTimer = setTimeout(loadPreview, 300)
 }
 
-function scopeToMediaType(scope) {
+function scopeToMediaType(scope: SearchScope): 'movie' | 'tv' | 'multi' {
   if (scope === 'movies') return MEDIA_TYPE.MOVIE
   if (scope === 'shows') return MEDIA_TYPE.TV
   return 'multi'
@@ -242,7 +259,7 @@ async function loadPreview() {
       }
       const users = await authAPI.searchUsers(query)
       if (currentRequestId !== requestId) return
-      previewItems.value = (users || []).slice(0, props.maxPreviewResults).map((row) => ({
+      previewItems.value = users.slice(0, props.maxPreviewResults).map((row) => ({
         ...row,
         kind: 'user',
       }))
@@ -259,7 +276,7 @@ async function loadPreview() {
         : null
 
     const rows = (response?.results || [])
-      .filter((row) => {
+      .filter((row): row is SearchMediaPreview => {
         if (typedMediaType) {
           return row.media_type === typedMediaType
         }

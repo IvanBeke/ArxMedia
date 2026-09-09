@@ -187,61 +187,121 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import type { LocationQuery, LocationQueryRaw, LocationQueryValue } from 'vue-router'
 import { onClickOutside } from '@vueuse/core'
 import { ArrowDownNarrowWide, ArrowDownWideNarrow } from '@lucide/vue'
 import { mediaAPI } from '@/api'
 
-const props = defineProps({
-  mediaType: { type: String, default: 'all' },
-  showStatusFilter: { type: Boolean, default: false },
-  showProviderStatusFilter: { type: Boolean, default: false },
-  showGenreFilter: { type: Boolean, default: true },
-  showQuickFilterHasUpcoming: { type: Boolean, default: false },
-  showQuickFilterNewOnly: { type: Boolean, default: false },
-  showQuickFilterMissingRating: { type: Boolean, default: false },
-  showQuickFilterInWatchlist: { type: Boolean, default: false },
-  showSearch: { type: Boolean, default: true },
-  showSort: { type: Boolean, default: true },
-  showDirection: { type: Boolean, default: true },
-  defaultSortKey: { type: String, default: 'added_at' },
-  searchPlaceholder: { type: String, default: 'Search by title' },
-  advancedLabel: { type: String, default: 'Advanced Filters' },
-  applyMediaTypeExclusiveSorts: { type: Boolean, default: true },
-  showOrderSort: { type: Boolean, default: false },
-  providerStatusOptions: { type: Array, default: () => [] },
-  genreOptions: { type: Array, default: () => [] },
-  page: { type: Number, default: 1 },
-  syncUrl: { type: Boolean, default: true },
+type MediaTypeFilter = 'all' | 'movie' | 'tv'
+type SortDirection = 'asc' | 'desc'
+type FilterArrayKey = 'statuses' | 'providerStatuses' | 'genres'
+type FilterChangeSource = 'hydrate' | 'interaction'
+
+interface MediaFilterBarProps {
+  mediaType?: MediaTypeFilter
+  showStatusFilter?: boolean
+  showProviderStatusFilter?: boolean
+  showGenreFilter?: boolean
+  showQuickFilterHasUpcoming?: boolean
+  showQuickFilterNewOnly?: boolean
+  showQuickFilterMissingRating?: boolean
+  showQuickFilterInWatchlist?: boolean
+  showSearch?: boolean
+  showSort?: boolean
+  showDirection?: boolean
+  defaultSortKey?: string
+  searchPlaceholder?: string
+  advancedLabel?: string
+  applyMediaTypeExclusiveSorts?: boolean
+  showOrderSort?: boolean
+  providerStatusOptions?: string[]
+  genreOptions?: string[]
+  page?: number
+  syncUrl?: boolean
+}
+
+interface FilterState {
+  search: string
+  sort: string
+  direction: SortDirection
+  mediaType: MediaTypeFilter
+  statuses: string[]
+  providerStatuses: string[]
+  genres: string[]
+  hasUpcoming: boolean
+  newOnly: boolean
+  missingRating: boolean
+  inWatchlist: boolean
+}
+
+interface ParsedFilterState extends FilterState {
+  directionOverridden: boolean
+}
+
+interface StagedFilterState extends Omit<FilterState, 'search' | 'sort' | 'direction'> {}
+
+interface SortOption {
+  label: string
+  value: string
+}
+
+interface SyncUrlOptions {
+  resetPage?: boolean
+}
+
+const props = withDefaults(defineProps<MediaFilterBarProps>(), {
+  mediaType: 'all',
+  showStatusFilter: false,
+  showProviderStatusFilter: false,
+  showGenreFilter: true,
+  showQuickFilterHasUpcoming: false,
+  showQuickFilterNewOnly: false,
+  showQuickFilterMissingRating: false,
+  showQuickFilterInWatchlist: false,
+  showSearch: true,
+  showSort: true,
+  showDirection: true,
+  defaultSortKey: 'added_at',
+  searchPlaceholder: 'Search by title',
+  advancedLabel: 'Advanced Filters',
+  applyMediaTypeExclusiveSorts: true,
+  showOrderSort: false,
+  providerStatusOptions: () => [],
+  genreOptions: () => [],
+  page: 1,
+  syncUrl: true,
 })
 
-const emit = defineEmits(['change'])
+const emit = defineEmits<{
+  change: [payload: { source: FilterChangeSource; filters: FilterState }]
+}>()
 
 const route = useRoute()
 const router = useRouter()
-const rootRef = ref(null)
-const sortMenuRef = ref(null)
+const rootRef = ref<HTMLElement | null>(null)
+const sortMenuRef = ref<HTMLDetailsElement | null>(null)
 const advancedOpen = ref(false)
 const directionOverridden = ref(false)
 const draftSearch = ref('')
-const fetchedGenres = ref([])
+const fetchedGenres = ref<string[]>([])
 
-const tvStatusChipOptions = [
+const tvStatusChipOptions: SortOption[] = [
   { label: 'Plan to watch', value: 'plan_to_watch' },
   { label: 'Watching', value: 'watching' },
   { label: 'Completed', value: 'watched' },
   { label: 'Dropped', value: 'dropped' },
 ]
 
-const movieStatusChipOptions = [
+const movieStatusChipOptions: SortOption[] = [
   { label: 'Plan to watch', value: 'plan_to_watch' },
   { label: 'Watched', value: 'watched' },
   { label: 'Dropped', value: 'dropped' },
 ]
 
-const sortLabelsByKey = {
+const sortLabelsByKey: Record<string, string> = {
   added_at: 'Date added',
   custom_order: 'Custom order',
   title: 'Title',
@@ -258,7 +318,7 @@ const sortLabelsByKey = {
   next_episode_date: 'Next episode date',
 }
 
-const baseDefaultDirections = {
+const baseDefaultDirections: Record<string, SortDirection> = {
   added_at: 'asc',
   custom_order: 'asc',
   title: 'asc',
@@ -282,7 +342,7 @@ const sortTvExclusiveKeys = ['time_left', 'episodes_left', 'last_watched', 'star
 
 const showMediaTypeControl = computed(() => props.mediaType === 'all')
 
-const filters = reactive({
+const filters = reactive<FilterState>({
   search: '',
   sort: props.defaultSortKey,
   direction: getDefaultDirection(props.defaultSortKey),
@@ -296,7 +356,7 @@ const filters = reactive({
   inWatchlist: false,
 })
 
-const staged = reactive({
+const staged = reactive<StagedFilterState>({
   mediaType: props.mediaType,
   statuses: [],
   providerStatuses: [],
@@ -327,18 +387,18 @@ const usesStatusWorkflowSortProfile = computed(() => {
   )
 })
 
-const resolvedGenreOptions = computed(() => {
-  const fromProps = props.genreOptions || []
-  const fromApi = fetchedGenres.value || []
+const resolvedGenreOptions = computed<string[]>(() => {
+  const fromProps = props.genreOptions
+  const fromApi = fetchedGenres.value
   return [...new Set([...fromProps, ...fromApi])].sort((a, b) => a.localeCompare(b))
 })
 
-const resolvedStatusChipOptions = computed(() => (
+const resolvedStatusChipOptions = computed<SortOption[]>(() => (
   effectiveMediaType.value === 'movie' ? movieStatusChipOptions : tvStatusChipOptions
 ))
 
-const resolvedSortOptions = computed(() => {
-  let baseline
+const resolvedSortOptions = computed<SortOption[]>(() => {
+  let baseline: string[]
   if (effectiveMediaType.value === 'movie') {
     baseline = sortMovieBaselineKeys
   } else {
@@ -361,7 +421,7 @@ const resolvedSortOptions = computed(() => {
   }))
 })
 
-const resolvedDefaultSort = computed(() => {
+const resolvedDefaultSort = computed<string>(() => {
   const keys = resolvedSortOptions.value.map((option) => option.value)
   if (keys.includes(props.defaultSortKey)) {
     return props.defaultSortKey
@@ -372,7 +432,7 @@ const resolvedDefaultSort = computed(() => {
   return keys[0] || 'added_at'
 })
 
-const mediaTypeAdvancedOptions = [
+const mediaTypeAdvancedOptions: { label: string; value: Exclude<MediaTypeFilter, 'all'> }[] = [
   { label: 'Movies', value: 'movie' },
   { label: 'Shows', value: 'tv' },
 ]
@@ -422,7 +482,7 @@ onMounted(async () => {
   try {
     const data = await mediaAPI.genres()
     fetchedGenres.value = Array.isArray(data)
-      ? data.map((genre) => genre?.name).filter(Boolean)
+      ? data.map((genre) => genre.name).filter((name): name is string => Boolean(name))
       : []
   } catch {
     fetchedGenres.value = []
@@ -442,11 +502,11 @@ watch(
   { deep: true }
 )
 
-function getDefaultDirection(sortKey) {
+function getDefaultDirection(sortKey: string): SortDirection {
   return baseDefaultDirections[sortKey] || 'asc'
 }
 
-function serializeFilters(value) {
+function serializeFilters(value: FilterState): string {
   return JSON.stringify({
     search: value.search || '',
     sort: value.sort || resolvedDefaultSort.value,
@@ -462,7 +522,7 @@ function serializeFilters(value) {
   })
 }
 
-function applyFiltersState(next) {
+function applyFiltersState(next: ParsedFilterState): void {
   filters.search = next.search
   filters.sort = next.sort
   filters.direction = next.direction
@@ -479,7 +539,7 @@ function applyFiltersState(next) {
   syncStagedFromApplied()
 }
 
-function parseArray(queryValue) {
+function parseArray(queryValue: LocationQueryValue | LocationQueryValue[] | undefined): string[] {
   if (Array.isArray(queryValue)) {
     return queryValue.map((entry) => String(entry)).filter(Boolean)
   }
@@ -489,13 +549,13 @@ function parseArray(queryValue) {
   return []
 }
 
-function parseFromQuery(query) {
-  const next = {
+function parseFromQuery(query: LocationQuery): ParsedFilterState {
+  const next: ParsedFilterState = {
     search: typeof query.search === 'string' ? query.search : '',
     sort: typeof query.sort === 'string' ? query.sort : resolvedDefaultSort.value,
-    direction: '',
+    direction: 'asc',
     directionOverridden: false,
-    mediaType: props.mediaType || 'all',
+    mediaType: props.mediaType,
     statuses: parseArray(query.status),
     providerStatuses: parseArray(query.provider_status),
     genres: parseArray(query.genres),
@@ -507,7 +567,7 @@ function parseFromQuery(query) {
 
   if (showMediaTypeControl.value) {
     const mediaTypeValue = typeof query.media_type === 'string' ? query.media_type : 'all'
-    next.mediaType = mediaTypeValue
+    next.mediaType = mediaTypeValue === 'movie' || mediaTypeValue === 'tv' ? mediaTypeValue : 'all'
   }
 
   if (query.direction === 'asc' || query.direction === 'desc') {
@@ -535,7 +595,7 @@ function parseFromQuery(query) {
   return next
 }
 
-function syncStagedFromApplied() {
+function syncStagedFromApplied(): void {
   staged.mediaType = filters.mediaType
   staged.statuses = [...filters.statuses]
   staged.providerStatuses = [...filters.providerStatuses]
@@ -546,8 +606,8 @@ function syncStagedFromApplied() {
   staged.inWatchlist = filters.inWatchlist
 }
 
-function emitChange(source) {
-  const payload = {
+function emitChange(source: FilterChangeSource): void {
+  const payload: FilterState = {
     search: filters.search,
     sort: filters.sort,
     direction: filters.direction,
@@ -569,14 +629,14 @@ const _initialFilters = parseFromQuery(route.query)
 applyFiltersState(_initialFilters)
 emitChange('hydrate')
 
-const filterQueryKeys = ['search', 'sort', 'direction', 'media_type', 'status', 'provider_status', 'has_upcoming', 'is_new', 'missing_rating', 'in_watchlist', 'genres', 'page']
+const filterQueryKeys = ['search', 'sort', 'direction', 'media_type', 'status', 'provider_status', 'has_upcoming', 'is_new', 'missing_rating', 'in_watchlist', 'genres', 'page'] as const
 
-function resolvePageValue(value) {
+function resolvePageValue(value: unknown): number {
   const page = Number.parseInt(String(value ?? 1), 10)
   return Number.isInteger(page) && page > 0 ? page : 1
 }
 
-function syncUrl(options = {}) {
+function syncUrl(options: SyncUrlOptions = {}): void {
   if (!props.syncUrl) return
 
   const { resetPage = false } = options
@@ -585,7 +645,7 @@ function syncUrl(options = {}) {
   // Owned keys are composed purely from component state (never from the live
   // route query) so concurrent writes in one tick can never clobber each other.
   // Foreign query params are preserved as-is.
-  const nextQuery = { ...route.query }
+  const nextQuery: LocationQueryRaw = { ...route.query }
   for (const key of filterQueryKeys) {
     delete nextQuery[key]
   }
@@ -613,12 +673,12 @@ function syncUrl(options = {}) {
   }
 }
 
-function commitInteraction() {
+function commitInteraction(): void {
   syncUrl({ resetPage: true })
   emitChange('interaction')
 }
 
-function toggleStagedArrayValue(key, value) {
+function toggleStagedArrayValue(key: FilterArrayKey, value: string): void {
   if (staged[key].includes(value)) {
     staged[key] = staged[key].filter((entry) => entry !== value)
   } else {
@@ -626,7 +686,7 @@ function toggleStagedArrayValue(key, value) {
   }
 }
 
-function toggleAdvanced() {
+function toggleAdvanced(): void {
   if (advancedOpen.value) {
     advancedOpen.value = false
     syncStagedFromApplied()
@@ -636,7 +696,7 @@ function toggleAdvanced() {
   advancedOpen.value = true
 }
 
-function applyAdvanced() {
+function applyAdvanced(): void {
   filters.mediaType = showMediaTypeControl.value ? staged.mediaType : (props.mediaType || 'all')
   filters.statuses = props.showStatusFilter ? [...staged.statuses] : []
   filters.providerStatuses = props.showProviderStatusFilter ? [...staged.providerStatuses] : []
@@ -649,7 +709,7 @@ function applyAdvanced() {
   commitInteraction()
 }
 
-function clearAdvanced() {
+function clearAdvanced(): void {
   staged.mediaType = showMediaTypeControl.value ? 'all' : (props.mediaType || 'all')
   staged.statuses = []
   staged.providerStatuses = []
@@ -661,7 +721,7 @@ function clearAdvanced() {
   applyAdvanced()
 }
 
-function clearAll() {
+function clearAll(): void {
   draftSearch.value = ''
   filters.search = ''
   filters.sort = resolvedDefaultSort.value
@@ -682,12 +742,12 @@ function clearAll() {
 
 defineExpose({ clearAll })
 
-function applySearch() {
+function applySearch(): void {
   filters.search = draftSearch.value.trim()
   commitInteraction()
 }
 
-function setSort(nextSort) {
+function setSort(nextSort: string): void {
   filters.sort = nextSort
   if (!directionOverridden.value) {
     filters.direction = getDefaultDirection(nextSort)
@@ -743,13 +803,13 @@ watch(
   }
 )
 
-function setDirection(nextDirection) {
+function setDirection(nextDirection: SortDirection): void {
   filters.direction = nextDirection
   directionOverridden.value = true
   commitInteraction()
 }
 
-function toggleStagedMediaType(nextType) {
+function toggleStagedMediaType(nextType: Exclude<MediaTypeFilter, 'all'>): void {
   if (staged.mediaType === nextType) {
     staged.mediaType = 'all'
     return
@@ -757,10 +817,10 @@ function toggleStagedMediaType(nextType) {
   staged.mediaType = nextType
 }
 
-function dedupeSortKeys(values) {
-  const seen = new Set()
-  const keys = []
-  for (const value of values || []) {
+function dedupeSortKeys(values: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const keys: string[] = []
+  for (const value of values) {
     const key = String(value || '').trim()
     if (!key || seen.has(key)) continue
     seen.add(key)

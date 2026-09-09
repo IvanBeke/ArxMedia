@@ -62,7 +62,16 @@ else
     echo -e "${YELLOW}SKIP${NC} (app not running)"
 fi
 
-# 4. Check no hardcoded secrets in src/
+# 4. Check UI types
+echo -n "Checking UI types... "
+if command -v docker &>/dev/null && docker compose ps ui &>/dev/null 2>&1; then
+    docker compose exec -T ui sh -lc "pnpm typecheck" >/dev/null
+    echo -e "${GREEN}OK${NC}"
+else
+    echo -e "${YELLOW}SKIP${NC} (ui not running)"
+fi
+
+# 5. Check no hardcoded secrets in src/
 echo -n "Checking for hardcoded secrets... "
 if grep -rE "SECRET_KEY\s*=\s*['\"][^'\"]+|TMDB_API_KEY\s*=\s*['\"][^'\"]+|DATABASE_URL\s*=\s*['\"][^'\"]+|REDIS_URL\s*=\s*['\"][^'\"]+" src/ --include="*.py" \
     | grep -v "os.environ\|settings\." \
@@ -73,7 +82,7 @@ if grep -rE "SECRET_KEY\s*=\s*['\"][^'\"]+|TMDB_API_KEY\s*=\s*['\"][^'\"]+|DATAB
 fi
 echo -e "${GREEN}OK${NC}"
 
-# 5. Check init script is executable
+# 6. Check init script is executable
 echo -n "Checking init.sh permissions... "
 if [ ! -x "$0" ]; then
     chmod +x "$0"

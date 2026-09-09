@@ -63,7 +63,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
@@ -74,14 +74,20 @@ import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
 import { getApiErrorMessage } from '@/utils/errors'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
+import type { MediaCard, QueryParams } from '@/types/api'
+
+interface MovieFilterState { search: string; sort: string; direction: string; mediaType: string; statuses: string[]; genres: string[]; missingRating: boolean }
+interface FilterChange { filters: MovieFilterState; source: 'hydrate' | 'interaction' }
+interface MediaListExtras { available_genres?: string[]; total_runtime_minutes?: number }
+type MovieRowItem = MediaCard & { genres?: string[]; runtime?: number | null; last_watched_at?: string | null; user_rating?: number | null }
 
 const route = useRoute()
 
 const loading = ref(true)
-const rows = ref([])
+const rows = ref<MovieRowItem[]>([])
 const errorMsg = ref('')
 
-const appliedFilters = ref({
+const appliedFilters = ref<MovieFilterState>({
   search: '',
   sort: 'watched_date',
   direction: 'desc',
@@ -91,29 +97,28 @@ const appliedFilters = ref({
   missingRating: false,
 })
 
-const availableGenres = ref([])
+const availableGenres = ref<string[]>([])
 
 const count = ref(0)
 const totalRuntimeMinutes = ref(0)
 const currentPage = useQueryPageSync(route)
 const lastLoadedCount = ref(0)
-const filterBarRef = ref(null)
+const filterBarRef = ref<{ clearAll: () => void } | null>(null)
 const hydrated = ref(false)
 
-function onFilterBarChange(payload) {
-  const next = payload?.filters
-  if (!next) return
+function onFilterBarChange(payload: FilterChange) {
+  const next = payload.filters
 
   const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
   appliedFilters.value = next
   hydrated.value = true
 
-  if (didChange && payload?.source === 'interaction') {
+  if (didChange && payload.source === 'interaction') {
     currentPage.value = 1
   }
 }
 
-function buildParams() {
+function buildParams(): QueryParams {
   const filterState = appliedFilters.value
   return {
     page: currentPage.value,
@@ -132,12 +137,13 @@ async function loadMyMovies() {
   errorMsg.value = ''
   try {
     const data = await trackingAPI.getMyMovies(buildParams())
-    const paged = normalizePagedResponse(data)
+    const paged = normalizePagedResponse<MovieRowItem>(data)
     rows.value = paged.items
-    availableGenres.value = data?.available_genres || []
+    const extras = data as typeof data & MediaListExtras
+    availableGenres.value = extras.available_genres ?? []
     count.value = paged.count
     lastLoadedCount.value = paged.loadedCount
-    totalRuntimeMinutes.value = Number.isFinite(data?.total_runtime_minutes) ? data.total_runtime_minutes : 0
+    totalRuntimeMinutes.value = Number.isFinite(extras.total_runtime_minutes) ? extras.total_runtime_minutes ?? 0 : 0
   } catch (error) {
     const recoveryPage = invalidPageRecovery(error, currentPage.value)
     if (recoveryPage !== null) {
@@ -154,7 +160,7 @@ async function loadMyMovies() {
   }
 }
 
-function onRowError(message) {
+function onRowError(message: string) {
   errorMsg.value = message
 }
 

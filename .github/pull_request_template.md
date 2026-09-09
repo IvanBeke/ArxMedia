@@ -29,6 +29,7 @@ Task-specific ad-hoc checks:
 If UI code was touched:
 
 ```bash
+docker compose exec ui sh -lc "pnpm typecheck"
 docker compose exec ui sh -lc "pnpm install && pnpm build"
 ```
 

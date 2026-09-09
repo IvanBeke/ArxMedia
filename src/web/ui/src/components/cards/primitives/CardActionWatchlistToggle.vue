@@ -16,15 +16,20 @@
   </button>
 </template>
 
-<script setup>
-defineProps({
-  active: { type: Boolean, default: false },
-  loading: { type: Boolean, default: false },
-  pulsing: { type: Boolean, default: false },
-  ariaLabel: { type: String, default: 'Add to watchlist' },
+<script setup lang="ts">
+withDefaults(defineProps<{
+  active?: boolean
+  loading?: boolean
+  pulsing?: boolean
+  ariaLabel?: string
+}>(), {
+  active: false, loading: false, pulsing: false, ariaLabel: 'Add to watchlist',
 })
 
-const emit = defineEmits(['trigger', 'action:watchlist-toggle'])
+const emit = defineEmits<{
+  trigger: []
+  'action:watchlist-toggle': []
+}>()
 
 function handleTrigger() {
   emit('action:watchlist-toggle')

@@ -151,7 +151,7 @@
   </nav>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { onClickOutside } from '@vueuse/core'
@@ -160,31 +160,36 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useI18n } from '@/i18n'
 import { MEDIA_TYPE } from '@/constants/tracking'
+import type { UserCard } from '@/types/api'
+
+type SearchScope = 'all' | 'movies' | 'shows' | 'users'
+type SearchSubmission = { query: string; scope: SearchScope }
+type SearchPreviewItem = (UserCard & { kind: 'user' }) | { id: number; media_type: (typeof MEDIA_TYPE)[keyof typeof MEDIA_TYPE] }
 
 const auth = useAuthStore()
 const theme = useThemeStore()
 const router = useRouter()
 const searchQuery = ref('')
-const searchScope = ref('all')
+const searchScope = ref<SearchScope>('all')
 const showUserMenu = ref(false)
 const showMobileMenu = ref(false)
 const showLibraryMenu = ref(false)
-const userMenuRef = ref(null)
-const mobileMenuRef = ref(null)
-const mobileMenuButtonRef = ref(null)
+const userMenuRef = ref<HTMLElement | null>(null)
+const mobileMenuRef = ref<HTMLElement | null>(null)
+const mobileMenuButtonRef = ref<HTMLButtonElement | null>(null)
 const { t } = useI18n()
 
 onClickOutside(userMenuRef, () => { showUserMenu.value = false })
 onClickOutside(mobileMenuRef, () => { showMobileMenu.value = false }, { ignore: [mobileMenuButtonRef] })
 
-function scopeToQueryValue(scope) {
+function scopeToQueryValue(scope: SearchScope) {
   if (scope === 'movies') return MEDIA_TYPE.MOVIE
   if (scope === 'shows') return MEDIA_TYPE.TV
   if (scope === 'users') return 'users'
   return 'all'
 }
 
-function goSearch({ query, scope }) {
+function goSearch({ query, scope }: SearchSubmission) {
   if (query) {
     router.push({ name: 'search', query: { q: query, scope: scopeToQueryValue(scope) } })
     searchQuery.value = ''
@@ -194,8 +199,8 @@ function goSearch({ query, scope }) {
   }
 }
 
-function goToPreviewItem(item) {
-  if (item.kind === 'user') {
+function goToPreviewItem(item: SearchPreviewItem) {
+  if ('kind' in item) {
     router.push(`/profile/${item.username}`)
     return
   }

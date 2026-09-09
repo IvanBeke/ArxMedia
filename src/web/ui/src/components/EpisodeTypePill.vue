@@ -4,14 +4,16 @@
   </component>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps({
-  value: { type: String, default: '' },
-  variant: { type: String, default: 'pill' },
-  size: { type: String, default: 'sm' },
-  as: { type: String, default: 'span' },
+const props = withDefaults(defineProps<{
+  value?: string
+  variant?: string
+  size?: string
+  as?: string
+}>(), {
+  value: '', variant: 'pill', size: 'sm', as: 'span',
 })
 
 const rawValue = computed(() => String(props.value || '').trim())

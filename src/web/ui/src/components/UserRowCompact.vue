@@ -14,13 +14,14 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
+import type { UserCard } from '@/types/api'
 
-const props = defineProps({
-  user: { type: Object, required: true },
-})
+const props = defineProps<{
+  user: UserCard
+}>()
 
-const initial = computed(() => (props.user?.username?.[0] || '?').toUpperCase())
-const avatarUrl = computed(() => props.user?.avatar || '')
+const initial = computed(() => (props.user.username[0] || '?').toUpperCase())
+const avatarUrl = computed(() => props.user.avatar || '')
 </script>

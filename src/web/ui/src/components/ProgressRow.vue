@@ -94,13 +94,13 @@
             variant="pill"
             class="episode-code"
           />
-          <EpisodeTypePill :value="item.next_episode?.episode_type" class="episode-type" />
+          <EpisodeTypePill :value="item.next_episode?.episode_type ?? undefined" class="episode-type" />
           <p class="episode-title" :title="item.next_episode?.name || ''">{{ item.next_episode?.name }}</p>
           <p class="episode-air">{{ item.next_episode?.air_date ? formatDateTimeByLocale(item.next_episode.air_date) : '' }}</p>
           <div class="mt-3 flex items-center gap-2">
             <RatingBadge
               v-if="hasProviderRating(item.next_episode?.vote_average)"
-              :value="item.next_episode?.vote_average"
+              :value="item.next_episode?.vote_average ?? 0"
               :votes="item.next_episode?.vote_count || 0"
               size="xs"
               out-of-ten
@@ -163,7 +163,7 @@
   </article>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { trackingAPI } from '@/api'
@@ -180,21 +180,21 @@ import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { formatDateTimeByLocale } from '@/i18n'
 import { formatHoursMinutes } from '@/utils/progress'
 import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
+import type { ShowProgressItem } from '@/types/api'
+import type { WatchEntryStatus } from '@/types/tracking'
 
-const props = defineProps({
-  item: { type: Object, required: true },
-})
+const props = defineProps<{ item: ShowProgressItem }>()
 
-const emit = defineEmits(['changed', 'error'])
+const emit = defineEmits<{ changed: []; error: [message: string] }>()
 
 const busy = ref(false)
-const menuRef = ref(null)
+const menuRef = ref<HTMLDetailsElement | null>(null)
 
 onClickOutside(menuRef, () => {
   if (!menuRef.value?.open) return
   menuRef.value.open = false
 })
-const rateDialog = ref(null)
+const rateDialog = ref<HTMLDialogElement | null>(null)
 const rating = ref(0)
 const savingRating = ref(false)
 const listPopoverOpen = ref(false)
@@ -203,7 +203,7 @@ function closeMenu() {
   menuRef.value?.removeAttribute('open')
 }
 
-function onDialogClick(event, dialogRef) {
+function onDialogClick(event: MouseEvent, dialogRef: HTMLDialogElement | null) {
   closeOnDialogBackdropClick(event, dialogRef)
 }
 
@@ -222,7 +222,7 @@ function onRateDialogClose() {
   rating.value = 0
 }
 
-async function submitRating(score) {
+async function submitRating(score: number) {
   if (!Number.isInteger(score) || score < 1 || score > 10 || savingRating.value) {
     return
   }
@@ -262,95 +262,94 @@ async function drop() {
   }
 }
 
-function hasProviderRating(value) {
+function hasProviderRating(value: number | null | undefined) {
   const rating = Number(value)
   return Number.isFinite(rating) && rating > 0
 }
 
-function formatCompactDate(value) {
+function formatCompactDate(value: string | null | undefined) {
   if (!value) return '--'
   return formatIsoAsDDMMYYYY(value) || '--'
 }
 
-function inferredStarted(value) {
+function inferredStarted(value: string | null | undefined) {
   if (!value) return '--'
   return formatIsoAsDDMMYYYY(value) || '--'
 }
 
-function minutesPerEpisode(item) {
+function minutesPerEpisode(item: ShowProgressItem) {
   const runtime = Number(item.episode_runtime)
   if (!Number.isFinite(runtime) || runtime <= 0) return '-- min/ep'
   return `${runtime} min/ep`
 }
 
-function statusClass(value) {
+function statusClass(value: WatchEntryStatus) {
   if (value === 'watching') return 'status-watching'
   if (value === 'watched') return 'status-watched'
   if (value === 'dropped') return 'status-dropped'
   return 'status-default'
 }
 
-function statusText(value) {
+function statusText(value: WatchEntryStatus) {
   if (value === 'watching') return 'Watching'
   if (value === 'watched') return 'Watched'
   if (value === 'dropped') return 'Dropped'
   return value
 }
 
-function providerShowStatus(value) {
+function providerShowStatus(value: string | null) {
   const text = String(value || '').trim()
   return text || '--'
 }
 
-function progressFraction(item) {
-  const watched = Number(item?.watched_episodes) || 0
-  const total = Number(item?.total_episodes) || 0
+function progressFraction(item: ShowProgressItem) {
+  const watched = Number(item.watched_episodes) || 0
+  const total = Number(item.total_episodes) || 0
   return total > 0 ? `${watched}/${total}` : `${watched}/?`
 }
 
-function progressPercent(item) {
-  return Number(item?.progress_percent) || 0
+function progressPercent(item: ShowProgressItem) {
+  return Number(item.progress_percent) || 0
 }
 
-function episodesLeft(item) {
-  return Number(item?.episodes_left) || 0
+function episodesLeft(item: ShowProgressItem) {
+  return Number(item.episodes_left) || 0
 }
 
-function formatTimeLeft(item) {
-  const minutes = Number(item?.runtime_left_minutes || 0)
+function formatTimeLeft(item: ShowProgressItem) {
+  const minutes = Number(item.runtime_left_minutes || 0)
   const remainingEpisodes = episodesLeft(item)
   if (remainingEpisodes <= 0) return '0m'
   if (!Number.isFinite(minutes) || minutes <= 0) return `${remainingEpisodes} eps`
   return formatHoursMinutes(minutes, item.runtime_left_has_unknown)
 }
 
-function genresText(item) {
-  const values = Array.isArray(item?.genres) ? item.genres : []
-  return values.join(', ')
+function genresText(item: ShowProgressItem) {
+  return item.genres.join(', ')
 }
 
-function networks(item) {
-  return Array.isArray(item?.networks) ? item.networks : []
+function networks(item: ShowProgressItem) {
+  return item.networks
 }
 
-function hasLastWatchedEpisodeCode(item) {
+function hasLastWatchedEpisodeCode(item: ShowProgressItem) {
   const season = item.last_watched_episode?.season_number
   const episode = item.last_watched_episode?.episode_number
   return Boolean(season && episode)
 }
 
-function hasNextEpisode(item) {
+function hasNextEpisode(item: ShowProgressItem) {
   return Boolean(item.next_episode?.season_number && item.next_episode?.episode_number)
 }
 
-function episodeLink(item) {
+function episodeLink(item: ShowProgressItem) {
   if (item.next_episode?.season_number && item.next_episode?.episode_number) {
     return `/tv/${item.tmdb_id}/season/${item.next_episode.season_number}/episode/${item.next_episode.episode_number}`
   }
   return `/tv/${item.tmdb_id}`
 }
 
-function seasonsLabel(item) {
+function seasonsLabel(item: ShowProgressItem) {
   const seasons = Number(item.number_of_seasons)
   if (Number.isFinite(seasons) && seasons > 0) {
     return `${seasons} ${seasons === 1 ? 'Season' : 'Seasons'}`

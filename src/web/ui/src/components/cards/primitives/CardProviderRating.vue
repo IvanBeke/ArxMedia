@@ -2,13 +2,15 @@
   <RatingBadge :value="value" :size="size" :votes="votes" :out-of-ten="outOfTen" />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import RatingBadge from '@/components/RatingBadge.vue'
 
-defineProps({
-  value: { type: [Number, String], required: true },
-  votes: { type: [Number, String], default: 0 },
-  size: { type: String, default: 'xs' },
-  outOfTen: { type: Boolean, default: false },
+withDefaults(defineProps<{
+  value: number | string
+  votes?: number | string
+  size?: string
+  outOfTen?: boolean
+}>(), {
+  votes: 0, size: 'xs', outOfTen: false,
 })
 </script>

@@ -61,7 +61,7 @@
             </p>
 
             <div class="flex items-center gap-4 mb-4 text-sm">
-              <RatingBadge :value="show.vote_average" :votes="show.vote_count" out-of-ten />
+              <RatingBadge :value="show.vote_average ?? 0" :votes="show.vote_count" out-of-ten />
             </div>
 
             <div v-if="metadataSuccessMsg" class="mb-3 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
@@ -96,7 +96,7 @@
                   :key="`provider-${p.provider_id}`"
                   class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary"
                 >
-                  <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92')" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
+                  <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
                   {{ p.provider_name }}
                 </div>
                 <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
@@ -262,7 +262,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { onClickOutside } from '@vueuse/core'
@@ -288,17 +288,23 @@ import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
 import { temporalYear } from '@/utils/temporal'
+import type { Episode, TVShow } from '@/types/api'
+import type { WatchEntryStatus } from '@/types/tracking'
+import type { WatchedAtOption } from '@/utils/watchOptions'
+
+type ShowStatus = WatchEntryStatus | 'watchlist'
+type EpisodeTarget = { episodeNumber: number }
 
 const route = useRoute()
 const auth = useAuthStore()
 const { t } = useI18n()
-const tmdbId = computed(() => parseInt(route.params.id))
+const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10))
 
-const show = ref(null)
+const show = ref<TVShow | null>(null)
 const loading = ref(true)
 const loadingSeasons = ref(false)
 const userRating = ref(0)
-const showStatus = ref(WATCH_ENTRY_STATUS.NONE)
+const showStatus = ref<ShowStatus>(WATCH_ENTRY_STATUS.NONE)
 const metadataFlash = useFlashMessages()
 const {
   successMsg: metadataSuccessMsg,
@@ -308,14 +314,14 @@ const {
 } = metadataFlash
 const { successMsg, errorMsg, showSuccess, showError } = useFlashMessages()
 const refreshingMetadata = ref(false)
-const removeHistoryDialog = ref(null)
+const removeHistoryDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const removingHistory = ref(false)
-const unwatchEpisodeDialog = ref(null)
+const unwatchEpisodeDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
 
-const activeTab = ref('seasons')
-const expandedSeason = ref(null)
-const seasonEpisodes = ref({})
-const seasonLoading = ref(null)
+const activeTab = ref<'seasons' | 'overview'>('seasons')
+const expandedSeason = ref<number | null>(null)
+const seasonEpisodes = ref<Record<number, Episode[]>>({})
+const seasonLoading = ref<number | null>(null)
 const hasWatchedEpisodes = computed(() => watchedEps.value.size > 0)
 const {
   handleQuickAction: runQuickAction,
@@ -338,7 +344,7 @@ const {
 } = useWatchedEpisodes()
 
 const statusMenuOpen = ref(false)
-const statusMenuRef = ref(null)
+const statusMenuRef = ref<HTMLElement | null>(null)
 
 const watchButtonLabel = computed(() => {
   if (showStatus.value === WATCH_ENTRY_STATUS.WATCHING) return 'Watching'
@@ -381,7 +387,7 @@ function openRemoveHistoryDialog() {
   removeHistoryDialog.value?.showModal()
 }
 
-async function handleEpisodeWatchOption(sn, payload) {
+async function handleEpisodeWatchOption(sn: number, payload: EpisodeTarget & { option: WatchedAtOption; releaseDate: string | null }) {
   const epNum = payload.episodeNumber
 
   const finalWatchedAt = await markFromOption(payload.option, {
@@ -395,7 +401,7 @@ async function handleEpisodeWatchOption(sn, payload) {
   showSuccess('Episode marked as watched')
 }
 
-function openEpisodeUnwatchConfirm(sn, payload) {
+function openEpisodeUnwatchConfirm(sn: number, payload: EpisodeTarget) {
   unwatchEpisodeDialog.value?.open({
     tmdbId: tmdbId.value,
     seasonNumber: sn,
@@ -403,12 +409,12 @@ function openEpisodeUnwatchConfirm(sn, payload) {
   })
 }
 
-async function onEpisodeUnwatched(target) {
+async function onEpisodeUnwatched(target: { seasonNumber: number; episodeNumber: number }) {
   unmarkLocally(target.seasonNumber, target.episodeNumber)
   showSuccess('Episode unwatched')
 }
 
-function toggleSeason(sn) {
+function toggleSeason(sn: number) {
   if (expandedSeason.value === sn) {
     expandedSeason.value = null
   } else {
@@ -417,26 +423,26 @@ function toggleSeason(sn) {
   }
 }
 
-async function loadSeason(sn) {
+async function loadSeason(sn: number) {
   if (seasonEpisodes.value[sn]) return
   seasonLoading.value = sn
   try {
     const data = await mediaAPI.getSeason(tmdbId.value, sn)
     if (data) seasonEpisodes.value[sn] = data.episodes || []
-  } catch (err) {
+  } catch {
     seasonEpisodes.value[sn] = []
   } finally {
     seasonLoading.value = null
   }
 }
 
-function getSeasonProgress(sn) {
+function getSeasonProgress(sn: number) {
   const { watched, total } = getSeasonProgressCounts(sn)
   return computeProgressPercent(watched, total)
 }
 
-function getSeasonProgressCounts(sn) {
-  const season = show.value?.seasons?.find(s => s.season_number === sn)
+function getSeasonProgressCounts(sn: number) {
+  const season = show.value?.seasons.find((item) => item.season_number === sn)
   const eps = seasonEpisodes.value[sn]
   let total = 0
   if (eps?.length) {
@@ -450,30 +456,34 @@ function getSeasonProgressCounts(sn) {
   return { watched, total }
 }
 
-function formatSeasonProgressFraction(sn) {
+function formatSeasonProgressFraction(sn: number) {
   const { watched, total } = getSeasonProgressCounts(sn)
   return formatProgressFraction(watched, total)
 }
 
-async function toggleSeasonWatched(sn) {
+async function toggleSeasonWatched(sn: number) {
   const progress = getSeasonProgress(sn)
   if (progress === 100) {
     const response = await trackingAPI.unmarkSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
-    for (const episode of response?.episodes || []) {
-      unmarkLocally(episode.season_number, episode.episode_number)
+    for (const episode of response.episodes) {
+      if (episode.season_number !== null && episode.episode_number !== null) {
+        unmarkLocally(episode.season_number, episode.episode_number)
+      }
     }
     showSuccess('Season unwatched')
   } else {
     const response = await trackingAPI.markSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
-    for (const episode of response?.episodes || []) {
-      markLocally(episode.season_number, episode.episode_number, episode.watched_at)
+    for (const episode of response.episodes) {
+      if (episode.season_number !== null && episode.episode_number !== null) {
+        markLocally(episode.season_number, episode.episode_number, episode.watched_at)
+      }
     }
     await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
     showSuccess('Season marked as watched')
   }
 }
 
-async function setShowStatus(status) {
+async function setShowStatus(status: ShowStatus): Promise<boolean> {
   if (!show.value) {
     return false
   }
@@ -576,7 +586,7 @@ async function handleWatchlistAction() {
   }
 }
 
-async function submitRating(score) {
+async function submitRating(score: number) {
   try {
     await trackingAPI.rate({ media_type: MEDIA_TYPE.TV, tmdb_id: tmdbId.value, score })
     showSuccess(`Rated ${score}/10!`)
@@ -592,7 +602,8 @@ async function loadShow() {
       show.value = data
       syncShowStatusFromUserStatus()
     }
-  } catch (e) {}
+  } catch {
+  }
 }
 
 async function refreshMetadata() {
@@ -625,7 +636,7 @@ onMounted(async () => {
     }
     
     if (ratingRes.status === 'fulfilled') {
-      const ratings = ratingRes.value.results || ratingRes.value
+      const ratings = Array.isArray(ratingRes.value) ? ratingRes.value : ratingRes.value.results
       const found = ratings[0]
       if (found) userRating.value = found.score
     }

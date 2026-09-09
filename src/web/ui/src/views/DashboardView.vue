@@ -136,7 +136,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -144,17 +144,19 @@ import { useI18n } from '@/i18n'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
+import type { DashboardStats, UpNextItem, UpcomingItem } from '@/api'
+import type { WatchEntry } from '@/types/api'
 
 const auth = useAuthStore()
 const { t } = useI18n()
-const stats = ref(null)
+const stats = ref<DashboardStats | null>(null)
 const loadingStats = ref(true)
-const upNext = ref(null)
+const upNext = ref<UpNextItem[] | null>(null)
 const loadingUpNext = ref(true)
-const upcoming = ref(null)
+const upcoming = ref<UpcomingItem[] | null>(null)
 const loadingUpcoming = ref(true)
-const markingId = ref(null)
-const deletingEntryId = ref(null)
+const markingId = ref<number | null>(null)
+const deletingEntryId = ref<number | null>(null)
 
 const upcomingDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
@@ -165,12 +167,12 @@ const upcomingDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   hour12: false,
 })
 
-function formatUpcomingDateTime(value) {
+function formatUpcomingDateTime(value: string | null): string {
   if (!value) return ''
   return upcomingDateTimeFormatter.format(new Date(value)).replace(',', '')
 }
 
-function getLink(entry) {
+function getLink(entry: WatchEntry): string {
   if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
   if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
     return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
@@ -178,15 +180,15 @@ function getLink(entry) {
   return `/tv/${entry.tmdb_id}`
 }
 
-function getUpNextPosterLink(item) {
+function getUpNextPosterLink(item: UpNextItem): string {
   return `/tv/${item.tmdb_id}/season/${item.next_episode?.season_number}/episode/${item.next_episode?.episode_number}`
 }
 
-function getUpcomingPosterLink(item) {
+function getUpcomingPosterLink(item: UpcomingItem): string {
   return `/tv/${item.tmdb_id}/season/${item.season_number}/episode/${item.episode_number}`
 }
 
-function getRemoveHistoryConfirmText(entry) {
+function getRemoveHistoryConfirmText(entry: WatchEntry): string {
   if (entry?.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
     return t('remove_history_confirm_episode')
   }
@@ -202,7 +204,7 @@ async function refreshTrackingLists() {
   stats.value = statsRes
 }
 
-async function markNextEpisodeWatched(item) {
+async function markNextEpisodeWatched(item: UpNextItem) {
   if (!item.next_episode || markingId.value) return
   markingId.value = item.tmdb_id
   try {
@@ -219,7 +221,7 @@ async function markNextEpisodeWatched(item) {
   }
 }
 
-async function removeRecentEntry(entry) {
+async function removeRecentEntry(entry: WatchEntry) {
   if (deletingEntryId.value) return
   deletingEntryId.value = entry.id
 

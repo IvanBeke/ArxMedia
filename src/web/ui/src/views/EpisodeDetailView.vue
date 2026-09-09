@@ -42,7 +42,7 @@
         </button>
         <WatchMenu
           v-else
-          :release-date="episodeData?.air_date"
+          :release-date="episodeData?.air_date ?? ''"
           @select="handleWatchOption"
         >
           <button
@@ -58,7 +58,7 @@
 
       <div class="flex flex-col md:flex-row gap-6">
         <SpoilerBlock :item-key="`episode-image-${tmdbId}-${seasonNum}-${episodeNum}`" :watched="isWatched" class="w-full md:w-80 aspect-video rounded-lg bg-surface-200 overflow-hidden flex-shrink-0">
-          <img v-if="episodeData.still_path" :src="tmdbImageUrl(episodeData.still_path)" :alt="episodeData.name" class="w-full h-full object-cover" />
+          <img v-if="episodeData.still_path" :src="tmdbImageUrl(episodeData.still_path) || ''" :alt="episodeData.name" class="w-full h-full object-cover" />
           <div v-else class="w-full h-full flex items-center justify-center text-gray-600 text-4xl">{{ episodeData.episode_number }}</div>
         </SpoilerBlock>
 
@@ -94,7 +94,7 @@
         <p class="text-gray-500 text-xs mb-2">Cast</p>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-sm">
           <div v-for="actor in creditsData.cast" :key="actor.credit_id" class="flex items-center gap-3">
-            <img v-if="actor.profile_path" :src="tmdbImageUrl(actor.profile_path, 'w92')" :alt="actor.name" class="w-12 h-12 rounded-md object-cover" />
+            <img v-if="actor.profile_path" :src="tmdbImageUrl(actor.profile_path, 'w92') || ''" :alt="actor.name" class="w-12 h-12 rounded-md object-cover" />
             <div v-else class="w-12 h-12 rounded-md bg-surface-200"></div>
             <div class="min-w-0">
               <p class="text-secondary">{{ actor.name }}</p>
@@ -108,7 +108,7 @@
         <p class="text-gray-500 text-xs mb-2">Guest stars</p>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-sm">
           <div v-for="star in creditsData.guest_stars" :key="star.credit_id" class="flex items-center gap-3">
-            <img v-if="star.profile_path" :src="tmdbImageUrl(star.profile_path, 'w92')" :alt="star.name" class="w-12 h-12 rounded-md object-cover" />
+            <img v-if="star.profile_path" :src="tmdbImageUrl(star.profile_path, 'w92') || ''" :alt="star.name" class="w-12 h-12 rounded-md object-cover" />
             <div v-else class="w-12 h-12 rounded-md bg-surface-200"></div>
             <div class="min-w-0">
               <p class="text-secondary">{{ star.name }}</p>
@@ -125,7 +125,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { trackingAPI, mediaAPI } from '@/api'
@@ -140,22 +140,24 @@ import { formatDateTimeByLocale, useI18n } from '@/i18n'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { tmdbImageUrl } from '@/utils/images'
 import { watchedTooltipText } from '@/utils/watchOptions'
+import type { Credits, Episode, TVShow, WatchedEpisode } from '@/types/api'
+import type { WatchedAtOption } from '@/utils/watchOptions'
 
 const route = useRoute()
 
-const tmdbId = computed(() => parseInt(route.params.id) || 0)
-const seasonNum = computed(() => parseInt(route.params.seasonNumber) || 0)
-const episodeNum = computed(() => parseInt(route.params.episodeNumber) || 0)
+const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10) || 0)
+const seasonNum = computed(() => Number.parseInt(String(route.params.seasonNumber), 10) || 0)
+const episodeNum = computed(() => Number.parseInt(String(route.params.episodeNumber), 10) || 0)
 
 const backLink = computed(() => `/tv/${tmdbId.value}/season/${seasonNum.value}`)
 
 const loading = ref(true)
-const showData = ref(null)
-const episodeData = ref(null)
-const creditsData = ref(null)
+const showData = ref<TVShow | null>(null)
+const episodeData = ref<Episode | null>(null)
+const creditsData = ref<Credits | null>(null)
 const isWatched = ref(false)
 const watchedAt = ref('')
-const unwatchDialog = ref(null)
+const unwatchDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
 const {
   showDatePicker,
   pickerInitialValue,
@@ -167,7 +169,7 @@ const { t } = useI18n()
 
 const watchButtonTooltip = computed(() => watchedTooltipText(isWatched.value, watchedAt.value, t))
 
-function formatRating(rating) {
+function formatRating(rating: number) {
   if (!rating) return '0.0'
   return rating.toFixed(1)
 }
@@ -184,11 +186,11 @@ async function load() {
 
     showData.value = showRes
     creditsData.value = creditsRes
-    const ep = seasonRes.episodes?.find(e => e.episode_number === episodeNum.value)
+    const ep = seasonRes.episodes.find((episode) => episode.episode_number === episodeNum.value)
     if (ep) episodeData.value = ep
 
-    const watchedEpisode = watchedRes.episodes?.find(
-      e => e.season_number === seasonNum.value && e.episode_number === episodeNum.value
+    const watchedEpisode = watchedRes.episodes.find(
+      (episode: WatchedEpisode) => episode.season_number === seasonNum.value && episode.episode_number === episodeNum.value
     )
     isWatched.value = Boolean(watchedEpisode)
     watchedAt.value = watchedEpisode?.watched_at || ''
@@ -212,12 +214,12 @@ function onEpisodeUnwatched() {
   watchedAt.value = ''
 }
 
-async function handleWatchOption(option) {
+async function handleWatchOption(option: WatchedAtOption) {
   const finalWatchedAt = await markFromOption(option, {
     tmdbId: tmdbId.value,
     seasonNumber: seasonNum.value,
     episodeNumber: episodeNum.value,
-  }, { releaseDate: episodeData.value?.air_date || '', pickerInitial: watchedAt.value })
+  }, { releaseDate: episodeData.value?.broadcast_start || episodeData.value?.air_date || '', pickerInitial: watchedAt.value })
   if (!finalWatchedAt) return
   isWatched.value = true
   watchedAt.value = finalWatchedAt

@@ -9,7 +9,7 @@
         <WatchCheckmarkMenu
           :watched="isEpisodeWatched(ep.episode_number)"
           :watched-at="getEpisodeWatchedAt(ep.episode_number)"
-          :release-date="ep.air_date"
+          :release-date="ep.broadcast_start || ep.air_date || ''"
           @select="(option) => emitWatchOption(ep, option)"
           @unwatch="emitUnwatch(ep)"
         />
@@ -19,7 +19,7 @@
       <RouterLink :to="`/tv/${tmdbId}/season/${seasonNumber}/episode/${ep.episode_number}`" class="flex-shrink-0 w-32 sm:w-40 aspect-video rounded-md bg-surface-200 overflow-hidden mt-1 block">
         <img
           v-if="ep.still_path"
-          :src="tmdbImageUrl(ep.still_path)"
+          :src="tmdbImageUrl(ep.still_path ?? '') || ''"
           :alt="ep.name"
           class="w-full h-full object-cover"
           loading="lazy"
@@ -45,33 +45,38 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import WatchCheckmarkMenu from '@/components/WatchCheckmarkMenu.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import { formatDateTimeByLocale } from '@/i18n'
 import { tmdbImageUrl } from '@/utils/images'
+import type { Episode } from '@/types/api'
 
-const props = defineProps({
-  episodes: { type: Array, default: () => [] },
-  tmdbId: { type: Number, required: true },
-  seasonNumber: { type: Number, required: true },
-  isEpisodeWatched: { type: Function, required: true },
-  getEpisodeWatchedAt: { type: Function, required: true },
-})
+type WatchMenuOption = 'now' | 'release' | 'unknown' | 'date'
+type EpisodeWatchOption = { episodeNumber: number; option: WatchMenuOption; releaseDate: string | null }
+type EpisodeUnwatch = { episodeNumber: number }
 
-const emit = defineEmits(['watch-option', 'unwatch'])
+const props = withDefaults(defineProps<{
+  episodes?: Episode[]
+  tmdbId: number
+  seasonNumber: number
+  isEpisodeWatched: (episodeNumber: number) => boolean
+  getEpisodeWatchedAt: (episodeNumber: number) => string
+}>(), { episodes: () => [] })
 
-function emitWatchOption(episode, option) {
+const emit = defineEmits<{ 'watch-option': [payload: EpisodeWatchOption]; unwatch: [payload: EpisodeUnwatch] }>()
+
+function emitWatchOption(episode: Episode, option: WatchMenuOption) {
   emit('watch-option', {
     episodeNumber: episode.episode_number,
     option,
-    releaseDate: episode.air_date || null,
+    releaseDate: episode.broadcast_start || episode.air_date || null,
   })
 }
 
-function emitUnwatch(episode) {
+function emitUnwatch(episode: Episode) {
   emit('unwatch', { episodeNumber: episode.episode_number })
 }
 </script>

@@ -4,16 +4,18 @@
   </component>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps({
-  seasonNumber: { type: [Number, String], default: null },
-  episodeNumber: { type: [Number, String], default: null },
-  variant: { type: String, default: 'pill' },
-  size: { type: String, default: 'sm' },
-  fallback: { type: String, default: '--' },
-  as: { type: String, default: 'span' },
+const props = withDefaults(defineProps<{
+  seasonNumber?: number | string | null
+  episodeNumber?: number | string | null
+  variant?: string
+  size?: string
+  fallback?: string
+  as?: string
+}>(), {
+  seasonNumber: null, episodeNumber: null, variant: 'pill', size: 'sm', fallback: '--', as: 'span',
 })
 
 const PRESET_SIZES = new Set(['xs', 's', 'sm'])

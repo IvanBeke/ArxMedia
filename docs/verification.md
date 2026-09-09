@@ -36,7 +36,13 @@ curl -s "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e
 curl -s http://localhost:8000/api/auth/register/ | jq -e '.username'
 ```
 
-### 5. Embedded UI builds
+### 5. Embedded UI type checks
+```bash
+docker compose exec ui sh -lc "pnpm typecheck"
+```
+Must exit 0.
+
+### 6. Embedded UI builds
 ```bash
 docker compose exec ui sh -lc "pnpm install && pnpm build"
 ```
@@ -71,7 +77,7 @@ Use focused checks that prove the requested behavior and guard against regressio
 - Service shows `Exit` or `Restarting` in `docker compose ps`
 - Unapplied migrations in `showmigrations`
 - API returns 500 or unexpected error
-- UI build fails
+- UI type check or build fails
 
 ## Recovery
 

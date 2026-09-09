@@ -103,7 +103,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { trackingAPI } from '@/api'
@@ -113,36 +113,42 @@ import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
 import { invalidPageRecovery, normalizePagedResponse, parsePage } from '@/utils/pagination'
+import type { MediaType, QueryParams, WatchEntry, WatchEntryMediaType } from '@/types/api'
+
+type HistoryFilter = 'all' | MediaType | WatchEntryMediaType
+type HistoryOrder = 'newest' | 'oldest'
+type HistoryStats = { movies_watched: number; episodes_watched: number }
+type HistoryGroup = { key: string; label: string; items: WatchEntry[] }
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 
-const entries = ref([])
-const stats = ref(null)
+const entries = ref<WatchEntry[]>([])
+const stats = ref<HistoryStats | null>(null)
 const loading = ref(true)
-const activeFilter = ref('all')
-const sortOrder = ref('newest')
+const activeFilter = ref<HistoryFilter>('all')
+const sortOrder = ref<HistoryOrder>('newest')
 const groupByDay = ref(true)
 const currentPage = ref(1)
 const count = ref(0)
 const lastLoadedCount = ref(0)
-const deletingEntryId = ref(null)
+const deletingEntryId = ref<number | null>(null)
 let suppressRouteLoad = false
 
-const filters = [
+const filters: { label: string; value: HistoryFilter }[] = [
   { label: 'All', value: 'all' },
   { label: 'Movies', value: MEDIA_TYPE.MOVIE },
   { label: 'Episodes', value: WATCH_ENTRY_MEDIA_TYPE.EPISODE },
 ]
 
-const groupedEntries = computed(() => {
+const groupedEntries = computed<HistoryGroup[]>(() => {
   if (!groupByDay.value) {
     return [{ key: 'all', label: 'All entries', items: entries.value }]
   }
 
-  const grouped = []
-  const byKey = new Map()
+  const grouped: HistoryGroup[] = []
+  const byKey = new Map<string, HistoryGroup>()
 
   for (const entry of entries.value) {
     const key = isoDateKey(entry.watched_at) || 'unknown'
@@ -155,13 +161,13 @@ const groupedEntries = computed(() => {
       byKey.set(key, group)
       grouped.push(group)
     }
-    byKey.get(key).items.push(entry)
+    byKey.get(key)?.items.push(entry)
   }
 
   return grouped
 })
 
-function getLink(entry) {
+function getLink(entry: WatchEntry): string {
   if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
   if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
     return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
@@ -169,14 +175,14 @@ function getLink(entry) {
   return `/tv/${entry.tmdb_id}`
 }
 
-function getRemoveHistoryConfirmText(entry) {
+function getRemoveHistoryConfirmText(entry: WatchEntry): string {
   if (entry?.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
     return t('remove_history_confirm_episode')
   }
   return t('remove_history_confirm_movie')
 }
 
-function decrementHistoryStats(currentStats, mediaType) {
+function decrementHistoryStats(currentStats: HistoryStats | null, mediaType: WatchEntryMediaType): HistoryStats | null {
   if (!currentStats) return currentStats
 
   if (mediaType === MEDIA_TYPE.MOVIE) {
@@ -217,8 +223,8 @@ async function loadHistory() {
   }
 }
 
-function buildHistoryParams(page = currentPage.value) {
-  const params = {
+function buildHistoryParams(page = currentPage.value): QueryParams {
+  const params: QueryParams = {
     order: sortOrder.value,
     page,
   }
@@ -228,8 +234,8 @@ function buildHistoryParams(page = currentPage.value) {
   return params
 }
 
-function applyHistoryResponse(historyRes) {
-  const paged = normalizePagedResponse(historyRes)
+function applyHistoryResponse(historyRes: Awaited<ReturnType<typeof trackingAPI.getHistory>>) {
+  const paged = normalizePagedResponse<WatchEntry>(historyRes)
   count.value = paged.count
   lastLoadedCount.value = paged.loadedCount
   entries.value = paged.items
@@ -255,8 +261,8 @@ function queryToState() {
   currentPage.value = parsePage(route.query.page)
 }
 
-function stateToQuery() {
-  const query = {}
+function stateToQuery(): QueryParams {
+  const query: QueryParams = {}
   if (activeFilter.value !== 'all') {
     query.media_type = activeFilter.value
   }
@@ -292,10 +298,16 @@ function syncUrlWithState() {
     return
   }
 
-  router.push({ query: nextQuery })
+  router.push({ query: stateToRouteQuery(nextQuery) })
 }
 
-function setFilter(nextFilter) {
+function stateToRouteQuery(query: QueryParams): Record<string, string> {
+  return Object.fromEntries(Object.entries(query).flatMap(([key, value]) => (
+    typeof value === 'string' || typeof value === 'number' ? [[key, String(value)]] : []
+  )))
+}
+
+function setFilter(nextFilter: HistoryFilter) {
   if (activeFilter.value === nextFilter && currentPage.value === 1) {
     return
   }
@@ -312,7 +324,7 @@ function toggleDayGrouping() {
   groupByDay.value = !groupByDay.value
 }
 
-async function deleteEntry(entry) {
+async function deleteEntry(entry: WatchEntry) {
   if (deletingEntryId.value) {
     return
   }

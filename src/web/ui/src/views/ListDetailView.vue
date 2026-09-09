@@ -124,7 +124,7 @@
           hide-watchlist-action
           hide-watched-action
           :show-list-remove-action="canEdit"
-          :list-context-id="route.params.id"
+          :list-context-id="listId()"
           @error="showQuickActionError"
           @list-item-removed="handleListItemRemoved"
         />
@@ -165,7 +165,7 @@
               hide-watchlist-action
               hide-watched-action
               :show-list-remove-action="false"
-              :list-context-id="route.params.id"
+               :list-context-id="listId()"
               @error="showQuickActionError"
             />
           </div>
@@ -184,7 +184,7 @@
            hide-watchlist-action
            hide-watched-action
            :show-list-remove-action="false"
-           :list-context-id="route.params.id"
+            :list-context-id="listId()"
          />
          <div class="drag-preview-handle inline-flex items-center justify-center gap-2 rounded-full bg-surface-900/85 backdrop-blur border border-white/30 px-6 py-3 text-base font-bold text-white shadow-2xl">
            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -223,7 +223,7 @@
         class="app-dialog list-dialog w-full max-w-xl rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
         aria-labelledby="edit-list-title"
         @close="onEditDialogClose"
-        @click="onDialogClick($event, editDialog)"
+         @click="onDialogClick($event, editDialog)"
       >
         <div class="p-6 md:p-7">
           <div class="flex items-start justify-between mb-5">
@@ -264,7 +264,7 @@
                 <button
                   type="button"
                   class="text-left rounded-lg border p-3 transition-colors"
-                  :class="editForm.privacy === LIST_PRIVACY.PRIVATE ? 'border-brand-500 bg-brand-500/10' : 'border-surface-200 hover:border-surface-300'"
+                   :class="editForm.privacy === LIST_PRIVACY.PRIVATE ? 'border-brand-500 bg-brand-500/10' : 'border-surface-200 hover:border-surface-300'"
                   @click="editForm.privacy = LIST_PRIVACY.PRIVATE"
                 >
                   <p class="text-sm font-medium text-primary">Private</p>
@@ -332,7 +332,7 @@
         closedby="any"
         class="app-dialog list-dialog w-full max-w-2xl rounded-xl border border-surface-200 bg-surface-100 p-0 text-primary"
         aria-labelledby="add-list-item-title"
-        @click="onDialogClick($event, addDialog)"
+         @click="onDialogClick($event, addDialog)"
       >
         <div class="p-6 md:p-7">
           <h2 id="add-list-item-title" class="text-xl font-display text-primary font-semibold mb-4">Add to List</h2>
@@ -396,8 +396,8 @@
   </div>
 </template>
 
-<script setup>
-import { nextTick, ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+<script setup lang="ts">
+import { nextTick, ref, onMounted, onBeforeUnmount, computed, watch, type ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authAPI, trackingAPI, mediaAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
@@ -416,30 +416,39 @@ import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/
 import { attachClosestEdge, extractClosestEdge } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
 import { reorder } from '@atlaskit/pragmatic-drag-and-drop/reorder'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import type { CustomList, ListItem, MediaResult, UserCard } from '@/types/api'
+
+type ListFilters = {
+  search: string; sort: string; direction: 'asc' | 'desc'; mediaType: 'all' | 'movie' | 'tv'; statuses: string[]; providerStatuses: string[]; genres: string[]
+  hasUpcoming: boolean; newOnly: boolean; missingRating: boolean; inWatchlist: boolean
+}
+type FilterChange = { source?: string; filters?: ListFilters }
+type FilterBarInstance = ComponentPublicInstance<{ clearAll: () => void }>
+type ReorderDrag = { id: number; item: ListItem; sourceIndex: number; targetIndex: number; width: number; height: number; position: { x: number; y: number } }
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-const list = ref(null)
-const items = ref([])
+const list = ref<CustomList | null>(null)
+const items = ref<ListItem[]>([])
 const loading = ref(true)
 const updating = ref(false)
 const loadingItems = ref(false)
 const searchQuery = ref('')
-const searchResults = ref([])
+const searchResults = ref<(MediaResult & { tmdb_id: number })[]>([])
 const searching = ref(false)
 const collaboratorQuery = ref('')
-const collaboratorResults = ref([])
-const collaboratorDraft = ref([])
+const collaboratorResults = ref<UserCard[]>([])
+const collaboratorDraft = ref<UserCard[]>([])
 const showCollaboratorResults = ref(false)
 const searchingUsers = ref(false)
-const editDialog = ref(null)
-const addDialog = ref(null)
-const deleteListDialog = ref(null)
-const editNameInput = ref(null)
-let collaboratorDebounce = null
-const appliedFilters = ref({
+const editDialog = ref<HTMLDialogElement | null>(null)
+const addDialog = ref<HTMLDialogElement | null>(null)
+const deleteListDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
+const editNameInput = ref<HTMLInputElement | null>(null)
+let collaboratorDebounce: ReturnType<typeof setTimeout> | null = null
+const appliedFilters = ref<ListFilters>({
   search: '',
   sort: 'custom_order',
   direction: 'asc',
@@ -453,11 +462,11 @@ const appliedFilters = ref({
   inWatchlist: false,
 })
 const feedbackMsg = ref('')
-const feedbackKind = ref('success')
+const feedbackKind = ref<'success' | 'error'>('success')
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const deletingList = ref(false)
 const addingResultKey = ref('')
-const filterBarRef = ref(null)
+const filterBarRef = ref<FilterBarInstance | null>(null)
 const count = ref(0)
 const lastLoadedCount = ref(0)
 const totalRuntimeMinutes = ref(0)
@@ -466,15 +475,15 @@ const currentPage = useQueryPageSync(route)
 const hydrated = ref(false)
 const reorderMode = ref(false)
 const savingOrder = ref(false)
-const drag = ref(null)
-const dragCleanup = ref([])
+const drag = ref<ReorderDrag | null>(null)
+const dragCleanup = ref<(() => void)[]>([])
 const hasReordered = ref(false)
-const originalOrderIds = ref([])
+const originalOrderIds = ref<number[]>([])
 
 const editForm = ref({
   name: '',
   description: '',
-  privacy: LIST_PRIVACY.PUBLIC,
+  privacy: LIST_PRIVACY.PUBLIC as CustomList['privacy'],
 })
 
 const isOwner = computed(() => {
@@ -495,10 +504,12 @@ const canReorder = computed(() => {
 })
 
 const reorderDisplayItems = computed(() => {
-  if (!drag.value || drag.value.targetIndex === drag.value.sourceIndex) return items.value
-  const next = items.value.filter((item) => item.id !== drag.value.id)
-  const [moved] = items.value.filter((item) => item.id === drag.value.id)
-  next.splice(drag.value.targetIndex, 0, moved)
+  const activeDrag = drag.value
+  if (!activeDrag || activeDrag.targetIndex === activeDrag.sourceIndex) return items.value
+  const next = items.value.filter((item) => item.id !== activeDrag.id)
+  const moved = items.value.find((item) => item.id === activeDrag.id)
+  if (!moved) return items.value
+  next.splice(activeDrag.targetIndex, 0, moved)
   return next
 })
 
@@ -516,11 +527,16 @@ const hasActiveFilters = computed(() => {
   )
 })
 
-function formatDate(d) {
+function listId(): string | number {
+  const id = route.params.id
+  return Array.isArray(id) ? id[0] || '' : id || ''
+}
+
+function formatDate(d: string) {
   return formatDateByLocale(d)
 }
 
-function showFeedback(message, kind = 'success') {
+function showFeedback(message: string, kind: 'success' | 'error' = 'success') {
   feedbackKind.value = kind
   feedbackMsg.value = message
   setTimeout(() => {
@@ -530,7 +546,7 @@ function showFeedback(message, kind = 'success') {
   }, 3500)
 }
 
-function privacyClass(privacy) {
+function privacyClass(privacy: CustomList['privacy']) {
   const classes = {
     [LIST_PRIVACY.PUBLIC]: 'bg-green-500/20 text-green-400',
     [LIST_PRIVACY.PRIVATE]: 'bg-red-500/20 text-red-400',
@@ -538,8 +554,7 @@ function privacyClass(privacy) {
   return classes[privacy] || ''
 }
 
-function onDialogClick(event, dialogRef) {
-  const dialog = dialogRef?.value
+function onDialogClick(event: MouseEvent, dialog: HTMLDialogElement | null) {
   closeOnDialogBackdropClick(event, dialog)
 }
 
@@ -587,7 +602,7 @@ function openDeleteListDialog() {
 async function loadList() {
   loading.value = true
   try {
-    const data = await trackingAPI.getList(route.params.id)
+    const data = await trackingAPI.getList(listId())
     if (data) {
       list.value = data
       editForm.value = {
@@ -620,15 +635,15 @@ async function loadItems() {
       ...(filterState.missingRating ? { missing_rating: true } : {}),
       ...(filterState.inWatchlist ? { in_watchlist: true } : {}),
     }
-    const data = await trackingAPI.getListItems(route.params.id, params)
-    const paged = normalizePagedResponse(data)
+    const data = await trackingAPI.getListItems(listId(), params)
+    const paged = normalizePagedResponse<ListItem>(data)
     items.value = paged.items
     count.value = paged.count
     lastLoadedCount.value = paged.loadedCount
-    totalRuntimeMinutes.value = Number.isFinite(data?.total_runtime_minutes) ? data.total_runtime_minutes : 0
+    totalRuntimeMinutes.value = Number.isFinite(data.total_runtime_minutes) ? data.total_runtime_minutes ?? 0 : 0
     counts.value = {
-      shows: Number.isFinite(data?.counts?.shows) ? data.counts.shows : 0,
-      movies: Number.isFinite(data?.counts?.movies) ? data.counts.movies : 0,
+      shows: Number.isFinite(data.counts?.shows) ? data.counts?.shows ?? 0 : 0,
+      movies: Number.isFinite(data.counts?.movies) ? data.counts?.movies ?? 0 : 0,
     }
   } catch (error) {
     const recoveryPage = invalidPageRecovery(error, currentPage.value)
@@ -651,11 +666,11 @@ async function loadAllItemsForReorder() {
   loadingItems.value = true
   try {
     let page = 1
-    let all = []
+    let all: ListItem[] = []
     let totalCount = 0
     while (true) {
-      const data = await trackingAPI.getListItems(route.params.id, { sort: 'custom_order', direction: 'asc', page })
-      const paged = normalizePagedResponse(data)
+      const data = await trackingAPI.getListItems(listId(), { sort: 'custom_order', direction: 'asc', page })
+      const paged = normalizePagedResponse<ListItem>(data)
       all = all.concat(paged.items)
       totalCount = paged.count
       if (!data.next || paged.items.length === 0) break
@@ -713,7 +728,10 @@ function cancelReorderMode() {
   // restore original order locally without server call, then reload to ensure consistency
   if (originalOrderIds.value.length) {
     const idToItem = new Map(items.value.map((i) => [i.id, i]))
-    const restored = originalOrderIds.value.map((id) => idToItem.get(id)).filter(Boolean)
+    const restored = originalOrderIds.value.flatMap((id) => {
+      const item = idToItem.get(id)
+      return item ? [item] : []
+    })
     // append any items that were added after entering reorder (should not happen, but keep)
     const restoredIds = new Set(restored.map((i) => i.id))
     for (const it of items.value) {
@@ -731,12 +749,13 @@ function cleanupReorderDnD() {
 
 function setupReorderDnD() {
   cleanupReorderDnD()
-  const grid = document.querySelector('[data-reorder-grid]')
+  const grid = document.querySelector<HTMLElement>('[data-reorder-grid]')
   if (!grid) return
   const itemById = new Map(items.value.map((item) => [String(item.id), item]))
-  const cleanups = [...grid.querySelectorAll('[data-reorder-id]')].flatMap((card) => {
-    const item = itemById.get(card.dataset.reorderId)
-    const handle = card.querySelector('[data-reorder-handle]')
+  const cleanups: (() => void)[] = [...grid.querySelectorAll<HTMLElement>('[data-reorder-id]')].flatMap((card) => {
+    const cardId = card.dataset.reorderId
+    const item = cardId ? itemById.get(cardId) : undefined
+    const handle = card.querySelector<HTMLElement>('[data-reorder-handle]')
     if (!item || !handle) return []
     return [
       draggable({ element: handle, getInitialData: () => ({ id: item.id }) }),
@@ -752,38 +771,48 @@ function setupReorderDnD() {
   })
   cleanups.push(monitorForElements({
     onDragStart: ({ source }) => {
-      const item = itemById.get(String(source.data.id))
-      const card = grid.querySelector(`[data-reorder-id="${source.data.id}"]`)
+      const sourceId = dndItemId(source.data)
+      if (sourceId === null) return
+      const item = itemById.get(String(sourceId))
+      const card = grid.querySelector<HTMLElement>(`[data-reorder-id="${sourceId}"]`)
       const rect = card?.getBoundingClientRect()
       if (!item || !rect) return
       const sourceIndex = items.value.findIndex((candidate) => candidate.id === item.id)
       drag.value = { id: item.id, item, sourceIndex, targetIndex: sourceIndex, width: rect.width, height: rect.height, position: { x: rect.left, y: rect.top } }
     },
     onDrag: ({ location }) => {
-      if (!drag.value) return
+      const activeDrag = drag.value
+      if (!activeDrag) return
       const input = location.current.input
-      drag.value.position = { x: input.clientX - drag.value.width / 2, y: input.clientY - drag.value.height / 2 }
+      activeDrag.position = { x: input.clientX - activeDrag.width / 2, y: input.clientY - activeDrag.height / 2 }
       const target = location.current.dropTargets[0]
       if (!target) return
-      const withoutDragged = items.value.filter((item) => item.id !== drag.value.id)
-      const targetPosition = withoutDragged.findIndex((item) => item.id === target.data.id)
+      const targetId = dndItemId(target.data)
+      if (targetId === null) return
+      const withoutDragged = items.value.filter((item) => item.id !== activeDrag.id)
+      const targetPosition = withoutDragged.findIndex((item) => item.id === targetId)
       if (targetPosition < 0) return
       const edge = extractClosestEdge(target.data)
       const insertionIndex = targetPosition + (edge === 'bottom' ? 1 : 0)
-      if (drag.value.targetIndex !== insertionIndex) {
-        drag.value.targetIndex = insertionIndex
+      if (activeDrag.targetIndex !== insertionIndex) {
+        activeDrag.targetIndex = insertionIndex
         hasReordered.value = true
       }
     },
     onDrop: () => {
-      if (drag.value) {
-        const finishIndex = Math.min(drag.value.targetIndex, items.value.length - 1)
-        items.value = reorder({ list: items.value, startIndex: drag.value.sourceIndex, finishIndex })
+      const activeDrag = drag.value
+      if (activeDrag) {
+        const finishIndex = Math.min(activeDrag.targetIndex, items.value.length - 1)
+        items.value = reorder({ list: items.value, startIndex: activeDrag.sourceIndex, finishIndex })
       }
       drag.value = null
     },
   }))
   dragCleanup.value = cleanups
+}
+
+function dndItemId(data: Record<string, unknown>): number | null {
+  return typeof data.id === 'number' ? data.id : null
 }
 
 async function persistOrder() {
@@ -802,7 +831,7 @@ async function persistOrder() {
     return false
   }
   try {
-    await trackingAPI.reorderList(route.params.id, orderedIds)
+    await trackingAPI.reorderList(listId(), orderedIds)
     showFeedback('Order saved.')
     hasReordered.value = false
     originalOrderIds.value = [...orderedIds]
@@ -825,8 +854,8 @@ function resetFilters() {
   filterBarRef.value?.clearAll()
 }
 
-function onFilterBarChange(payload) {
-  const next = payload?.filters
+function onFilterBarChange(payload: FilterChange) {
+  const next = payload.filters
   if (!next) return
 
   const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
@@ -841,7 +870,7 @@ function onFilterBarChange(payload) {
 async function updateList() {
   updating.value = true
   try {
-    await trackingAPI.updateList(route.params.id, {
+    await trackingAPI.updateList(listId(), {
       ...editForm.value,
       collaborator_ids: collaboratorDraft.value.map((user) => Number(user.id)),
     })
@@ -861,7 +890,7 @@ async function confirmDeleteList() {
   }
   deletingList.value = true
   try {
-    await trackingAPI.deleteList(route.params.id)
+    await trackingAPI.deleteList(listId())
     deleteListDialog.value?.close()
     router.push('/lists')
   } catch (error) {
@@ -884,7 +913,7 @@ async function searchMedia() {
       searchResults.value = (data.results || []).slice(0, 12).map((item) => ({
         ...item,
         media_type: item.media_type === MEDIA_TYPE.MOVIE ? MEDIA_TYPE.MOVIE : MEDIA_TYPE.TV,
-        tmdb_id: item.tmdb_id || item.id,
+        tmdb_id: 'tmdb_id' in item && typeof item.tmdb_id === 'number' ? item.tmdb_id : item.id,
       }))
     }
   } catch (error) {
@@ -906,9 +935,9 @@ function handleListItemAdded() {
   showFeedback('Item added to list.')
 }
 
-async function addSearchResultToList(result) {
-  const tmdbId = Number(result?.tmdb_id || result?.id)
-  if (!tmdbId || !route.params.id) {
+async function addSearchResultToList(result: MediaResult & { tmdb_id: number }) {
+  const tmdbId = result.tmdb_id || result.id
+  if (!tmdbId || !listId()) {
     showFeedback('Could not add item to list.', 'error')
     return
   }
@@ -918,7 +947,7 @@ async function addSearchResultToList(result) {
   }
   addingResultKey.value = requestKey
   try {
-    await trackingAPI.addToList(route.params.id, {
+    await trackingAPI.addToList(listId(), {
       media_type: result.media_type,
       tmdb_id: tmdbId,
     })
@@ -939,8 +968,8 @@ function handleListItemRemoved() {
   showFeedback('Item removed from list.')
 }
 
-function addCollaborator(user) {
-  if (!isOwner.value || !user?.id) return
+function addCollaborator(user: UserCard) {
+  if (!isOwner.value || !user.id) return
   if (!collaboratorDraft.value.some((entry) => Number(entry.id) === Number(user.id))) {
     collaboratorDraft.value.push(user)
   }
@@ -977,7 +1006,7 @@ async function searchCollaborators() {
   }, 250)
 }
 
-function removeCollaborator(userId) {
+function removeCollaborator(userId: number) {
   if (!isOwner.value) return
   collaboratorDraft.value = collaboratorDraft.value.filter((user) => Number(user.id) !== Number(userId))
 }

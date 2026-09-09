@@ -33,6 +33,7 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 - Full test suite (non-interactive-safe): `docker compose exec app python manage.py test`
 - UI production build (required path):
   `docker compose exec ui sh -lc "pnpm install && pnpm build"`
+- UI type check: `docker compose exec ui sh -lc "pnpm typecheck"`
 
 ## Verification order
 
@@ -40,7 +41,7 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 2. `docker compose ps` (services must be Up)
 3. `docker compose exec app python manage.py showmigrations` (no `[ ]`)
 4. Relevant focused tests
-5. Both lint and type checks
+5. Both app lint/type checks and the UI type check if UI touched
 6. UI build command above if UI touched
 
 ## High-signal implementation quirks

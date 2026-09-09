@@ -40,10 +40,14 @@
   </div>
 </template>
 
-<script setup>
-defineProps({
-  users: { type: Array, default: () => [] },
-  followersLabel: { type: String, default: 'Followers' },
-  followingLabel: { type: String, default: 'Following' },
+<script setup lang="ts">
+import type { UserCard } from '@/types/api'
+
+withDefaults(defineProps<{
+  users?: UserCard[]
+  followersLabel?: string
+  followingLabel?: string
+}>(), {
+  users: () => [], followersLabel: 'Followers', followingLabel: 'Following',
 })
 </script>

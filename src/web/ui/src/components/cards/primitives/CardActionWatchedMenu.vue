@@ -17,19 +17,25 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import WatchMenu from '@/components/WatchMenu.vue'
+import type { WatchedAtOption } from '@/utils/watchOptions'
 
-defineProps({
-  releaseDate: { type: String, default: '' },
-  loading: { type: Boolean, default: false },
-  pulsing: { type: Boolean, default: false },
-  ariaLabel: { type: String, default: 'Mark as watched' },
+withDefaults(defineProps<{
+  releaseDate?: string
+  loading?: boolean
+  pulsing?: boolean
+  ariaLabel?: string
+}>(), {
+  releaseDate: '', loading: false, pulsing: false, ariaLabel: 'Mark as watched',
 })
 
-const emit = defineEmits(['select', 'action:watched-select'])
+const emit = defineEmits<{
+  select: [option: WatchedAtOption]
+  'action:watched-select': [option: WatchedAtOption]
+}>()
 
-function handleSelect(option) {
+function handleSelect(option: WatchedAtOption) {
   emit('action:watched-select', option)
   emit('select', option)
 }

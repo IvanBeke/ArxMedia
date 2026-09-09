@@ -183,37 +183,39 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
 import { authAPI, trackingAPI } from '@/api'
 import { LIST_PRIVACY } from '@/constants/tracking'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { formatDateByLocale } from '@/i18n'
+import type { ApiError, CustomList, UserCard } from '@/types/api'
+import { normalizePagedResponse } from '@/utils/pagination'
 
-const lists = ref([])
+const lists = ref<CustomList[]>([])
 const loading = ref(true)
 const creating = ref(false)
 const createError = ref('')
-const createDialog = ref(null)
-const nameInput = ref(null)
+const createDialog = ref<HTMLDialogElement | null>(null)
+const nameInput = ref<HTMLInputElement | null>(null)
 const collaboratorQuery = ref('')
-const collaboratorResults = ref([])
-const selectedCollaborators = ref([])
+const collaboratorResults = ref<UserCard[]>([])
+const selectedCollaborators = ref<UserCard[]>([])
 const searchingUsers = ref(false)
-let searchDebounce = null
+let searchDebounce: ReturnType<typeof setTimeout> | null = null
 const newList = ref({
   name: '',
   description: '',
-  privacy: LIST_PRIVACY.PUBLIC,
+  privacy: LIST_PRIVACY.PUBLIC as CustomList['privacy'],
 })
 
 const showUserResults = ref(false)
 
-function formatDate(d) {
+function formatDate(d: string): string {
   return formatDateByLocale(d)
 }
 
-function privacyClass(privacy) {
+function privacyClass(privacy: CustomList['privacy']): string {
   const classes = {
     [LIST_PRIVACY.PUBLIC]: 'bg-green-500/20 text-green-400',
     [LIST_PRIVACY.PRIVATE]: 'bg-red-500/20 text-red-400',
@@ -233,8 +235,8 @@ async function createList() {
     closeCreateModal()
     resetCreateForm()
     await loadLists()
-  } catch (error) {
-    createError.value = error?.detail || 'Failed to create list.'
+  } catch (error: unknown) {
+    createError.value = isApiError(error) && typeof error.detail === 'string' ? error.detail : 'Failed to create list.'
     console.error('Failed to create list:', error)
   } finally {
     creating.value = false
@@ -266,12 +268,12 @@ function onDialogClose() {
   showUserResults.value = false
 }
 
-function onDialogClick(event) {
+function onDialogClick(event: MouseEvent) {
   const dialog = createDialog.value
   closeOnDialogBackdropClick(event, dialog)
 }
 
-function selectCollaborator(user) {
+function selectCollaborator(user: UserCard) {
   if (selectedCollaborators.value.some((row) => row.id === user.id)) {
     collaboratorQuery.value = ''
     collaboratorResults.value = []
@@ -284,7 +286,7 @@ function selectCollaborator(user) {
   showUserResults.value = false
 }
 
-function removeCollaborator(userId) {
+function removeCollaborator(userId: number) {
   selectedCollaborators.value = selectedCollaborators.value.filter((user) => user.id !== userId)
 }
 
@@ -320,10 +322,8 @@ async function loadLists() {
   loading.value = true
   try {
     const data = await trackingAPI.getLists()
-    if (data) {
-      lists.value = data.results || data
-    }
-  } catch (error) {
+    lists.value = normalizePagedResponse<CustomList>(data).items
+  } catch (error: unknown) {
     console.error('Failed to load lists:', error)
   } finally {
     loading.value = false
@@ -333,6 +333,10 @@ async function loadLists() {
 onMounted(() => {
   loadLists()
 })
+
+function isApiError(error: unknown): error is ApiError {
+  return typeof error === 'object' && error !== null
+}
 </script>
 
 <style scoped>

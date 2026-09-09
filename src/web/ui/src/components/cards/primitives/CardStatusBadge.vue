@@ -22,13 +22,17 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { WATCH_ENTRY_STATUS } from '@/constants/tracking'
+import type { WatchEntryStatus } from '@/types/tracking'
 
-const props = defineProps({
-  status: { type: String, default: WATCH_ENTRY_STATUS.NONE },
-  watched: { type: Boolean, default: false },
+const props = withDefaults(defineProps<{
+  status?: WatchEntryStatus
+  watched?: boolean
+}>(), {
+  status: WATCH_ENTRY_STATUS.NONE,
+  watched: false,
 })
 
 const statusValue = computed(() => {

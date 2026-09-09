@@ -14,13 +14,18 @@
   </button>
 </template>
 
-<script setup>
-const props = defineProps({
-  loading: { type: Boolean, default: false },
-  ariaLabel: { type: String, default: 'Remove history entry' },
+<script setup lang="ts">
+withDefaults(defineProps<{
+  loading?: boolean
+  ariaLabel?: string
+}>(), {
+  loading: false, ariaLabel: 'Remove history entry',
 })
 
-const emit = defineEmits(['trigger', 'action:history-remove'])
+const emit = defineEmits<{
+  trigger: []
+  'action:history-remove': []
+}>()
 
 function handleTrigger() {
   emit('action:history-remove')

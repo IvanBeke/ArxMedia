@@ -54,7 +54,7 @@
             <p class="text-gray-600 text-xs mb-4">{{ formatDateByLocale(movie.release_date) }}</p>
 
             <div class="flex items-center gap-4 mb-4 text-sm">
-              <RatingBadge :value="movie.vote_average" :votes="movie.vote_count" out-of-ten />
+              <RatingBadge :value="movie.vote_average ?? 0" :votes="movie.vote_count" out-of-ten />
             </div>
 
             <Transition name="fade">
@@ -95,7 +95,7 @@
                   :key="`provider-${p.provider_id}`"
                   class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary"
                 >
-                  <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92')" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
+                  <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
                   {{ p.provider_name }}
                 </div>
                 <span v-if="!(movie.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
@@ -129,7 +129,7 @@
               </button>
               <WatchMenu
                 v-else
-                :release-date="movie?.release_date"
+                :release-date="movie?.release_date ?? ''"
                 :button-title="watchedTooltip"
                 @select="handleWatchOption"
               >
@@ -177,7 +177,7 @@
         <p class="text-gray-500 text-xs mb-2">Cast</p>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-sm">
           <div v-for="actor in creditsData.cast" :key="actor.credit_id" class="flex items-center gap-3">
-            <img v-if="actor.profile_path" :src="tmdbImageUrl(actor.profile_path, 'w92')" :alt="actor.name" class="w-12 h-12 rounded-md object-cover" />
+            <img v-if="actor.profile_path" :src="tmdbImageUrl(actor.profile_path, 'w92') || ''" :alt="actor.name" class="w-12 h-12 rounded-md object-cover" />
             <div v-else class="w-12 h-12 rounded-md bg-surface-200"></div>
             <div class="min-w-0">
               <p class="text-secondary">{{ actor.name }}</p>
@@ -190,7 +190,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { mediaAPI, trackingAPI } from '@/api'
@@ -212,12 +212,15 @@ import { canRateByStatus, formatUpdatedAtLabel } from '@/utils/mediaStatus'
 import { formatHoursMinutes } from '@/utils/progress'
 import { instantEpochMs, instantFromEpochMs, nowInstantIso, temporalYear } from '@/utils/temporal'
 import { watchedTooltipText } from '@/utils/watchOptions'
+import type { Credits, Movie, PaginatedResponse, Rating, WatchEntry } from '@/types/api'
+import type { WatchedAtOption } from '@/utils/watchOptions'
 
 const route = useRoute()
+const movieId = computed(() => String(route.params.id ?? ''))
 const auth = useAuthStore()
 const { t } = useI18n()
-const movie = ref(null)
-const creditsData = ref(null)
+const movie = ref<Movie | null>(null)
+const creditsData = ref<Credits | null>(null)
 const loading = ref(true)
 const userRating = ref(0)
 const watchedCount = ref(0)
@@ -231,7 +234,7 @@ const {
   showError: showMetadataError,
 } = metadataFlash
 const { successMsg, errorMsg, showSuccess, showError } = useFlashMessages()
-const unwatchDialog = ref(null)
+const unwatchDialog = ref<InstanceType<typeof MovieUnwatchDialog> | null>(null)
 const refreshingMetadata = ref(false)
 
 const {
@@ -259,19 +262,19 @@ const runtimeLabel = computed(() => {
 
 const canRate = computed(() => canRateByStatus(movie.value?.user_status?.status))
 
-function releaseYear(value) {
+function releaseYear(value: string | null | undefined) {
   if (!value) return ''
   return temporalYear(value) || ''
 }
 
-function applyWatchHistory(response) {
-  const entries = response?.results || response || []
+function applyWatchHistory(response: PaginatedResponse<WatchEntry> | WatchEntry[]) {
+  const entries = Array.isArray(response) ? response : response.results
   watchedCount.value = entries.length
   const watchedDates = entries
-    .map(e => e.watched_at)
+    .map((entry) => entry.watched_at)
     .filter(Boolean)
-    .map(v => instantEpochMs(v))
-    .filter(v => Number.isFinite(v))
+    .map((value) => instantEpochMs(value))
+    .filter((value) => Number.isFinite(value))
   if (watchedDates.length) {
     latestWatchedAt.value = instantFromEpochMs(Math.max(...watchedDates))
   } else {
@@ -289,7 +292,9 @@ async function refreshWatchHistory() {
 }
 
 function openUnwatchConfirm() {
-  unwatchDialog.value?.open(movie.value)
+  if (movie.value) {
+    unwatchDialog.value?.open(movie.value)
+  }
 }
 
 async function onMovieUnwatched() {
@@ -301,8 +306,8 @@ async function onMovieUnwatched() {
 onMounted(async () => {
   try {
     const [movieRes, creditsRes] = await Promise.all([
-      mediaAPI.getMovie(route.params.id),
-      mediaAPI.getMovieCredits(route.params.id)
+      mediaAPI.getMovie(movieId.value),
+      mediaAPI.getMovieCredits(movieId.value)
     ])
     movie.value = movieRes
     creditsData.value = creditsRes
@@ -312,29 +317,30 @@ onMounted(async () => {
 
   if (auth.isAuthenticated) {
     const [histRes, ratingRes] = await Promise.allSettled([
-      trackingAPI.getHistory({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: route.params.id }),
-      trackingAPI.getRatings({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: route.params.id })
+      trackingAPI.getHistory({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: movieId.value }),
+      trackingAPI.getRatings({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: movieId.value })
     ])
     if (histRes.status === 'fulfilled') {
       applyWatchHistory(histRes.value)
     }
     inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
     if (ratingRes.status === 'fulfilled') {
-      const ratings = ratingRes.value.results || ratingRes.value
+      const ratings = Array.isArray(ratingRes.value) ? ratingRes.value : ratingRes.value.results
       const found = ratings[0]
       if (found) userRating.value = found.score
     }
   }
 })
 
-async function handleWatchOption(option) {
+async function handleWatchOption(option: WatchedAtOption) {
   if (!movie.value) {
     return
   }
 
   if (option === 'date') {
     movie.value.user_status = {
-      ...(movie.value.user_status || {}),
+      status: movie.value.user_status?.status ?? WATCH_ENTRY_STATUS.NONE,
+      ...movie.value.user_status,
       watched_at: latestWatchedAt.value,
     }
   }
@@ -364,9 +370,9 @@ async function toggleWatchlist() {
   showSuccess(result === 'removed' ? 'Removed from watchlist' : 'Added to watchlist!')
 }
 
-async function submitRating(score) {
+async function submitRating(score: number) {
   try {
-    await trackingAPI.rate({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: route.params.id, score })
+    await trackingAPI.rate({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: movieId.value, score })
     showSuccess(`Rated ${score}/10!`)
   } catch (error) {
     showError(getApiErrorMessage(error, t('rating_movie_requires_watched')))
@@ -377,8 +383,8 @@ async function refreshMetadata() {
   if (refreshingMetadata.value) return
   refreshingMetadata.value = true
   try {
-    await mediaAPI.refreshMovie(route.params.id)
-    movie.value = await mediaAPI.getMovie(route.params.id)
+    await mediaAPI.refreshMovie(movieId.value)
+    movie.value = await mediaAPI.getMovie(movieId.value)
     inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
     showMetadataSuccess('Metadata updated from TMDB and TVMaze')
   } catch (error) {

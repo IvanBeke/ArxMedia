@@ -65,33 +65,39 @@
   </div>
 </template>
 
-<script setup>
-import { ref } from 'vue'
-import { onMounted } from 'vue'
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { trackingAPI } from '@/api'
-import { LIST_PRIVACY } from '@/constants/tracking'
+import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import type { CustomList } from '@/types/api'
+import { normalizePagedResponse } from '@/utils/pagination'
 
-const props = defineProps({
-  mediaType: { type: String, required: true },
-  tmdbId: { type: Number, required: true },
-  iconOnly: { type: Boolean, default: false },
-  buttonClass: { type: String, default: '' },
-  startOpen: { type: Boolean, default: false },
-  modalMode: { type: Boolean, default: false },
+const props = withDefaults(defineProps<{
+  mediaType: (typeof MEDIA_TYPE)[keyof typeof MEDIA_TYPE]
+  tmdbId: number
+  iconOnly?: boolean
+  buttonClass?: string
+  startOpen?: boolean
+  modalMode?: boolean
+}>(), {
+  iconOnly: false,
+  buttonClass: '',
+  startOpen: false,
+  modalMode: false,
 })
 
 const open = ref(props.modalMode || props.startOpen)
 const loading = ref(false)
 const submitting = ref(false)
-const lists = ref([])
+const lists = ref<CustomList[]>([])
 const newListName = ref('')
 const { successMsg, errorMsg, showSuccess: setSuccess, showError: setError } = useFlashMessages({ successDurationMs: 1800 })
-const rootRef = ref(null)
+const rootRef = ref<HTMLElement | null>(null)
 
-const emit = defineEmits(['added'])
+const emit = defineEmits<{ added: [] }>()
 
 onClickOutside(rootRef, () => {
   if (props.modalMode) return
@@ -108,7 +114,7 @@ async function loadLists() {
   loading.value = true
   try {
     const data = await trackingAPI.getLists()
-    lists.value = data?.results || data || []
+    lists.value = normalizePagedResponse<CustomList>(data).items
   } finally {
     loading.value = false
   }
@@ -122,7 +128,7 @@ async function toggleOpen() {
   }
 }
 
-async function addToExisting(listId) {
+async function addToExisting(listId: number) {
   if (submitting.value) return
   submitting.value = true
   try {

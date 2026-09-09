@@ -112,24 +112,26 @@
 }
 </style>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
-const props = defineProps({
-  count: { type: Number, default: 0 },
-  page: { type: Number, default: 1 },
-  loadedCount: { type: Number, default: 0 },
-  maxVisiblePages: { type: Number, default: 10 },
-  disabled: { type: Boolean, default: false },
+const props = withDefaults(defineProps<{
+  count?: number
+  page?: number
+  loadedCount?: number
+  maxVisiblePages?: number
+  disabled?: boolean
+}>(), {
+  count: 0, page: 1, loadedCount: 0, maxVisiblePages: 10, disabled: false,
 })
 
-const emit = defineEmits(['go', 'update:page', 'update:totalPages'])
+const emit = defineEmits<{ go: [page: number]; 'update:page': [page: number]; 'update:totalPages': [totalPages: number] }>()
 
 // Bootstrap mirror of the server's DRF page size; recalibrated below from the
 // first full page of results. Partial pages must never shrink this value,
 // otherwise totalPages inflates and phantom page links appear.
 const DEFAULT_PAGE_SIZE = 20
-const fullPageSize = ref(DEFAULT_PAGE_SIZE)
+const fullPageSize = ref<number>(DEFAULT_PAGE_SIZE)
 
 watch(
   [() => props.page, () => props.loadedCount],
@@ -162,7 +164,7 @@ watch(
 
 const currentPage = computed(() => Math.min(Math.max(1, props.page), totalPages.value))
 
-function requestGo(pageNum) {
+function requestGo(pageNum: number) {
   if (
     props.disabled ||
     !Number.isInteger(pageNum) ||
@@ -195,7 +197,7 @@ const rangeEnd = computed(() => {
 })
 
 const visiblePages = computed(() => {
-  const pages = []
+  const pages: number[] = []
   for (let pageNum = rangeStart.value; pageNum <= rangeEnd.value; pageNum += 1) {
     pages.push(pageNum)
   }

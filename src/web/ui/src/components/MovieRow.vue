@@ -84,7 +84,7 @@
   </article>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { trackingAPI } from '@/api'
@@ -96,16 +96,23 @@ import { MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
+import type { MediaCard } from '@/types/api'
+import type { WatchEntryStatus } from '@/types/tracking'
 
-const props = defineProps({
-  item: { type: Object, required: true },
-})
+interface MovieRowItem extends MediaCard {
+  genres?: string[]
+  runtime?: number | null
+  last_watched_at?: string | null
+  user_rating?: number | null
+  status?: WatchEntryStatus
+}
 
-const emit = defineEmits(['changed', 'error'])
+const props = defineProps<{ item: MovieRowItem }>()
+const emit = defineEmits<{ changed: []; error: [message: string] }>()
 
 const busy = ref(false)
-const menuRef = ref(null)
-const rateDialog = ref(null)
+const menuRef = ref<HTMLDetailsElement | null>(null)
+const rateDialog = ref<HTMLDialogElement | null>(null)
 const rating = ref(0)
 const savingRating = ref(false)
 const listPopoverOpen = ref(false)
@@ -119,7 +126,7 @@ function closeMenu() {
   menuRef.value?.removeAttribute('open')
 }
 
-function onDialogClick(event, dialogRef) {
+function onDialogClick(event: MouseEvent, dialogRef: HTMLDialogElement | null) {
   closeOnDialogBackdropClick(event, dialogRef)
 }
 
@@ -138,7 +145,7 @@ function onRateDialogClose() {
   rating.value = 0
 }
 
-async function submitRating(score) {
+async function submitRating(score: number) {
   if (!Number.isInteger(score) || score < 1 || score > 10 || savingRating.value) {
     return
   }
@@ -164,42 +171,42 @@ async function onListAdded() {
   emit('changed')
 }
 
-function hasProviderRating(value) {
+function hasProviderRating(value: number | undefined) {
   const ratingValue = Number(value)
   return Number.isFinite(ratingValue) && ratingValue > 0
 }
 
-function formatCompactDate(value) {
+function formatCompactDate(value: string | null | undefined) {
   if (!value) return '--'
   return formatIsoAsDDMMYYYY(value) || '--'
 }
 
-function releaseYear(item) {
-  const year = String(item?.release_date || '').slice(0, 4)
+function releaseYear(item: MovieRowItem) {
+  const year = String(item.release_date || '').slice(0, 4)
   return /^\d{4}$/.test(year) ? year : ''
 }
 
-function runtimeText(item) {
-  const runtime = Number(item?.runtime)
+function runtimeText(item: MovieRowItem) {
+  const runtime = Number(item.runtime)
   if (!Number.isFinite(runtime) || runtime <= 0) return '-- min'
   return `${runtime} min`
 }
 
-function statusClass(value) {
+function statusClass(value: WatchEntryStatus | undefined) {
   if (value === 'watched') return 'status-watched'
   if (value === 'dropped') return 'status-dropped'
   return 'status-default'
 }
 
-function statusText(value) {
+function statusText(value: WatchEntryStatus | undefined) {
   if (value === 'plan_to_watch') return 'Plan to watch'
   if (value === 'watched') return 'Watched'
   if (value === 'dropped') return 'Dropped'
   return value
 }
 
-function genresText(item) {
-  const values = Array.isArray(item?.genres) ? item.genres : []
+function genresText(item: MovieRowItem) {
+  const values = item.genres ?? []
   return values.join(', ')
 }
 </script>

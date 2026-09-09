@@ -118,7 +118,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { authAPI } from '@/api'
@@ -127,12 +127,15 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { ACCOUNT_VISIBILITY } from '@/constants/tracking'
+import type { ApiError, ProfileUpdatePayload, User } from '@/types/api'
+
+type ProfileForm = Required<Pick<ProfileUpdatePayload, 'username' | 'email' | 'bio' | 'location' | 'preferred_region' | 'account_visibility'>>
 
 const router = useRouter()
 const auth = useAuthStore()
 const prefs = usePreferencesStore()
 const { t } = useI18n()
-const user = ref(null)
+const user = ref<User | null>(null)
 const loading = ref(true)
 const saving = ref(false)
 const changingPassword = ref(false)
@@ -140,7 +143,7 @@ const { successMsg, showSuccess } = useFlashMessages({ successDurationMs: 3000 }
 const errorMsg = ref('')
 const selectedLocale = ref(prefs.locale)
 
-const form = ref({
+const form = ref<ProfileForm>({
   username: '',
   email: '',
   bio: '',
@@ -194,8 +197,8 @@ async function saveProfile() {
       form.value.preferred_region = data.preferred_region || form.value.preferred_region
       showSuccess('Profile updated successfully!')
     }
-  } catch (error) {
-    errorMsg.value = error.detail || 'Failed to update profile'
+  } catch (error: unknown) {
+    errorMsg.value = (error as ApiError).detail || 'Failed to update profile'
   } finally {
     saving.value = false
   }
@@ -204,10 +207,14 @@ async function saveProfile() {
 async function updateAccountVisibility() {
   try {
     const data = await authAPI.updateProfile({ account_visibility: form.value.account_visibility })
-    user.value.account_visibility = data.account_visibility
-    auth.user.account_visibility = data.account_visibility
+    if (user.value) {
+      user.value.account_visibility = data.account_visibility
+    }
+    if (auth.user) {
+      auth.user.account_visibility = data.account_visibility
+    }
     showSuccess(`Account visibility set to ${data.account_visibility.replace('_', ' ')}`)
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to update privacy:', error)
   }
 }
@@ -248,13 +255,14 @@ async function changePassword() {
       newPassword: '',
       confirmPassword: ''
     }
-  } catch (error) {
-    if (error?.current_password?.length) {
-      errorMsg.value = error.current_password[0]
-    } else if (error?.new_password?.length) {
-      errorMsg.value = error.new_password[0]
-    } else if (error?.detail) {
-      errorMsg.value = error.detail
+  } catch (error: unknown) {
+    const apiError = error as ApiError
+    if (Array.isArray(apiError.current_password) && typeof apiError.current_password[0] === 'string') {
+      errorMsg.value = apiError.current_password[0]
+    } else if (Array.isArray(apiError.new_password) && typeof apiError.new_password[0] === 'string') {
+      errorMsg.value = apiError.new_password[0]
+    } else if (apiError.detail) {
+      errorMsg.value = apiError.detail
     } else {
       errorMsg.value = 'Failed to change password'
     }

@@ -86,6 +86,9 @@ docker compose exec app uv lock
 
 # build UI production assets
 docker compose exec ui sh -lc "pnpm install && pnpm build"
+
+# typecheck the UI
+docker compose exec ui sh -lc "pnpm typecheck"
 ```
 
 ## Dependencies

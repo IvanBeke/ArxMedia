@@ -12,13 +12,15 @@
   </span>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps({
-  value: { type: [Number, String], required: true },
-  size: { type: String, default: 'sm' },
-  titlePrefix: { type: String, default: 'Your rating' },
+const props = withDefaults(defineProps<{
+  value: number | string
+  size?: string
+  titlePrefix?: string
+}>(), {
+  size: 'sm', titlePrefix: 'Your rating',
 })
 
 const numericValue = computed(() => Number(props.value))

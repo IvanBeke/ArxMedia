@@ -25,23 +25,25 @@
   </dialog>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, useId } from 'vue'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 
-defineProps({
-  title: { type: String, required: true },
-  message: { type: String, default: '' },
-  confirmLabel: { type: String, default: 'Confirm' },
-  cancelLabel: { type: String, default: 'Cancel' },
-  loadingLabel: { type: String, default: '' },
-  loading: { type: Boolean, default: false },
-  danger: { type: Boolean, default: true },
+withDefaults(defineProps<{
+  title: string
+  message?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  loadingLabel?: string
+  loading?: boolean
+  danger?: boolean
+}>(), {
+  message: '', confirmLabel: 'Confirm', cancelLabel: 'Cancel', loadingLabel: '', loading: false, danger: true,
 })
 
-const emit = defineEmits(['confirm'])
+defineEmits<{ confirm: [] }>()
 
-const dialogRef = ref(null)
+const dialogRef = ref<HTMLDialogElement | null>(null)
 const titleId = useId()
 
 function showModal() {
@@ -54,7 +56,7 @@ function close() {
   }
 }
 
-function onDialogClick(event) {
+function onDialogClick(event: MouseEvent) {
   closeOnDialogBackdropClick(event, dialogRef.value)
 }
 

@@ -49,22 +49,25 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps({
-  posterUrl: { type: String, default: '' },
-  posterAlt: { type: String, default: '' },
-  posterLinkTo: { type: String, required: true },
-  posterAriaLabel: { type: String, required: true },
-  titleLinkTo: { type: String, default: '' },
-  subtitleLinkTo: { type: String, default: '' },
-  titleText: { type: String, required: true },
-  titleTooltip: { type: String, default: '' },
-  subtitleText: { type: String, default: '' },
-  subtitleTooltip: { type: String, default: '' },
-  posterHoverEffect: { type: String, default: 'blur' },
-  posterFrameClass: { type: String, default: 'rounded-md' },
+const props = withDefaults(defineProps<{
+  posterUrl?: string
+  posterAlt?: string
+  posterLinkTo: string
+  posterAriaLabel: string
+  titleLinkTo?: string
+  subtitleLinkTo?: string
+  titleText: string
+  titleTooltip?: string
+  subtitleText?: string
+  subtitleTooltip?: string
+  posterHoverEffect?: string
+  posterFrameClass?: string
+}>(), {
+  posterUrl: '', posterAlt: '', titleLinkTo: '', subtitleLinkTo: '', titleTooltip: '', subtitleText: '', subtitleTooltip: '',
+  posterHoverEffect: 'blur', posterFrameClass: 'rounded-md',
 })
 
 const posterImageClass = computed(() => {

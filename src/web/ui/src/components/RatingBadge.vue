@@ -11,16 +11,18 @@
   </span>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from '@/i18n'
 
-const props = defineProps({
-  value: { type: [Number, String], required: true },
-  decimals: { type: Number, default: 1 },
-  outOfTen: { type: Boolean, default: false },
-  size: { type: String, default: 'sm' },
-  votes: { type: [Number, String], default: 0 }
+const props = withDefaults(defineProps<{
+  value: number | string
+  decimals?: number
+  outOfTen?: boolean
+  size?: string
+  votes?: number | string
+}>(), {
+  decimals: 1, outOfTen: false, size: 'sm', votes: 0,
 })
 
 const { t } = useI18n()

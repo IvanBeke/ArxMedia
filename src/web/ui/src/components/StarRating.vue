@@ -32,12 +32,18 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from '@/i18n'
 
-defineProps({ modelValue: { type: Number, default: 0 } })
-const emit = defineEmits(['update:modelValue'])
-const hovered = ref(0)
+withDefaults(defineProps<{
+  modelValue?: number
+}>(), {
+  modelValue: 0,
+})
+const emit = defineEmits<{
+  'update:modelValue': [value: number]
+}>()
+const hovered = ref<number>(0)
 const { t } = useI18n()
 </script>

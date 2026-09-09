@@ -103,7 +103,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authAPI, mediaAPI } from '@/api'
@@ -115,17 +115,28 @@ import { useAuthStore } from '@/stores/auth'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import type { MediaResult, MediaType, QueryParams, UserCard } from '@/types/api'
+
+const SCOPE_VALUE = {
+  ALL: 'all',
+  MOVIES: 'movies',
+  SHOWS: 'shows',
+  USERS: 'users',
+} as const
+type SearchScope = (typeof SCOPE_VALUE)[keyof typeof SCOPE_VALUE]
+type SearchFilter = MediaType | 'multi'
+type SearchSubmit = { query: string; scope: SearchScope }
 
 const route = useRoute()
 const router = useRouter()
 const query = ref('')
-const results = ref([])
-const userResults = ref([])
-const trendingMovies = ref([])
-const trendingTvShows = ref([])
+const results = ref<MediaResult[]>([])
+const userResults = ref<UserCard[]>([])
+const trendingMovies = ref<MediaResult[]>([])
+const trendingTvShows = ref<MediaResult[]>([])
 const loading = ref(false)
 const loadingDefault = ref(true)
-const activeFilter = ref('multi')
+const activeFilter = ref<SearchFilter>('multi')
 const currentPage = ref(1)
 const totalPages = ref(1)
 const totalResults = ref(0)
@@ -133,18 +144,11 @@ const { errorMsg: quickActionError, showError: showQuickActionError } = useFlash
 const auth = useAuthStore()
 const { t } = useI18n()
 
-const SCOPE_VALUE = Object.freeze({
-  ALL: 'all',
-  MOVIES: 'movies',
-  SHOWS: 'shows',
-  USERS: 'users',
-})
-
-const activeScope = ref(SCOPE_VALUE.ALL)
+const activeScope = ref<SearchScope>(SCOPE_VALUE.ALL)
 const isUserScope = ref(false)
 const pageTitle = ref('Discover')
 
-async function doSearch({ page = 1 } = {}) {
+async function doSearch({ page = 1 }: { page?: number } = {}) {
   const trimmedQuery = query.value.trim()
   if (!trimmedQuery) {
     results.value = []
@@ -195,20 +199,20 @@ async function doSearch({ page = 1 } = {}) {
   }
 }
 
-function mapScopeToFilter(scope) {
+function mapScopeToFilter(scope: SearchScope): SearchFilter {
   if (scope === SCOPE_VALUE.MOVIES) return MEDIA_TYPE.MOVIE
   if (scope === SCOPE_VALUE.SHOWS) return MEDIA_TYPE.TV
   return 'multi'
 }
 
-function mapFilterToScope(value) {
+function mapFilterToScope(value: unknown): SearchScope {
   if (value === MEDIA_TYPE.MOVIE) return SCOPE_VALUE.MOVIES
   if (value === MEDIA_TYPE.TV) return SCOPE_VALUE.SHOWS
   if (value === 'users') return SCOPE_VALUE.USERS
   return SCOPE_VALUE.ALL
 }
 
-function applyScope(scope) {
+function applyScope(scope: SearchScope) {
   activeScope.value = scope
   isUserScope.value = scope === SCOPE_VALUE.USERS
   activeFilter.value = isUserScope.value ? 'multi' : mapScopeToFilter(scope)
@@ -218,10 +222,10 @@ function syncPageTitle() {
   pageTitle.value = query.value.trim() ? 'Search' : 'Discover'
 }
 
-function buildSearchQuery(scope, rawQuery, page = 1) {
+function buildSearchQuery(scope: SearchScope, rawQuery: string, page = 1): QueryParams {
   const scopedValue = scope === SCOPE_VALUE.USERS ? 'users' : mapScopeToFilter(scope)
   const trimmedQuery = String(rawQuery || '').trim()
-  const searchQuery = {}
+  const searchQuery: QueryParams = {}
 
   if (trimmedQuery) {
     searchQuery.q = trimmedQuery
@@ -249,17 +253,19 @@ function syncRouteFromState() {
     return
   }
 
-  router.push({ name: 'search', query: nextQuery })
+  router.push({ name: 'search', query: Object.fromEntries(Object.entries(nextQuery).flatMap(([key, value]) => (
+    typeof value === 'string' || typeof value === 'number' ? [[key, String(value)]] : []
+  ))) })
 }
 
-function goToPage(page) {
+function goToPage(page: number) {
   if (!query.value.trim()) return
   currentPage.value = page
   doSearch({ page })
   syncRouteFromState()
 }
 
-function setScope(scope) {
+function setScope(scope: SearchScope) {
   const nextPage = 1
   applyScope(scope)
   currentPage.value = nextPage
@@ -272,7 +278,7 @@ function setScope(scope) {
   syncRouteFromState()
 }
 
-function onSearchSubmit({ query: nextQuery, scope }) {
+function onSearchSubmit({ query: nextQuery, scope }: SearchSubmit) {
   const nextPage = 1
   applyScope(scope)
   query.value = nextQuery

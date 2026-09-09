@@ -35,25 +35,30 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { useI18n } from '@/i18n'
 
-const props = defineProps({
-  releaseDate: { type: String, default: '' },
-  buttonTitle: { type: String, default: '' },
-  buttonAriaLabel: { type: String, default: '' },
-  disabled: { type: Boolean, default: false },
-  pulsing: { type: Boolean, default: false },
-  directTrigger: { type: Boolean, default: false },
-  buttonClass: { type: String, default: '' },
-  menuClass: { type: String, default: '' },
+type WatchMenuOption = 'now' | 'release' | 'unknown' | 'date'
+
+const props = withDefaults(defineProps<{
+  releaseDate?: string
+  buttonTitle?: string
+  buttonAriaLabel?: string
+  disabled?: boolean
+  pulsing?: boolean
+  directTrigger?: boolean
+  buttonClass?: string
+  menuClass?: string
+}>(), {
+  releaseDate: '', buttonTitle: '', buttonAriaLabel: '', disabled: false, pulsing: false,
+  directTrigger: false, buttonClass: '', menuClass: '',
 })
 
-const emit = defineEmits(['select', 'trigger'])
-const menuVisible = ref(false)
-const menuRootRef = ref(null)
+const emit = defineEmits<{ select: [value: WatchMenuOption]; trigger: [] }>()
+const menuVisible = ref<boolean>(false)
+const menuRootRef = ref<HTMLElement | null>(null)
 const { t } = useI18n()
 const resolvedButtonAriaLabel = computed(() => props.buttonAriaLabel || t('watch_options'))
 const resolvedButtonTitle = computed(() => props.buttonTitle || resolvedButtonAriaLabel.value)
@@ -64,8 +69,8 @@ const resolvedButtonClass = computed(() => {
   return 'p-1 rounded hover:bg-surface-200 text-muted hover:text-brand-400 border-none bg-transparent'
 })
 
-const menuOptions = computed(() => {
-  const options = [{ label: t('watch_option_now'), value: 'now' }]
+const menuOptions = computed<{ label: string; value: WatchMenuOption }[]>(() => {
+  const options: { label: string; value: WatchMenuOption }[] = [{ label: t('watch_option_now'), value: 'now' }]
   if (props.releaseDate) {
     options.push({ label: t('watch_option_release'), value: 'release' })
   }
@@ -85,7 +90,7 @@ function toggleMenu() {
   menuVisible.value = !menuVisible.value
 }
 
-function selectOption(value) {
+function selectOption(value: WatchMenuOption) {
   menuVisible.value = false
   emit('select', value)
 }

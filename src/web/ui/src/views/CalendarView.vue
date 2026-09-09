@@ -99,27 +99,40 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ChevronLeft, ChevronRight } from '@lucide/vue'
 import { calendarAPI } from '@/api'
 import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
-import { monthBounds, parsePlainDate, weekBounds } from '@/utils/temporal'
+import { isoDateKey, monthBounds, nowInstantIso, parsePlainDate, weekBounds } from '@/utils/temporal'
+import type { CalendarItem } from '@/types/api'
+import type { Temporal as TemporalPolyfill } from '@js-temporal/polyfill'
+
+type ViewMode = 'month' | 'week'
+type CalendarDisplayItem = {
+  key: string
+  kind: CalendarItem['kind']
+  label: string
+  sublabel?: string
+  seasonNumber?: number
+  episodeNumber?: number
+  to: string
+}
 
 function todayIso() {
-  return Temporal.Now.plainDateISO().toString()
+  return isoDateKey(nowInstantIso())
 }
 
 const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const viewModes = [
+const viewModes: { value: ViewMode; label: string }[] = [
   { value: 'month', label: 'Month' },
   { value: 'week', label: 'Week' },
 ]
 const loading = ref(true)
-const viewMode = ref('month')
+const viewMode = ref<ViewMode>('month')
 const anchorIso = ref(todayIso())
-const items = ref([])
+const items = ref<CalendarItem[]>([])
 
 const skeletonCount = computed(() => (viewMode.value === 'week' ? 7 : 42))
 
@@ -145,7 +158,7 @@ const periodLabel = computed(() => {
 })
 
 const itemMap = computed(() => {
-  const map = new Map()
+  const map = new Map<string, CalendarDisplayItem[]>()
   for (const item of items.value) {
     if (!item?.date) continue
     const list = map.get(item.date) || []
@@ -160,7 +173,7 @@ const itemMap = computed(() => {
     } else {
       list.push({
         key: `ep-${item.tmdb_id}-${item.season_number}-${item.episode_number}-${item.date}`,
-        kind: MEDIA_TYPE.TV,
+        kind: item.kind,
         label: item.show_name,
         seasonNumber: item.season_number,
         episodeNumber: item.episode_number,
@@ -188,9 +201,9 @@ const calendarDays = computed(() => {
   return buildDays(startGrid, 42, first)
 })
 
-function buildDays(startGrid, count, currentMonthStart = null) {
+function buildDays(startGrid: TemporalPolyfill.PlainDate, count: number, currentMonthStart: TemporalPolyfill.PlainDate | null = null) {
   const todayIsoValue = todayIso()
-  const days = []
+  const days: { iso: string; date: TemporalPolyfill.PlainDate; inCurrentMonth: boolean; isToday: boolean; items: CalendarDisplayItem[] }[] = []
 
   for (let i = 0; i < count; i += 1) {
     const d = startGrid.add({ days: i })
@@ -236,7 +249,7 @@ async function goNext() {
   await shiftAnchor(1)
 }
 
-async function shiftAnchor(direction) {
+async function shiftAnchor(direction: number) {
   const anchor = parsePlainDate(anchorIso.value)
   if (!anchor) {
     return
@@ -254,7 +267,7 @@ async function goToday() {
   await load()
 }
 
-async function setViewMode(mode) {
+async function setViewMode(mode: ViewMode) {
   if (viewMode.value === mode) {
     return
   }

@@ -4,12 +4,15 @@
   </span>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
+import type { MediaType } from '@/types/api'
 
-const props = defineProps({
-  mediaType: { type: String, default: MEDIA_TYPE.MOVIE },
+const props = withDefaults(defineProps<{
+  mediaType?: MediaType
+}>(), {
+  mediaType: MEDIA_TYPE.MOVIE,
 })
 
 const isMovie = computed(() => props.mediaType === MEDIA_TYPE.MOVIE)

@@ -9,7 +9,7 @@
     <template v-else-if="profile">
       <div class="flex items-start gap-5 mb-6">
         <div class="w-16 h-16 rounded-full bg-brand-500/20 border-2 border-brand-500/30 flex items-center justify-center text-brand-400 text-2xl font-medium">
-          {{ profile.username[0].toUpperCase() }}
+          {{ profile.username.charAt(0).toUpperCase() }}
         </div>
         <div>
           <h1 class="font-display text-2xl text-primary font-semibold">{{ profile.username }}</h1>
@@ -129,7 +129,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { authAPI } from '@/api'
@@ -137,11 +137,12 @@ import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import { useAuthStore } from '@/stores/auth'
 import { formatDateByLocale, useI18n } from '@/i18n'
+import type { UserProfile, WatchEntry } from '@/types/api'
 
 const route = useRoute()
 const auth = useAuthStore()
 const { t } = useI18n()
-const profile = ref(null)
+const profile = ref<UserProfile | null>(null)
 const loading = ref(true)
 const followLoading = ref(false)
 const activeTab = ref('activity')
@@ -167,13 +168,13 @@ const lockedMessage = computed(() => {
 async function loadProfile() {
   loading.value = true
   try {
-    profile.value = await authAPI.getUser(route.params.username)
+    profile.value = await authAPI.getUser(String(route.params.username ?? ''))
   } finally {
     loading.value = false
   }
 }
 
-function getEntryLink(entry) {
+function getEntryLink(entry: WatchEntry) {
   if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
   if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
     return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
@@ -185,7 +186,7 @@ async function toggleFollow() {
   if (!auth.isAuthenticated || followLoading.value) return
   followLoading.value = true
   try {
-    const data = await authAPI.follow(route.params.username)
+    const data = await authAPI.follow(String(route.params.username ?? ''))
     if (profile.value?.viewer_relationship) {
       profile.value.viewer_relationship.is_following = !!data.following
       profile.value.viewer_relationship.is_friend = !!data.is_friend

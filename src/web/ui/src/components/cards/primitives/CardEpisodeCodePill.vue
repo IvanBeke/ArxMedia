@@ -8,14 +8,16 @@
   />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 
-defineProps({
-  seasonNumber: { type: [Number, String], default: null },
-  episodeNumber: { type: [Number, String], default: null },
-  variant: { type: String, default: 'pill' },
-  size: { type: String, default: 'sm' },
-  extraClass: { type: String, default: '' },
+withDefaults(defineProps<{
+  seasonNumber?: number | string | null
+  episodeNumber?: number | string | null
+  variant?: string
+  size?: string
+  extraClass?: string
+}>(), {
+  seasonNumber: null, episodeNumber: null, variant: 'pill', size: 'sm', extraClass: '',
 })
 </script>

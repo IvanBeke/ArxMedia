@@ -22,21 +22,25 @@
   </WatchMenu>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import WatchMenu from '@/components/WatchMenu.vue'
 import { useI18n } from '@/i18n'
 import { watchedTooltipText } from '@/utils/watchOptions'
 
-const props = defineProps({
-  watched: { type: Boolean, default: false },
-  watchedAt: { type: String, default: '' },
-  releaseDate: { type: String, default: '' },
-  disabled: { type: Boolean, default: false },
-  pulsing: { type: Boolean, default: false },
+type WatchMenuOption = 'now' | 'release' | 'unknown' | 'date'
+
+const props = withDefaults(defineProps<{
+  watched?: boolean
+  watchedAt?: string
+  releaseDate?: string
+  disabled?: boolean
+  pulsing?: boolean
+}>(), {
+  watched: false, watchedAt: '', releaseDate: '', disabled: false, pulsing: false,
 })
 
-defineEmits(['select', 'unwatch'])
+defineEmits<{ select: [value: WatchMenuOption]; unwatch: [] }>()
 
 const { t } = useI18n()
 

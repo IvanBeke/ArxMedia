@@ -17,7 +17,7 @@
   >
     <template #overlay-right>
       <div v-if="card.status.visible || card.hasUserRating" class="absolute top-2 right-2 flex items-center gap-1.5">
-        <CardUserRating v-if="card.hasUserRating" :value="card.userRating" size="xs" />
+        <CardUserRating v-if="card.userRating !== null && card.userRating !== undefined" :value="card.userRating" size="xs" />
         <CardStatusBadge v-if="card.status.visible" :status="card.status.value" />
       </div>
     </template>
@@ -104,7 +104,7 @@
   />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref } from 'vue'
 import { trackingAPI } from '@/api'
 import MediaCardShell from '@/components/cards/MediaCardShell.vue'
@@ -124,26 +124,41 @@ import { useAuthStore } from '@/stores/auth'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import { useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
+import type { MediaCardItem } from '@/composables/useMediaCardModel'
+import type { MediaType } from '@/types/api'
+import type { WatchEntryStatus } from '@/types/tracking'
+import type { WatchedAtOption } from '@/utils/watchOptions'
 
-const props = defineProps({
-  item: { type: Object, required: true },
-  mediaType: { type: String, default: MEDIA_TYPE.MOVIE },
-  hideWatchlistAction: { type: Boolean, default: false },
-  hideWatchedAction: { type: Boolean, default: false },
-  allowWatchedRemoval: { type: Boolean, default: true },
-  showListRemoveAction: { type: Boolean, default: false },
-  showListAddAction: { type: Boolean, default: false },
-  listContextId: { type: [Number, String], default: null },
-  watched: { type: Boolean, default: false },
-  status: { type: String, default: WATCH_ENTRY_STATUS.NONE },
-  removeWatchedQuickActionConfirmText: { type: String, default: '' },
+const props = withDefaults(defineProps<{
+  item: MediaCardItem & { media_type?: MediaType }
+  mediaType?: MediaType
+  hideWatchlistAction?: boolean
+  hideWatchedAction?: boolean
+  allowWatchedRemoval?: boolean
+  showListRemoveAction?: boolean
+  showListAddAction?: boolean
+  listContextId?: number | string | null
+  watched?: boolean
+  status?: WatchEntryStatus
+  removeWatchedQuickActionConfirmText?: string
+}>(), {
+  mediaType: MEDIA_TYPE.MOVIE, hideWatchlistAction: false, hideWatchedAction: false,
+  allowWatchedRemoval: true, showListRemoveAction: false, showListAddAction: false,
+  listContextId: null, watched: false, status: WATCH_ENTRY_STATUS.NONE,
+  removeWatchedQuickActionConfirmText: '',
 })
 
-const emit = defineEmits(['error', 'status-changed', 'watchlist-removed', 'list-item-removed', 'list-item-added'])
+const emit = defineEmits<{
+  error: [message: string]
+  'status-changed': [payload: { tmdb_id: number | undefined; media_type: MediaType; status: WatchEntryStatus; watched_at: string | null; status_changed_at: string | null }]
+  'watchlist-removed': [payload: { tmdb_id: number | undefined; media_type: MediaType }]
+  'list-item-removed': [payload: { list_id: number; item_id: number; tmdb_id: number | null; media_type: MediaType }]
+  'list-item-added': [payload: { list_id: number; tmdb_id: number; media_type: MediaType }]
+}>()
 const auth = useAuthStore()
 const { t } = useI18n()
 
-function emitError(message) {
+function emitError(message: string) {
   emit('error', message)
 }
 
@@ -183,7 +198,7 @@ const title = computed(() => card.value.title)
 const posterUrl = computed(() => card.value.posterUrl)
 const linkTo = computed(() => card.value.titleLinkTo)
 const resolvedMediaType = computed(() => props.mediaType || card.value.mediaType)
-const actionId = computed(() => getActionId(props.item))
+const actionId = computed(() => getActionId(props.item) ?? 0)
 const isInWatchlist = computed(() => props.item?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH)
 const interactiveEnabled = computed(() => auth.isAuthenticated)
 const isWatchedOrWatching = computed(() => {
@@ -233,8 +248,8 @@ const removeHistoryConfirmText = computed(() => {
   return 'This will remove this movie from your watched history. Ratings and list membership are not changed.'
 })
 
-const removeHistoryDialog = ref(null)
-const removeFromListDialog = ref(null)
+const removeHistoryDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
+const removeFromListDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const removingFromList = ref(false)
 const addingToList = ref(false)
 
@@ -251,13 +266,13 @@ function openRemoveFromListDialog() {
 }
 
 function emitStatusChanged() {
-  const status = props.item?.user_status || {}
+  const status = props.item.user_status
   emit('status-changed', {
     tmdb_id: props.item?.tmdb_id || props.item?.id,
     media_type: resolvedMediaType.value,
-    status: status.status || WATCH_ENTRY_STATUS.NONE,
-    watched_at: status.watched_at || null,
-    status_changed_at: status.status_changed_at || null,
+    status: status?.status || WATCH_ENTRY_STATUS.NONE,
+    watched_at: status?.watched_at || null,
+    status_changed_at: status?.status_changed_at || null,
   })
 }
 
@@ -275,7 +290,7 @@ async function toggleWatchlistAction() {
   }
 }
 
-async function selectWatchOption(option) {
+async function selectWatchOption(option: WatchedAtOption | string) {
   const nextStatus = await handleWatchOption(props.item, resolvedMediaType.value, option)
   if (!nextStatus) {
     return

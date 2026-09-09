@@ -10,17 +10,19 @@
   </button>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { usePreferencesStore } from '@/stores/preferences'
 
-const props = defineProps({
-  itemKey: { type: String, required: true },
-  watched: { type: Boolean, default: false },
+const props = withDefaults(defineProps<{
+  itemKey: string
+  watched?: boolean
+}>(), {
+  watched: false,
 })
 
 const prefs = usePreferencesStore()
-const revealed = ref(false)
+const revealed = ref<boolean>(false)
 
 watch(() => props.itemKey, () => {
   revealed.value = false

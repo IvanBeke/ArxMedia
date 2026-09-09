@@ -14,13 +14,18 @@
   </button>
 </template>
 
-<script setup>
-defineProps({
-  loading: { type: Boolean, default: false },
-  ariaLabel: { type: String, default: 'Mark next episode watched' },
+<script setup lang="ts">
+withDefaults(defineProps<{
+  loading?: boolean
+  ariaLabel?: string
+}>(), {
+  loading: false, ariaLabel: 'Mark next episode watched',
 })
 
-const emit = defineEmits(['trigger', 'action:upnext-watch'])
+const emit = defineEmits<{
+  trigger: []
+  'action:upnext-watch': []
+}>()
 
 function handleTrigger() {
   emit('action:upnext-watch')

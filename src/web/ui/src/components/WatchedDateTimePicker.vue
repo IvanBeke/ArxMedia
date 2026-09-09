@@ -26,18 +26,20 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, watch } from 'vue'
 import { localDateTimeInputToIso, nowInstantIso, toLocalDateTimeInput } from '@/utils/temporal'
 
-const props = defineProps({
-  open: { type: Boolean, default: false },
-  title: { type: String, default: 'Select watched date and time' },
-  initialValue: { type: String, default: '' },
+const props = withDefaults(defineProps<{
+  open?: boolean
+  title?: string
+  initialValue?: string
+}>(), {
+  open: false, title: 'Select watched date and time', initialValue: '',
 })
 
-const emit = defineEmits(['confirm', 'cancel'])
-const localValue = ref('')
+const emit = defineEmits<{ confirm: [value: string]; cancel: [] }>()
+const localValue = ref<string>('')
 
 function setNow() {
   localValue.value = toLocalDateTimeInput(nowInstantIso())

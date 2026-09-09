@@ -62,7 +62,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { trackingAPI } from '@/api'
@@ -73,14 +73,23 @@ import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
 import PaginationControls from '@/components/PaginationControls.vue'
 import ProgressRow from '@/components/ProgressRow.vue'
+import type { QueryParams, ShowProgressItem } from '@/types/api'
+
+interface ShowFilterState {
+  search: string; sort: string; direction: string; mediaType: string; statuses: string[]
+  providerStatuses: string[]; genres: string[]; hasUpcoming: boolean; newOnly: boolean
+  missingRating: boolean; inWatchlist: boolean
+}
+interface FilterChange { filters: ShowFilterState; source: 'hydrate' | 'interaction' }
+interface MediaListExtras { available_genres?: string[]; available_provider_statuses?: string[]; total_runtime_minutes?: number }
 
 const route = useRoute()
 
 const loading = ref(true)
-const rows = ref([])
+const rows = ref<ShowProgressItem[]>([])
 const errorMsg = ref('')
 
-const appliedFilters = ref({
+const appliedFilters = ref<ShowFilterState>({
   search: '',
   sort: 'time_left',
   direction: 'asc',
@@ -94,30 +103,29 @@ const appliedFilters = ref({
   inWatchlist: false,
 })
 
-const availableGenres = ref([])
-const availableProviderStatuses = ref([])
+const availableGenres = ref<string[]>([])
+const availableProviderStatuses = ref<string[]>([])
 
 const count = ref(0)
 const totalRuntimeMinutes = ref(0)
 const currentPage = useQueryPageSync(route)
 const lastLoadedCount = ref(0)
-const filterBarRef = ref(null)
+const filterBarRef = ref<{ clearAll: () => void } | null>(null)
 const hydrated = ref(false)
 
-function onFilterBarChange(payload) {
-  const next = payload?.filters
-  if (!next) return
+function onFilterBarChange(payload: FilterChange) {
+  const next = payload.filters
 
   const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
   appliedFilters.value = next
   hydrated.value = true
 
-  if (didChange && payload?.source === 'interaction') {
+  if (didChange && payload.source === 'interaction') {
     currentPage.value = 1
   }
 }
 
-function buildParams() {
+function buildParams(): QueryParams {
   const filterState = appliedFilters.value
   return {
     page: currentPage.value,
@@ -139,13 +147,14 @@ async function loadMyShows() {
   errorMsg.value = ''
   try {
     const data = await trackingAPI.getMyShows(buildParams())
-    const paged = normalizePagedResponse(data)
+    const paged = normalizePagedResponse<ShowProgressItem>(data)
     rows.value = paged.items
-    availableGenres.value = data?.available_genres || []
-    availableProviderStatuses.value = data?.available_provider_statuses || []
+    const extras = data as typeof data & MediaListExtras
+    availableGenres.value = extras.available_genres ?? []
+    availableProviderStatuses.value = extras.available_provider_statuses ?? []
     count.value = paged.count
     lastLoadedCount.value = paged.loadedCount
-    totalRuntimeMinutes.value = Number.isFinite(data?.total_runtime_minutes) ? data.total_runtime_minutes : 0
+    totalRuntimeMinutes.value = Number.isFinite(extras.total_runtime_minutes) ? extras.total_runtime_minutes ?? 0 : 0
   } catch (error) {
     const recoveryPage = invalidPageRecovery(error, currentPage.value)
     if (recoveryPage !== null) {
@@ -162,7 +171,7 @@ async function loadMyShows() {
   }
 }
 
-function onRowError(message) {
+function onRowError(message: string) {
   errorMsg.value = message
 }
 

@@ -23,7 +23,7 @@
           size="s"
           extra-class="shadow ring-1 ring-black/10"
         />
-        <CardUserRating v-if="hasRating" :value="card.userRating" size="xs" />
+        <CardUserRating v-if="hasRating" :value="card.userRating!" size="xs" />
       </div>
     </template>
 
@@ -70,7 +70,7 @@
   </MediaCardShell>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import MediaCardActions from '@/components/cards/MediaCardActions.vue'
 import MediaCardShell from '@/components/cards/MediaCardShell.vue'
@@ -80,22 +80,26 @@ import CardMediaTypeBadge from '@/components/cards/primitives/CardMediaTypeBadge
 import CardUserRating from '@/components/cards/primitives/CardUserRating.vue'
 import { useMediaCardModel } from '@/composables/useMediaCardModel'
 import { formatIsoAsDDMMYYYY, formatIsoTimeHHMM } from '@/utils/temporal'
+import type { WatchEntry } from '@/types/api'
 
-const props = defineProps({
-  entry: { type: Object, required: true },
-  linkTo: { type: String, required: true },
-  posterLinkTo: { type: String, default: '' },
-  titleLinkTo: { type: String, default: '' },
-  timestamp: { type: String, default: '' },
-  timestampText: { type: String, default: '' },
-  showMeta: { type: Boolean, default: true },
-  showTimestamp: { type: Boolean, default: true },
-  showRemoveAction: { type: Boolean, default: false },
-  removeLoading: { type: Boolean, default: false },
-  removeConfirmText: { type: String, default: '' },
+const props = withDefaults(defineProps<{
+  entry: WatchEntry
+  linkTo: string
+  posterLinkTo?: string
+  titleLinkTo?: string
+  timestamp?: string
+  timestampText?: string
+  showMeta?: boolean
+  showTimestamp?: boolean
+  showRemoveAction?: boolean
+  removeLoading?: boolean
+  removeConfirmText?: string
+}>(), {
+  posterLinkTo: '', titleLinkTo: '', timestamp: '', timestampText: '', showMeta: true,
+  showTimestamp: true, showRemoveAction: false, removeLoading: false, removeConfirmText: '',
 })
 
-defineEmits(['action:history-remove'])
+defineEmits<{ 'action:history-remove': [entry: WatchEntry] }>()
 
 const resolvedPosterLinkTo = computed(() => props.posterLinkTo || props.linkTo)
 const resolvedTitleLinkTo = computed(() => props.titleLinkTo || props.linkTo)

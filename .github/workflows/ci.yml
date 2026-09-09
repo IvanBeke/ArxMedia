@@ -49,6 +49,9 @@ jobs:
       - name: UI tests
         run: docker compose exec -T ui sh -lc "pnpm test"
 
+      - name: UI typecheck
+        run: docker compose exec -T ui sh -lc "pnpm typecheck"
+
       - name: Tear down
         if: always()
         run: docker compose down -v

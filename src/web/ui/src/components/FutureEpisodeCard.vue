@@ -87,7 +87,7 @@
   </MediaCardShell>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import MediaCardShell from '@/components/cards/MediaCardShell.vue'
 import MediaCardActions from '@/components/cards/MediaCardActions.vue'
@@ -98,27 +98,31 @@ import { useMediaCardModel } from '@/composables/useMediaCardModel'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import { formatHoursMinutes } from '@/utils/progress'
 
-const props = defineProps({
-  showTitle: { type: String, required: true },
-  episodeTitle: { type: String, default: '' },
-  episodeType: { type: String, default: '' },
-  seasonNumber: { type: [Number, String], required: true },
-  episodeNumber: { type: [Number, String], required: true },
-  posterUrl: { type: String, default: '' },
-  posterLinkTo: { type: String, required: true },
-  titleLinkTo: { type: String, default: '' },
-  showNewBadge: { type: Boolean, default: false },
-  showWatchAction: { type: Boolean, default: false },
-  watchLoading: { type: Boolean, default: false },
-  metaText: { type: String, default: '' },
-  progressPercent: { type: Number, default: null },
-  episodeDurationMinutes: { type: Number, default: null },
-  episodesLeft: { type: Number, default: null },
-  runtimeLeftMinutes: { type: Number, default: null },
-  runtimeLeftHasUnknown: { type: Boolean, default: false },
+const props = withDefaults(defineProps<{
+  showTitle: string
+  episodeTitle?: string
+  episodeType?: string
+  seasonNumber: string | number
+  episodeNumber: string | number
+  posterUrl?: string
+  posterLinkTo: string
+  titleLinkTo?: string
+  showNewBadge?: boolean
+  showWatchAction?: boolean
+  watchLoading?: boolean
+  metaText?: string
+  progressPercent?: number | null
+  episodeDurationMinutes?: number | null
+  episodesLeft?: number | null
+  runtimeLeftMinutes?: number | null
+  runtimeLeftHasUnknown?: boolean
+}>(), {
+  episodeTitle: '', episodeType: '', posterUrl: '', titleLinkTo: '', showNewBadge: false,
+  showWatchAction: false, watchLoading: false, metaText: '', progressPercent: null,
+  episodeDurationMinutes: null, episodesLeft: null, runtimeLeftMinutes: null, runtimeLeftHasUnknown: false,
 })
 
-defineEmits(['watch'])
+defineEmits<{ watch: [] }>()
 
 const resolvedTitleLinkTo = computed(() => props.titleLinkTo || props.posterLinkTo)
 
@@ -169,7 +173,7 @@ const progressStripStyle = computed(() => {
   }
 })
 
-function formatMinutes(value) {
+function formatMinutes(value: number | null | undefined) {
   const minutes = Number(value)
   if (!Number.isFinite(minutes) || minutes < 0) return '--'
   return formatHoursMinutes(minutes)

@@ -7,8 +7,10 @@
   </div>
 </template>
 
-<script setup>
-defineProps({
-  pct: { type: Number, default: 0 }
+<script setup lang="ts">
+withDefaults(defineProps<{
+  pct?: number
+}>(), {
+  pct: 0,
 })
 </script>

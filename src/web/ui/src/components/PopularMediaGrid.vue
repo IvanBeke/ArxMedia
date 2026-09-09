@@ -34,18 +34,16 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { mediaAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import type { MediaResult, MediaType } from '@/types/api'
 
-const props = defineProps({
-  title: { type: String, required: true },
-  mediaType: { type: String, required: true },
-})
+const props = defineProps<{ title: string; mediaType: MediaType }>()
 
-const items = ref([])
+const items = ref<MediaResult[]>([])
 const loading = ref(true)
 const page = ref(1)
 const totalPages = ref(1)
@@ -57,8 +55,8 @@ async function load() {
   try {
     const data = await mediaAPI.popular(props.mediaType, page.value)
     if (data) {
-      items.value = data.results || []
-      totalPages.value = data.total_pages || 1
+      items.value = data.results
+      totalPages.value = data.total_pages
     }
   } catch (error) {
     console.error('Failed to load popular media:', error)
