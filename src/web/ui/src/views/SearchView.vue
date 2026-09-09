@@ -10,11 +10,12 @@
 
     <div class="mb-6">
       <SearchBar
-        v-model="query"
+        :model-value="query"
         :scope="activeScope"
         :autofocus="true"
         :enable-preview="false"
         :inline-scope-selector="true"
+        :submit-on-clear="true"
         placeholder="Search movies, series & anime, or #id"
         @update:scope="setScope"
         @submit="onSearchSubmit"

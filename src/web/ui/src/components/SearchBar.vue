@@ -99,6 +99,7 @@ const props = defineProps({
   compact: { type: Boolean, default: false },
   enablePreview: { type: Boolean, default: true },
   inlineScopeSelector: { type: Boolean, default: false },
+  submitOnClear: { type: Boolean, default: false },
   maxPreviewResults: { type: Number, default: 10 },
 })
 
@@ -170,10 +171,20 @@ function setScope(scope) {
   }
 }
 
-function clearQuery() {
+function resetQuery() {
   localQuery.value = ''
   emit('update:modelValue', '')
   previewItems.value = []
+}
+
+function clearQuery() {
+  resetQuery()
+  if (props.submitOnClear) {
+    emit('submit', {
+      query: '',
+      scope: localScope.value,
+    })
+  }
 }
 
 function submitSearch() {
@@ -185,7 +196,7 @@ function submitSearch() {
 }
 
 function selectPreview(item) {
-  clearQuery()
+  resetQuery()
   emit('select-preview', item)
   panelOpen.value = false
 }

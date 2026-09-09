@@ -27,4 +27,18 @@ describe('SearchBar', () => {
       title: 'Blade Runner',
     })
   })
+
+  it('submits an empty query when the clear button is clicked', async () => {
+    const wrapper = mount(SearchBar, {
+      props: {
+        modelValue: 'blade',
+        enablePreview: false,
+        submitOnClear: true,
+      },
+    })
+
+    await wrapper.find('button[aria-label="Clear search"]').trigger('click')
+
+    expect(wrapper.emitted('submit')).toEqual([[{ query: '', scope: 'all' }]])
+  })
 })
