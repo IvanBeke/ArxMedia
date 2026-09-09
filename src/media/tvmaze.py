@@ -143,9 +143,7 @@ class TVMazeService:
         return TVMazeService.parse_air_datetime(
             air_date,
             air_time,
-            (show.get('network') or {}).get('country', {}).get('timezone')
-            or (show.get('webChannel') or {}).get('country', {}).get('timezone')
-            or '',
+            TVMazeService.show_timezone(show),
         )
 
     @staticmethod
@@ -153,12 +151,7 @@ class TVMazeService:
         if not isinstance(episode, dict):
             return None
 
-        show = show or {}
-        network_tz = (
-            (show.get('network') or {}).get('country', {}).get('timezone')
-            or (show.get('webChannel') or {}).get('country', {}).get('timezone')
-            or ''
-        )
+        network_tz = TVMazeService.show_timezone(show)
         air_date = episode.get('airdate')
         air_time = episode.get('airtime') or ''
         zone_name = network_tz
@@ -173,6 +166,15 @@ class TVMazeService:
             'runtime': episode.get('runtime'),
             'episode_type': '',
         }
+
+    @staticmethod
+    def show_timezone(show):
+        if not isinstance(show, dict):
+            return ''
+
+        network_country = (show.get('network') or {}).get('country') or {}
+        web_channel_country = (show.get('webChannel') or {}).get('country') or {}
+        return network_country.get('timezone') or web_channel_country.get('timezone') or ''
 
 
 tvmaze = TVMazeService()

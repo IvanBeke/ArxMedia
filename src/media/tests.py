@@ -94,6 +94,21 @@ class MediaTests(TestCase):
 
         self.assertEqual(payload['broadcast_start'].isoformat(), '2026-01-01T21:30:00-05:00')
 
+    def test_tvmaze_allows_null_channel_countries(self):
+        show = {
+            'network': {'country': None},
+            'webChannel': {'country': None},
+            'schedule': {'time': '21:30'},
+        }
+
+        payload = TVMazeService.normalize_episode_from_tvmaze(
+            show,
+            {'name': 'Pilot', 'airdate': '2026-01-01', 'airtime': '21:30'},
+        )
+
+        self.assertTrue(timezone.is_aware(payload['broadcast_start']))
+        self.assertIsNotNone(TVMazeService.parse_show_schedule_datetime(show, '2026-01-01'))
+
     def test_episode_air_time_is_derived_from_broadcast_start(self):
         show = TVShow.objects.create(tmdb_id=992, name='Air Time Show')
         episode = show.seasons.create(tmdb_id=9921, season_number=1, name='Season 1').episodes.create(
