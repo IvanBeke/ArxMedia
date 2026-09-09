@@ -142,7 +142,19 @@ class TMDBService:
         params = {}
         if appends:
             params['append_to_response'] = ','.join(appends)
-        return self._get(f'/tv/{tmdb_id}', params or None, use_cache=use_cache)
+        data = self._get(f'/tv/{tmdb_id}', params or None, use_cache=use_cache)
+        season_summaries = {
+            season.get('season_number'): season
+            for season in data.get('seasons', [])
+            if season.get('season_number') is not None
+        }
+        for season_number in season_numbers[:self.BUNDLED_SEASON_LIMIT]:
+            key = f'season/{season_number}'
+            season_data = data.get(key)
+            summary = season_summaries.get(season_number)
+            if isinstance(season_data, dict) and isinstance(summary, dict):
+                data[key] = {**summary, **season_data}
+        return data
 
     def get_tv_aggregate_credits(self, tmdb_id):
         return self._get(f'/tv/{tmdb_id}/aggregate_credits')
@@ -398,8 +410,7 @@ class TMDBService:
         defaults = {
             'tmdb_id': data.get('id', 0), 'name': data.get('name', ''), 'overview': data.get('overview', ''),
             'poster_path': data.get('poster_path', '') or '',
-            'air_date': parse_date(data['air_date']) if data.get('air_date') else None,
-            'episode_count': data.get('episode_count', 0), 'external_ids': _external_ids(data),
+            'external_ids': _external_ids(data),
         }
         season, _ = Season.objects.update_or_create(
             show=show, season_number=season_number,

@@ -182,6 +182,24 @@ class MediaTests(TestCase):
         self.assertEqual(append_value.count('season/'), 19)
         self.assertTrue(append_value.startswith('external_ids,'))
 
+    def test_tv_show_request_merges_season_summary_ids_into_appended_payloads(self):
+        response = {
+            'seasons': [
+                {'id': 180379, 'season_number': 1, 'episode_count': 10},
+            ],
+            'season/1': {
+                'season_number': 1,
+                'name': 'Season 1',
+                'episodes': [],
+            },
+        }
+        with patch.object(tmdb, '_get', return_value=response):
+            data = tmdb.get_tv_show_with_seasons(118357, [1])
+
+        self.assertEqual(data['season/1']['id'], 180379)
+        self.assertEqual(data['season/1']['episode_count'], 10)
+        self.assertEqual(data['season/1']['name'], 'Season 1')
+
     def test_tvmaze_external_ids_are_persisted_with_tvmaze_id(self):
         with patch.object(tmdb, 'get_tv_show', return_value={
             'id': 888,
