@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 from media.models import Episode, Genre, Movie, Season, TVShow
 from rest_framework.test import APIClient
@@ -2461,12 +2461,22 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(results[1]['id'], old_job.id)
 
     def _run_import_pipeline(self, job_id):
-        """Run the whole import synchronously (tests only)."""
-        from django.test import override_settings
+        """Run the whole import locally without sending tasks to Celery."""
+        from unittest.mock import patch
 
-        from tracking.tasks import run_import_job
+        from tracking.tasks import process_media_item, run_import_job
 
-        with override_settings(CELERY_TASK_ALWAYS_EAGER=True):
+        class LocalResult:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self, **kwargs):
+                return self.value
+
+        def apply_item(job_id, item):
+            return LocalResult(process_media_item.run(job_id, item))
+
+        with patch('tracking.tasks.process_media_item.delay', side_effect=apply_item):
             run_import_job(job_id)
 
     def test_prepare_zip_import_sets_awaiting_confirmation(self):
@@ -3191,8 +3201,7 @@ class DataImportExportTests(BaseTestCase):
 
         from tracking.tasks import run_import_job
 
-        with override_settings(CELERY_TASK_ALWAYS_EAGER=True):
-            run_import_job(job.id)
+        run_import_job(job.id)
 
         dispatched_types = [call.args[1]['media_type'] for call in mock_delay.call_args_list]
         tv_positions = [i for i, mt in enumerate(dispatched_types) if mt == 'tv']
