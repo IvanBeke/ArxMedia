@@ -7,6 +7,7 @@ import ListDetailView from '@/views/ListDetailView.vue'
 const getList = vi.fn()
 const getListItems = vi.fn()
 const reorderList = vi.fn()
+const updateList = vi.fn()
 
 vi.mock('@/api', async (importOriginal) => {
   const actual = await importOriginal()
@@ -16,12 +17,10 @@ vi.mock('@/api', async (importOriginal) => {
       getList: (...args) => getList(...args),
       getListItems: (...args) => getListItems(...args),
       reorderList: (...args) => reorderList(...args),
-      updateList: vi.fn().mockResolvedValue({}),
+       updateList: (...args) => updateList(...args),
       deleteList: vi.fn().mockResolvedValue({}),
       addToList: vi.fn().mockResolvedValue({}),
       removeFromList: vi.fn().mockResolvedValue({}),
-      addCollaborator: vi.fn().mockResolvedValue({}),
-      removeCollaborator: vi.fn().mockResolvedValue({}),
     },
     authAPI: {
       searchUsers: vi.fn().mockResolvedValue([]),
@@ -84,7 +83,7 @@ describe('ListDetailView custom_order', () => {
       username: 'owner',
       privacy: 'private',
       collaborators: [1],
-      collaborator_users: [],
+       collaborator_users: [{ id: 3, username: 'existing' }],
       created_at: new Date().toISOString(),
       item_count: 3,
     })
@@ -94,6 +93,7 @@ describe('ListDetailView custom_order', () => {
       { id: 12, media_type: 'movie', tmdb_id: 103, custom_order: 2, title: 'C' },
     ]))
     reorderList.mockResolvedValue({ ordered: true, custom_order: [12, 11, 10] })
+     updateList.mockResolvedValue({})
   })
 
   it('defaults to custom_order sorting', async () => {
@@ -101,6 +101,26 @@ describe('ListDetailView custom_order', () => {
     // MediaFilterBar should be initialized with custom_order
     expect(getListItems).toHaveBeenCalledWith('1', expect.objectContaining({ sort: 'custom_order', direction: 'asc' }))
     expect(wrapper.text()).not.toContain('Could not load')
+  })
+
+  it('defers collaborator changes until the list is saved', async () => {
+    const wrapper = await mountView()
+    const editButton = wrapper.findAll('button').find((button) => button.text() === 'Edit')
+    await editButton.trigger('click')
+
+    wrapper.vm.collaboratorResults = [{ id: 2, username: 'collaborator' }]
+    wrapper.vm.showCollaboratorResults = true
+    await wrapper.vm.$nextTick()
+
+    const resultButton = wrapper.findAll('button').find((button) => button.text() === 'collaborator')
+    await resultButton.trigger('click')
+    const existingCollaborator = wrapper.findAll('button').find((button) => button.text() === 'x')
+    await existingCollaborator.trigger('click')
+
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(updateList).toHaveBeenCalledWith('1', expect.objectContaining({ collaborator_ids: [2] }))
   })
 
   it('allows reorder anytime when canEdit', async () => {

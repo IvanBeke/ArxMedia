@@ -280,9 +280,9 @@
                 </div>
               </div>
 
-              <div v-if="list.collaborator_users?.length" class="flex flex-wrap gap-2">
+              <div v-if="collaboratorDraft.length" class="flex flex-wrap gap-2">
                 <span
-                  v-for="user in list.collaborator_users"
+                  v-for="user in collaboratorDraft"
                   :key="`edit-collab-${user.id}`"
                   class="inline-flex items-center gap-2 rounded-full bg-brand-500/15 text-brand-300 px-2.5 py-1 text-xs"
                 >
@@ -404,6 +404,7 @@ const searchResults = ref([])
 const searching = ref(false)
 const collaboratorQuery = ref('')
 const collaboratorResults = ref([])
+const collaboratorDraft = ref([])
 const showCollaboratorResults = ref(false)
 const searchingUsers = ref(false)
 const editDialog = ref(null)
@@ -508,6 +509,7 @@ function onDialogClick(event, dialogRef) {
 }
 
 function openEditModal() {
+  resetCollaboratorDraft()
   editDialog.value?.showModal()
   nextTick(() => editNameInput.value?.focus())
 }
@@ -526,6 +528,11 @@ function onEditDialogClose() {
       privacy: list.value.privacy,
     }
   }
+  resetCollaboratorDraft()
+}
+
+function resetCollaboratorDraft() {
+  collaboratorDraft.value = [...(list.value?.collaborator_users || [])]
 }
 
 function openAddModal() {
@@ -795,9 +802,12 @@ function onFilterBarChange(payload) {
 async function updateList() {
   updating.value = true
   try {
-    await trackingAPI.updateList(route.params.id, editForm.value)
-    closeEditModal()
+    await trackingAPI.updateList(route.params.id, {
+      ...editForm.value,
+      collaborator_ids: collaboratorDraft.value.map((user) => Number(user.id)),
+    })
     await loadList()
+    closeEditModal()
   } catch (error) {
     console.error('Failed to update list:', error)
     showFeedback(getApiErrorMessage(error, 'Could not update list.'), 'error')
@@ -890,17 +900,14 @@ function handleListItemRemoved() {
   showFeedback('Item removed from list.')
 }
 
-async function addCollaborator(user) {
+function addCollaborator(user) {
   if (!isOwner.value || !user?.id) return
-  try {
-    await trackingAPI.addCollaborator(route.params.id, Number(user.id))
-    collaboratorQuery.value = ''
-    collaboratorResults.value = []
-    showCollaboratorResults.value = false
-    await loadList()
-  } catch (error) {
-    showFeedback(getApiErrorMessage(error, 'Could not add collaborator.'), 'error')
+  if (!collaboratorDraft.value.some((entry) => Number(entry.id) === Number(user.id))) {
+    collaboratorDraft.value.push(user)
   }
+  collaboratorQuery.value = ''
+  collaboratorResults.value = []
+  showCollaboratorResults.value = false
 }
 
 async function searchCollaborators() {
@@ -920,7 +927,7 @@ async function searchCollaborators() {
     showCollaboratorResults.value = true
     try {
       const data = await authAPI.searchUsers(query)
-      const existingIds = new Set((list.value?.collaborator_users || []).map((entry) => entry.id))
+      const existingIds = new Set(collaboratorDraft.value.map((entry) => entry.id))
       collaboratorResults.value = (data || []).filter((entry) => !existingIds.has(entry.id))
     } catch (error) {
       collaboratorResults.value = []
@@ -931,14 +938,9 @@ async function searchCollaborators() {
   }, 250)
 }
 
-async function removeCollaborator(userId) {
+function removeCollaborator(userId) {
   if (!isOwner.value) return
-  try {
-    await trackingAPI.removeCollaborator(route.params.id, userId)
-    await loadList()
-  } catch (error) {
-    showFeedback(getApiErrorMessage(error, 'Could not remove collaborator.'), 'error')
-  }
+  collaboratorDraft.value = collaboratorDraft.value.filter((user) => Number(user.id) !== Number(userId))
 }
 
 onMounted(async () => {

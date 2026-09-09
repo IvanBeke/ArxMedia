@@ -56,7 +56,6 @@ from .models import (
 from .serializers import (
     CustomListSerializer,
     DataTransferJobSerializer,
-    ListCollaboratorSerializer,
     ListItemSerializer,
     RatingSerializer,
     ReviewSerializer,
@@ -2191,48 +2190,6 @@ class ListItemReorderView(generics.GenericAPIView):
                 ListItem.objects.bulk_update(to_update, ['custom_order'])
 
         return Response({'ordered': True, 'custom_order': ordered_ids})
-
-
-class ListCollaboratorCreateView(generics.CreateAPIView):
-    serializer_class = ListCollaboratorSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def create(self, request, *args, **kwargs):
-        list_id = self.kwargs.get('list_id')
-        custom_list = CustomList.objects.get(id=list_id)
-        if custom_list.user_id != request.user.id:
-            raise PermissionDenied('Only list owner can add collaborators.')
-
-        user_id = request.data.get('user_id')
-        if not user_id:
-            raise ValidationError({'user_id': 'user_id is required.'})
-
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        try:
-            collaborator_user = User.objects.get(id=int(user_id))
-        except (User.DoesNotExist, ValueError):
-            raise ValidationError({'user_id': 'Invalid user_id.'})
-
-        if collaborator_user.id == custom_list.user_id:
-            raise ValidationError({'user_id': 'Owner is already the list owner.'})
-
-        collab, _ = ListCollaborator.objects.get_or_create(custom_list=custom_list, user=collaborator_user)
-        serializer = self.get_serializer(collab)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-class ListCollaboratorDeleteView(generics.DestroyAPIView):
-    serializer_class = ListCollaboratorSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        return ListCollaborator.objects.filter(custom_list__user=self.request.user)
-
-    def get_object(self):
-        list_id = self.kwargs.get('list_id')
-        user_id = self.kwargs.get('user_id')
-        return self.get_queryset().get(custom_list_id=list_id, user_id=user_id)
 
 
 class DataImportView(generics.CreateAPIView):

@@ -1857,6 +1857,16 @@ class CustomListTests(BaseTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(CustomList.objects.count(), 1)
 
+    def test_create_list_with_collaborators(self):
+        response = self.client.post('/api/tracking/lists/', {
+            'name': 'Shared List',
+            'collaborator_ids': [self.user2.id],
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        lst = CustomList.objects.get(name='Shared List')
+        self.assertTrue(ListCollaborator.objects.filter(custom_list=lst, user=self.user2).exists())
+
     def test_list_privacy_public(self):
         CustomList.objects.create(user=self.user2, name='Public List', privacy='public')
         response = self.client.get('/api/tracking/lists/')
@@ -1882,6 +1892,36 @@ class CustomListTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         lst.refresh_from_db()
         self.assertEqual(lst.name, 'Updated List')
+
+    def test_update_list_replaces_collaborators_atomically(self):
+        third_user = User.objects.create_user(username='testuser3', password='testpass123')
+        lst = CustomList.objects.create(user=self.user, name='Collaborative List')
+        ListCollaborator.objects.create(custom_list=lst, user=self.user2)
+
+        response = self.client.patch(
+            f'/api/tracking/lists/{lst.id}/',
+            {'name': 'Updated Collaborative List', 'collaborator_ids': [third_user.id]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            list(lst.collaboratorships.values_list('user_id', flat=True)),
+            [third_user.id],
+        )
+
+    def test_update_list_rejects_owner_as_collaborator_without_partial_update(self):
+        lst = CustomList.objects.create(user=self.user, name='Original List')
+
+        response = self.client.patch(
+            f'/api/tracking/lists/{lst.id}/',
+            {'name': 'Should Not Persist', 'collaborator_ids': [self.user.id]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        lst.refresh_from_db()
+        self.assertEqual(lst.name, 'Original List')
 
     def test_cannot_create_list_with_followers_privacy(self):
         response = self.client.post('/api/tracking/lists/', {
@@ -2282,20 +2322,14 @@ class RecommendationsTests(BaseTestCase):
 
 
 class ListCollaborationTest(BaseTestCase):
-    def test_add_and_remove_collaborator_and_item_permissions(self):
+    def test_collaborator_can_add_items_to_shared_list(self):
         lst = CustomList.objects.create(user=self.user, name='Shared List')
-
-        response = self.client.post(f'/api/tracking/lists/{lst.id}/collaborators/', {'user_id': self.user2.id})
-        self.assertEqual(response.status_code, 201)
-        self.assertTrue(ListCollaborator.objects.filter(custom_list=lst, user=self.user2).exists())
+        ListCollaborator.objects.create(custom_list=lst, user=self.user2)
 
         self.authenticate(self.user2)
         add_item = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': 987})
         self.assertEqual(add_item.status_code, 201)
 
-        self.authenticate(self.user)
-        remove_collab = self.client.delete(f'/api/tracking/lists/{lst.id}/collaborators/{self.user2.id}/')
-        self.assertEqual(remove_collab.status_code, 204)
 
 
 class DataImportExportTests(BaseTestCase):

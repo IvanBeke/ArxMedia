@@ -177,8 +177,6 @@ export const trackingAPI = {
   addToList: (listId, data) => api.post(`/tracking/lists/${listId}/items/`, data),
   removeFromList: (listId, itemId) => api.delete(`/tracking/lists/${listId}/items/${itemId}/`),
   reorderList: (listId, orderedIds) => api.post(`/tracking/lists/${listId}/items/reorder/`, { custom_order: orderedIds }),
-  addCollaborator: (listId, userId) => api.post(`/tracking/lists/${listId}/collaborators/`, { user_id: userId }),
-  removeCollaborator: (listId, userId) => api.delete(`/tracking/lists/${listId}/collaborators/${userId}/`),
   getRecommendations: () => api.get('/tracking/recommendations/'),
   importData: (file, format = DATA_TRANSFER_FORMAT.JSON, source) => {
     const form = new FormData()

@@ -225,18 +225,10 @@ async function createList() {
   createError.value = ''
   creating.value = true
   try {
-    const created = await trackingAPI.createList(newList.value)
-
-    if (selectedCollaborators.value.length && created?.id) {
-      const collaboratorCalls = selectedCollaborators.value.map((user) =>
-        trackingAPI.addCollaborator(created.id, user.id)
-      )
-      const results = await Promise.allSettled(collaboratorCalls)
-      const failedCount = results.filter((r) => r.status === 'rejected').length
-      if (failedCount > 0) {
-        console.warn(`List created, but ${failedCount} collaborator${failedCount > 1 ? 's were' : ' was'} not added.`)
-      }
-    }
+    await trackingAPI.createList({
+      ...newList.value,
+      collaborator_ids: selectedCollaborators.value.map((user) => user.id),
+    })
 
     closeCreateModal()
     resetCreateForm()

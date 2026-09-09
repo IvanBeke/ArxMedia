@@ -1,3 +1,5 @@
+from django.contrib.auth import get_user_model
+from django.db import transaction
 from rest_framework import serializers
 
 from .choices import MediaType, WatchEntryMediaType
@@ -193,10 +195,19 @@ class CustomListSerializer(serializers.ModelSerializer):
     item_count = serializers.SerializerMethodField()
     collaborators = serializers.SerializerMethodField()
     collaborator_users = serializers.SerializerMethodField()
+    collaborator_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=get_user_model().objects.filter(is_active=True),
+        required=False,
+        write_only=True,
+    )
 
     class Meta:
         model = CustomList
-        fields = ['id', 'username', 'name', 'description', 'privacy', 'item_count', 'collaborators', 'collaborator_users', 'created_at', 'updated_at']
+        fields = [
+            'id', 'username', 'name', 'description', 'privacy', 'item_count',
+            'collaborators', 'collaborator_users', 'collaborator_ids', 'created_at', 'updated_at',
+        ]
         read_only_fields = ['id', 'username', 'created_at', 'updated_at']
 
     def get_item_count(self, obj):
@@ -210,6 +221,37 @@ class CustomListSerializer(serializers.ModelSerializer):
             {'id': row['user__id'], 'username': row['user__username']}
             for row in obj.collaboratorships.values('user__id', 'user__username')
         ]
+
+    def _save_collaborators(self, custom_list, collaborators):
+        owner_id = custom_list.user_id
+        collaborator_ids = {user.id for user in collaborators}
+        if owner_id in collaborator_ids:
+            raise serializers.ValidationError({'collaborator_ids': 'The list owner cannot be a collaborator.'})
+
+        ListCollaborator.objects.filter(custom_list=custom_list).exclude(user_id__in=collaborator_ids).delete()
+        existing_ids = set(
+            ListCollaborator.objects.filter(custom_list=custom_list).values_list('user_id', flat=True)
+        )
+        ListCollaborator.objects.bulk_create([
+            ListCollaborator(custom_list=custom_list, user=user)
+            for user in collaborators
+            if user.id not in existing_ids
+        ])
+
+    def create(self, validated_data):
+        collaborators = validated_data.pop('collaborator_ids', [])
+        with transaction.atomic():
+            custom_list = super().create(validated_data)
+            self._save_collaborators(custom_list, collaborators)
+        return custom_list
+
+    def update(self, instance, validated_data):
+        collaborators = validated_data.pop('collaborator_ids', None)
+        with transaction.atomic():
+            custom_list = super().update(instance, validated_data)
+            if collaborators is not None:
+                self._save_collaborators(custom_list, collaborators)
+        return custom_list
 
 
 class ListItemSerializer(MediaCardSerializer):
@@ -226,15 +268,6 @@ class ListItemSerializer(MediaCardSerializer):
     def get_user_status(self, obj):
         status_map = self.context.get('status_map') or {}
         return status_map.get((obj.media_type, obj.tmdb_id))
-
-class ListCollaboratorSerializer(serializers.ModelSerializer):
-    user_id = serializers.IntegerField(source='user.id', read_only=True)
-    username = serializers.CharField(source='user.username', read_only=True)
-
-    class Meta:
-        model = ListCollaborator
-        fields = ['id', 'user', 'user_id', 'username', 'created_at']
-
 
 class DataTransferJobSerializer(serializers.ModelSerializer):
     output_url = serializers.SerializerMethodField()
