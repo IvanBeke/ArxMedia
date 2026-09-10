@@ -127,6 +127,7 @@ class UserMediaStatusManager(models.Manager.from_queryset(UserMediaStatusQuerySe
         now = timezone.now()
         defaults = {
             'status': TvShowStatus.PLAN_TO_WATCH,
+            'plan_to_watch_at': now,
             'status_changed_at': now,
         }
         obj, _ = self.update_or_create(

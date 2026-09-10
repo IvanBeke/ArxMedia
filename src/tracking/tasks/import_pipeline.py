@@ -21,6 +21,7 @@ from django.db.models.functions import Least
 
 from ..choices import DataImportMode
 from ..import_engine import (
+    apply_imported_lists,
     apply_item_records,
     build_final_report,
     delete_missing_rows,
@@ -175,9 +176,11 @@ def finish_import(job_id: int):
     pipeline['stage'] = 'finalizing'
 
     import_mode = job.import_mode
-    deleted = {}
-    if import_mode == DataImportMode.MIRROR_IMPORTED_SET:
-        deleted = delete_missing_rows(job.user, parsed)
+    with transaction.atomic():
+        deleted = {}
+        if import_mode == DataImportMode.MIRROR_IMPORTED_SET:
+            deleted = delete_missing_rows(job.user, parsed)
+        applied_lists = apply_imported_lists(job.user, parsed, import_mode)
 
     reconcile_user_media_status(job.user, parsed)
 
@@ -185,6 +188,7 @@ def finish_import(job_id: int):
         job,
         parsed,
         applied_count=pipeline.get('applied', 0),
+        list_counts=applied_lists,
         metadata_state=pipeline.get('metadata_counters') or {},
     )
     report['deleted'] = deleted

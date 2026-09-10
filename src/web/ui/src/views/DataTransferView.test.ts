@@ -100,4 +100,78 @@ describe('DataTransferView', () => {
     expect(wrapper.find('details').exists()).toBe(true)
     expect(wrapper.find('details').element.open).toBe(false)
   })
+
+  it('shows the selected JSON filename and enables upload', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+
+    const input = wrapper.find('input[aria-label="Import ArxMedia JSON"]')
+    const file = new File(['{}'], 'backup.json', { type: 'application/json' })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+
+    await input.trigger('change')
+
+    expect(wrapper.text()).toContain('backup.json')
+    expect(wrapper.find('button').element).toBeDefined()
+    const uploadButton = wrapper.findAll('button').find((button) => button.text() === 'Upload JSON')
+    expect(uploadButton?.attributes('disabled')).toBeUndefined()
+  })
+
+  it('normalizes paginated job responses before rendering', async () => {
+    listJobs.mockReset()
+    listJobs.mockResolvedValueOnce({
+      results: [{
+        id: 14,
+        job_type: 'import',
+        data_format: 'json',
+        source: 'arxmedia',
+        status: DATA_TRANSFER_STATUS.DONE,
+        total_items: 1,
+        processed_items: 1,
+        created_at: '2026-09-08T10:00:00Z',
+        updated_at: '2026-09-08T10:01:00Z',
+      }],
+    })
+
+    const wrapper = mount(DataTransferView, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('done')
+    expect(wrapper.text()).not.toContain('No import jobs from the last 7 days.')
+  })
+
+  it('shows lists in the completed import report', async () => {
+    const wrapper = mountView([{
+      id: 15,
+      job_type: 'import',
+      data_format: 'json',
+      source: 'arxmedia',
+      status: DATA_TRANSFER_STATUS.DONE,
+      total_items: 3,
+      processed_items: 3,
+      created_at: '2026-09-08T10:00:00Z',
+      updated_at: '2026-09-08T10:01:00Z',
+      metadata: {
+        report: {
+          records_seen: 1,
+          records_imported: 1,
+          lists_imported: 1,
+          list_items_imported: 2,
+          summary: { lists: 1 },
+          deleted: { lists: 1 },
+        },
+      },
+    }])
+    await flushPromises()
+
+    const completedJob = wrapper.findAll('div.cursor-pointer').find((item) => item.text().includes('done'))
+    if (!completedJob) throw new Error('Completed import job was not rendered')
+    await completedJob.trigger('click')
+
+    expect(wrapper.text()).toContain('Lists')
+    expect(wrapper.text()).toContain('1 found')
+    expect(wrapper.text()).toContain('1 deleted')
+    expect(wrapper.text()).toContain('1 lists imported')
+    expect(wrapper.text()).toContain('2 list items imported')
+  })
 })

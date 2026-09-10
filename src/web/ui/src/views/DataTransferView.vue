@@ -33,7 +33,7 @@
             </div>
 
             <div class="mt-3">
-              <button class="btn-primary text-sm" :disabled="!zipFileName" @click="startZipImport">Upload ZIP</button>
+              <button type="button" class="btn-primary text-sm" :disabled="!zipFileName" @click="startZipImport">Upload ZIP</button>
             </div>
           </div>
 
@@ -60,7 +60,7 @@
             </div>
 
             <div class="mt-3">
-              <button class="btn-primary text-sm" :disabled="!yamtrackFileName" @click="startYamtrackImport">Upload CSV</button>
+              <button type="button" class="btn-primary text-sm" :disabled="!yamtrackFileName" @click="startYamtrackImport">Upload CSV</button>
             </div>
           </div>
 
@@ -87,7 +87,7 @@
             </div>
 
             <div class="mt-3">
-              <button class="btn-primary text-sm" :disabled="!jsonFileName" @click="startJsonImport">Upload JSON</button>
+              <button type="button" class="btn-primary text-sm" :disabled="!jsonFileName" @click="startJsonImport">Upload JSON</button>
             </div>
           </div>
         </div>
@@ -119,7 +119,8 @@
       <section class="card p-5">
         <h2 class="text-primary font-semibold text-xl mb-1">Export File</h2>
         <p class="text-sm text-muted mb-4">Create a JSON backup export of your data.</p>
-        <button class="btn-primary text-sm" @click="startExport">Create export</button>
+        <button type="button" class="btn-primary text-sm" @click="startExport">Create export</button>
+        <p v-if="exportError" class="text-xs text-red-400 mt-2">{{ exportError }}</p>
         <a
           v-if="latestExport?.output_url"
           :href="latestExport.output_url"
@@ -145,7 +146,7 @@
             <h3 class="text-primary text-2xl font-display font-semibold">{{ modalIsFinished ? 'What happened?' : 'How should we import it?' }}</h3>
             <p class="text-sm text-muted mt-1">{{ modalIsFinished ? 'A record of what was imported and anything that needs attention.' : 'Choose how imported data interacts with what you already track here.' }}</p>
           </div>
-          <button class="text-muted hover:text-primary" @click="closeImportModal">X</button>
+           <button type="button" class="text-muted hover:text-primary" @click="closeImportModal">X</button>
         </div>
 
         <div v-if="modalIsPreparing" class="rounded-lg border border-surface-200 bg-surface-100 p-6 mb-4 text-center">
@@ -158,7 +159,7 @@
           <p class="text-sm text-secondary">Items found</p>
           <p class="text-lg text-primary font-semibold">{{ modalSummary.total }}</p>
           <p class="text-xs text-muted mt-1">
-            History: {{ modalSummary.history }} | Watchlist: {{ modalSummary.watchlist }} | Ratings: {{ modalSummary.ratings }}
+            History: {{ modalSummary.history }} | Watchlist: {{ modalSummary.watchlist }} | Ratings: {{ modalSummary.ratings }} | Lists: {{ modalSummary.lists }}
           </p>
         </div>
 
@@ -265,6 +266,7 @@ import { trackingAPI } from '@/api'
 import { DATA_IMPORT_MODE, DATA_TRANSFER_FORMAT, DATA_TRANSFER_STATUS } from '@/constants/tracking'
 import { formatDateTimeByLocale } from '@/i18n'
 import { instantEpochMs, nowEpochMs } from '@/utils/temporal'
+import { getApiErrorMessage } from '@/utils/errors'
 import type { DataTransferFileReport, DataTransferJob, DataTransferReport, DataTransferStatus, DataTransferWarning } from '@/types/api'
 
 type ImportMode = (typeof DATA_IMPORT_MODE)[keyof typeof DATA_IMPORT_MODE]
@@ -281,6 +283,10 @@ const jsonError = ref('')
 const zipFileName = ref('')
 const yamtrackFileName = ref('')
 const jsonFileName = ref('')
+const zipFile = ref<File | null>(null)
+const yamtrackFile = ref<File | null>(null)
+const jsonFile = ref<File | null>(null)
+const exportError = ref('')
 const showImportModeModal = ref(false)
 const modalJobId = ref<number | null>(null)
 const selectedImportMode = ref<ImportMode>(DATA_IMPORT_MODE.NEW_ITEMS)
@@ -288,11 +294,15 @@ const confirmingImportMode = ref(false)
 const cancellingImport = ref(false)
 const confirmErrorCode = ref('')
 
-const confirmErrorMessages: Record<string, string> = {
+const actionErrorMessages: Record<string, string> = {
   IMPORT_JOB_NOT_FOUND: 'This import job no longer exists. Please upload the file again.',
   IMPORT_CONFIRM_NOT_ALLOWED: 'This file type cannot be confirmed for import. Upload a valid file and try again.',
   IMPORT_NOT_READY: 'Import analysis is still running. Please wait a moment and try again.',
   IMPORT_MODE_INVALID: 'Please select a valid import mode and try again.',
+  IMPORT_SOURCE_UNSUPPORTED: 'This import source is not supported.',
+  IMPORT_SOURCE_FORMAT_MISMATCH: 'The import source and file format do not match.',
+  IMPORT_INVALID_STATE_TRANSITION: 'This import is no longer in a state where that action can be performed.',
+  IMPORT_CANCEL_NOT_ALLOWED: 'This import can no longer be cancelled.',
 }
 
 const importModes: ImportModeOption[] = [
@@ -336,6 +346,7 @@ const modalSummary = computed(() => {
     history: summary?.watch_history || 0,
     watchlist: summary?.watchlist || 0,
     ratings: summary?.ratings || 0,
+    lists: summary?.lists || 0,
   }
 })
 const modalJob = computed(() => jobs.value.find((item) => item.id === modalJobId.value) || null)
@@ -349,11 +360,15 @@ const finishedResultSummary = computed(() => {
   const skipped = Number(finishedReport.value.records_skipped || 0)
   const unchanged = Number(finishedReport.value.records_unchanged || 0)
   const deleted = Number(finishedReport.value.deleted_total || 0)
+  const lists = Number(finishedReport.value.lists_imported || 0)
+  const listItems = Number(finishedReport.value.list_items_imported || 0)
   const parts: string[] = []
   if (imported) parts.push(`${imported} records imported`)
   if (deleted) parts.push(`${deleted} existing records deleted to mirror the import`)
   if (skipped) parts.push(`${skipped} records skipped`)
   if (unchanged) parts.push(`${unchanged} records already matched`)
+  if (lists) parts.push(`${lists} lists imported`)
+  if (listItems) parts.push(`${listItems} list items imported`)
   return parts.length ? `${parts.join('. ')}.` : 'The import completed without any records to add.'
 })
 const finishedStats = computed(() => [
@@ -385,6 +400,12 @@ const finishedCollections = computed(() => {
       description: 'Ratings included in the import',
       found: Number(summary?.ratings || 0),
       deleted: Number(deleted?.ratings || 0),
+    },
+    {
+      label: 'Lists',
+      description: 'Custom lists restored from the import',
+      found: Number(summary?.lists || 0),
+      deleted: Number(deleted?.lists || 0),
     },
   ]
 })
@@ -484,7 +505,7 @@ const modalIsPreparing = computed(() => {
 const modalCanConfirm = computed(() => modalJob.value?.status === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION)
 const confirmErrorMessage = computed(() => {
   if (!confirmErrorCode.value) return ''
-  return confirmErrorMessages[confirmErrorCode.value] || 'We could not start this import. Please try again.'
+  return actionErrorMessages[confirmErrorCode.value] || 'The requested import action could not be completed.'
 })
 
 let timer: ReturnType<typeof setInterval> | null = null
@@ -511,29 +532,33 @@ async function pollJob(jobId: number) {
   }, 1500)
 }
 
-function selectedFileName(event: Event): string {
-  return event.target instanceof HTMLInputElement ? event.target.files?.[0]?.name || '' : ''
-}
-
 function handleZipFileSelect(event: Event) {
   zipError.value = ''
-  zipFileName.value = selectedFileName(event)
+  zipFile.value = selectedFile(event)
+  zipFileName.value = zipFile.value?.name || ''
 }
 
 function handleYamtrackFileSelect(event: Event) {
   yamtrackError.value = ''
-  yamtrackFileName.value = selectedFileName(event)
+  yamtrackFile.value = selectedFile(event)
+  yamtrackFileName.value = yamtrackFile.value?.name || ''
 }
 
 function handleJsonFileSelect(event: Event) {
   jsonError.value = ''
-  jsonFileName.value = selectedFileName(event)
+  jsonFile.value = selectedFile(event)
+  jsonFileName.value = jsonFile.value?.name || ''
+}
+
+function selectedFile(event: Event): File | null {
+  const input = event.currentTarget as HTMLInputElement | null
+  return input?.files?.[0] || null
 }
 
 async function startZipImport() {
   zipError.value = ''
   confirmErrorCode.value = ''
-  const file = zipInput.value?.files?.[0]
+  const file = zipFile.value
   if (!file) {
     zipError.value = 'Please choose a Trakt ZIP file before uploading.'
     zipFileName.value = ''
@@ -543,19 +568,22 @@ async function startZipImport() {
     zipError.value = 'This import accepts ZIP files only.'
     return
   }
-  const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.ZIP, 'trakt')
-  updateJob(created)
-  selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
-  modalJobId.value = created.id
-  showImportModeModal.value = true
-  zipFileName.value = file.name
-  await pollJob(created.id)
+  try {
+    const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.ZIP, 'trakt')
+    updateJob(created)
+    selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
+    modalJobId.value = created.id
+    showImportModeModal.value = true
+    await pollJob(created.id)
+  } catch (error) {
+    zipError.value = getApiErrorMessage(error, 'The ZIP import could not be started.')
+  }
 }
 
 async function startYamtrackImport() {
   yamtrackError.value = ''
   confirmErrorCode.value = ''
-  const file = yamtrackInput.value?.files?.[0]
+  const file = yamtrackFile.value
   if (!file) {
     yamtrackError.value = 'Please choose a Yamtrack CSV file before uploading.'
     yamtrackFileName.value = ''
@@ -565,19 +593,22 @@ async function startYamtrackImport() {
     yamtrackError.value = 'This import accepts CSV files only.'
     return
   }
-  const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.CSV, 'yamtrack')
-  updateJob(created)
-  selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
-  modalJobId.value = created.id
-  showImportModeModal.value = true
-  yamtrackFileName.value = file.name
-  await pollJob(created.id)
+  try {
+    const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.CSV, 'yamtrack')
+    updateJob(created)
+    selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
+    modalJobId.value = created.id
+    showImportModeModal.value = true
+    await pollJob(created.id)
+  } catch (error) {
+    yamtrackError.value = getApiErrorMessage(error, 'The CSV import could not be started.')
+  }
 }
 
 async function startJsonImport() {
   jsonError.value = ''
   confirmErrorCode.value = ''
-  const file = jsonInput.value?.files?.[0]
+  const file = jsonFile.value
   if (!file) {
     jsonError.value = 'Please choose an ArxMedia JSON backup before uploading.'
     jsonFileName.value = ''
@@ -587,22 +618,31 @@ async function startJsonImport() {
     jsonError.value = 'This import accepts JSON files only.'
     return
   }
-  const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.JSON, 'arxmedia')
-  updateJob(created)
-  selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
-  modalJobId.value = created.id
-  showImportModeModal.value = true
-  jsonFileName.value = file.name
-  await pollJob(created.id)
+  try {
+    const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.JSON, 'arxmedia')
+    updateJob(created)
+    selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
+    modalJobId.value = created.id
+    showImportModeModal.value = true
+    await pollJob(created.id)
+  } catch (error) {
+    jsonError.value = getApiErrorMessage(error, 'The JSON import could not be started.')
+  }
 }
 
 async function startExport() {
-  const created = await trackingAPI.exportData(DATA_TRANSFER_FORMAT.JSON)
-  updateJob(created)
-  await pollJob(created.id)
+  exportError.value = ''
+  try {
+    const created = await trackingAPI.exportData(DATA_TRANSFER_FORMAT.JSON)
+    updateJob(created)
+    await pollJob(created.id)
+  } catch (error) {
+    exportError.value = getApiErrorMessage(error, 'The export could not be started.')
+  }
 }
 
-function updateJob(updatedJob: DataTransferJob) {
+function updateJob(updatedJob: DataTransferJob | null | undefined) {
+  if (!updatedJob?.id) return
   const idx = jobs.value.findIndex((item) => item.id === updatedJob.id)
   if (idx >= 0) {
     jobs.value[idx] = updatedJob
@@ -618,7 +658,7 @@ function selectImportMode(mode: ImportMode) {
 
 async function loadJobs() {
   const data = await trackingAPI.listJobs()
-  jobs.value = data
+  jobs.value = Array.isArray(data) ? data : data.results || []
 }
 
 function latestProcessingJob() {

@@ -2494,6 +2494,130 @@ class ListCollaborationTest(BaseTestCase):
 
 
 class DataImportExportTests(BaseTestCase):
+    def test_export_contains_watchlist_plan_date_and_lists_without_collaborators(self):
+        from tracking.tasks.export import export_user_data
+
+        planned_at = datetime(2025, 4, 5, 12, 30, tzinfo=UTC)
+        UserMediaStatus.objects.create(
+            user=self.user,
+            media_type='movie',
+            tmdb_id=9101,
+            status='plan_to_watch',
+            plan_to_watch_at=planned_at,
+            status_changed_at=planned_at,
+        )
+        custom_list = CustomList.objects.create(
+            user=self.user,
+            name='Exported List',
+            description='A backup list',
+            privacy='private',
+        )
+        ListItem.objects.create(custom_list=custom_list, media_type='movie', tmdb_id=9102, custom_order=3)
+        ListCollaborator.objects.create(custom_list=custom_list, user=self.user2)
+        job = DataTransferJob.objects.create(user=self.user, job_type='export', data_format='json')
+
+        export_user_data.run(job.id)
+
+        job.refresh_from_db()
+        payload = json.loads(job.output_file.read().decode('utf-8'))
+        self.assertEqual(payload['watchlist'], [
+            {'media_type': 'movie', 'tmdb_id': 9101, 'plan_to_watch_at': planned_at.isoformat()},
+        ])
+        self.assertNotIn('reviews', payload)
+        self.assertEqual(payload['lists'][0]['name'], 'Exported List')
+        self.assertNotIn('collaborators', payload['lists'][0])
+        self.assertEqual(payload['lists'][0]['items'][0]['custom_order'], 3)
+
+    def test_arxmedia_import_preserves_plan_date_and_restores_lists(self):
+        from tracking.import_engine import apply_imported_lists
+        from tracking.import_records import LISTS_COLLECTION
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+
+        planned_at = datetime(2024, 8, 9, 10, 15, tzinfo=UTC)
+        added_at = datetime(2024, 8, 10, 10, 15, tzinfo=UTC)
+        parsed = parse_arxmedia_json(json.dumps({
+            'watchlist': [{
+                'media_type': 'movie',
+                'tmdb_id': 9201,
+                'plan_to_watch_at': planned_at.isoformat(),
+            }],
+            'lists': [{
+                'name': 'Imported List',
+                'description': 'Imported description',
+                'privacy': 'private',
+                'items': [{
+                    'media_type': 'tv',
+                    'tmdb_id': 9202,
+                    'added_at': added_at.isoformat(),
+                    'custom_order': 4,
+                }],
+            }],
+        }).encode('utf-8'))
+
+        status = parsed.statuses()[0]
+        self.assertEqual(status.status_at, planned_at)
+        self.assertIn(LISTS_COLLECTION, parsed.collections_present)
+        self.assertEqual(apply_imported_lists(self.user, parsed, 'new_items'), {'lists': 1, 'items': 1})
+        imported_status = UserMediaStatus.objects.create(
+            user=self.user,
+            media_type=status.media_type,
+            tmdb_id=status.tmdb_id,
+            status=status.status,
+            plan_to_watch_at=status.status_at,
+            status_changed_at=status.status_at,
+        )
+        self.assertEqual(imported_status.plan_to_watch_at, planned_at)
+        imported_list = CustomList.objects.get(user=self.user, name='Imported List')
+        imported_item = ListItem.objects.get(custom_list=imported_list)
+        self.assertEqual(imported_item.custom_order, 4)
+        self.assertEqual(imported_item.added_at, added_at)
+        self.assertFalse(ListCollaborator.objects.filter(custom_list=imported_list).exists())
+
+    def test_invalid_only_lists_are_not_mirrorable(self):
+        from tracking.import_records import LISTS_COLLECTION
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+
+        CustomList.objects.create(user=self.user, name='Keep Me')
+        parsed = parse_arxmedia_json(json.dumps({'lists': [{'name': ''}]}).encode('utf-8'))
+
+        self.assertNotIn(LISTS_COLLECTION, parsed.collections_present)
+        from tracking.import_engine import delete_missing_rows
+        delete_missing_rows(self.user, parsed)
+        self.assertTrue(CustomList.objects.filter(user=self.user, name='Keep Me').exists())
+
+    def test_arxmedia_parser_warns_on_invalid_collections_and_list_privacy(self):
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+
+        parsed = parse_arxmedia_json(json.dumps({
+            'watch_history': {},
+            'lists': [{
+                'name': 'Needs normalization',
+                'privacy': 'unknown',
+                'items': [{'media_type': 'movie', 'tmdb_id': 9401, 'custom_order': -1}],
+            }],
+        }).encode('utf-8'))
+
+        warning_codes = {warning['code'] for warning in parsed.report['warnings']}
+        self.assertIn('invalid_collection', warning_codes)
+        self.assertIn('invalid_list_privacy', warning_codes)
+        self.assertIn('invalid_list_item', warning_codes)
+        self.assertEqual(parsed.lists[0].privacy, 'public')
+
+    def test_update_existing_import_updates_list_item_order(self):
+        from tracking.import_engine import apply_imported_lists
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+
+        custom_list = CustomList.objects.create(user=self.user, name='Ordered List')
+        existing = ListItem.objects.create(custom_list=custom_list, media_type='movie', tmdb_id=9301, custom_order=0)
+        parsed = parse_arxmedia_json(json.dumps({'lists': [{
+            'name': 'Ordered List',
+            'items': [{'media_type': 'movie', 'tmdb_id': 9301, 'custom_order': 7}],
+        }]}).encode('utf-8'))
+
+        self.assertEqual(apply_imported_lists(self.user, parsed, 'update_existing'), {'lists': 0, 'items': 1})
+        existing.refresh_from_db()
+        self.assertEqual(existing.custom_order, 7)
+
     def test_mirror_deletion_report_counts_removed_rows(self):
         from tracking.import_engine import delete_missing_rows
         from tracking.import_records import (

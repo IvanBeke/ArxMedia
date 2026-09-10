@@ -13,6 +13,7 @@ from django.utils import timezone
 from .cache import cache as tracking_cache
 from .choices import DataImportMode, MediaType, TvShowStatus, WatchEntryMediaType
 from .import_records import (
+    LISTS_COLLECTION,
     RATINGS_COLLECTION,
     WATCH_HISTORY_COLLECTION,
     WATCHLIST_COLLECTION,
@@ -21,7 +22,7 @@ from .import_records import (
     StatusRecord,
     WatchEntryRecord,
 )
-from .models import Rating, UserMediaStatus, WatchEntry
+from .models import CustomList, ListItem, Rating, UserMediaStatus, WatchEntry
 from .status_sync import refresh_show_status
 
 _STATUS_FIELD_BY_STATE: dict[str, str] = {
@@ -443,16 +444,86 @@ def delete_missing_rows(user, parsed: ParsedImport):
             deleted[RATINGS_COLLECTION] = len(stale_ids)
             Rating.objects.filter(id__in=stale_ids).delete()
 
+    if LISTS_COLLECTION in collections_present:
+        deleted[LISTS_COLLECTION] = 0
+        imported_names = {record.name for record in parsed.lists}
+        for custom_list in CustomList.objects.filter(user=user).exclude(name__in=imported_names):
+            deleted[LISTS_COLLECTION] += 1
+            custom_list.delete()
+
     return deleted
 
 
-def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_state: dict | None = None) -> dict:
+def apply_imported_lists(user, parsed: ParsedImport, import_mode: str) -> dict[str, int]:
+    """Restore owned lists and ordered items without creating collaborators."""
+    if not parsed.lists:
+        return {'lists': 0, 'items': 0}
+
+    applied = {'lists': 0, 'items': 0}
+    for record in parsed.lists:
+        custom_list = CustomList.objects.filter(user=user, name=record.name).first()
+        if custom_list is None:
+            custom_list = CustomList.objects.create(
+                user=user,
+                name=record.name,
+                description=record.description,
+                privacy=record.privacy,
+            )
+            applied['lists'] += 1
+        elif import_mode != 'new_items':
+            custom_list.description = record.description
+            custom_list.privacy = record.privacy
+            custom_list.save(update_fields=['description', 'privacy', 'updated_at'])
+
+        if import_mode == 'mirror_imported_set':
+            ListItem.objects.filter(custom_list=custom_list).delete()
+
+        existing_items = {
+            (item.media_type, item.tmdb_id): item
+            for item in ListItem.objects.filter(custom_list=custom_list)
+        }
+        to_create = []
+        create_sources = []
+        to_update = []
+        for item in record.items:
+            key = (item.media_type, item.tmdb_id)
+            if key in existing_items:
+                if import_mode == 'update_existing' and existing_items[key].custom_order != item.custom_order:
+                    existing_items[key].custom_order = item.custom_order
+                    to_update.append(existing_items[key])
+                continue
+            to_create.append(ListItem(
+                custom_list=custom_list,
+                media_type=item.media_type,
+                tmdb_id=item.tmdb_id,
+                added_at=item.added_at,
+                custom_order=item.custom_order,
+            ))
+            create_sources.append(item)
+        if to_create:
+            ListItem.objects.bulk_create(to_create)
+            dated_items = []
+            for created, source in zip(to_create, create_sources, strict=False):
+                if source.added_at:
+                    created.added_at = source.added_at
+                    dated_items.append(created)
+            if dated_items:
+                ListItem.objects.bulk_update(dated_items, ['added_at'])
+            applied['items'] += len(to_create)
+        if to_update:
+            ListItem.objects.bulk_update(to_update, ['custom_order'])
+            applied['items'] += len(to_update)
+    return applied
+
+
+def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_state: dict | None = None, list_counts: dict | None = None) -> dict:
     state = metadata_state or {}
     report = dict(parsed.report)
-    records_seen = report.get('records_seen', 0)
+    records_seen = report.get('media_records_seen', report.get('records_seen', 0))
     metadata_only_shows = report.get('metadata_only_shows', 0)
     records_imported = applied_count + metadata_only_shows
     valid_records = len(parsed.records) + metadata_only_shows
+    list_counts = list_counts or {'lists': 0, 'items': 0}
     report.update(
         {
             'records_imported': records_imported,
@@ -462,6 +533,8 @@ def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_s
             'metadata_fetches': state.get('metadata_fetches', 0),
             'metadata_errors': state.get('metadata_errors', 0),
             'total_items': job.total_items,
+            'lists_imported': list_counts['lists'],
+            'list_items_imported': list_counts['items'],
         }
     )
     return report

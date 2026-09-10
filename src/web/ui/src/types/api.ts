@@ -64,18 +64,24 @@ export interface ListItemsResponse extends PaginatedResponse<ListItem> {
 }
 export type DataTransferStatus = 'pending' | 'processing' | 'awaiting_confirmation' | 'done' | 'failed' | 'cancelled'
 export type DataTransferJobType = 'import' | 'export'
+export type DataTransferSource = 'arxmedia' | 'trakt' | 'yamtrack'
+export type DataTransferFormat = 'json' | 'csv' | 'zip'
+export type DataImportMode = 'new_items' | 'update_existing' | 'mirror_imported_set'
 export interface DataTransferFileReport { file: string; status: string; error?: string; records_seen?: number }
 export interface DataTransferWarning { code?: string; location?: { kind?: string; file?: string; row?: number; column?: string | number; record?: number; collection?: string; index?: number; field?: string }; message?: string }
 export interface DataTransferReport {
   records_seen?: number; records_imported?: number; records_skipped?: number; records_unchanged?: number; deleted_total?: number; metadata_errors?: number
-  summary?: { watch_history?: number; watchlist?: number; ratings?: number }
-  deleted?: { watch_history?: number; watchlist?: number; ratings?: number }
+  summary?: { watch_history?: number; watchlist?: number; ratings?: number; lists?: number }
+  deleted?: { watch_history?: number; watchlist?: number; ratings?: number; lists?: number }
+  lists_imported?: number; list_items_seen?: number; list_items_imported?: number
+  invalid_count?: number; unsupported_files?: number; unsupported_records?: number; skipped_non_tmdb?: number
+  skipped_unsupported_media_type?: number; skipped_invalid_status?: number; skipped_missing_tmdb_id?: number; files_failed?: number
   warnings?: DataTransferWarning[]; files?: DataTransferFileReport[]
   [key: string]: unknown
 }
 export interface DataTransferJob {
-  id: number; job_type: DataTransferJobType; status: DataTransferStatus; created_at: string; processed_items: number; total_items: number; error_message?: string | null
-  source?: string; data_format?: string; import_mode?: string; output_url?: string | null
+  id: number; job_type: DataTransferJobType; status: DataTransferStatus; created_at: string; updated_at: string; processed_items: number; total_items: number; error_message?: string | null
+  source?: DataTransferSource; data_format?: DataTransferFormat; import_mode?: DataImportMode; overwrite_existing?: boolean; output_url?: string | null
   metadata?: { summary?: DataTransferReport['summary']; pipeline?: { stage?: string }; report?: DataTransferReport } & DataTransferReport
 }
 export interface CalendarMovie { kind: 'movie'; date: string; tmdb_id: number; title: string; poster_url: string | null }

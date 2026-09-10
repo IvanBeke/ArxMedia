@@ -22,6 +22,7 @@ def add_import_warning(warnings: list[dict], code: str, message: str, location: 
 WATCH_HISTORY_COLLECTION = 'watch_history'
 WATCHLIST_COLLECTION = 'watchlist'
 RATINGS_COLLECTION = 'ratings'
+LISTS_COLLECTION = 'lists'
 
 
 def _dt_key(value: datetime | None) -> str:
@@ -91,6 +92,22 @@ class RatingRecord:
         return (2, self.media_type, self.tmdb_id, self.score)
 
 
+@dataclasses.dataclass(frozen=True)
+class ListItemRecord:
+    media_type: str
+    tmdb_id: int
+    custom_order: int = 0
+    added_at: datetime | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class ListRecord:
+    name: str
+    description: str = ''
+    privacy: str = 'public'
+    items: tuple[ListItemRecord, ...] = ()
+
+
 ImportRecord = WatchEntryRecord | StatusRecord | RatingRecord
 
 
@@ -103,6 +120,7 @@ class ParsedImport:
     invalid_count: int
     report: dict  # Provider-specific static report (seen counts, warnings, files[], skipped_* breakdowns, total_items).
     prefetch_only_ids: dict[str, frozenset[int]] = dataclasses.field(default_factory=dict)  # ids needing metadata but producing no record
+    lists: tuple[ListRecord, ...] = ()
 
     def sorted_records(self) -> tuple[ImportRecord, ...]:
         return tuple(sorted(self.records, key=lambda record: record.sort_key()))
