@@ -111,7 +111,23 @@ class UserMediaStatusQuerySet(models.QuerySet):
         return self.filter(status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED))
 
     def progressable(self):
-        return self.active().filter(watched_episodes__gt=0)
+        return self.active().with_watched_episodes()
+
+    def with_watched_episodes(self):
+        from media.models import Episode
+
+        known_episode = Episode.objects.filter(
+            season__show__tmdb_id=OuterRef('tmdb_id'),
+            season__season_number=OuterRef('season_number'),
+            episode_number=OuterRef('episode_number'),
+        )
+        watched_episode = WatchEntry.objects.filter(
+            user_id=OuterRef('user_id'),
+            media_type=WatchEntryMediaType.EPISODE,
+            tmdb_id=OuterRef('tmdb_id'),
+            season_number__gt=0,
+        ).filter(Exists(known_episode))
+        return self.annotate(has_watched_episodes=Exists(watched_episode)).filter(has_watched_episodes=True)
 
     def watching(self):
         return self.filter(status=TvShowStatus.WATCHING)

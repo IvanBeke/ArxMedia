@@ -33,8 +33,8 @@ def rebuild_episode_chain(tmdb_id: int):
     return len(episodes)
 
 
-def _released_episode_queryset(tmdb_id: int):
-    now = timezone.now()
+def _released_episode_queryset(tmdb_id: int, now=None):
+    now = now or timezone.now()
     return Episode.objects.filter(season__show__tmdb_id=tmdb_id).filter(Episode.released_q(now))
 
 
@@ -43,27 +43,49 @@ def _is_final_tmdb_show_status(tmdb_id: int) -> bool:
     return status.strip().lower() in TVShow.FINAL_STATUSES
 
 
+def calculate_show_progress(user_id: int, tmdb_id: int, now=None) -> dict:
+    """Calculate progress from released catalog episodes and valid watch keys."""
+    now = now or timezone.now()
+    released_rows = list(_released_episode_queryset(tmdb_id, now).values(
+        'id', 'season__season_number', 'episode_number', 'runtime',
+    ))
+    released_keys = {
+        (row['season__season_number'], row['episode_number'])
+        for row in released_rows
+    }
+    watched_keys = set(WatchEntry.objects.for_user(user_id).for_show(tmdb_id).filter(
+        season_number__gt=0,
+    ).values_list('season_number', 'episode_number'))
+    valid_watched_keys = watched_keys & released_keys
+    remaining_rows = [
+        row for row in released_rows
+        if (row['season__season_number'], row['episode_number']) not in valid_watched_keys
+    ]
+    return {
+        'released_rows': released_rows,
+        'valid_watched_keys': valid_watched_keys,
+        'orphan_watched_keys': watched_keys - released_keys,
+        'remaining_rows': remaining_rows,
+        'watched_episodes': len(valid_watched_keys),
+        'total_episodes': len(released_rows),
+        'episodes_left': len(remaining_rows),
+        'time_left_minutes': sum(row['runtime'] for row in remaining_rows if row['runtime'] is not None),
+        'time_left_has_unknown': any(row['runtime'] is None for row in remaining_rows),
+    }
+
+
 def refresh_show_status(user_id: int, tmdb_id: int):
     existing = UserMediaStatus.objects.shows().filter(user_id=user_id, tmdb_id=tmdb_id).first()
 
-    released_episodes = _released_episode_queryset(tmdb_id)
-    watched_keys = set(WatchEntry.objects.for_user(user_id).for_show(tmdb_id).filter(
-        tmdb_id=tmdb_id,
+    progress = calculate_show_progress(user_id, tmdb_id)
+    remaining_rows = progress['remaining_rows']
+    watched_episodes = progress['watched_episodes']
+    has_watched_entries = bool(WatchEntry.objects.for_user(user_id).for_show(tmdb_id).filter(
         season_number__gt=0,
-    ).values_list('season_number', 'episode_number'))
-    released_rows = list(released_episodes.values(
-        'id', 'season__season_number', 'episode_number', 'runtime',
-    ))
-    remaining_rows = [
-        row for row in released_rows
-        if (row['season__season_number'], row['episode_number']) not in watched_keys
-    ]
-    watched_episodes = len(watched_keys)
-    has_watched_entries = bool(watched_keys)
-    total_episodes = len(released_rows)
-    runtime_values = [row['runtime'] for row in remaining_rows]
-    time_left_minutes = sum(runtime for runtime in runtime_values if runtime is not None)
-    time_left_has_unknown = any(runtime is None for runtime in runtime_values)
+    ).exists())
+    total_episodes = progress['total_episodes']
+    time_left_minutes = progress['time_left_minutes']
+    time_left_has_unknown = progress['time_left_has_unknown']
     watched_data = WatchEntry.objects.for_user(user_id).for_show(tmdb_id).filter(
         tmdb_id=tmdb_id,
         season_number__gt=0,

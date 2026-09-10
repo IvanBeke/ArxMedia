@@ -13,6 +13,8 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 - Run commands from repo root.
 - Validate with `./init.sh` before declaring done.
 - Commit messages must follow the existing repository pattern: `<type>(<scope>): <imperative summary>`.
+- Batch verification after the implementation is complete and before committing; do not run the full verification sequence after every individual edit.
+- Run focused checks while iterating only when they are needed to diagnose a change; run the required verification sequence once before the commit.
 
 ## Real project shape (verified)
 

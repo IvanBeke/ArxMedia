@@ -109,6 +109,13 @@ class CalendarTests(TestCase):
             watched_episodes=1,
             total_episodes=1,
         )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=show.tmdb_id,
+            season_number=1,
+            episode_number=1,
+        )
 
         response = self.client.get('/api/calendar/?days=30')
         self.assertEqual(response.status_code, 200)

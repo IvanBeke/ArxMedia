@@ -90,10 +90,18 @@ class BaseTestCase(TestCase):
 
 class WatchEntryTests(BaseTestCase):
     def test_watch_entry_and_status_queryset_helpers(self):
+        show_one = TVShow.objects.create(tmdb_id=1, name='Show One')
+        show_two = TVShow.objects.create(tmdb_id=2, name='Show Two')
+        season_one = Season.objects.create(show=show_one, tmdb_id=101, season_number=1, name='Season 1')
+        season_two = Season.objects.create(show=show_two, tmdb_id=102, season_number=1, name='Season 1')
+        Episode.objects.create(season=season_one, tmdb_id=1001, episode_number=1, name='Episode 1', air_date=timezone.localdate() - timedelta(days=1))
+        Episode.objects.create(season=season_two, tmdb_id=1002, episode_number=1, name='Episode 1', air_date=timezone.localdate() - timedelta(days=1))
         UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=1, status='watching', watched_episodes=1)
         UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=2, status='watched', watched_episodes=2)
         UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=3, status='dropped', watched_episodes=1)
         UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=4, status='plan_to_watch')
+        WatchEntry.objects.create(user=self.user, media_type=WatchEntryMediaType.EPISODE, tmdb_id=1, season_number=1, episode_number=1)
+        WatchEntry.objects.create(user=self.user, media_type=WatchEntryMediaType.EPISODE, tmdb_id=2, season_number=1, episode_number=1)
         WatchEntry.objects.create(user=self.user, media_type=WatchEntryMediaType.MOVIE, tmdb_id=10)
         WatchEntry.objects.create(user=self.user, media_type=WatchEntryMediaType.EPISODE, tmdb_id=11, season_number=1, episode_number=1)
 
@@ -162,7 +170,7 @@ class WatchEntryTests(BaseTestCase):
 
         show = TVShow.objects.create(tmdb_id=888, name='Planned Show', number_of_seasons=1)
         season = Season.objects.create(show=show, tmdb_id=889, season_number=1, name='Season 1')
-        Episode.objects.create(season=season, tmdb_id=890, episode_number=1, name='Pilot')
+        Episode.objects.create(season=season, tmdb_id=890, episode_number=1, name='Pilot', air_date=timezone.localdate() - timedelta(days=1))
         UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=888, status='plan_to_watch', status_changed_at=timezone.now())
         self.assertEqual(UserMediaStatus.objects.planning().count(), 1)
 
@@ -201,6 +209,51 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(status_row.watched_episodes, 1)
         self.assertEqual(status_row.total_episodes, 3)
         self.assertEqual(status_row.progress_percent, 33)
+
+    def test_show_progress_ignores_orphan_watch_keys(self):
+        show = TVShow.objects.create(tmdb_id=890, name='Orphan Progress Show', status='Ended')
+        season = Season.objects.create(show=show, tmdb_id=891, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=892, episode_number=1, name='Episode 1', air_date=timezone.localdate() - timedelta(days=1), runtime=42)
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=890, season_number=1, episode_number=1)
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=890, season_number=1, episode_number=99)
+
+        status_row = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=890)
+        self.assertEqual(status_row.watched_episodes, 1)
+        self.assertEqual(status_row.total_episodes, 1)
+        self.assertEqual(status_row.episodes_left, 0)
+        self.assertEqual(status_row.time_left_minutes, 0)
+
+    def test_show_progress_ignores_unreleased_watch_keys(self):
+        show = TVShow.objects.create(tmdb_id=891, name='Future Progress Show', status='Returning Series')
+        season = Season.objects.create(show=show, tmdb_id=892, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=893, episode_number=1, name='Released', air_date=timezone.localdate() - timedelta(days=1))
+        Episode.objects.create(season=season, tmdb_id=894, episode_number=2, name='Future', air_date=timezone.localdate() + timedelta(days=1))
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=891, season_number=1, episode_number=2)
+
+        status_row = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=891)
+        self.assertEqual(status_row.watched_episodes, 0)
+        self.assertEqual(status_row.total_episodes, 1)
+        self.assertEqual(status_row.progress_percent, 0)
+        self.assertEqual(status_row.episodes_left, 1)
+
+    def test_reconcile_tv_progress_repairs_orphan_watch_key(self):
+        show = TVShow.objects.create(tmdb_id=892, name='Repair Show', status='Ended')
+        season = Season.objects.create(show=show, tmdb_id=893, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=894, episode_number=1, name='Episode 1', air_date=timezone.localdate() - timedelta(days=1), runtime=45)
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=892, season_number=1, episode_number=1)
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=892, season_number=1, episode_number=99)
+        UserMediaStatus.objects.filter(user=self.user, media_type='tv', tmdb_id=892).update(
+            watched_episodes=2, total_episodes=1, progress_percent=100, episodes_left=1, time_left_minutes=45,
+        )
+
+        from tracking.status_sync import refresh_show_status
+        refresh_show_status(self.user.id, 892)
+
+        status_row = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=892)
+        self.assertEqual(status_row.watched_episodes, 1)
+        self.assertEqual(status_row.total_episodes, 1)
+        self.assertEqual(status_row.episodes_left, 0)
+        self.assertEqual(status_row.time_left_minutes, 0)
 
     def test_drop_media_tv(self):
         WatchEntry.objects.create(
@@ -511,6 +564,9 @@ class WatchlistTests(BaseTestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_block_show_with_watched_episodes(self):
+        show = TVShow.objects.create(tmdb_id=456, name='Watched Show')
+        season = Season.objects.create(show=show, tmdb_id=4561, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=45611, episode_number=1, name='Episode 1', air_date=timezone.localdate() - timedelta(days=1))
         WatchEntry.objects.create(
             user=self.user, media_type='episode', tmdb_id=456,
             season_number=1, episode_number=1
@@ -1461,12 +1517,26 @@ class SeasonPosterCardsTests(BaseTestCase):
             name='Next Week',
             air_date=today + timedelta(days=7),
         )
+        Episode.objects.create(
+            season=season1,
+            tmdb_id=830110,
+            episode_number=1,
+            name='Watched Episode',
+            air_date=today - timedelta(days=1),
+        )
         UserMediaStatus.objects.create(
             user=self.user,
             media_type='tv',
             tmdb_id=8301,
             status='watching',
             watched_episodes=1,
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=8301,
+            season_number=1,
+            episode_number=1,
         )
 
         response = self.client.get('/api/tracking/upcoming/')
@@ -1533,7 +1603,7 @@ class ProgressListTests(BaseTestCase):
             number_of_seasons=1,
             networks='Netflix',
             vote_count=900,
-            status='Returning Series',
+            status='Ended',
         )
         show_b.genres.add(genre_scifi)
         season_b = Season.objects.create(show=show_b, tmdb_id=4201, season_number=1, name='Season 1')
@@ -1641,6 +1711,23 @@ class ProgressListTests(BaseTestCase):
         self.assertTrue(all(item['user_rating'] is None for item in items))
         self.assertEqual({item['tmdb_id'] for item in items}, {4001, 4003})
 
+    def test_progress_list_filters_has_next_episode(self):
+        response = self.client.get('/api/tracking/my-shows/?has_next_episode=true')
+        self.assertEqual(response.status_code, 200)
+        items = response.data['results']
+        self.assertEqual({item['tmdb_id'] for item in items}, {4001, 4003})
+        self.assertTrue(all(item['next_episode'] is not None for item in items))
+
+        unfiltered = self.client.get('/api/tracking/my-shows/')
+        by_id = {item['tmdb_id']: item for item in unfiltered.data['results']}
+        self.assertIsNone(by_id[4002]['next_episode'])
+        self.assertIsNotNone(by_id[4003]['next_episode'])
+
+    def test_progress_list_filters_without_next_episode(self):
+        response = self.client.get('/api/tracking/my-shows/?has_next_episode=false')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({item['tmdb_id'] for item in response.data['results']}, {4002, 4004})
+
     def test_progress_list_filters_genres_multi(self):
         response = self.client.get('/api/tracking/my-shows/?genres=Drama&genres=Sci-Fi')
         self.assertEqual(response.status_code, 200)
@@ -1676,19 +1763,17 @@ class ProgressListTests(BaseTestCase):
         statuses = response.data.get('available_provider_statuses', [])
         self.assertEqual(statuses, ['Ended', 'Returning Series'])
 
-    def test_progress_list_filters_watching_requires_episodes_left(self):
+    def test_progress_list_filters_watching_by_status(self):
         response = self.client.get('/api/tracking/my-shows/?status=watching')
         self.assertEqual(response.status_code, 200)
         items = response.data['results']
         self.assertEqual([item['tmdb_id'] for item in items], [4001])
-        self.assertTrue(all(item['episodes_left'] > 0 for item in items))
 
-    def test_progress_list_filters_completed_by_full_progress(self):
+    def test_progress_list_filters_watched_by_status(self):
         response = self.client.get('/api/tracking/my-shows/?status=watched')
         self.assertEqual(response.status_code, 200)
         items = response.data['results']
         self.assertEqual([item['tmdb_id'] for item in items], [4002])
-        self.assertTrue(all(item['progress_percent'] == 100 for item in items))
 
     def test_progress_list_sorts_time_left(self):
         response = self.client.get('/api/tracking/my-shows/?sort=time_left')
@@ -1785,7 +1870,7 @@ class ProgressListTests(BaseTestCase):
         self.assertEqual(len(items), 1)
         item = items[0]
         self.assertEqual(item['tmdb_id'], 4002)
-        self.assertEqual(item['provider_status'], 'Returning Series')
+        self.assertEqual(item['provider_status'], 'Ended')
 
     def test_progress_list_includes_episode_runtime(self):
         response = self.client.get('/api/tracking/my-shows/?search=alpha')
@@ -2568,7 +2653,10 @@ class DataImportExportTests(BaseTestCase):
         status = parsed.statuses()[0]
         self.assertEqual(status.status_at, planned_at)
         self.assertIn(LISTS_COLLECTION, parsed.collections_present)
-        self.assertEqual(apply_imported_lists(self.user, parsed, 'new_items'), {'lists': 1, 'items': 1})
+        self.assertEqual(apply_imported_lists(self.user, parsed, 'new_items'), {
+            'lists_created': 1, 'lists_updated': 0,
+            'items_created': 1, 'items_updated': 0, 'items_deleted': 0,
+        })
         imported_status = UserMediaStatus.objects.create(
             user=self.user,
             media_type=status.media_type,
@@ -2614,6 +2702,17 @@ class DataImportExportTests(BaseTestCase):
         self.assertIn('invalid_list_item', warning_codes)
         self.assertEqual(parsed.lists[0].privacy, 'public')
 
+    def test_arxmedia_parser_rejects_case_insensitive_duplicate_lists(self):
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+
+        parsed = parse_arxmedia_json(json.dumps({'lists': [
+            {'name': 'Favorites'},
+            {'name': 'favorites'},
+        ]}).encode('utf-8'))
+
+        self.assertEqual(len(parsed.lists), 1)
+        self.assertIn('duplicate_list', {warning['code'] for warning in parsed.report['warnings']})
+
     def test_update_existing_import_updates_list_item_order(self):
         from tracking.import_engine import apply_imported_lists
         from tracking.tasks.providers.arxmedia import parse_arxmedia_json
@@ -2625,7 +2724,10 @@ class DataImportExportTests(BaseTestCase):
             'items': [{'media_type': 'movie', 'tmdb_id': 9301, 'custom_order': 7}],
         }]}).encode('utf-8'))
 
-        self.assertEqual(apply_imported_lists(self.user, parsed, 'update_existing'), {'lists': 0, 'items': 1})
+        self.assertEqual(apply_imported_lists(self.user, parsed, 'update_existing'), {
+            'lists_created': 0, 'lists_updated': 1,
+            'items_created': 0, 'items_updated': 1, 'items_deleted': 0,
+        })
         existing.refresh_from_db()
         self.assertEqual(existing.custom_order, 7)
 
@@ -2987,7 +3089,7 @@ class DataImportExportTests(BaseTestCase):
     def test_yamtrack_tv_dropped_preserved_with_refreshed_counts(self):
         show = TVShow.objects.create(tmdb_id=620, name='Dropped Show', number_of_seasons=1)
         season = Season.objects.create(show=show, tmdb_id=621, season_number=1, name='Season 1')
-        Episode.objects.create(season=season, tmdb_id=622, episode_number=1, name='E1')
+        Episode.objects.create(season=season, tmdb_id=622, episode_number=1, name='E1', air_date=timezone.localdate() - timedelta(days=1))
 
         csv_content = self._build_yamtrack_csv([
             {
