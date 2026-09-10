@@ -2,6 +2,8 @@
 
 import json
 
+from django.utils import timezone
+
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
 from ...import_metadata import _parse_watched_at, _safe_int
 from ...import_records import (
@@ -160,11 +162,10 @@ def parse_arxmedia_json(content: bytes) -> ParsedImport:
                 invalid_count += 1
                 add_import_warning(warnings, 'invalid_list_item', 'The list item must be an object.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'item_index': item_index})
                 continue
-            media_type = list_item.get('media_type')
+            media_type = str(list_item.get('media_type') or '')
             tmdb_id = _safe_int(list_item.get('tmdb_id'))
             custom_order = _safe_int(list_item.get('custom_order'))
-            item_key = (media_type, tmdb_id) if media_type in (MediaType.MOVIE, MediaType.TV) and tmdb_id else None
-            if item_key is None or custom_order is not None and custom_order < 0:
+            if media_type not in (MediaType.MOVIE, MediaType.TV) or not tmdb_id or (custom_order is not None and custom_order < 0):
                 invalid_count += 1
                 add_import_warning(
                     warnings,
@@ -173,16 +174,16 @@ def parse_arxmedia_json(content: bytes) -> ParsedImport:
                     {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'item_index': item_index},
                 )
                 continue
-            if item_key in seen_items:
+            if (media_type, tmdb_id) in seen_items:
                 invalid_count += 1
                 add_import_warning(warnings, 'duplicate_list_item', 'The list contains a duplicate item.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'item_index': item_index})
                 continue
-            seen_items.add(item_key)
+            seen_items.add((media_type, tmdb_id))
             parsed_items.append(ListItemRecord(
                 media_type=media_type,
                 tmdb_id=tmdb_id,
                 custom_order=custom_order or 0,
-                added_at=_parse_watched_at(list_item.get('added_at')),
+                added_at=_parse_watched_at(list_item.get('added_at')) or timezone.now(),
             ))
 
         parsed_lists.append(ListRecord(

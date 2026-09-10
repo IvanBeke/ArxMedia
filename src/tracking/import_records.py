@@ -96,8 +96,8 @@ class RatingRecord:
 class ListItemRecord:
     media_type: str
     tmdb_id: int
+    added_at: datetime
     custom_order: int = 0
-    added_at: datetime | None = None
 
 
 @dataclasses.dataclass(frozen=True)
