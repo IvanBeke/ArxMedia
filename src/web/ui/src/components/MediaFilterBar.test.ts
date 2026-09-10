@@ -231,6 +231,14 @@ describe('MediaFilterBar movie profile', () => {
     expect(chips).not.toContain('Watching')
   })
 
+  it('uses Watched as the canonical TV completion label', async () => {
+    const { wrapper } = await createMountedBar({ showQuickFilterHasNextEpisode: true })
+    await required(findAdvancedTrigger(wrapper), 'Advanced Filters trigger').trigger('click')
+    const chips = wrapper.findAll('button.chip').map((button) => button.text().trim())
+    expect(chips).toContain('Watched')
+    expect(chips).not.toContain('Completed')
+  })
+
   it('offers the movie sort options without tv-only or date-added sorts', async () => {
     const { wrapper } = await createMovieBar()
 
