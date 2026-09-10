@@ -294,6 +294,7 @@ function statusText(value: WatchEntryStatus) {
   if (value === 'watching') return 'Watching'
   if (value === 'watched') return 'Watched'
   if (value === 'dropped') return 'Dropped'
+  if (value === 'plan_to_watch') return 'Plan to watch'
   return value
 }
 

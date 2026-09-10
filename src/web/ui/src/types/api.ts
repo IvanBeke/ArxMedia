@@ -48,10 +48,10 @@ export interface ShowProgressEpisode {
 export interface ShowProgressItem extends Pick<MediaCard, 'tmdb_id' | 'poster_url' | 'vote_average'> {
   show_name: string; number_of_seasons: number | null; status: WatchEntryStatus; provider_status: string | null
   user_rating: number | null; genres: string[]; networks: string[]; episode_runtime: number | null
-  progress_percent?: number | null; watched_episodes?: number | null; total_episodes?: number | null
-  last_watched_at?: string | null; started_at?: string | null; episodes_left?: number | null
-  runtime_left_minutes?: number | null; runtime_left_has_unknown?: boolean; next_episode?: ShowProgressEpisode | null
-  last_watched_episode?: Pick<ShowProgressEpisode, 'season_number' | 'episode_number'> | null
+  progress_percent: number | null; watched_episodes: number | null; total_episodes: number | null
+  last_watched_at: string | null; started_at: string | null; episodes_left: number | null
+  runtime_left_minutes: number | null; runtime_left_has_unknown: boolean; next_episode: ShowProgressEpisode | null
+  last_watched_episode: Pick<ShowProgressEpisode, 'season_number' | 'episode_number'> | null
 }
 export interface Rating { id: number; media_type: MediaType; tmdb_id: number; score: number; created_at: string; updated_at: string }
 export interface EpisodeWatchPayload { tmdb_id: number | string; season_number: number | string; episode_number: number | string; watched_at?: string | null }

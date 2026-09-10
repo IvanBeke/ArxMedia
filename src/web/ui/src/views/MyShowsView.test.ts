@@ -114,6 +114,26 @@ describe('MyShowsView pagination', () => {
 
     expect(getMyShows).toHaveBeenCalledWith(expect.objectContaining({ has_next_episode: true }))
   })
+
+  it('requests default sorting on first load', async () => {
+    getMyShows.mockResolvedValueOnce(showsPayload(0, 0))
+
+    await mountView()
+
+    expect(getMyShows).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: 'last_watched', direction: 'desc' }),
+    )
+  })
+
+  it('passes status filters from the URL to the API', async () => {
+    getMyShows.mockResolvedValueOnce(showsPayload(0, 0))
+
+    await mountView({ status: 'plan_to_watch' })
+
+    expect(getMyShows).toHaveBeenCalledWith(
+      expect.objectContaining({ status: ['plan_to_watch'] }),
+    )
+  })
 })
 
 function getMyOffersPage(mockFn: { mock: { calls: unknown[][] } }, callIndex: number) {
