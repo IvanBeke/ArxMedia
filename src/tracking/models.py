@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models.functions import Coalesce
+from django.db.models import Exists, OuterRef, Subquery
+from django.db.models.functions import Cast, Coalesce
 from django.utils import timezone
 
 from .choices import (
@@ -121,6 +122,41 @@ class UserMediaStatusQuerySet(models.QuerySet):
     def dropped(self):
         return self.filter(status=TvShowStatus.DROPPED)
 
+    def with_next_episode(self, now=None):
+        from media.models import Episode
+
+        now = now or timezone.now()
+        watched_episode = WatchEntry.objects.filter(
+            user_id=OuterRef(OuterRef('user_id')),
+            media_type=WatchEntryMediaType.EPISODE,
+            tmdb_id=OuterRef('season__show__tmdb_id'),
+            season_number=OuterRef('season__season_number'),
+            episode_number=OuterRef('episode_number'),
+        )
+        candidates = Episode.objects.filter(
+            season__show__tmdb_id=OuterRef('tmdb_id'),
+        ).filter(Episode.released_q(now)).filter(~Exists(watched_episode)).annotate(
+            schedule_at=Coalesce('broadcast_start', Cast('air_date', output_field=models.DateTimeField())),
+        ).order_by('schedule_at', 'season__season_number', 'episode_number', 'id')
+
+        fields = {
+            'next_episode_id': 'id',
+            'next_season_number': 'season__season_number',
+            'next_episode_number': 'episode_number',
+            'next_episode_name': 'name',
+            'next_still_path': 'still_path',
+            'next_air_date': 'air_date',
+            'next_broadcast_start': 'broadcast_start',
+            'next_runtime': 'runtime',
+            'next_episode_type': 'episode_type',
+            'next_vote_average': 'vote_average',
+            'next_vote_count': 'vote_count',
+        }
+        return self.annotate(**{
+            name: Subquery(candidates.values(field)[:1])
+            for name, field in fields.items()
+        })
+
 
 class UserMediaStatusManager(models.Manager.from_queryset(UserMediaStatusQuerySet)):  # type: ignore[misc]
     def set_planning(self, user, media_type: str, tmdb_id: int):
@@ -238,9 +274,6 @@ class UserMediaStatus(models.Model):
     episodes_left = models.IntegerField(default=0)
     time_left_minutes = models.IntegerField(default=0)
     time_left_has_unknown = models.BooleanField(default=False)
-    next_episode = models.ForeignKey(
-        'media.Episode', null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
-    )
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     dropped_at = models.DateTimeField(null=True, blank=True)

@@ -1131,17 +1131,9 @@ def up_next(request):
     now = timezone.now()
     today = now.date()
 
-    watched_show_ids = UserMediaStatus.objects.for_user(request.user).shows().progressable().filter(
-        next_episode__isnull=False,
+    watched_show_ids = UserMediaStatus.objects.for_user(request.user).shows().progressable().with_next_episode().filter(
+        next_episode_id__isnull=False,
     ).annotate(
-        next_season_number=F('next_episode__season__season_number'),
-        next_episode_number=F('next_episode__episode_number'),
-        next_episode_name=F('next_episode__name'),
-        next_still_path=F('next_episode__still_path'),
-        next_air_date=F('next_episode__air_date'),
-        next_broadcast_start=F('next_episode__broadcast_start'),
-        next_runtime=F('next_episode__runtime'),
-        next_episode_type=F('next_episode__episode_type'),
         unknown_runtime_count=Case(
             When(time_left_has_unknown=True, then=Value(1)),
             default=Value(0),
@@ -1459,17 +1451,7 @@ def my_shows_list(request):
     status_rows = list(
         UserMediaStatus.objects.for_user(request.user).shows().started().filter(
             tmdb_id__in=status_tmdb_ids,
-        ).annotate(
-            next_season_number=F('next_episode__season__season_number'),
-            next_episode_number=F('next_episode__episode_number'),
-            next_episode_name=F('next_episode__name'),
-            next_still_path=F('next_episode__still_path'),
-            next_air_date=F('next_episode__air_date'),
-            next_broadcast_start=F('next_episode__broadcast_start'),
-            next_runtime=F('next_episode__runtime'),
-            next_episode_type=F('next_episode__episode_type'),
-            next_vote_average=F('next_episode__vote_average'),
-            next_vote_count=F('next_episode__vote_count'),
+        ).with_next_episode().annotate(
             upcoming_season_number=Subquery(upcoming_episode.values('season__season_number')[:1]),
             upcoming_episode_number=Subquery(upcoming_episode.values('episode_number')[:1]),
             upcoming_episode_name=Subquery(upcoming_episode.values('name')[:1]),

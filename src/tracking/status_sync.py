@@ -61,13 +61,6 @@ def refresh_show_status(user_id: int, tmdb_id: int):
     watched_episodes = len(watched_keys)
     has_watched_entries = bool(watched_keys)
     total_episodes = len(released_rows)
-    remaining_episode_ids = {row['id'] for row in remaining_rows}
-    next_episode = next(
-        (episode for episode in released_episodes.select_related('season').order_by(
-            'season__season_number', 'episode_number', 'id'
-        ) if episode.id in remaining_episode_ids),
-        None,
-    )
     runtime_values = [row['runtime'] for row in remaining_rows]
     time_left_minutes = sum(runtime for runtime in runtime_values if runtime is not None)
     time_left_has_unknown = any(runtime is None for runtime in runtime_values)
@@ -126,7 +119,6 @@ def refresh_show_status(user_id: int, tmdb_id: int):
             'episodes_left': len(remaining_rows),
             'time_left_minutes': time_left_minutes,
             'time_left_has_unknown': time_left_has_unknown,
-            'next_episode': next_episode,
             'started_at': first_watched_at,
             'completed_at': completed_at,
             'dropped_at': dropped_at,

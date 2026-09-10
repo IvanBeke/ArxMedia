@@ -132,7 +132,6 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(status_row.episodes_left, 1)
         self.assertEqual(status_row.time_left_minutes, 0)
         self.assertTrue(status_row.time_left_has_unknown)
-        self.assertEqual(status_row.next_episode_id, second.id)
 
     def test_create_movie_watched(self):
         data = {'media_type': 'movie', 'tmdb_id': 123}
@@ -1030,6 +1029,18 @@ class UpNextTests(BaseTestCase):
         # Should return S1E4 as next episode
         self.assertEqual(response.data[0]['next_episode']['season_number'], 1)
         self.assertEqual(response.data[0]['next_episode']['episode_number'], 4)
+
+    def test_up_next_uses_current_watch_entries_when_status_pointer_would_be_stale(self):
+        for episode_number in range(1, 5):
+            WatchEntry.objects.create(
+                user=self.user, media_type='episode', tmdb_id=123,
+                season_number=1, episode_number=episode_number,
+            )
+
+        response = self.client.get('/api/tracking/up-next/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]['next_episode']['episode_number'], 5)
 
     def test_up_next_uses_broadcast_timestamp_over_date_only_ordering(self):
         show = TVShow.objects.create(tmdb_id=778, name='Timestamp Show')
