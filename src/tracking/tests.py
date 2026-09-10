@@ -255,6 +255,11 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(status_row.episodes_left, 0)
         self.assertEqual(status_row.time_left_minutes, 0)
 
+        refresh_show_status(self.user.id, 892)
+        status_row.refresh_from_db()
+        self.assertEqual(status_row.watched_episodes, 1)
+        self.assertEqual(status_row.episodes_left, 0)
+
     def test_drop_media_tv(self):
         WatchEntry.objects.create(
             user=self.user, media_type='episode', tmdb_id=789,
@@ -1131,6 +1136,108 @@ class UpNextTests(BaseTestCase):
         item = next(entry for entry in response.data if entry['tmdb_id'] == 778)
         self.assertEqual(item['next_episode']['episode_number'], 2)
 
+    def test_up_next_isolated_between_users(self):
+        show = TVShow.objects.create(tmdb_id=779, name='Shared Progress Show')
+        season = Season.objects.create(show=show, tmdb_id=7791, season_number=1, name='Season 1')
+        for episode_number in (1, 2, 3):
+            Episode.objects.create(
+                season=season,
+                tmdb_id=77900 + episode_number,
+                episode_number=episode_number,
+                name=f'Episode {episode_number}',
+                air_date=timezone.localdate() - timedelta(days=1),
+            )
+        for user, episode_number in ((self.user, 1), (self.user2, 2)):
+            WatchEntry.objects.create(
+                user=user,
+                media_type='episode',
+                tmdb_id=779,
+                season_number=1,
+                episode_number=episode_number,
+            )
+
+        response = self.client.get('/api/tracking/up-next/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(next(item for item in response.data if item['tmdb_id'] == 779)['next_episode']['episode_number'], 2)
+
+        self.authenticate(self.user2)
+        response = self.client.get('/api/tracking/up-next/')
+        self.assertEqual(next(item for item in response.data if item['tmdb_id'] == 779)['next_episode']['episode_number'], 1)
+
+    def test_up_next_uses_broadcast_start_for_release_boundary(self):
+        show = TVShow.objects.create(tmdb_id=780, name='Broadcast Boundary Show')
+        season = Season.objects.create(show=show, tmdb_id=7801, season_number=1, name='Season 1')
+        Episode.objects.create(
+            season=season,
+            tmdb_id=78001,
+            episode_number=1,
+            name='Future Broadcast',
+            air_date=timezone.localdate() - timedelta(days=1),
+            broadcast_start=timezone.now() + timedelta(hours=1),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=780,
+            season_number=1,
+            episode_number=1,
+        )
+
+        self.assertTrue(UserMediaStatus.objects.for_user(self.user).shows().progressable().filter(tmdb_id=780).exists())
+        annotated = UserMediaStatus.objects.for_user(self.user).shows().with_next_episode().filter(tmdb_id=780).first()
+        self.assertIsNone(annotated.next_episode_id)
+
+    def test_orphan_watch_key_does_not_qualify_as_progressable(self):
+        show = TVShow.objects.create(tmdb_id=782, name='Orphan History Show')
+        season = Season.objects.create(show=show, tmdb_id=7821, season_number=1, name='Season 1')
+        Episode.objects.create(
+            season=season,
+            tmdb_id=78201,
+            episode_number=1,
+            name='Only Episode',
+            air_date=timezone.localdate() - timedelta(days=1),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=782,
+            season_number=1,
+            episode_number=99,
+        )
+
+        self.assertFalse(UserMediaStatus.objects.for_user(self.user).shows().progressable().filter(tmdb_id=782).exists())
+
+    def test_up_next_falls_back_to_air_date_without_broadcast_start(self):
+        show = TVShow.objects.create(tmdb_id=781, name='Dateless Broadcast Show')
+        season = Season.objects.create(show=show, tmdb_id=7811, season_number=1, name='Season 1')
+        Episode.objects.create(
+            season=season,
+            tmdb_id=78101,
+            episode_number=1,
+            name='Aired Without Timestamp',
+            air_date=timezone.localdate() - timedelta(days=2),
+            broadcast_start=None,
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=78102,
+            episode_number=2,
+            name='Second Aired',
+            air_date=timezone.localdate() - timedelta(days=1),
+            broadcast_start=None,
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=781,
+            season_number=1,
+            episode_number=1,
+        )
+
+        response = self.client.get('/api/tracking/up-next/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(next(item for item in response.data if item['tmdb_id'] == 781)['next_episode']['episode_number'], 2)
+
     def test_up_next_includes_progress_and_remaining_runtime_fields(self):
         today = timezone.now().date()
         show = TVShow.objects.create(tmdb_id=777, name='Runtime Show')
@@ -1359,10 +1466,17 @@ class UpNextTests(BaseTestCase):
         Episode.objects.create(
             season=season1,
             tmdb_id=300211,
-            episode_number=1,
+            episode_number=2,
             name='Upcoming Episode',
             air_date=today + timedelta(days=2),
             episode_type='season premiere',
+        )
+        Episode.objects.create(
+            season=season1,
+            tmdb_id=300210,
+            episode_number=1,
+            name='Watched Episode',
+            air_date=today - timedelta(days=1),
         )
 
         WatchEntry.objects.create(
@@ -1697,12 +1811,37 @@ class ProgressListTests(BaseTestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]['tmdb_id'], 4004)
         self.assertEqual(items[0]['status'], 'plan_to_watch')
-        self.assertNotIn('next_episode', items[0])
-        self.assertNotIn('upcoming_episode', items[0])
-        self.assertNotIn('last_watched_episode', items[0])
-        self.assertNotIn('episodes_left', items[0])
-        self.assertNotIn('runtime_left_minutes', items[0])
-        self.assertNotIn('progress_percent', items[0])
+        self.assertIsNone(items[0]['next_episode'])
+        self.assertIn('upcoming_episode', items[0])
+        self.assertIn('last_watched_episode', items[0])
+        self.assertIn('episodes_left', items[0])
+        self.assertIn('runtime_left_minutes', items[0])
+        self.assertIn('progress_percent', items[0])
+
+    def test_plan_to_watch_shows_include_progress_and_next_episode(self):
+        show = TVShow.objects.get(tmdb_id=4004)
+        season = Season.objects.create(show=show, tmdb_id=4401, season_number=1, name='Season 1')
+        Episode.objects.create(
+            season=season,
+            tmdb_id=44011,
+            episode_number=1,
+            name='Delta Episode',
+            air_date=timezone.localdate() - timedelta(days=1),
+            runtime=42,
+        )
+        refresh_show_status(self.user.id, 4004)
+
+        response = self.client.get('/api/tracking/my-shows/?status=plan_to_watch')
+
+        self.assertEqual(response.status_code, 200)
+        item = response.data['results'][0]
+        self.assertEqual(item['status'], 'plan_to_watch')
+        self.assertEqual(item['watched_episodes'], 0)
+        self.assertEqual(item['total_episodes'], 1)
+        self.assertEqual(item['progress_percent'], 0)
+        self.assertEqual(item['episodes_left'], 1)
+        self.assertEqual(item['runtime_left_minutes'], 42)
+        self.assertEqual(item['next_episode']['episode_number'], 1)
 
     def test_progress_list_filters_missing_rating(self):
         response = self.client.get('/api/tracking/my-shows/?missing_rating=true')
@@ -1727,6 +1866,23 @@ class ProgressListTests(BaseTestCase):
         response = self.client.get('/api/tracking/my-shows/?has_next_episode=false')
         self.assertEqual(response.status_code, 200)
         self.assertEqual({item['tmdb_id'] for item in response.data['results']}, {4002, 4004})
+
+    def test_progress_list_query_count_stays_bounded(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        with CaptureQueriesContext(connection) as context:
+            response = self.client.get('/api/tracking/my-shows/')
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(context), 60)
+
+    def test_progress_list_progress_and_next_episode_agree(self):
+        response = self.client.get('/api/tracking/my-shows/')
+        self.assertEqual(response.status_code, 200)
+        for item in response.data['results']:
+            if item['status'] == 'plan_to_watch':
+                continue
+            self.assertEqual((item['episodes_left'] or 0) > 0, item['next_episode'] is not None)
+            self.assertEqual((item['progress_percent'] or 0) == 100, (item['episodes_left'] or 0) == 0)
 
     def test_progress_list_filters_genres_multi(self):
         response = self.client.get('/api/tracking/my-shows/?genres=Drama&genres=Sci-Fi')
@@ -3627,7 +3783,7 @@ class DataImportExportTests(BaseTestCase):
         today = timezone.now().date()
         Episode.objects.create(
             season=season, tmdb_id=4603, episode_number=1, name='Next Up',
-            air_date=today + timedelta(days=3), runtime=42,
+            air_date=today - timedelta(days=2), runtime=42,
         )
         Episode.objects.create(
             season=season, tmdb_id=4604, episode_number=2, name='Aired Unwatched',

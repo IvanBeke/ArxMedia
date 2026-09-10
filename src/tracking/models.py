@@ -88,6 +88,23 @@ class Rating(models.Model):
         return f'{self.user.username} rated {self.media_type} {self.tmdb_id}: {self.score}/10'
 
 
+def _next_episode_candidates(now):
+    from media.models import Episode
+
+    watched_episode = WatchEntry.objects.filter(
+        user_id=OuterRef(OuterRef('user_id')),
+        media_type=WatchEntryMediaType.EPISODE,
+        tmdb_id=OuterRef('season__show__tmdb_id'),
+        season_number=OuterRef('season__season_number'),
+        episode_number=OuterRef('episode_number'),
+    )
+    return Episode.objects.filter(
+        season__show__tmdb_id=OuterRef('tmdb_id'),
+    ).filter(Episode.released_q(now)).filter(~Exists(watched_episode)).annotate(
+        schedule_at=Coalesce('broadcast_start', Cast('air_date', output_field=models.DateTimeField())),
+    ).order_by('schedule_at', 'season__season_number', 'episode_number', 'id')
+
+
 class UserMediaStatusQuerySet(models.QuerySet):
     def for_user(self, user):
         return self.filter(user=user)
@@ -139,21 +156,7 @@ class UserMediaStatusQuerySet(models.QuerySet):
         return self.filter(status=TvShowStatus.DROPPED)
 
     def with_next_episode(self, now=None):
-        from media.models import Episode
-
-        now = now or timezone.now()
-        watched_episode = WatchEntry.objects.filter(
-            user_id=OuterRef(OuterRef('user_id')),
-            media_type=WatchEntryMediaType.EPISODE,
-            tmdb_id=OuterRef('season__show__tmdb_id'),
-            season_number=OuterRef('season__season_number'),
-            episode_number=OuterRef('episode_number'),
-        )
-        candidates = Episode.objects.filter(
-            season__show__tmdb_id=OuterRef('tmdb_id'),
-        ).filter(Episode.released_q(now)).filter(~Exists(watched_episode)).annotate(
-            schedule_at=Coalesce('broadcast_start', Cast('air_date', output_field=models.DateTimeField())),
-        ).order_by('schedule_at', 'season__season_number', 'episode_number', 'id')
+        candidates = _next_episode_candidates(now or timezone.now())
 
         fields = {
             'next_episode_id': 'id',

@@ -121,6 +121,14 @@ def refresh_show_status(user_id: int, tmdb_id: int):
 
     if status_value is None:
         if existing and existing.status == TvShowStatus.PLAN_TO_WATCH:
+            UserMediaStatus.objects.filter(id=existing.id).update(
+                watched_episodes=watched_episodes,
+                total_episodes=total_episodes,
+                progress_percent=_percent(watched_episodes, total_episodes),
+                episodes_left=len(remaining_rows),
+                time_left_minutes=time_left_minutes,
+                time_left_has_unknown=time_left_has_unknown,
+            )
             return
         UserMediaStatus.objects.filter(user_id=user_id, media_type=MediaType.TV, tmdb_id=tmdb_id).delete()
         return
