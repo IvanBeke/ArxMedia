@@ -3,7 +3,6 @@ import json
 import redis
 from django.conf import settings
 
-from .choices import WatchEntryMediaType
 from .models import WatchEntry
 
 
@@ -45,11 +44,9 @@ class TrackingCache:
     def _compute_user_stats(self, user_id):
         from media.models import Episode, TVShow
 
-        movies = WatchEntry.objects.filter(user_id=user_id, media_type=WatchEntryMediaType.MOVIE).count()
+        movies = WatchEntry.objects.for_user(user_id).movies().values('tmdb_id').distinct().count()
 
-        episode_entries = WatchEntry.objects.filter(
-            user_id=user_id, media_type=WatchEntryMediaType.EPISODE
-        ).values("tmdb_id").distinct()
+        episode_entries = WatchEntry.objects.for_user(user_id).episodes().values("tmdb_id").distinct()
 
         shows_watching = episode_entries.count()
 
@@ -63,9 +60,7 @@ class TrackingCache:
             total_eps = Episode.objects.filter(
                 season__show=show
             ).count()
-            watched_eps = WatchEntry.objects.filter(
-                user_id=user_id, media_type=WatchEntryMediaType.EPISODE, tmdb_id=entry["tmdb_id"]
-            ).count()
+            watched_eps = WatchEntry.objects.for_user(user_id).for_show(entry["tmdb_id"]).count()
 
             if total_eps and watched_eps >= total_eps:
                 shows_completed += 1
@@ -101,9 +96,7 @@ class TrackingCache:
         from media.models import Episode, TVShow
 
         watched = list(
-            WatchEntry.objects.filter(
-                user_id=user_id, media_type=WatchEntryMediaType.EPISODE, tmdb_id=tmdb_id
-            ).values("season_number", "episode_number").order_by(
+            WatchEntry.objects.for_user(user_id).for_show(tmdb_id).values("season_number", "episode_number").order_by(
                 "season_number", "episode_number"
             )
         )

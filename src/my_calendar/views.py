@@ -8,7 +8,6 @@ from media.models import Episode, Movie
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from tracking.choices import TvShowStatus
 from tracking.models import UserMediaStatus
 
 
@@ -34,18 +33,9 @@ def my_calendar(request):
     watchlist_movie_ids = list(
         UserMediaStatus.objects.for_user(request.user).movies().planning().values_list('tmdb_id', flat=True)
     )
-    dropped_tv_ids = list(
-        UserMediaStatus.objects.shows().filter(
-            user=request.user,
-            status=TvShowStatus.DROPPED,
-        ).values_list('tmdb_id', flat=True)
-    )
+    dropped_tv_ids = list(UserMediaStatus.objects.for_user(request.user).shows().dropped().values_list('tmdb_id', flat=True))
     watching_tv_ids = list(
-        UserMediaStatus.objects.shows().filter(
-            user=request.user,
-            status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED),
-            watched_episodes__gt=0,
-        ).exclude(
+        UserMediaStatus.objects.for_user(request.user).shows().progressable().exclude(
             tmdb_id__in=dropped_tv_ids,
         ).values_list('tmdb_id', flat=True)
     )

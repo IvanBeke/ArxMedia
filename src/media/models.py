@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -49,6 +50,7 @@ class Movie(models.Model):
 
 
 class TVShow(models.Model):
+    FINAL_STATUSES = frozenset({'ended', 'canceled', 'cancelled'})
     tmdb_id = models.IntegerField(unique=True)
     name = models.CharField(max_length=500)
     overview = models.TextField(blank=True)
@@ -84,6 +86,10 @@ class TVShow(models.Model):
             return f'https://image.tmdb.org/t/p/w1280{self.backdrop_path}'
         return None
 
+    @property
+    def is_final(self):
+        return (self.status or '').strip().lower() in self.FINAL_STATUSES
+
 
 class Season(models.Model):
     show = models.ForeignKey(TVShow, on_delete=models.CASCADE, related_name='seasons')
@@ -115,6 +121,28 @@ class Season(models.Model):
         return None
 
 
+class EpisodeQuerySet(models.QuerySet):
+    def regular(self):
+        return self.filter(Episode.regular_q())
+
+    def specials(self):
+        return self.filter(Episode.specials_q())
+
+    def released(self, now=None, *, include_specials=False):
+        return self.filter(Episode.released_q(now, include_specials=include_specials))
+
+    def upcoming(self, now=None, *, include_specials=False, include_today=False):
+        return self.filter(Episode.upcoming_q(
+            now, include_specials=include_specials, include_today=include_today
+        ))
+
+    def known_runtime(self):
+        return self.filter(Episode.known_runtime_q())
+
+    def unknown_runtime(self):
+        return self.filter(Episode.unknown_runtime_q())
+
+
 class Episode(models.Model):
     season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name='episodes')
     tmdb_id = models.IntegerField()
@@ -129,6 +157,10 @@ class Episode(models.Model):
     vote_count = models.IntegerField(default=0)
     episode_type = models.CharField(max_length=50, blank=True)
     external_ids = models.JSONField(default=dict, blank=True)
+    next_episode = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL, related_name='previous_episodes'
+    )
+    objects = EpisodeQuerySet.as_manager()
 
     class Meta:
         unique_together = ('season', 'episode_number')
@@ -159,6 +191,47 @@ class Episode(models.Model):
     def display_air_date(self):
         local_datetime = self.local_broadcast_datetime
         return local_datetime or self.air_date
+
+    @property
+    def is_released(self):
+        if self.broadcast_start:
+            return self.broadcast_start <= timezone.now()
+        return bool(self.air_date and self.air_date <= timezone.localdate())
+
+    @classmethod
+    def released_q(cls, now=None, *, include_specials=False):
+        now = now or timezone.now()
+        released = (
+            Q(broadcast_start__lte=now)
+            | Q(broadcast_start__isnull=True, air_date__lte=now.date())
+        )
+        return (cls.specials_q() | released) if include_specials else cls.regular_q() & released
+
+    @classmethod
+    def regular_q(cls):
+        return Q(season__season_number__gt=0)
+
+    @classmethod
+    def specials_q(cls):
+        return Q(season__season_number=0)
+
+    @classmethod
+    def known_runtime_q(cls):
+        return Q(runtime__isnull=False)
+
+    @classmethod
+    def unknown_runtime_q(cls):
+        return Q(runtime__isnull=True)
+
+    @classmethod
+    def upcoming_q(cls, now=None, *, include_specials=False, include_today=False):
+        now = now or timezone.now()
+        season_filter = Q() if include_specials else cls.regular_q()
+        air_date_lookup = 'air_date__gte' if include_today else 'air_date__gt'
+        return season_filter & (
+            Q(broadcast_start__gt=now)
+            | Q(broadcast_start__isnull=True, **{air_date_lookup: now.date()})
+        )
 
 
 class EpisodeCredit(models.Model):

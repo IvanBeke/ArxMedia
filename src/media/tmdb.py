@@ -250,8 +250,9 @@ class TMDBService:
 
         if recompute_user_statuses:
             try:
-                from tracking.status_sync import refresh_all_statuses_for_show
+                from tracking.status_sync import rebuild_episode_chain, refresh_all_statuses_for_show
 
+                rebuild_episode_chain(int(tmdb_id))
                 refresh_all_statuses_for_show(int(tmdb_id), current_user_id=user_id)
             except Exception as exc:
                 logger.warning('Failed to refresh statuses for tv %s: %s', tmdb_id, exc)
@@ -318,13 +319,17 @@ class TMDBService:
 
     def sync_season(self, show, season_number, sync_episode_credits: bool = True, *, use_cache: bool = True, tvmaze_context=None):
         """Fetch a season from TMDB and save/update locally with all episodes."""
-        return self._sync_season(
+        season = self._sync_season(
             show,
             season_number,
             sync_episode_credits=sync_episode_credits,
             use_cache=use_cache,
             tvmaze_context=tvmaze_context,
         )
+        from tracking.status_sync import rebuild_episode_chain
+
+        rebuild_episode_chain(show.tmdb_id)
+        return season
 
     def _sync_season(self, show, season_number, *, sync_episode_credits=True, use_cache=True, tvmaze_context=None):
         data = self.get_season(show.tmdb_id, season_number, use_cache=use_cache)

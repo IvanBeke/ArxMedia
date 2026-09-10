@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from .choices import (
@@ -16,6 +17,27 @@ from .choices import (
 )
 
 
+class WatchEntryQuerySet(models.QuerySet):
+    def for_user(self, user):
+        return self.filter(user=user)
+
+    def episodes(self):
+        return self.filter(media_type=WatchEntryMediaType.EPISODE)
+
+    def movies(self):
+        return self.filter(media_type=WatchEntryMediaType.MOVIE)
+
+    def for_show(self, tmdb_id):
+        return self.episodes().filter(tmdb_id=tmdb_id)
+
+    def with_event_at(self):
+        return self.annotate(
+            event_at=Coalesce(
+                'watched_at', 'created_at', output_field=models.DateTimeField()
+            )
+        )
+
+
 class WatchEntry(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='watchentries'
@@ -26,6 +48,7 @@ class WatchEntry(models.Model):
     season_number = models.IntegerField(null=True, blank=True)
     episode_number = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = WatchEntryQuerySet.as_manager()
 
     class Meta:
         indexes = [
@@ -79,6 +102,24 @@ class UserMediaStatusQuerySet(models.QuerySet):
 
     def movies(self):
         return self.filter(media_type=MediaType.MOVIE)
+
+    def started(self):
+        return self.filter(status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED))
+
+    def active(self):
+        return self.filter(status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED))
+
+    def progressable(self):
+        return self.active().filter(watched_episodes__gt=0)
+
+    def watching(self):
+        return self.filter(status=TvShowStatus.WATCHING)
+
+    def watched(self):
+        return self.filter(status=TvShowStatus.WATCHED)
+
+    def dropped(self):
+        return self.filter(status=TvShowStatus.DROPPED)
 
 
 class UserMediaStatusManager(models.Manager.from_queryset(UserMediaStatusQuerySet)):  # type: ignore[misc]
@@ -193,6 +234,12 @@ class UserMediaStatus(models.Model):
     watched_episodes = models.IntegerField(default=0)
     total_episodes = models.IntegerField(default=0)
     progress_percent = models.IntegerField(default=0)
+    episodes_left = models.IntegerField(default=0)
+    time_left_minutes = models.IntegerField(default=0)
+    time_left_has_unknown = models.BooleanField(default=False)
+    next_episode = models.ForeignKey(
+        'media.Episode', null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
+    )
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     dropped_at = models.DateTimeField(null=True, blank=True)

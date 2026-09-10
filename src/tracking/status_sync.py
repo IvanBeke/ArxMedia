@@ -2,15 +2,12 @@ from datetime import datetime
 from functools import partial
 
 from django.db import transaction
-from django.db.models import Count, DateTimeField, Max, Min, Q
-from django.db.models.functions import Coalesce
+from django.db.models import Max, Min
 from django.utils import timezone
 from media.models import Episode, TVShow
 
-from .choices import MediaType, TvShowStatus, WatchEntryMediaType
+from .choices import MediaType, TvShowStatus
 from .models import UserMediaStatus, WatchEntry
-
-FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
 
 
 def _percent(watched_count: int, total_count: int) -> int:
@@ -19,48 +16,75 @@ def _percent(watched_count: int, total_count: int) -> int:
     return min(100, watched_count * 100 // total_count)
 
 
-def _released_episode_keys(tmdb_id: int) -> set[tuple[int, int]]:
-    now = timezone.now()
-    return set(
-        Episode.objects.filter(
-            season__show__tmdb_id=tmdb_id,
-            season__season_number__gt=0,
-        ).filter(
-            Q(broadcast_start__lte=now)
-            | Q(broadcast_start__isnull=True, air_date__lte=now.date())
-        ).values_list('season__season_number', 'episode_number')
+def rebuild_episode_chain(tmdb_id: int):
+    episodes = list(
+        Episode.objects.filter(season__show__tmdb_id=tmdb_id)
+        .order_by('season__season_number', 'episode_number', 'id')
     )
+    updates = []
+    for index, episode in enumerate(episodes):
+        next_episode_id = episodes[index + 1].id if index + 1 < len(episodes) else None
+        if episode.next_episode_id != next_episode_id:
+            episode.next_episode_id = next_episode_id
+            updates.append(episode)
+    if updates:
+        Episode.objects.bulk_update(updates, ['next_episode'])
+
+    return len(episodes)
+
+
+def _released_episode_queryset(tmdb_id: int):
+    now = timezone.now()
+    return Episode.objects.filter(season__show__tmdb_id=tmdb_id).filter(Episode.released_q(now))
 
 
 def _is_final_tmdb_show_status(tmdb_id: int) -> bool:
     status = TVShow.objects.filter(tmdb_id=tmdb_id).values_list('status', flat=True).first() or ''
-    return status.strip().lower() in FINAL_TV_STATUSES
+    return status.strip().lower() in TVShow.FINAL_STATUSES
 
 
 def refresh_show_status(user_id: int, tmdb_id: int):
     existing = UserMediaStatus.objects.shows().filter(user_id=user_id, tmdb_id=tmdb_id).first()
 
-    watched_data = WatchEntry.objects.filter(
-        user_id=user_id,
-        media_type=WatchEntryMediaType.EPISODE,
+    released_episodes = _released_episode_queryset(tmdb_id)
+    watched_keys = set(WatchEntry.objects.for_user(user_id).for_show(tmdb_id).filter(
         tmdb_id=tmdb_id,
         season_number__gt=0,
-    ).annotate(
-        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
-    ).aggregate(
-        watched_episodes=Count('id'),
+    ).values_list('season_number', 'episode_number'))
+    released_rows = list(released_episodes.values(
+        'id', 'season__season_number', 'episode_number', 'runtime',
+    ))
+    remaining_rows = [
+        row for row in released_rows
+        if (row['season__season_number'], row['episode_number']) not in watched_keys
+    ]
+    watched_episodes = len(watched_keys)
+    has_watched_entries = bool(watched_keys)
+    total_episodes = len(released_rows)
+    remaining_episode_ids = {row['id'] for row in remaining_rows}
+    next_episode = next(
+        (episode for episode in released_episodes.select_related('season').order_by(
+            'season__season_number', 'episode_number', 'id'
+        ) if episode.id in remaining_episode_ids),
+        None,
+    )
+    runtime_values = [row['runtime'] for row in remaining_rows]
+    time_left_minutes = sum(runtime for runtime in runtime_values if runtime is not None)
+    time_left_has_unknown = any(runtime is None for runtime in runtime_values)
+    watched_data = WatchEntry.objects.for_user(user_id).for_show(tmdb_id).filter(
+        tmdb_id=tmdb_id,
+        season_number__gt=0,
+    ).with_event_at().aggregate(
         first_watched_at=Min('event_at'),
         last_watched_at=Max('event_at'),
     )
-    watched_episodes = watched_data.get('watched_episodes') or 0
     first_watched_at = watched_data.get('first_watched_at')
     last_watched_at = watched_data.get('last_watched_at')
-    total_episodes = len(_released_episode_keys(tmdb_id))
 
     dropped_at = existing.dropped_at if existing else None
 
     is_final = _is_final_tmdb_show_status(tmdb_id)
-    if watched_episodes > 0:
+    if has_watched_entries:
         if total_episodes > 0 and watched_episodes >= total_episodes and is_final:
             candidate_status = TvShowStatus.WATCHED
         else:
@@ -99,6 +123,10 @@ def refresh_show_status(user_id: int, tmdb_id: int):
             'watched_episodes': watched_episodes,
             'total_episodes': total_episodes,
             'progress_percent': _percent(watched_episodes, total_episodes),
+            'episodes_left': len(remaining_rows),
+            'time_left_minutes': time_left_minutes,
+            'time_left_has_unknown': time_left_has_unknown,
+            'next_episode': next_episode,
             'started_at': first_watched_at,
             'completed_at': completed_at,
             'dropped_at': dropped_at,
@@ -110,17 +138,14 @@ def refresh_show_status(user_id: int, tmdb_id: int):
 
 def refresh_all_statuses_for_show(tmdb_id: int, current_user_id: int | None = None):
     status_user_ids = set(
-        UserMediaStatus.objects.shows().filter(
+        UserMediaStatus.objects.shows().started().filter(
             tmdb_id=tmdb_id,
             status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED),
         ).values_list('user_id', flat=True)
     )
     planning_user_ids = set(UserMediaStatus.objects.shows().planning().filter(tmdb_id=tmdb_id).values_list('user_id', flat=True))
     watch_entry_user_ids = set(
-        WatchEntry.objects.filter(
-            media_type=WatchEntryMediaType.EPISODE,
-            tmdb_id=tmdb_id,
-        ).values_list('user_id', flat=True)
+        WatchEntry.objects.for_show(tmdb_id).values_list('user_id', flat=True)
     )
     user_ids = status_user_ids | watch_entry_user_ids | planning_user_ids
 

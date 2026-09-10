@@ -10,13 +10,15 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from media.models import Episode, Genre, Movie, Season, TVShow
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from social.models import Follow
 
+from tracking.cache import cache
+from tracking.choices import MediaType, WatchEntryMediaType
 from tracking.models import (
     CustomList,
     DataTransferJob,
@@ -27,12 +29,34 @@ from tracking.models import (
     WatchEntry,
 )
 from tracking.status_annotations import annotate_season_user_status
-from tracking.status_sync import refresh_all_statuses_for_show, refresh_show_status
+from tracking.status_sync import rebuild_episode_chain, refresh_all_statuses_for_show, refresh_show_status
 
 User = get_user_model()
 
 
 class BaseTestCase(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        test_redis_url = 'redis' + '://' + 'redis:6379/' + '15'
+        cls._redis_settings = override_settings(REDIS_URL=test_redis_url)
+        cls._redis_settings.enable()
+        cache._redis = None
+        redis_client = cache._get_redis()
+        if redis_client:
+            redis_client.flushdb()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            redis_client = cache._get_redis()
+            if redis_client:
+                redis_client.flushdb()
+        finally:
+            cache._redis = None
+            cls._redis_settings.disable()
+            super().tearDownClass()
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='testuser',
@@ -65,6 +89,51 @@ class BaseTestCase(TestCase):
 
 
 class WatchEntryTests(BaseTestCase):
+    def test_watch_entry_and_status_queryset_helpers(self):
+        UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=1, status='watching', watched_episodes=1)
+        UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=2, status='watched', watched_episodes=2)
+        UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=3, status='dropped', watched_episodes=1)
+        UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=4, status='plan_to_watch')
+        WatchEntry.objects.create(user=self.user, media_type=WatchEntryMediaType.MOVIE, tmdb_id=10)
+        WatchEntry.objects.create(user=self.user, media_type=WatchEntryMediaType.EPISODE, tmdb_id=11, season_number=1, episode_number=1)
+
+        statuses = UserMediaStatus.objects.for_user(self.user).filter(tmdb_id__in=[1, 2, 3, 4])
+        self.assertEqual(statuses.started().count(), 3)
+        self.assertEqual(statuses.active().count(), 2)
+        self.assertEqual(statuses.progressable().count(), 2)
+        self.assertEqual(WatchEntry.objects.for_user(self.user).movies().count(), 1)
+        self.assertEqual(WatchEntry.objects.for_user(self.user).episodes().for_show(11).count(), 1)
+
+    def test_episode_chain_and_released_remaining_status(self):
+        show = TVShow.objects.create(tmdb_id=8800, name='Linked Show')
+        season_one = Season.objects.create(show=show, tmdb_id=8801, season_number=1, name='Season 1')
+        season_two = Season.objects.create(show=show, tmdb_id=8802, season_number=2, name='Season 2')
+        yesterday = timezone.localdate() - timedelta(days=1)
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        first = Episode.objects.create(season=season_one, tmdb_id=8810, episode_number=1, name='One', air_date=yesterday, runtime=40)
+        second = Episode.objects.create(season=season_one, tmdb_id=8811, episode_number=2, name='Two', air_date=yesterday, runtime=None)
+        third = Episode.objects.create(season=season_two, tmdb_id=8820, episode_number=1, name='Three', air_date=tomorrow, runtime=50)
+
+        rebuild_episode_chain(show.tmdb_id)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        third.refresh_from_db()
+        self.assertEqual(first.next_episode_id, second.id)
+        self.assertEqual(second.next_episode_id, third.id)
+        self.assertIsNone(third.next_episode_id)
+
+        WatchEntry.objects.create(
+            user=self.user, media_type=WatchEntryMediaType.EPISODE, tmdb_id=show.tmdb_id,
+            season_number=1, episode_number=1,
+        )
+        status_row = UserMediaStatus.objects.get(user=self.user, media_type=MediaType.TV, tmdb_id=show.tmdb_id)
+        self.assertEqual(status_row.total_episodes, 2)
+        self.assertEqual(status_row.watched_episodes, 1)
+        self.assertEqual(status_row.episodes_left, 1)
+        self.assertEqual(status_row.time_left_minutes, 0)
+        self.assertTrue(status_row.time_left_has_unknown)
+        self.assertEqual(status_row.next_episode_id, second.id)
+
     def test_create_movie_watched(self):
         data = {'media_type': 'movie', 'tmdb_id': 123}
         response = self.client.post('/api/tracking/history/', data)
@@ -1630,6 +1699,7 @@ class ProgressListTests(BaseTestCase):
 
     def test_progress_list_aggregates_all_remaining_episodes_and_runtime(self):
         Episode.objects.filter(tmdb_id=4113).update(air_date=timezone.now().date() - timedelta(days=1))
+        refresh_show_status(self.user.id, 4001)
 
         response = self.client.get('/api/tracking/my-shows/?search=alpha')
         self.assertEqual(response.status_code, 200)
@@ -2308,6 +2378,28 @@ class UserStatsTests(BaseTestCase):
         response = self.client.get('/api/tracking/stats/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['movies_watched'], 1)
+
+    def test_stats_counts_all_distinct_watched_movies(self):
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=123, watched_at=timezone.now())
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=456, watched_at=timezone.now())
+
+        response = self.client.get('/api/tracking/stats/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['movies_watched'], 2)
+
+    def test_stats_cache_hit_does_not_recompute(self):
+        from tracking.cache import cache
+
+        redis_client = cache._get_redis()
+        self.assertIsNotNone(redis_client)
+        cache.invalidate_user_stats(self.user.id)
+        with patch.object(cache, '_compute_user_stats', wraps=cache._compute_user_stats) as compute:
+            first = cache.get_user_stats(self.user.id)
+            second = cache.get_user_stats(self.user.id)
+
+        self.assertEqual(first, second)
+        compute.assert_called_once_with(self.user.id)
 
     def test_recent_activity_includes_rating_when_available(self):
         watched_at = timezone.now()

@@ -53,6 +53,7 @@ from .models import (
     UserMediaStatus,
     WatchEntry,
 )
+from .query_helpers import media_ids_q
 from .serializers import (
     CustomListSerializer,
     DataTransferJobSerializer,
@@ -166,21 +167,13 @@ def _watched_episode_exists(user):
 def _episode_candidates(user, now, *, aired):
     from media.models import Episode
 
-    today = now.date()
     episodes = Episode.objects.filter(
         season__show__tmdb_id=OuterRef('tmdb_id'),
-        season__season_number__gt=0,
     )
     if aired:
-        episodes = episodes.filter(
-            Q(broadcast_start__lte=now)
-            | (Q(broadcast_start__isnull=True) & Q(air_date__lte=today)),
-        ).filter(~Exists(_watched_episode_exists(user)))
+        episodes = episodes.filter(Episode.released_q(now)).filter(~Exists(_watched_episode_exists(user)))
     else:
-        episodes = episodes.filter(
-            Q(broadcast_start__gt=now)
-            | (Q(broadcast_start__isnull=True) & Q(air_date__gt=today)),
-        )
+        episodes = episodes.filter(Episode.upcoming_q(now))
     return episodes.annotate(schedule_at=_episode_schedule_expression()).order_by(
         'schedule_at', 'season__season_number', 'episode_number'
     )
@@ -320,8 +313,7 @@ def _apply_missing_rating_filter(queryset, user):
     eligible_tv_ids = (tv_ids - sets['tv_plan_to_watch']) - rated_tv_ids
 
     return queryset.filter(
-        Q(media_type=MediaType.MOVIE, tmdb_id__in=eligible_movie_ids)
-        | Q(media_type=MediaType.TV, tmdb_id__in=eligible_tv_ids)
+        media_ids_q(eligible_movie_ids, eligible_tv_ids)
     )
 
 
@@ -329,8 +321,7 @@ def _apply_in_watchlist_filter(queryset, user):
     movie_ids = UserMediaStatus.objects.for_user(user).movies().planning().values_list('tmdb_id', flat=True)
     tv_ids = UserMediaStatus.objects.for_user(user).shows().planning().values_list('tmdb_id', flat=True)
     return queryset.filter(
-        Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
-        | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
+        media_ids_q(movie_ids, tv_ids)
     )
 
 
@@ -431,6 +422,8 @@ def _annotate_media_sort_fields(queryset, user=None):
         tv_last_watched_at=Subquery(tv_status_lookup.values('last_watched_at')[:1]),
         tv_progress_percent=Subquery(tv_status_lookup.values('progress_percent')[:1]),
         tv_watched_episodes=Subquery(tv_status_lookup.values('watched_episodes')[:1]),
+        tv_episodes_left=Subquery(tv_status_lookup.values('episodes_left')[:1]),
+        tv_time_left_minutes=Subquery(tv_status_lookup.values('time_left_minutes')[:1]),
         tv_next_episode_date=Subquery(
             Episode.objects.filter(
                 season__show__tmdb_id=OuterRef('tmdb_id'),
@@ -466,7 +459,7 @@ def _annotate_media_sort_fields(queryset, user=None):
         ),
         resolved_episodes_left=Greatest(
             Value(0),
-            Coalesce('tv_total_episodes', Value(0)) - Coalesce('tv_watched_episodes', Value(0)),
+            Coalesce('tv_episodes_left', Value(0)),
             output_field=IntegerField(),
         ),
         resolved_next_episode_date=Coalesce('tv_next_episode_date', Value(None, output_field=DateField())),
@@ -474,7 +467,7 @@ def _annotate_media_sort_fields(queryset, user=None):
 
     return annotated.annotate(
         resolved_time_left=ExpressionWrapper(
-            Coalesce(F('resolved_episodes_left'), Value(0)) * Coalesce(F('tv_episode_runtime'), Value(0)),
+            Coalesce('tv_time_left_minutes', Value(0)),
             output_field=IntegerField(),
         ),
     )
@@ -1138,51 +1131,22 @@ def up_next(request):
     now = timezone.now()
     today = now.date()
 
-    from media.models import Episode
-    watched_episode_exists = WatchEntry.objects.filter(
-        user=request.user,
-        media_type=WatchEntryMediaType.EPISODE,
-        tmdb_id=OuterRef('season__show__tmdb_id'),
-        season_number=OuterRef('season__season_number'),
-        episode_number=OuterRef('episode_number'),
-    )
-    unwatched_aired_episodes = Episode.objects.filter(
-        season__show__tmdb_id=OuterRef('tmdb_id'),
-        season__season_number__gt=0,
-    ).filter(
-        Q(broadcast_start__lte=now) | (Q(broadcast_start__isnull=True) & Q(air_date__lte=today)),
-    ).filter(~Exists(watched_episode_exists)).annotate(
-        schedule_at=_episode_schedule_expression(),
-    )
-    next_episode = unwatched_aired_episodes.order_by('schedule_at', 'season__season_number', 'episode_number')
-    episodes_left_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
-        total=Count('id')
-    ).values('total')[:1]
-    runtime_left_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
-        total=Coalesce(Sum('runtime'), Value(0))
-    ).values('total')[:1]
-    unknown_runtime_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
-        total=Count('id', filter=Q(runtime__isnull=True))
-    ).values('total')[:1]
-
-    watched_show_ids = UserMediaStatus.objects.shows().filter(
-        user=request.user,
-        status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED),
-        watched_episodes__gt=0,
+    watched_show_ids = UserMediaStatus.objects.for_user(request.user).shows().progressable().filter(
+        next_episode__isnull=False,
     ).annotate(
-        next_season_number=Subquery(next_episode.values('season__season_number')[:1]),
-        next_episode_number=Subquery(next_episode.values('episode_number')[:1]),
-        next_episode_name=Subquery(next_episode.values('name')[:1]),
-        next_still_path=Subquery(next_episode.values('still_path')[:1]),
-        next_air_date=Subquery(next_episode.values('air_date')[:1]),
-        next_broadcast_start=Subquery(next_episode.values('broadcast_start')[:1]),
-        next_runtime=Subquery(next_episode.values('runtime')[:1]),
-        next_episode_type=Subquery(next_episode.values('episode_type')[:1]),
-        episodes_left=Coalesce(Subquery(episodes_left_subquery), Value(0), output_field=IntegerField()),
-        runtime_left_minutes=Coalesce(Subquery(runtime_left_subquery), Value(0), output_field=IntegerField()),
-        unknown_runtime_count=Coalesce(Subquery(unknown_runtime_subquery), Value(0), output_field=IntegerField()),
-    ).filter(
-        next_season_number__isnull=False,
+        next_season_number=F('next_episode__season__season_number'),
+        next_episode_number=F('next_episode__episode_number'),
+        next_episode_name=F('next_episode__name'),
+        next_still_path=F('next_episode__still_path'),
+        next_air_date=F('next_episode__air_date'),
+        next_broadcast_start=F('next_episode__broadcast_start'),
+        next_runtime=F('next_episode__runtime'),
+        next_episode_type=F('next_episode__episode_type'),
+        unknown_runtime_count=Case(
+            When(time_left_has_unknown=True, then=Value(1)),
+            default=Value(0),
+            output_field=IntegerField(),
+        ),
     ).values(
         'tmdb_id',
         'last_watched_at',
@@ -1196,7 +1160,7 @@ def up_next(request):
         'next_runtime',
         'next_episode_type',
         'episodes_left',
-        'runtime_left_minutes',
+        'time_left_minutes',
         'unknown_runtime_count',
     ).order_by('-last_watched_at', '-tmdb_id')
 
@@ -1233,7 +1197,7 @@ def up_next(request):
             'last_watched_at': show_item['last_watched_at'],
             'progress_percent': progress_percent if progress_percent is not None else 0,
             'episodes_left': show_item['episodes_left'],
-            'runtime_left_minutes': show_item['runtime_left_minutes'],
+            'runtime_left_minutes': show_item['time_left_minutes'],
             'runtime_left_has_unknown': show_item['unknown_runtime_count'] > 0,
             'next_episode': {
                 'season_number': show_item['next_season_number'],
@@ -1466,10 +1430,8 @@ def my_shows_list(request):
     today = timezone.now().date()
     now = timezone.now()
 
-    next_episode = _episode_candidates(request.user, now, aired=True)
     upcoming_episode = _episode_candidates(request.user, now, aired=False)
 
-    started_statuses = (TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED)
     oldest_watched_episode = WatchEntry.objects.filter(
         user=request.user,
         media_type=WatchEntryMediaType.EPISODE,
@@ -1488,33 +1450,26 @@ def my_shows_list(request):
         event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
     ).order_by('-event_at', '-id')
 
-    status_tmdb_ids = set(
-        UserMediaStatus.objects.shows().filter(
-            user=request.user,
-            status__in=started_statuses,
-        ).values_list('tmdb_id', flat=True)
-    )
+    status_tmdb_ids = set(UserMediaStatus.objects.for_user(request.user).shows().started().values_list('tmdb_id', flat=True))
     watchlist_tmdb_ids = set(
         UserMediaStatus.objects.for_user(request.user).shows().planning().values_list('tmdb_id', flat=True)
     )
     progress_tmdb_ids = status_tmdb_ids | watchlist_tmdb_ids
 
     status_rows = list(
-        UserMediaStatus.objects.shows().filter(
-            user=request.user,
+        UserMediaStatus.objects.for_user(request.user).shows().started().filter(
             tmdb_id__in=status_tmdb_ids,
-            status__in=started_statuses,
         ).annotate(
-            next_season_number=Subquery(next_episode.values('season__season_number')[:1]),
-            next_episode_number=Subquery(next_episode.values('episode_number')[:1]),
-            next_episode_name=Subquery(next_episode.values('name')[:1]),
-            next_still_path=Subquery(next_episode.values('still_path')[:1]),
-            next_air_date=Subquery(next_episode.values('air_date')[:1]),
-            next_broadcast_start=Subquery(next_episode.values('broadcast_start')[:1]),
-            next_runtime=Subquery(next_episode.values('runtime')[:1]),
-            next_episode_type=Subquery(next_episode.values('episode_type')[:1]),
-            next_vote_average=Subquery(next_episode.values('vote_average')[:1]),
-            next_vote_count=Subquery(next_episode.values('vote_count')[:1]),
+            next_season_number=F('next_episode__season__season_number'),
+            next_episode_number=F('next_episode__episode_number'),
+            next_episode_name=F('next_episode__name'),
+            next_still_path=F('next_episode__still_path'),
+            next_air_date=F('next_episode__air_date'),
+            next_broadcast_start=F('next_episode__broadcast_start'),
+            next_runtime=F('next_episode__runtime'),
+            next_episode_type=F('next_episode__episode_type'),
+            next_vote_average=F('next_episode__vote_average'),
+            next_vote_count=F('next_episode__vote_count'),
             upcoming_season_number=Subquery(upcoming_episode.values('season__season_number')[:1]),
             upcoming_episode_number=Subquery(upcoming_episode.values('episode_number')[:1]),
             upcoming_episode_name=Subquery(upcoming_episode.values('name')[:1]),
@@ -1532,6 +1487,9 @@ def my_shows_list(request):
             'started_at',
             'watched_episodes',
             'total_episodes',
+            'episodes_left',
+            'time_left_minutes',
+            'time_left_has_unknown',
             'next_season_number',
             'next_episode_number',
             'next_episode_name',
@@ -1575,39 +1533,6 @@ def my_shows_list(request):
 
     status_row_by_tmdb_id = {row['tmdb_id']: row for row in status_rows}
     tmdb_ids = list(progress_tmdb_ids)
-
-    watched_episode_keys = set(
-        WatchEntry.objects.filter(
-            user=request.user,
-            media_type=WatchEntryMediaType.EPISODE,
-            tmdb_id__in=tmdb_ids,
-            season_number__gt=0,
-        ).values_list('tmdb_id', 'season_number', 'episode_number')
-    )
-    remaining_by_show = {}
-    for episode in Episode.objects.filter(
-        season__show__tmdb_id__in=tmdb_ids,
-        season__season_number__gt=0,
-    ).filter(
-        Q(broadcast_start__lte=now)
-        | (Q(broadcast_start__isnull=True) & Q(air_date__lte=today)),
-    ).values('season__show__tmdb_id', 'season__season_number', 'episode_number', 'runtime'):
-        key = (
-            episode['season__show__tmdb_id'],
-            episode['season__season_number'],
-            episode['episode_number'],
-        )
-        if key in watched_episode_keys:
-            continue
-        show_totals = remaining_by_show.setdefault(
-            episode['season__show__tmdb_id'],
-            {'episodes_left': 0, 'runtime_left_minutes': 0, 'unknown_runtime_count': 0},
-        )
-        show_totals['episodes_left'] += 1
-        if episode['runtime'] is None:
-            show_totals['unknown_runtime_count'] += 1
-        else:
-            show_totals['runtime_left_minutes'] += episode['runtime']
 
     shows = TVShow.objects.filter(tmdb_id__in=tmdb_ids).prefetch_related('genres')
     show_map = {show.tmdb_id: show for show in shows}
@@ -1653,10 +1578,6 @@ def my_shows_list(request):
         }
 
         if not is_plan_to_watch_only:
-            remaining = remaining_by_show.get(
-                tmdb_id,
-                {'episodes_left': 0, 'runtime_left_minutes': 0, 'unknown_runtime_count': 0},
-            )
             upcoming_air_date = row.get('upcoming_air_date')
             upcoming_broadcast_start = row.get('upcoming_broadcast_start')
             upcoming_local_air_date = _episode_local_date({'air_date': upcoming_air_date, 'broadcast_start': upcoming_broadcast_start})
@@ -1666,9 +1587,9 @@ def my_shows_list(request):
                 'total_episodes': row['total_episodes'] or 0,
                 'last_watched_at': row['last_watched_at'],
                 'started_at': row['started_watch_at'] or row['started_at'],
-                'episodes_left': remaining['episodes_left'],
-                'runtime_left_minutes': remaining['runtime_left_minutes'],
-                'runtime_left_has_unknown': remaining['unknown_runtime_count'] > 0,
+                'episodes_left': row['episodes_left'],
+                'runtime_left_minutes': row['time_left_minutes'],
+                'runtime_left_has_unknown': row['time_left_has_unknown'],
                 'is_new': is_new,
                 'has_upcoming_episode': upcoming_local_air_date is not None,
                 'next_episode': {
@@ -1930,7 +1851,6 @@ def my_movies_list(request):
 @permission_classes([permissions.IsAuthenticated])
 def upcoming(request):
     """Get next UPCOMING episode for shows user is watching. Only one per show, max 5."""
-    from django.utils import timezone
     from media.models import Episode
 
     shows_with_episodes = UserMediaStatus.objects.shows().filter(
@@ -1939,16 +1859,12 @@ def upcoming(request):
         watched_episodes__gt=0,
     ).values_list('tmdb_id', flat=True).distinct()
 
-    today = timezone.now().date()
-
     # Get all upcoming episodes
     all_upcoming = Episode.objects.filter(
         season__show__tmdb_id__in=shows_with_episodes,
-        season__season_number__gt=0,
-    ).filter(
-        Q(broadcast_start__gt=timezone.now())
-        | (Q(broadcast_start__isnull=True) & Q(air_date__gte=today)),
-    ).annotate(schedule_at=_episode_schedule_expression()).order_by('schedule_at')
+    ).filter(Episode.upcoming_q(include_today=True)).annotate(
+        schedule_at=_episode_schedule_expression()
+    ).order_by('schedule_at')
 
     # Group by show and take only the first (next) episode per show
     show_first_ep = {}

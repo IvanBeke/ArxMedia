@@ -1,12 +1,8 @@
-from django.db.models import Count, DateTimeField, Max, Min, Q
-from django.db.models.functions import Coalesce
-from django.utils import timezone
+from django.db.models import Count, Max, Min
 from media.models import Episode, TVShow
 
-from .choices import MediaType, SeasonStatus, TvShowStatus, WatchEntryMediaType
+from .choices import MediaType, SeasonStatus, TvShowStatus
 from .models import Rating, UserMediaStatus, WatchEntry
-
-FINAL_TV_STATUSES = {'ended', 'canceled', 'cancelled'}
 
 
 def _percent(watched_count: int, total_count: int) -> int:
@@ -106,13 +102,9 @@ def annotate_media_user_status(user, media_items):
     ).values('tmdb_id', 'status', 'status_changed_at', 'last_watched_at', 'watched_episodes', 'total_episodes', 'progress_percent')
     tv_status_map = {row['tmdb_id']: row for row in tv_status_rows}
 
-    movie_watched_rows = WatchEntry.objects.filter(
-        user=user,
-        media_type=WatchEntryMediaType.MOVIE,
+    movie_watched_rows = WatchEntry.objects.for_user(user).movies().filter(
         tmdb_id__in=movie_ids,
-    ).annotate(
-        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
-    ).values('tmdb_id').annotate(last_watched_at=Max('event_at'))
+    ).with_event_at().values('tmdb_id').annotate(last_watched_at=Max('event_at'))
     movie_watched_map = {row['tmdb_id']: row['last_watched_at'] for row in movie_watched_rows}
 
     result = {}
@@ -159,25 +151,18 @@ def annotate_season_user_status(user, season_items):
     tmdb_ids = {tmdb_id for tmdb_id, _ in normalized_items}
     season_numbers = {season_number for _, season_number in normalized_items}
 
-    now = timezone.now()
     released_episode_keys = set(
         Episode.objects.filter(
             season__show__tmdb_id__in=tmdb_ids,
             season__season_number__in=season_numbers,
-        ).filter(
-            Q(season__season_number=0)
-            | Q(broadcast_start__lte=now)
-            | Q(broadcast_start__isnull=True, air_date__lte=now.date())
-        ).values_list('season__show__tmdb_id', 'season__season_number', 'episode_number')
+        ).filter(Episode.released_q(include_specials=True)).values_list(
+            'season__show__tmdb_id', 'season__season_number', 'episode_number'
+        )
     )
-    watched_rows = WatchEntry.objects.filter(
-        user=user,
-        media_type=WatchEntryMediaType.EPISODE,
+    watched_rows = WatchEntry.objects.for_user(user).episodes().filter(
         tmdb_id__in=tmdb_ids,
         season_number__in=season_numbers,
-    ).annotate(
-        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
-    ).values(
+    ).with_event_at().values(
         'tmdb_id',
         'season_number',
     ).annotate(
@@ -195,7 +180,7 @@ def annotate_season_user_status(user, season_items):
     final_show_ids = {
         tmdb_id
         for tmdb_id, status in TVShow.objects.filter(tmdb_id__in=tmdb_ids).values_list('tmdb_id', 'status')
-        if (status or '').strip().lower() in FINAL_TV_STATUSES
+        if (status or '').strip().lower() in TVShow.FINAL_STATUSES
     }
 
     result = {}

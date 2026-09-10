@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import requests
@@ -131,6 +132,25 @@ class MediaTests(TestCase):
         )
 
         self.assertEqual(str(episode.display_air_date), '2026-01-02')
+
+    def test_episode_query_helpers_preserve_release_and_special_boundaries(self):
+        show = TVShow.objects.create(tmdb_id=9940, name='Episode Query Show')
+        regular = show.seasons.create(tmdb_id=9941, season_number=1, name='Season 1')
+        specials = show.seasons.create(tmdb_id=9942, season_number=0, name='Specials')
+        yesterday = timezone.localdate() - timedelta(days=1)
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        released = regular.episodes.create(tmdb_id=99401, episode_number=1, name='Released', air_date=yesterday, runtime=40)
+        upcoming = regular.episodes.create(tmdb_id=99402, episode_number=2, name='Upcoming', air_date=tomorrow)
+        special = specials.episodes.create(tmdb_id=99403, episode_number=1, name='Special', air_date=yesterday)
+
+        self.assertIn(released, Episode.objects.released())
+        self.assertNotIn(upcoming, Episode.objects.released())
+        self.assertNotIn(special, Episode.objects.released())
+        self.assertIn(special, Episode.objects.released(include_specials=True))
+        self.assertIn(upcoming, Episode.objects.upcoming())
+        self.assertNotIn(special, Episode.objects.upcoming())
+        self.assertIn(released, Episode.objects.regular())
+        self.assertIn(special, Episode.objects.specials())
 
     def test_tvmaze_falls_back_to_current_timezone_for_invalid_timezone(self):
         broadcast_start = TVMazeService.parse_air_datetime('2026-01-01', '21:30', 'invalid/zone')
