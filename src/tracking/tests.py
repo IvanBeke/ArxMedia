@@ -955,6 +955,30 @@ class MaterializedStatusTests(BaseTestCase):
 
         self.assertTrue(UserMediaStatus.objects.filter(user=self.user, media_type='tv', tmdb_id=9401, status='plan_to_watch').exists())
 
+    def test_refresh_show_status_clears_stale_timestamps_for_plan_to_watch(self):
+        TVShow.objects.create(tmdb_id=9402, name='Stale Timestamp Show', status='Ended')
+        UserMediaStatus.objects.create(
+            user=self.user,
+            media_type='tv',
+            tmdb_id=9402,
+            status='plan_to_watch',
+            status_changed_at=timezone.now(),
+            started_at=timezone.now(),
+            last_watched_at=timezone.now(),
+            watched_episodes=3,
+            total_episodes=5,
+        )
+
+        refresh_show_status(self.user.id, 9402)
+
+        row = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=9402)
+        self.assertEqual(row.status, 'plan_to_watch')
+        self.assertIsNone(row.started_at)
+        self.assertIsNone(row.last_watched_at)
+        self.assertIsNone(row.completed_at)
+        self.assertEqual(row.watched_episodes, 0)
+        self.assertEqual(row.total_episodes, 0)
+
 
 class UserDeletionTests(BaseTestCase):
     def test_deleting_user_does_not_recreate_tv_status_rows(self):
@@ -1842,6 +1866,79 @@ class ProgressListTests(BaseTestCase):
         self.assertEqual(item['episodes_left'], 1)
         self.assertEqual(item['runtime_left_minutes'], 42)
         self.assertEqual(item['next_episode']['episode_number'], 1)
+
+    def test_plan_to_watch_row_excluded_from_other_status_filters(self):
+        watching = self.client.get('/api/tracking/my-shows/?status=watching')
+        self.assertEqual(watching.status_code, 200)
+        self.assertNotIn(4004, {item['tmdb_id'] for item in watching.data['results']})
+
+        watched = self.client.get('/api/tracking/my-shows/?status=watched')
+        self.assertEqual(watched.status_code, 200)
+        self.assertNotIn(4004, {item['tmdb_id'] for item in watched.data['results']})
+
+        planned = self.client.get('/api/tracking/my-shows/?status=plan_to_watch')
+        self.assertEqual(planned.status_code, 200)
+        self.assertEqual([item['tmdb_id'] for item in planned.data['results']], [4004])
+
+    def test_plan_to_watch_row_sorts_by_progress_fields(self):
+        for sort in ('episodes_left', 'last_watched'):
+            response = self.client.get(f'/api/tracking/my-shows/?sort={sort}')
+            self.assertEqual(response.status_code, 200)
+            by_id = {item['tmdb_id']: item for item in response.data['results']}
+            self.assertIn(4004, by_id)
+            self.assertIn('episodes_left', by_id[4004])
+            self.assertIn('runtime_left_minutes', by_id[4004])
+            self.assertIn('progress_percent', by_id[4004])
+
+        response = self.client.get('/api/tracking/my-shows/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(4004, [item['tmdb_id'] for item in response.data['results']])
+
+    def test_plan_to_watch_row_with_future_only_episodes_has_no_next_episode(self):
+        show = TVShow.objects.get(tmdb_id=4004)
+        season = Season.objects.create(show=show, tmdb_id=4402, season_number=1, name='Season 1')
+        Episode.objects.create(
+            season=season,
+            tmdb_id=44021,
+            episode_number=1,
+            name='Future Episode',
+            air_date=timezone.localdate() + timedelta(days=5),
+            runtime=42,
+        )
+        refresh_show_status(self.user.id, 4004)
+
+        response = self.client.get('/api/tracking/my-shows/?status=plan_to_watch')
+
+        self.assertEqual(response.status_code, 200)
+        item = response.data['results'][0]
+        self.assertEqual(item['status'], 'plan_to_watch')
+        self.assertIsNone(item['next_episode'])
+        self.assertEqual(item['watched_episodes'], 0)
+        self.assertEqual(item['total_episodes'], 0)
+        self.assertEqual(item['progress_percent'], 0)
+        self.assertEqual(item['episodes_left'], 0)
+
+    def test_plan_to_watch_row_with_unknown_runtimes_sets_flag(self):
+        show = TVShow.objects.get(tmdb_id=4004)
+        season = Season.objects.create(show=show, tmdb_id=4403, season_number=1, name='Season 1')
+        Episode.objects.create(
+            season=season,
+            tmdb_id=44031,
+            episode_number=1,
+            name='Mystery Episode',
+            air_date=timezone.localdate() - timedelta(days=1),
+            runtime=None,
+        )
+        refresh_show_status(self.user.id, 4004)
+
+        response = self.client.get('/api/tracking/my-shows/?status=plan_to_watch')
+
+        self.assertEqual(response.status_code, 200)
+        item = response.data['results'][0]
+        self.assertEqual(item['status'], 'plan_to_watch')
+        self.assertEqual(item['episodes_left'], 1)
+        self.assertEqual(item['runtime_left_minutes'], 0)
+        self.assertTrue(item['runtime_left_has_unknown'])
 
     def test_progress_list_filters_missing_rating(self):
         response = self.client.get('/api/tracking/my-shows/?missing_rating=true')

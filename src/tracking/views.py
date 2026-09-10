@@ -1233,7 +1233,6 @@ def up_next(request):
 def _apply_progress_filters(items, request):
     params = request.query_params
     search = (params.get('search') or '').strip().lower()
-    status_values = {value.lower() for value in _parse_multi_param(params, 'status')}
     provider_status_values = {value.lower() for value in _parse_multi_param(params, 'provider_status')}
     selected_genres = {value.lower() for value in _parse_multi_param(params, 'genres')}
     has_upcoming = _parse_bool_param(params.get('has_upcoming'))
@@ -1245,15 +1244,6 @@ def _apply_progress_filters(items, request):
     for item in items:
         if search and search not in item['show_name'].lower():
             continue
-        if status_values:
-            status_match = False
-            for status_value in status_values:
-                if item['status'] == status_value:
-                    status_match = True
-                    break
-
-            if not status_match:
-                continue
         if provider_status_values:
             provider_status = str(item.get('provider_status') or '').strip().lower()
             if provider_status not in provider_status_values:
@@ -1350,8 +1340,8 @@ def _my_shows_status_rows(user, now, status_queryset):
 
 def _build_my_show_item(tmdb_id, show, row, user_rating, new_threshold, today):
     raw_networks = [part.strip() for part in (show.networks or '').split(',') if part.strip()]
-    next_air_date = row.get('next_air_date') if row else None
-    next_broadcast_start = row.get('next_broadcast_start') if row else None
+    next_air_date = row.get('next_air_date')
+    next_broadcast_start = row.get('next_broadcast_start')
     next_local_air_date = _episode_local_date({'air_date': next_air_date, 'broadcast_start': next_broadcast_start})
     is_new = bool(next_local_air_date and new_threshold <= next_local_air_date <= today)
     item = {
@@ -1361,7 +1351,7 @@ def _build_my_show_item(tmdb_id, show, row, user_rating, new_threshold, today):
         'poster_path': show.poster_path,
         'poster_url': show.poster_url,
         'number_of_seasons': show.number_of_seasons,
-        'status': row['status'] if row else TvShowStatus.PLAN_TO_WATCH,
+        'status': row['status'],
         'provider_status': show.status,
         'user_rating': user_rating,
         'vote_average': show.vote_average,
@@ -1370,8 +1360,6 @@ def _build_my_show_item(tmdb_id, show, row, user_rating, new_threshold, today):
         'networks': raw_networks,
         'episode_runtime': show.episode_runtime,
     }
-    if row is None:
-        return item
     upcoming_local_air_date = _episode_local_date({'air_date': row.get('upcoming_air_date'), 'broadcast_start': row.get('upcoming_broadcast_start')})
     next_episode = None
     if row['next_episode_id'] is not None:
@@ -1556,9 +1544,7 @@ def my_shows_list(request):
     status_values = {value.lower() for value in _parse_multi_param(request.query_params, 'status')}
     if status_values:
         status_queryset = status_queryset.filter(status__in=status_values)
-    status_tmdb_ids = set(status_queryset.started().values_list('tmdb_id', flat=True))
-    watchlist_tmdb_ids = set(status_queryset.planning().values_list('tmdb_id', flat=True))
-    progress_tmdb_ids = status_tmdb_ids | watchlist_tmdb_ids
+    progress_tmdb_ids = set(status_queryset.values_list('tmdb_id', flat=True))
 
     status_rows = _my_shows_status_rows(request.user, now, status_queryset)
 

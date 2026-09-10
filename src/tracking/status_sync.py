@@ -128,6 +128,9 @@ def refresh_show_status(user_id: int, tmdb_id: int):
                 episodes_left=len(remaining_rows),
                 time_left_minutes=time_left_minutes,
                 time_left_has_unknown=time_left_has_unknown,
+                started_at=first_watched_at,
+                last_watched_at=last_watched_at,
+                completed_at=None,
             )
             return
         UserMediaStatus.objects.filter(user_id=user_id, media_type=MediaType.TV, tmdb_id=tmdb_id).delete()
