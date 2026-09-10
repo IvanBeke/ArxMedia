@@ -190,7 +190,13 @@ describe('MediaFilterBar movie profile', () => {
   })
 
   async function createMovieBar(props = {}) {
-    return createMountedBar({ mediaType: 'movie', defaultSortKey: 'title', ...props })
+    return createMountedBar({
+      mediaType: 'movie',
+      defaultSortKey: 'title',
+      showProviderRatingSort: true,
+      showUserRatingSort: true,
+      ...props,
+    })
   }
 
   it('shows only the three movie status chips', async () => {
@@ -214,7 +220,42 @@ describe('MediaFilterBar movie profile', () => {
     const labels = required(sortDetails, 'Sort menu')
       .findAll('button.control-option')
       .map((button) => button.text().replace('✓', '').trim())
-    expect(labels).toEqual(['Title', 'Rating', 'Runtime', 'Release date', 'Watched date'])
+    expect(labels).toEqual(['Title', 'Runtime', 'Release date', 'Provider rating', 'User rating', 'Watched date'])
+  })
+
+  it('defaults both rating sorts to descending order', async () => {
+    const { wrapper } = await createMovieBar()
+    const sortDetails = wrapper.findAll('details').find((details) => details.text().includes('Sorted by'))
+    await required(sortDetails, 'Sort menu').find('summary').trigger('click')
+
+    const providerRating = required(sortDetails, 'Sort menu')
+      .findAll('button.control-option')
+      .find((button) => button.text().includes('Provider rating'))
+    await required(providerRating, 'Provider rating option').trigger('click')
+    expect(wrapper.emitted('change')?.at(-1)?.[0]).toMatchObject({
+      filters: { sort: 'provider_rating', direction: 'desc' },
+    })
+
+    await required(sortDetails, 'Sort menu').find('summary').trigger('click')
+    const userRating = required(sortDetails, 'Sort menu')
+      .findAll('button.control-option')
+      .find((button) => button.text().includes('User rating'))
+    await required(userRating, 'User rating option').trigger('click')
+    expect(wrapper.emitted('change')?.at(-1)?.[0]).toMatchObject({
+      filters: { sort: 'user_rating', direction: 'desc' },
+    })
+  })
+
+  it('allows provider rating without user rating', async () => {
+    const { wrapper } = await createMovieBar({ showUserRatingSort: false })
+    const sortDetails = wrapper.findAll('details').find((details) => details.text().includes('Sorted by'))
+    await required(sortDetails, 'Sort menu').find('summary').trigger('click')
+
+    const labels = required(sortDetails, 'Sort menu')
+      .findAll('button.control-option')
+      .map((button) => button.text().replace('✓', '').trim())
+    expect(labels).toContain('Provider rating')
+    expect(labels).not.toContain('User rating')
   })
 
   it('applies a movie status filter to the URL', async () => {

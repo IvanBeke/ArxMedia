@@ -391,6 +391,7 @@ def _annotate_media_sort_fields(queryset, user=None):
 
     tv_status_lookup = UserMediaStatus.objects.none()
     movie_watch_lookup = WatchEntry.objects.none()
+    rating_lookup = Rating.objects.none()
     if user and user.is_authenticated:
         tv_status_lookup = UserMediaStatus.objects.shows().filter(user=user, tmdb_id=OuterRef('tmdb_id'))
         movie_watch_lookup = WatchEntry.objects.filter(
@@ -398,6 +399,11 @@ def _annotate_media_sort_fields(queryset, user=None):
             media_type=WatchEntryMediaType.MOVIE,
             tmdb_id=OuterRef('tmdb_id'),
         ).annotate(event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())).order_by('-event_at', '-id')
+        rating_lookup = Rating.objects.filter(
+            user=user,
+            media_type=OuterRef('media_type'),
+            tmdb_id=OuterRef('tmdb_id'),
+        )
 
     today = timezone.now().date()
 
@@ -438,7 +444,15 @@ def _annotate_media_sort_fields(queryset, user=None):
         resolved_date=Coalesce('movie_release_date', 'tv_first_air_date'),
         resolved_runtime=Coalesce('movie_runtime', 'tv_total_runtime'),
         resolved_total_episodes=Coalesce('movie_total_episodes', 'tv_total_episodes'),
-        resolved_vote_average=Coalesce('movie_vote_average', 'tv_vote_average', Value(0.0)),
+        resolved_vote_average=Case(
+            When(media_type=MediaType.MOVIE, then=Coalesce('movie_vote_average', Value(0.0))),
+            default=Coalesce('tv_vote_average', Value(0.0)),
+        ),
+        resolved_user_rating=Coalesce(
+            Subquery(rating_lookup.values('score')[:1]),
+            Value(0),
+            output_field=IntegerField(),
+        ),
         resolved_vote_count=Coalesce('movie_vote_count', 'tv_vote_count', Value(0)),
         resolved_watched_date=Coalesce('movie_watched_date', 'tv_last_watched_at'),
         resolved_started_date=Coalesce('movie_watched_date', 'tv_started_at'),
@@ -513,7 +527,8 @@ def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_
     field_by_sort = {
         'runtime': 'resolved_runtime',
         'total_episodes': 'resolved_total_episodes',
-        'rating': 'resolved_vote_average',
+        'provider_rating': 'resolved_vote_average',
+        'user_rating': 'resolved_user_rating',
         'vote_average': 'resolved_vote_average',
         'vote_count': 'resolved_vote_count',
         'added_at': 'added_at',
@@ -726,7 +741,7 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
         )
         valid_sorts = {
             'added_at', 'title', 'release_date',
-            'rating', 'runtime', 'total_episodes', 'vote_count',
+            'provider_rating', 'user_rating', 'runtime', 'total_episodes', 'vote_count',
             'watched_date', 'started_date', 'last_watched', 'progress_percent', 'episodes_left', 'time_left', 'next_episode_date'
         }
         if sort_key not in valid_sorts:
@@ -1324,6 +1339,8 @@ def _sort_progress_items(items, sort_by: str, direction: str):
         'last_watched': 'desc',
         'release_date': 'desc',
         'next_episode_date': 'desc',
+        'provider_rating': 'desc',
+        'user_rating': 'desc',
     }
     default_direction = default_direction_by_sort.get(sort_key, 'asc')
     final_direction = direction_key if direction_key in ('asc', 'desc') else default_direction
@@ -1355,6 +1372,17 @@ def _sort_progress_items(items, sort_by: str, direction: str):
         return sorted(
             items,
             key=lambda item: ((item.get('progress_percent') or 0), item['show_name'].lower()),
+            reverse=final_direction == 'desc',
+        )
+
+    if sort_key in ('provider_rating', 'user_rating'):
+        rating_key = 'vote_average' if sort_key == 'provider_rating' else 'user_rating'
+        return sorted(
+            items,
+            key=lambda item: (
+                item.get(rating_key) or 0,
+                item['show_name'].lower(),
+            ),
             reverse=final_direction == 'desc',
         )
 
@@ -1436,20 +1464,10 @@ def my_shows_list(request):
     from media.models import Episode, TVShow
 
     today = timezone.now().date()
+    now = timezone.now()
 
-    unwatched_aired_episodes = _episode_candidates(request.user, timezone.now(), aired=True)
-    next_episode = unwatched_aired_episodes
-    episodes_left_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
-        total=Count('id')
-    ).values('total')[:1]
-    runtime_left_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
-        total=Coalesce(Sum('runtime'), Value(0))
-    ).values('total')[:1]
-    unknown_runtime_subquery = unwatched_aired_episodes.values('season__show__tmdb_id').annotate(
-        total=Count('id', filter=Q(runtime__isnull=True))
-    ).values('total')[:1]
-
-    upcoming_episode = _episode_candidates(request.user, timezone.now(), aired=False)
+    next_episode = _episode_candidates(request.user, now, aired=True)
+    upcoming_episode = _episode_candidates(request.user, now, aired=False)
 
     started_statuses = (TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED)
     oldest_watched_episode = WatchEntry.objects.filter(
@@ -1497,9 +1515,6 @@ def my_shows_list(request):
             next_episode_type=Subquery(next_episode.values('episode_type')[:1]),
             next_vote_average=Subquery(next_episode.values('vote_average')[:1]),
             next_vote_count=Subquery(next_episode.values('vote_count')[:1]),
-            episodes_left=Coalesce(Subquery(episodes_left_subquery), Value(0), output_field=IntegerField()),
-            runtime_left_minutes=Coalesce(Subquery(runtime_left_subquery), Value(0), output_field=IntegerField()),
-            unknown_runtime_count=Coalesce(Subquery(unknown_runtime_subquery), Value(0), output_field=IntegerField()),
             upcoming_season_number=Subquery(upcoming_episode.values('season__season_number')[:1]),
             upcoming_episode_number=Subquery(upcoming_episode.values('episode_number')[:1]),
             upcoming_episode_name=Subquery(upcoming_episode.values('name')[:1]),
@@ -1527,9 +1542,6 @@ def my_shows_list(request):
             'next_episode_type',
             'next_vote_average',
             'next_vote_count',
-            'episodes_left',
-            'runtime_left_minutes',
-            'unknown_runtime_count',
             'upcoming_season_number',
             'upcoming_episode_number',
             'upcoming_episode_name',
@@ -1563,6 +1575,39 @@ def my_shows_list(request):
 
     status_row_by_tmdb_id = {row['tmdb_id']: row for row in status_rows}
     tmdb_ids = list(progress_tmdb_ids)
+
+    watched_episode_keys = set(
+        WatchEntry.objects.filter(
+            user=request.user,
+            media_type=WatchEntryMediaType.EPISODE,
+            tmdb_id__in=tmdb_ids,
+            season_number__gt=0,
+        ).values_list('tmdb_id', 'season_number', 'episode_number')
+    )
+    remaining_by_show = {}
+    for episode in Episode.objects.filter(
+        season__show__tmdb_id__in=tmdb_ids,
+        season__season_number__gt=0,
+    ).filter(
+        Q(broadcast_start__lte=now)
+        | (Q(broadcast_start__isnull=True) & Q(air_date__lte=today)),
+    ).values('season__show__tmdb_id', 'season__season_number', 'episode_number', 'runtime'):
+        key = (
+            episode['season__show__tmdb_id'],
+            episode['season__season_number'],
+            episode['episode_number'],
+        )
+        if key in watched_episode_keys:
+            continue
+        show_totals = remaining_by_show.setdefault(
+            episode['season__show__tmdb_id'],
+            {'episodes_left': 0, 'runtime_left_minutes': 0, 'unknown_runtime_count': 0},
+        )
+        show_totals['episodes_left'] += 1
+        if episode['runtime'] is None:
+            show_totals['unknown_runtime_count'] += 1
+        else:
+            show_totals['runtime_left_minutes'] += episode['runtime']
 
     shows = TVShow.objects.filter(tmdb_id__in=tmdb_ids).prefetch_related('genres')
     show_map = {show.tmdb_id: show for show in shows}
@@ -1608,6 +1653,10 @@ def my_shows_list(request):
         }
 
         if not is_plan_to_watch_only:
+            remaining = remaining_by_show.get(
+                tmdb_id,
+                {'episodes_left': 0, 'runtime_left_minutes': 0, 'unknown_runtime_count': 0},
+            )
             upcoming_air_date = row.get('upcoming_air_date')
             upcoming_broadcast_start = row.get('upcoming_broadcast_start')
             upcoming_local_air_date = _episode_local_date({'air_date': upcoming_air_date, 'broadcast_start': upcoming_broadcast_start})
@@ -1617,9 +1666,9 @@ def my_shows_list(request):
                 'total_episodes': row['total_episodes'] or 0,
                 'last_watched_at': row['last_watched_at'],
                 'started_at': row['started_watch_at'] or row['started_at'],
-                'episodes_left': row['episodes_left'] or 0,
-                'runtime_left_minutes': row['runtime_left_minutes'] or 0,
-                'runtime_left_has_unknown': (row['unknown_runtime_count'] or 0) > 0,
+                'episodes_left': remaining['episodes_left'],
+                'runtime_left_minutes': remaining['runtime_left_minutes'],
+                'runtime_left_has_unknown': remaining['unknown_runtime_count'] > 0,
                 'is_new': is_new,
                 'has_upcoming_episode': upcoming_local_air_date is not None,
                 'next_episode': {
@@ -1718,7 +1767,8 @@ def _sort_movie_items(items, sort_by: str, direction: str):
     sort_key = (sort_by or 'watched_date').strip().lower()
     direction_key = (direction or '').strip().lower()
     default_direction_by_sort = {
-        'rating': 'desc',
+        'provider_rating': 'desc',
+        'user_rating': 'desc',
         'release_date': 'desc',
         'watched_date': 'desc',
     }
@@ -1738,14 +1788,21 @@ def _sort_movie_items(items, sort_by: str, direction: str):
             reverse=final_direction == 'desc',
         )
 
-    if sort_key == 'rating':
+    if sort_key == 'user_rating':
         def rating_value(item):
             score = item.get('user_rating')
             return -(score or 0) if final_direction == 'desc' else (score or 0)
 
         return sorted(
             items,
-            key=lambda item: (item.get('user_rating') is None, rating_value(item), title_key(item)),
+            key=lambda item: (rating_value(item), title_key(item)),
+        )
+
+    if sort_key == 'provider_rating':
+        return sorted(
+            items,
+            key=lambda item: (item.get('vote_average') is None, item.get('vote_average') or 0, title_key(item)),
+            reverse=final_direction == 'desc',
         )
 
     if sort_key == 'runtime':
@@ -2070,7 +2127,7 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         )
         valid_sorts = {
             'added_at', 'custom_order', 'title', 'release_date',
-            'rating', 'runtime', 'total_episodes', 'vote_count',
+            'provider_rating', 'user_rating', 'runtime', 'total_episodes', 'vote_count',
             'watched_date', 'started_date', 'last_watched', 'progress_percent', 'episodes_left', 'time_left', 'next_episode_date'
         }
         if sort_key not in valid_sorts:

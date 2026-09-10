@@ -1628,6 +1628,17 @@ class ProgressListTests(BaseTestCase):
         items = response.data['results']
         self.assertEqual(items[0]['tmdb_id'], 4003)
 
+    def test_progress_list_aggregates_all_remaining_episodes_and_runtime(self):
+        Episode.objects.filter(tmdb_id=4113).update(air_date=timezone.now().date() - timedelta(days=1))
+
+        response = self.client.get('/api/tracking/my-shows/?search=alpha')
+        self.assertEqual(response.status_code, 200)
+        item = response.data['results'][0]
+
+        self.assertEqual(item['episodes_left'], 2)
+        self.assertEqual(item['runtime_left_minutes'], 83)
+        self.assertFalse(item['runtime_left_has_unknown'])
+
     def test_progress_list_filters_upcoming_and_new(self):
         response = self.client.get('/api/tracking/my-shows/?has_upcoming=true&is_new=true')
         self.assertEqual(response.status_code, 200)
@@ -1837,9 +1848,22 @@ class MyMoviesTests(BaseTestCase):
         response = self.client.get('/api/tracking/my-movies/?sort=release_date')
         self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5003, 5002, 5001])
 
-    def test_sorts_rating_rated_first_on_desc(self):
-        response = self.client.get('/api/tracking/my-movies/?sort=rating&direction=desc')
+    def test_sorts_user_rating_rated_first_on_desc(self):
+        response = self.client.get('/api/tracking/my-movies/?sort=user_rating&direction=desc')
         self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5002, 5001, 5003])
+
+    def test_sorts_provider_rating_desc_by_default(self):
+        response = self.client.get('/api/tracking/my-movies/?sort=provider_rating')
+        self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5002, 5001, 5003])
+
+    def test_sorts_user_rating_desc_by_default(self):
+        response = self.client.get('/api/tracking/my-movies/?sort=user_rating')
+        self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5002, 5001, 5003])
+
+    def test_sorts_missing_user_rating_as_zero(self):
+        Rating.objects.create(user=self.user, media_type='movie', tmdb_id=5001, score=1)
+        response = self.client.get('/api/tracking/my-movies/?sort=user_rating&direction=asc')
+        self.assertEqual([item['tmdb_id'] for item in response.data['results']], [5003, 5001, 5002])
 
     def test_sorts_runtime_asc(self):
         response = self.client.get('/api/tracking/my-movies/?sort=runtime')
@@ -2010,6 +2034,24 @@ class CustomListTests(BaseTestCase):
 
 
 class ListItemTests(BaseTestCase):
+    def test_sorts_provider_rating_by_item_media_type(self):
+        custom_list = CustomList.objects.create(user=self.user, name='Provider Rating List')
+        Movie.objects.create(tmdb_id=8001, title='Movie 8001', vote_average=8.1)
+        TVShow.objects.create(tmdb_id=8001, name='Show 8001', vote_average=6.5)
+        Movie.objects.create(tmdb_id=8002, title='Movie 8002', vote_average=7.0)
+        ListItem.objects.create(custom_list=custom_list, media_type='tv', tmdb_id=8001)
+        ListItem.objects.create(custom_list=custom_list, media_type='movie', tmdb_id=8002)
+
+        response = self.client.get(
+            f'/api/tracking/lists/{custom_list.id}/items/?sort=provider_rating&direction=asc'
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [(item['media_type'], item['tmdb_id']) for item in response.data['results']],
+            [('tv', 8001), ('movie', 8002)],
+        )
+
     def test_add_item_to_list(self):
         lst = CustomList.objects.create(user=self.user, name='Test List')
         data = {'media_type': 'movie', 'tmdb_id': 123}

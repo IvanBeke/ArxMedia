@@ -76,6 +76,8 @@
         :show-sort="true"
         :show-direction="true"
         :show-order-sort="true"
+        :show-provider-rating-sort="true"
+        :show-user-rating-sort="true"
         default-sort-key="custom_order"
         :apply-media-type-exclusive-sorts="true"
         search-placeholder="Search list items by title"

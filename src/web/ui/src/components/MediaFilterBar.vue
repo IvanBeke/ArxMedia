@@ -217,6 +217,8 @@ interface MediaFilterBarProps {
   advancedLabel?: string
   applyMediaTypeExclusiveSorts?: boolean
   showOrderSort?: boolean
+  showProviderRatingSort?: boolean
+  showUserRatingSort?: boolean
   providerStatusOptions?: string[]
   genreOptions?: string[]
   page?: number
@@ -269,6 +271,8 @@ const props = withDefaults(defineProps<MediaFilterBarProps>(), {
   advancedLabel: 'Advanced Filters',
   applyMediaTypeExclusiveSorts: true,
   showOrderSort: false,
+  showProviderRatingSort: false,
+  showUserRatingSort: false,
   providerStatusOptions: () => [],
   genreOptions: () => [],
   page: 1,
@@ -305,7 +309,8 @@ const sortLabelsByKey: Record<string, string> = {
   added_at: 'Date added',
   custom_order: 'Custom order',
   title: 'Title',
-  rating: 'Rating',
+  provider_rating: 'Provider rating',
+  user_rating: 'User rating',
   vote_count: 'Votes',
   runtime: 'Runtime',
   release_date: 'Release date',
@@ -322,7 +327,8 @@ const baseDefaultDirections: Record<string, SortDirection> = {
   added_at: 'asc',
   custom_order: 'asc',
   title: 'asc',
-  rating: 'desc',
+  provider_rating: 'desc',
+  user_rating: 'desc',
   vote_count: 'desc',
   runtime: 'asc',
   release_date: 'desc',
@@ -335,8 +341,8 @@ const baseDefaultDirections: Record<string, SortDirection> = {
   next_episode_date: 'desc',
 }
 
-const sortBaselineKeys = ['added_at', 'title', 'rating', 'vote_count', 'runtime', 'release_date']
-const sortMovieBaselineKeys = ['title', 'rating', 'runtime', 'release_date']
+const sortBaselineKeys = ['added_at', 'title', 'vote_count', 'runtime', 'release_date']
+const sortMovieBaselineKeys = ['title', 'runtime', 'release_date']
 const sortMovieExclusiveKeys = ['watched_date']
 const sortTvExclusiveKeys = ['time_left', 'episodes_left', 'last_watched', 'started_date', 'progress_percent', 'next_episode_date']
 
@@ -407,6 +413,12 @@ const resolvedSortOptions = computed<SortOption[]>(() => {
   const keys = [...baseline]
   if (props.showOrderSort) {
     keys.unshift('custom_order')
+  }
+  if (props.showProviderRatingSort) {
+    keys.push('provider_rating')
+  }
+  if (props.showUserRatingSort) {
+    keys.push('user_rating')
   }
   if (props.applyMediaTypeExclusiveSorts) {
     if (effectiveMediaType.value === 'movie') {

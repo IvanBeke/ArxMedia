@@ -20,6 +20,8 @@
       :show-search="true"
       :show-sort="true"
       :show-direction="true"
+      :show-provider-rating-sort="true"
+      :show-user-rating-sort="true"
       default-sort-key="time_left"
       search-placeholder="Search by show title"
       :provider-status-options="availableProviderStatuses"

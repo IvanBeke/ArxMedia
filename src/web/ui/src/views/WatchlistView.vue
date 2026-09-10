@@ -25,6 +25,7 @@
       :show-search="true"
       :show-sort="true"
       :show-direction="true"
+      :show-provider-rating-sort="true"
       default-sort-key="added_at"
       :apply-media-type-exclusive-sorts="false"
       search-placeholder="Search by title"
