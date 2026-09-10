@@ -155,8 +155,8 @@ describe('DataTransferView', () => {
         report: {
           records_seen: 1,
           records_imported: 1,
-          lists_imported: 1,
-          list_items_imported: 2,
+          lists_created: 1,
+          list_items_created: 2,
           summary: { lists: 1 },
           deleted: { lists: 1 },
         },

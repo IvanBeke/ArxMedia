@@ -117,6 +117,7 @@ def parse_arxmedia_json(content: bytes) -> ParsedImport:
         records.append(RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=score))
 
     parsed_lists: list[ListRecord] = []
+    seen_list_names: set[str] = set()
     for index, list_data in enumerate(lists, start=1):
         if not isinstance(list_data, dict):
             invalid_count += 1
@@ -132,6 +133,13 @@ def parse_arxmedia_json(content: bytes) -> ParsedImport:
                 {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'name'},
             )
             continue
+        name = name.strip()
+        normalized_name = name.casefold()
+        if normalized_name in seen_list_names:
+            invalid_count += 1
+            add_import_warning(warnings, 'duplicate_list', 'The import contains a duplicate list name.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'name'})
+            continue
+        seen_list_names.add(normalized_name)
 
         privacy = list_data.get('privacy', 'public')
         if privacy not in ('public', 'private'):
@@ -178,7 +186,7 @@ def parse_arxmedia_json(content: bytes) -> ParsedImport:
             ))
 
         parsed_lists.append(ListRecord(
-            name=name.strip(),
+            name=name,
             description=list_data.get('description', '') if isinstance(list_data.get('description', ''), str) else '',
             privacy=privacy,
             items=tuple(parsed_items),

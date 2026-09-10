@@ -73,7 +73,7 @@ export interface DataTransferReport {
   records_seen?: number; records_imported?: number; records_skipped?: number; records_unchanged?: number; deleted_total?: number; metadata_errors?: number
   summary?: { watch_history?: number; watchlist?: number; ratings?: number; lists?: number }
   deleted?: { watch_history?: number; watchlist?: number; ratings?: number; lists?: number }
-  lists_imported?: number; list_items_seen?: number; list_items_imported?: number
+  lists_created?: number; lists_updated?: number; list_items_seen?: number; list_items_created?: number; list_items_updated?: number; list_items_deleted?: number
   invalid_count?: number; unsupported_files?: number; unsupported_records?: number; skipped_non_tmdb?: number
   skipped_unsupported_media_type?: number; skipped_invalid_status?: number; skipped_missing_tmdb_id?: number; files_failed?: number
   warnings?: DataTransferWarning[]; files?: DataTransferFileReport[]

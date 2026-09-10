@@ -32,6 +32,17 @@ _STATUS_FIELD_BY_STATE: dict[str, str] = {
 }
 
 
+def _restore_list_item_timestamps(items, sources):
+    """Restore imported timestamps after bulk_create bypasses auto_now_add."""
+    dated_items = []
+    for created, source in zip(items, sources, strict=False):
+        if source.added_at:
+            created.added_at = source.added_at
+            dated_items.append(created)
+    if dated_items:
+        ListItem.objects.bulk_update(dated_items, ['added_at'])
+
+
 def group_by_item(parsed: ParsedImport) -> list[dict]:
     """Group parsed records per media item, TV shows first, movies second.
 
@@ -457,11 +468,18 @@ def delete_missing_rows(user, parsed: ParsedImport):
 def apply_imported_lists(user, parsed: ParsedImport, import_mode: str) -> dict[str, int]:
     """Restore owned lists and ordered items without creating collaborators."""
     if not parsed.lists:
-        return {'lists': 0, 'items': 0}
+        return {'lists_created': 0, 'lists_updated': 0, 'items_created': 0, 'items_updated': 0, 'items_deleted': 0}
 
-    applied = {'lists': 0, 'items': 0}
+    applied = {'lists_created': 0, 'lists_updated': 0, 'items_created': 0, 'items_updated': 0, 'items_deleted': 0}
     for record in parsed.lists:
-        custom_list = CustomList.objects.filter(user=user, name=record.name).first()
+        custom_list = next(
+            (
+                candidate
+                for candidate in CustomList.objects.filter(user=user)
+                if candidate.name.casefold() == record.name.casefold()
+            ),
+            None,
+        )
         if custom_list is None:
             custom_list = CustomList.objects.create(
                 user=user,
@@ -469,14 +487,16 @@ def apply_imported_lists(user, parsed: ParsedImport, import_mode: str) -> dict[s
                 description=record.description,
                 privacy=record.privacy,
             )
-            applied['lists'] += 1
+            applied['lists_created'] += 1
         elif import_mode != 'new_items':
             custom_list.description = record.description
             custom_list.privacy = record.privacy
             custom_list.save(update_fields=['description', 'privacy', 'updated_at'])
+            applied['lists_updated'] += 1
 
         if import_mode == 'mirror_imported_set':
-            ListItem.objects.filter(custom_list=custom_list).delete()
+            deleted_items, _ = ListItem.objects.filter(custom_list=custom_list).delete()
+            applied['items_deleted'] += deleted_items
 
         existing_items = {
             (item.media_type, item.tmdb_id): item
@@ -502,17 +522,11 @@ def apply_imported_lists(user, parsed: ParsedImport, import_mode: str) -> dict[s
             create_sources.append(item)
         if to_create:
             ListItem.objects.bulk_create(to_create)
-            dated_items = []
-            for created, source in zip(to_create, create_sources, strict=False):
-                if source.added_at:
-                    created.added_at = source.added_at
-                    dated_items.append(created)
-            if dated_items:
-                ListItem.objects.bulk_update(dated_items, ['added_at'])
-            applied['items'] += len(to_create)
+            _restore_list_item_timestamps(to_create, create_sources)
+            applied['items_created'] += len(to_create)
         if to_update:
             ListItem.objects.bulk_update(to_update, ['custom_order'])
-            applied['items'] += len(to_update)
+            applied['items_updated'] += len(to_update)
     return applied
 
 
@@ -523,7 +537,13 @@ def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_s
     metadata_only_shows = report.get('metadata_only_shows', 0)
     records_imported = applied_count + metadata_only_shows
     valid_records = len(parsed.records) + metadata_only_shows
-    list_counts = list_counts or {'lists': 0, 'items': 0}
+    list_counts = list_counts or {
+        'lists_created': 0,
+        'lists_updated': 0,
+        'items_created': 0,
+        'items_updated': 0,
+        'items_deleted': 0,
+    }
     report.update(
         {
             'records_imported': records_imported,
@@ -533,8 +553,11 @@ def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_s
             'metadata_fetches': state.get('metadata_fetches', 0),
             'metadata_errors': state.get('metadata_errors', 0),
             'total_items': job.total_items,
-            'lists_imported': list_counts['lists'],
-            'list_items_imported': list_counts['items'],
+            'lists_created': list_counts['lists_created'],
+            'lists_updated': list_counts['lists_updated'],
+            'list_items_created': list_counts['items_created'],
+            'list_items_updated': list_counts['items_updated'],
+            'list_items_deleted': list_counts['items_deleted'],
         }
     )
     return report

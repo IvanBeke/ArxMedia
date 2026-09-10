@@ -106,6 +106,14 @@ describe('MyShowsView pagination', () => {
     expect(getMyShows).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('Server exploded.')
   })
+
+  it('passes has_next_episode from the URL to the API', async () => {
+    getMyShows.mockResolvedValueOnce(showsPayload(0, 0))
+
+    await mountView({ has_next_episode: '1' })
+
+    expect(getMyShows).toHaveBeenCalledWith(expect.objectContaining({ has_next_episode: true }))
+  })
 })
 
 function getMyOffersPage(mockFn: { mock: { calls: unknown[][] } }, callIndex: number) {

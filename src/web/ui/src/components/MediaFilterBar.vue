@@ -16,7 +16,7 @@
         </button>
 
         <div v-if="advancedOpen" class="control-panel left-0 w-[20rem] max-w-[85vw] p-3 space-y-3">
-          <div v-if="showQuickFilterHasUpcomingEffective || showQuickFilterNewOnlyEffective || showQuickFilterMissingRatingEffective || showQuickFilterInWatchlistEffective" class="space-y-2">
+          <div v-if="showQuickFilterHasUpcomingEffective || showQuickFilterNewOnlyEffective || showQuickFilterMissingRatingEffective || showQuickFilterHasNextEpisodeEffective || showQuickFilterInWatchlistEffective" class="space-y-2">
             <p class="text-xs text-muted">Quick filters</p>
             <div class="flex flex-wrap gap-2">
               <button
@@ -45,6 +45,15 @@
                 @click="staged.missingRating = !staged.missingRating"
               >
                 Missing rating
+              </button>
+              <button
+                v-if="showQuickFilterHasNextEpisodeEffective"
+                type="button"
+                class="chip-toggle"
+                :data-on="staged.hasNextEpisode ? 'true' : 'false'"
+                @click="staged.hasNextEpisode = !staged.hasNextEpisode"
+              >
+                Has Next Episode
               </button>
               <button
                 v-if="showQuickFilterInWatchlistEffective"
@@ -208,6 +217,7 @@ interface MediaFilterBarProps {
   showQuickFilterHasUpcoming?: boolean
   showQuickFilterNewOnly?: boolean
   showQuickFilterMissingRating?: boolean
+  showQuickFilterHasNextEpisode?: boolean
   showQuickFilterInWatchlist?: boolean
   showSearch?: boolean
   showSort?: boolean
@@ -236,6 +246,7 @@ interface FilterState {
   hasUpcoming: boolean
   newOnly: boolean
   missingRating: boolean
+  hasNextEpisode: boolean
   inWatchlist: boolean
 }
 
@@ -262,6 +273,7 @@ const props = withDefaults(defineProps<MediaFilterBarProps>(), {
   showQuickFilterHasUpcoming: false,
   showQuickFilterNewOnly: false,
   showQuickFilterMissingRating: false,
+  showQuickFilterHasNextEpisode: false,
   showQuickFilterInWatchlist: false,
   showSearch: true,
   showSort: true,
@@ -295,7 +307,7 @@ const fetchedGenres = ref<string[]>([])
 const tvStatusChipOptions: SortOption[] = [
   { label: 'Plan to watch', value: 'plan_to_watch' },
   { label: 'Watching', value: 'watching' },
-  { label: 'Completed', value: 'watched' },
+  { label: 'Watched', value: 'watched' },
   { label: 'Dropped', value: 'dropped' },
 ]
 
@@ -359,6 +371,7 @@ const filters = reactive<FilterState>({
   hasUpcoming: false,
   newOnly: false,
   missingRating: false,
+  hasNextEpisode: false,
   inWatchlist: false,
 })
 
@@ -370,6 +383,7 @@ const staged = reactive<StagedFilterState>({
   hasUpcoming: false,
   newOnly: false,
   missingRating: false,
+  hasNextEpisode: false,
   inWatchlist: false,
 })
 
@@ -383,6 +397,7 @@ const effectiveMediaType = computed(() => {
 const showQuickFilterHasUpcomingEffective = computed(() => props.showQuickFilterHasUpcoming)
 const showQuickFilterNewOnlyEffective = computed(() => props.showQuickFilterNewOnly)
 const showQuickFilterMissingRatingEffective = computed(() => props.showQuickFilterMissingRating)
+const showQuickFilterHasNextEpisodeEffective = computed(() => props.showQuickFilterHasNextEpisode)
 const showQuickFilterInWatchlistEffective = computed(() => props.showQuickFilterInWatchlist)
 const usesStatusWorkflowSortProfile = computed(() => {
   return (
@@ -458,6 +473,7 @@ const hasAdvancedFilters = computed(() => {
     || showQuickFilterHasUpcomingEffective.value
     || showQuickFilterNewOnlyEffective.value
     || showQuickFilterMissingRatingEffective.value
+    || showQuickFilterHasNextEpisodeEffective.value
     || showQuickFilterInWatchlistEffective.value
   )
 })
@@ -475,6 +491,7 @@ const activeAdvancedCount = computed(() => {
   if (showQuickFilterHasUpcomingEffective.value && filters.hasUpcoming) total += 1
   if (showQuickFilterNewOnlyEffective.value && filters.newOnly) total += 1
   if (showQuickFilterMissingRatingEffective.value && filters.missingRating) total += 1
+  if (showQuickFilterHasNextEpisodeEffective.value && filters.hasNextEpisode) total += 1
   if (showQuickFilterInWatchlistEffective.value && filters.inWatchlist) total += 1
   return total
 })
@@ -530,6 +547,7 @@ function serializeFilters(value: FilterState): string {
     hasUpcoming: Boolean(value.hasUpcoming),
     newOnly: Boolean(value.newOnly),
     missingRating: Boolean(value.missingRating),
+    hasNextEpisode: Boolean(value.hasNextEpisode),
     inWatchlist: Boolean(value.inWatchlist),
   })
 }
@@ -545,6 +563,7 @@ function applyFiltersState(next: ParsedFilterState): void {
   filters.hasUpcoming = next.hasUpcoming
   filters.newOnly = next.newOnly
   filters.missingRating = next.missingRating
+  filters.hasNextEpisode = next.hasNextEpisode
   filters.inWatchlist = next.inWatchlist
   draftSearch.value = next.search
   directionOverridden.value = next.directionOverridden
@@ -574,6 +593,7 @@ function parseFromQuery(query: LocationQuery): ParsedFilterState {
     hasUpcoming: query.has_upcoming === '1',
     newOnly: query.is_new === '1',
     missingRating: query.missing_rating === '1',
+    hasNextEpisode: query.has_next_episode === '1',
     inWatchlist: query.in_watchlist === '1',
   }
 
@@ -599,6 +619,7 @@ function parseFromQuery(query: LocationQuery): ParsedFilterState {
   if (!props.showQuickFilterHasUpcoming) next.hasUpcoming = false
   if (!props.showQuickFilterNewOnly) next.newOnly = false
   if (!props.showQuickFilterMissingRating) next.missingRating = false
+  if (!props.showQuickFilterHasNextEpisode) next.hasNextEpisode = false
   if (!showQuickFilterInWatchlistEffective.value) next.inWatchlist = false
   if (!props.showStatusFilter) next.statuses = []
   if (!props.showProviderStatusFilter) next.providerStatuses = []
@@ -615,6 +636,7 @@ function syncStagedFromApplied(): void {
   staged.hasUpcoming = filters.hasUpcoming
   staged.newOnly = filters.newOnly
   staged.missingRating = filters.missingRating
+  staged.hasNextEpisode = filters.hasNextEpisode
   staged.inWatchlist = filters.inWatchlist
 }
 
@@ -630,6 +652,7 @@ function emitChange(source: FilterChangeSource): void {
     hasUpcoming: filters.hasUpcoming,
     newOnly: filters.newOnly,
     missingRating: filters.missingRating,
+    hasNextEpisode: filters.hasNextEpisode,
     inWatchlist: filters.inWatchlist,
   }
   emit('change', { source, filters: payload })
@@ -641,7 +664,7 @@ const _initialFilters = parseFromQuery(route.query)
 applyFiltersState(_initialFilters)
 emitChange('hydrate')
 
-const filterQueryKeys = ['search', 'sort', 'direction', 'media_type', 'status', 'provider_status', 'has_upcoming', 'is_new', 'missing_rating', 'in_watchlist', 'genres', 'page'] as const
+const filterQueryKeys = ['search', 'sort', 'direction', 'media_type', 'status', 'provider_status', 'has_upcoming', 'is_new', 'missing_rating', 'has_next_episode', 'in_watchlist', 'genres', 'page'] as const
 
 function resolvePageValue(value: unknown): number {
   const page = Number.parseInt(String(value ?? 1), 10)
@@ -678,6 +701,7 @@ function syncUrl(options: SyncUrlOptions = {}): void {
   if (showQuickFilterHasUpcomingEffective.value && filters.hasUpcoming) nextQuery.has_upcoming = '1'
   if (showQuickFilterNewOnlyEffective.value && filters.newOnly) nextQuery.is_new = '1'
   if (showQuickFilterMissingRatingEffective.value && filters.missingRating) nextQuery.missing_rating = '1'
+  if (showQuickFilterHasNextEpisodeEffective.value && filters.hasNextEpisode) nextQuery.has_next_episode = '1'
   if (showQuickFilterInWatchlistEffective.value && filters.inWatchlist) nextQuery.in_watchlist = '1'
 
   if (JSON.stringify(nextQuery) !== JSON.stringify(route.query)) {
@@ -716,6 +740,7 @@ function applyAdvanced(): void {
   filters.hasUpcoming = showQuickFilterHasUpcomingEffective.value ? staged.hasUpcoming : false
   filters.newOnly = showQuickFilterNewOnlyEffective.value ? staged.newOnly : false
   filters.missingRating = showQuickFilterMissingRatingEffective.value ? staged.missingRating : false
+  filters.hasNextEpisode = showQuickFilterHasNextEpisodeEffective.value ? staged.hasNextEpisode : false
   filters.inWatchlist = showQuickFilterInWatchlistEffective.value ? staged.inWatchlist : false
   advancedOpen.value = false
   commitInteraction()
@@ -729,6 +754,7 @@ function clearAdvanced(): void {
   staged.hasUpcoming = false
   staged.newOnly = false
   staged.missingRating = false
+  staged.hasNextEpisode = false
   staged.inWatchlist = false
   applyAdvanced()
 }
@@ -746,6 +772,7 @@ function clearAll(): void {
   filters.hasUpcoming = false
   filters.newOnly = false
   filters.missingRating = false
+  filters.hasNextEpisode = false
   filters.inWatchlist = false
   advancedOpen.value = false
   syncStagedFromApplied()

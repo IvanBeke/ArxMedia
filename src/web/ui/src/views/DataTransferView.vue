@@ -360,8 +360,8 @@ const finishedResultSummary = computed(() => {
   const skipped = Number(finishedReport.value.records_skipped || 0)
   const unchanged = Number(finishedReport.value.records_unchanged || 0)
   const deleted = Number(finishedReport.value.deleted_total || 0)
-  const lists = Number(finishedReport.value.lists_imported || 0)
-  const listItems = Number(finishedReport.value.list_items_imported || 0)
+  const lists = Number(finishedReport.value.lists_created || 0) + Number(finishedReport.value.lists_updated || 0)
+  const listItems = Number(finishedReport.value.list_items_created || 0) + Number(finishedReport.value.list_items_updated || 0)
   const parts: string[] = []
   if (imported) parts.push(`${imported} records imported`)
   if (deleted) parts.push(`${deleted} existing records deleted to mirror the import`)
@@ -369,6 +369,8 @@ const finishedResultSummary = computed(() => {
   if (unchanged) parts.push(`${unchanged} records already matched`)
   if (lists) parts.push(`${lists} lists imported`)
   if (listItems) parts.push(`${listItems} list items imported`)
+  const deletedListItems = Number(finishedReport.value.list_items_deleted || 0)
+  if (deletedListItems) parts.push(`${deletedListItems} list items removed`)
   return parts.length ? `${parts.join('. ')}.` : 'The import completed without any records to add.'
 })
 const finishedStats = computed(() => [

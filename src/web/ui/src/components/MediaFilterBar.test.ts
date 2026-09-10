@@ -182,6 +182,26 @@ describe('MediaFilterBar URL sync', () => {
     expect(router.currentRoute.value.query.ref).toBe('profile')
     expect(router.currentRoute.value.query.status).toEqual(['watching'])
   })
+
+  it('supports the has next episode quick filter', async () => {
+    const { wrapper, router } = await createMountedBar({ showQuickFilterHasNextEpisode: true })
+    await required(findAdvancedTrigger(wrapper), 'Advanced Filters trigger').trigger('click')
+    await required(findButtonByText(wrapper, 'Has Next Episode'), 'Has Next Episode filter').trigger('click')
+    await required(findButtonByText(wrapper, 'Apply'), 'Apply button').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.has_next_episode).toBe('1')
+  })
+
+  it('hydrates and clears the has next episode quick filter', async () => {
+    const { wrapper, router } = await createMountedBar({ showQuickFilterHasNextEpisode: true }, { has_next_episode: '1' })
+    const hydrate = [...(wrapper.emitted('change') || [])].reverse().find(([payload]) => (payload as FilterChange).source === 'hydrate')
+    expect(hydrate).toBeTruthy()
+
+    wrapper.vm.clearAll()
+    await flushPromises()
+    expect(router.currentRoute.value.query.has_next_episode).toBeUndefined()
+  })
 })
 
 describe('MediaFilterBar movie profile', () => {

@@ -16,13 +16,14 @@
       :show-quick-filter-has-upcoming="true"
       :show-quick-filter-new-only="true"
       :show-quick-filter-missing-rating="true"
+      :show-quick-filter-has-next-episode="true"
       :show-quick-filter-in-watchlist="false"
       :show-search="true"
       :show-sort="true"
       :show-direction="true"
       :show-provider-rating-sort="true"
       :show-user-rating-sort="true"
-      default-sort-key="time_left"
+      default-sort-key="last_watched"
       search-placeholder="Search by show title"
       :provider-status-options="availableProviderStatuses"
       :genre-options="availableGenres"
@@ -80,7 +81,7 @@ import type { QueryParams, ShowProgressItem } from '@/types/api'
 interface ShowFilterState {
   search: string; sort: string; direction: string; mediaType: string; statuses: string[]
   providerStatuses: string[]; genres: string[]; hasUpcoming: boolean; newOnly: boolean
-  missingRating: boolean; inWatchlist: boolean
+   missingRating: boolean; hasNextEpisode: boolean; inWatchlist: boolean
 }
 interface FilterChange { filters: ShowFilterState; source: 'hydrate' | 'interaction' }
 interface MediaListExtras { available_genres?: string[]; available_provider_statuses?: string[]; total_runtime_minutes?: number }
@@ -93,8 +94,8 @@ const errorMsg = ref('')
 
 const appliedFilters = ref<ShowFilterState>({
   search: '',
-  sort: 'time_left',
-  direction: 'asc',
+   sort: 'last_watched',
+   direction: 'desc',
   mediaType: 'tv',
   statuses: [],
   providerStatuses: [],
@@ -102,6 +103,7 @@ const appliedFilters = ref<ShowFilterState>({
   hasUpcoming: false,
   newOnly: false,
   missingRating: false,
+  hasNextEpisode: false,
   inWatchlist: false,
 })
 
@@ -140,6 +142,7 @@ function buildParams(): QueryParams {
     ...(filterState.hasUpcoming ? { has_upcoming: true } : {}),
     ...(filterState.newOnly ? { is_new: true } : {}),
     ...(filterState.missingRating ? { missing_rating: true } : {}),
+    ...(filterState.hasNextEpisode ? { has_next_episode: true } : {}),
     ...(filterState.genres.length ? { genres: filterState.genres } : {}),
   }
 }
