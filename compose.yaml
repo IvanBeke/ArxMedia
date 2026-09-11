@@ -127,6 +127,10 @@ services:
         condition: service_started
     volumes:
       - ./src/web:/workspace
+      # Keep node_modules on a Linux volume: bind-mounted Windows/Mac
+      # filesystems are too slow for thousands of small Node module files
+      # (e.g. vitest workers time out loading jsdom).
+      - ui-node-modules:/workspace/ui/node_modules
     working_dir: /workspace/ui
     ports:
       - "5173:5173"
@@ -140,3 +144,4 @@ volumes:
   postgres_data:
   media_files:
   static_files:
+  ui-node-modules:
