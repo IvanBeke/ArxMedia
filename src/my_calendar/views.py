@@ -25,6 +25,12 @@ def _parse_range(request):
     return start, end
 
 
+def _sort_key(value, tz):
+    if isinstance(value, datetime):
+        return value if timezone.is_aware(value) else timezone.make_aware(value, tz)
+    return timezone.make_aware(datetime.combine(value, time.min), tz)
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def my_calendar(request):
@@ -67,13 +73,15 @@ def my_calendar(request):
         'season_number': ep.season.season_number,
         'episode_number': ep.episode_number,
         'episode_name': ep.name,
+        'air_time': ep.air_time,
         'poster_url': ep.season.show.poster_url,
     } for ep in episodes]
 
+    tz = timezone.get_current_timezone()
     combined = movie_items + show_items
     combined.sort(
         key=lambda x: (
-            x['date'] if isinstance(x['date'], datetime) else datetime.combine(x['date'], time.min),
+            _sort_key(x['date'], tz),
             x.get('title') or x.get('show_name') or '',
         )
     )

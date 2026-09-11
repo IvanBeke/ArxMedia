@@ -83,6 +83,48 @@ class CalendarTests(TestCase):
         self.assertEqual(response.data['results'][0]['kind'], 'episode')
         self.assertEqual(response.data['results'][0]['tmdb_id'], watched_show.tmdb_id)
 
+    def test_my_calendar_mixes_movies_and_broadcast_episodes(self):
+        movie = Movie.objects.create(
+            tmdb_id=701,
+            title='Mixed Watchlist Movie',
+            release_date=timezone.localdate() + timedelta(days=3),
+        )
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=movie.tmdb_id, status='plan_to_watch')
+
+        show = TVShow.objects.create(tmdb_id=702, name='Mixed Broadcast Show')
+        season = Season.objects.create(show=show, tmdb_id=703, season_number=1, name='Season 1')
+        Episode.objects.create(
+            season=season,
+            tmdb_id=704,
+            episode_number=1,
+            name='Broadcast Episode',
+            air_date=timezone.localdate() + timedelta(days=3),
+            broadcast_start=timezone.now() + timedelta(days=3),
+        )
+        UserMediaStatus.objects.create(
+            user=self.user,
+            media_type='tv',
+            tmdb_id=show.tmdb_id,
+            status='watching',
+            watched_episodes=1,
+            total_episodes=2,
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=show.tmdb_id,
+            season_number=1,
+            episode_number=1,
+        )
+
+        start = (timezone.localdate() + timedelta(days=1)).isoformat()
+        response = self.client.get(f'/api/calendar/?start={start}&days=30')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 2)
+        by_kind = {item['kind']: item for item in response.data['results']}
+        self.assertTrue(by_kind['episode']['air_time'])
+        self.assertNotIn('air_time', by_kind['movie'])
+
     def test_my_calendar_excludes_specials_season(self):
         show = TVShow.objects.create(tmdb_id=601, name='Watching Show With Specials')
         main_season = Season.objects.create(show=show, tmdb_id=602, season_number=1, name='Season 1')
