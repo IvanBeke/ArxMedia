@@ -85,6 +85,6 @@ export interface DataTransferJob {
   metadata?: { summary?: DataTransferReport['summary']; pipeline?: { stage?: string }; report?: DataTransferReport } & DataTransferReport
 }
 export interface CalendarMovie { kind: 'movie'; date: string; tmdb_id: number; title: string; poster_url: string | null }
-export interface CalendarEpisode { kind: 'episode'; date: string; tmdb_id: number; show_name: string; season_number: number; episode_number: number; episode_name: string; poster_url: string | null }
+export interface CalendarEpisode { kind: 'episode'; date: string; tmdb_id: number; show_name: string; season_number: number; episode_number: number; episode_name: string; air_time: string; poster_url: string | null }
 export type CalendarItem = CalendarMovie | CalendarEpisode
 export interface WatchedEpisode { season_number: number | null; episode_number: number | null; watched_at: string | null }

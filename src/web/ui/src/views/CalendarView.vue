@@ -14,7 +14,7 @@
         >
           <button
             class="p-1.5 rounded-md text-muted hover:text-primary hover:bg-surface-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-            :aria-label="viewMode === 'week' ? 'Previous week' : 'Previous month'"
+            :aria-label="prevLabel"
             @click="goPrev"
           >
             <ChevronLeft class="w-4 h-4" />
@@ -27,7 +27,7 @@
           </button>
           <button
             class="p-1.5 rounded-md text-muted hover:text-primary hover:bg-surface-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-            :aria-label="viewMode === 'week' ? 'Next week' : 'Next month'"
+            :aria-label="nextLabel"
             @click="goNext"
           >
             <ChevronRight class="w-4 h-4" />
@@ -35,7 +35,7 @@
         </div>
         <h2 class="section-title text-lg text-center truncate">{{ periodLabel }}</h2>
         <div
-          class="flex items-center rounded-lg border border-surface-300 bg-surface-100/60 p-0.5"
+          class="hidden md:flex items-center rounded-lg border border-surface-300 bg-surface-100/60 p-0.5"
           role="group"
           aria-label="Calendar view mode"
         >
@@ -43,23 +43,60 @@
             v-for="mode in viewModes"
             :key="mode.value"
             class="px-3 py-1 text-sm rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-            :class="viewMode === mode.value ? 'bg-brand-500 text-white shadow-sm' : 'text-muted hover:text-primary'"
-            :aria-pressed="viewMode === mode.value"
+            :class="effectiveViewMode === mode.value ? 'bg-brand-500 text-white shadow-sm' : 'text-muted hover:text-primary'"
+            :aria-pressed="effectiveViewMode === mode.value"
             @click="setViewMode(mode.value)"
           >
             {{ mode.label }}
           </button>
         </div>
+        <div class="md:hidden w-10" aria-hidden="true"></div>
       </div>
 
-      <div class="grid grid-cols-7 gap-2 mb-2">
+      <div v-if="effectiveViewMode !== 'day'" class="grid grid-cols-7 gap-2 mb-2">
         <div v-for="weekday in weekdays" :key="weekday" class="text-xs font-medium text-muted text-center py-2">
           {{ weekday }}
         </div>
       </div>
 
-      <div v-if="loading" class="grid grid-cols-7 gap-2 flex-1">
+      <div v-if="loading" :class="effectiveViewMode === 'day' ? 'flex-1' : 'grid grid-cols-7 gap-2 flex-1'">
         <div v-for="n in skeletonCount" :key="n" class="min-h-28 skeleton rounded"></div>
+      </div>
+
+      <div v-else-if="effectiveViewMode === 'day'" class="flex-1 flex flex-col">
+        <div
+          v-if="dayItems.length === 0"
+          class="flex-1 flex items-center justify-center rounded border border-surface-300 bg-surface-100/40 p-8 text-center"
+        >
+          <p class="text-sm text-muted">Nothing scheduled for this day.</p>
+        </div>
+        <div
+          v-else
+          class="rounded border border-surface-300 bg-surface-100/40 p-3 flex flex-col"
+        >
+          <div class="space-y-2">
+            <RouterLink
+              v-for="item in dayItems"
+              :key="item.key"
+              :to="item.to"
+              class="block rounded px-3 py-2.5 bg-surface-200/60 text-primary hover:text-brand-400 transition-colors min-h-11"
+              :title="item.label"
+            >
+              <span class="block text-base font-medium leading-snug">{{ item.label }}</span>
+              <span class="block mt-0.5 text-xs leading-tight text-muted">
+                <EpisodeCodePill
+                  v-if="item.kind !== MEDIA_TYPE.MOVIE"
+                  :season-number="item.seasonNumber"
+                  :episode-number="item.episodeNumber"
+                  variant="plain"
+                  size="11px"
+                />
+                <span v-if="item.airTime" class="ml-1.5">{{ item.airTime }}</span>
+                <template v-else>{{ item.sublabel }}</template>
+              </span>
+            </RouterLink>
+          </div>
+        </div>
       </div>
 
       <div v-else class="calendar-grid grid grid-cols-7 gap-2 flex-1">
@@ -89,6 +126,7 @@
                   variant="plain"
                   size="11px"
                 />
+                <span v-if="item.airTime" class="ml-1.5">{{ item.airTime }}</span>
                 <template v-else>{{ item.sublabel }}</template>
               </span>
             </RouterLink>
@@ -100,8 +138,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight } from '@lucide/vue'
+import { useMediaQuery } from '@vueuse/core'
 import { calendarAPI } from '@/api'
 import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
@@ -109,7 +148,7 @@ import { isoDateKey, monthBounds, nowInstantIso, parsePlainDate, weekBounds } fr
 import type { CalendarItem } from '@/types/api'
 import type { Temporal as TemporalPolyfill } from '@js-temporal/polyfill'
 
-type ViewMode = 'month' | 'week'
+type ViewMode = 'day' | 'month' | 'week'
 type CalendarDisplayItem = {
   key: string
   kind: CalendarItem['kind']
@@ -117,6 +156,7 @@ type CalendarDisplayItem = {
   sublabel?: string
   seasonNumber?: number
   episodeNumber?: number
+  airTime?: string
   to: string
 }
 
@@ -126,18 +166,45 @@ function todayIso() {
 
 const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const viewModes: { value: ViewMode; label: string }[] = [
-  { value: 'month', label: 'Month' },
+  { value: 'day', label: 'Day' },
   { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
 ]
 const loading = ref(true)
-const viewMode = ref<ViewMode>('month')
+const desktopViewMode = ref<ViewMode>('month')
 const anchorIso = ref(todayIso())
 const items = ref<CalendarItem[]>([])
 
-const skeletonCount = computed(() => (viewMode.value === 'week' ? 7 : 42))
+const isMobile = useMediaQuery('(max-width: 767px)')
+const effectiveViewMode = computed<ViewMode>(() => (isMobile.value ? 'day' : desktopViewMode.value))
+
+const skeletonCount = computed(() => {
+  if (effectiveViewMode.value === 'day') return 1
+  return effectiveViewMode.value === 'week' ? 7 : 42
+})
+
+const prevLabel = computed(() => {
+  if (effectiveViewMode.value === 'day') return 'Previous day'
+  return effectiveViewMode.value === 'week' ? 'Previous week' : 'Previous month'
+})
+
+const nextLabel = computed(() => {
+  if (effectiveViewMode.value === 'day') return 'Next day'
+  return effectiveViewMode.value === 'week' ? 'Next week' : 'Next month'
+})
 
 const periodLabel = computed(() => {
-  if (viewMode.value === 'week') {
+  if (effectiveViewMode.value === 'day') {
+    return (
+      parsePlainDate(anchorIso.value)?.toLocaleString(undefined, {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      }) || ''
+    )
+  }
+  if (effectiveViewMode.value === 'week') {
     const bounds = weekBounds(anchorIso.value)
     if (!bounds) {
       return ''
@@ -161,7 +228,10 @@ const itemMap = computed(() => {
   const map = new Map<string, CalendarDisplayItem[]>()
   for (const item of items.value) {
     if (!item?.date) continue
-    const list = map.get(item.date) || []
+    // Episode dates may be full datetimes (broadcast_start); normalize to a plain-date key.
+    const dateKey = isoDateKey(item.date)
+    if (!dateKey) continue
+    const list = map.get(dateKey) || []
     if (item.kind === MEDIA_TYPE.MOVIE) {
       list.push({
         key: `movie-${item.tmdb_id}-${item.date}`,
@@ -177,16 +247,19 @@ const itemMap = computed(() => {
         label: item.show_name,
         seasonNumber: item.season_number,
         episodeNumber: item.episode_number,
+        airTime: item.air_time || undefined,
         to: `/tv/${item.tmdb_id}/season/${item.season_number}/episode/${item.episode_number}`
       })
     }
-    map.set(item.date, list)
+    map.set(dateKey, list)
   }
   return map
 })
 
+const dayItems = computed(() => itemMap.value.get(anchorIso.value) || [])
+
 const calendarDays = computed(() => {
-  if (viewMode.value === 'week') {
+  if (effectiveViewMode.value === 'week') {
     const bounds = weekBounds(anchorIso.value)
     return bounds ? buildDays(bounds.start, 7) : []
   }
@@ -223,7 +296,20 @@ function buildDays(startGrid: TemporalPolyfill.PlainDate, count: number, current
 async function load() {
   loading.value = true
   try {
-    const bounds = viewMode.value === 'week' ? weekBounds(anchorIso.value) : monthBounds(anchorIso.value)
+    if (effectiveViewMode.value === 'day') {
+      const anchor = parsePlainDate(anchorIso.value)
+      if (!anchor) {
+        items.value = []
+        return
+      }
+      const data = await calendarAPI.get({
+        start: anchor.toString(),
+        days: 1
+      })
+      items.value = data?.results || []
+      return
+    }
+    const bounds = effectiveViewMode.value === 'week' ? weekBounds(anchorIso.value) : monthBounds(anchorIso.value)
     if (!bounds) {
       items.value = []
       return
@@ -231,7 +317,7 @@ async function load() {
 
     const data = await calendarAPI.get({
       start: bounds.start.toString(),
-      days: viewMode.value === 'week' ? 7 : bounds.end.day
+      days: effectiveViewMode.value === 'week' ? 7 : bounds.end.day
     })
     items.value = data?.results || []
   } catch {
@@ -254,11 +340,13 @@ async function shiftAnchor(direction: number) {
   if (!anchor) {
     return
   }
-  anchorIso.value = (
-    viewMode.value === 'week'
-      ? anchor.add({ days: 7 * direction })
-      : anchor.with({ day: 1 }).add({ months: direction })
-  ).toString()
+  if (effectiveViewMode.value === 'day') {
+    anchorIso.value = anchor.add({ days: direction }).toString()
+  } else if (effectiveViewMode.value === 'week') {
+    anchorIso.value = anchor.add({ days: 7 * direction }).toString()
+  } else {
+    anchorIso.value = anchor.with({ day: 1 }).add({ months: direction }).toString()
+  }
   await load()
 }
 
@@ -268,12 +356,16 @@ async function goToday() {
 }
 
 async function setViewMode(mode: ViewMode) {
-  if (viewMode.value === mode) {
+  if (desktopViewMode.value === mode) {
     return
   }
-  viewMode.value = mode
+  desktopViewMode.value = mode
   await load()
 }
+
+watch(isMobile, async () => {
+  await load()
+})
 
 onMounted(load)
 </script>
