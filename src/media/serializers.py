@@ -71,11 +71,19 @@ class EpisodeSerializer(serializers.ModelSerializer):
 
 class SeasonBriefSerializer(serializers.ModelSerializer):
     poster_url = serializers.ReadOnlyField()
+    air_date = serializers.SerializerMethodField()
     episode_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Season
         fields = ['id', 'season_number', 'name', 'poster_path', 'poster_url', 'air_date', 'episode_count']
+
+    def get_air_date(self, obj):
+        # Prefer the annotated min air date from the list view to avoid one
+        # query per season; fall back to the model property otherwise.
+        if hasattr(obj, 'computed_air_date'):
+            return obj.computed_air_date
+        return obj.air_date
 
     def get_episode_count(self, obj):
         if hasattr(obj, 'actual_episode_count'):

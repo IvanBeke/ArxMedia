@@ -1093,6 +1093,114 @@ class MediaTests(TestCase):
         )
         mock_sync_credits_task.delay.assert_called_once_with(1399)
 
+    @patch('media.views.sync_show_episode_credits')
+    def test_tv_detail_cold_load_defers_episode_credits(self, mock_credits_task):
+        with patch.object(tmdb, '_resolve_tvmaze', return_value=(None, [])), \
+                self.captureOnCommitCallbacks(execute=True):
+            response = self.client.get('/api/media/tv/1399/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Episode.objects.filter(
+                season__show__tmdb_id=1399,
+                season__season_number=1,
+                episode_number=1,
+            ).exists()
+        )
+        self.assertFalse(EpisodeCredit.objects.filter(episode__season__show__tmdb_id=1399).exists())
+        mock_credits_task.delay.assert_called_once_with(1399)
+
+    @patch('media.views.sync_show_episode_credits')
+    @patch('media.views.tmdb.sync_tv_show')
+    @patch('media.views.tmdb.get_tv_watch_providers')
+    def test_tv_detail_resyncs_only_missing_seasons(self, mock_providers, mock_sync, mock_credits_task):
+        mock_providers.return_value = {}
+        show = TVShow.objects.create(tmdb_id=701, name='Partial Show', number_of_seasons=2, number_of_episodes=2)
+        season_one = show.seasons.create(tmdb_id=7011, season_number=1, name='Season 1')
+        season_one.episodes.create(tmdb_id=70111, episode_number=1, name='Episode 1')
+        mock_sync.return_value = show
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.get('/api/media/tv/701/')
+
+        self.assertEqual(response.status_code, 200)
+        mock_sync.assert_called_once_with(
+            701, user_id=self.user.id, sync_credits=False, use_cache=True, only_seasons=[2]
+        )
+        mock_credits_task.delay.assert_called_once_with(701)
+
+    @patch('media.views.sync_show_episode_credits')
+    @patch('media.views.tmdb.sync_tv_show')
+    @patch('media.views.tmdb.get_tv_watch_providers')
+    def test_tv_detail_skips_sync_when_complete(self, mock_providers, mock_sync, mock_credits_task):
+        mock_providers.return_value = {}
+        show = TVShow.objects.create(tmdb_id=702, name='Complete Show', number_of_seasons=1, number_of_episodes=1)
+        season = show.seasons.create(tmdb_id=7021, season_number=1, name='Season 1')
+        season.episodes.create(tmdb_id=70211, episode_number=1, name='Episode 1')
+
+        response = self.client.get('/api/media/tv/702/')
+
+        self.assertEqual(response.status_code, 200)
+        mock_sync.assert_not_called()
+        mock_credits_task.delay.assert_not_called()
+
+    @patch('tracking.status_sync.refresh_all_statuses_for_show')
+    @patch('tracking.status_sync.rebuild_episode_chain')
+    def test_sync_tv_show_rebuilds_chain_once_for_many_episodes(self, mock_rebuild, mock_refresh):
+        season_payload = {
+            'id': 139901,
+            'season_number': 1,
+            'name': 'Season 1',
+            'episodes': [
+                {'id': 13990101 + index, 'episode_number': index + 1, 'name': f'Episode {index + 1}'}
+                for index in range(3)
+            ],
+        }
+        with patch.object(tmdb, '_resolve_tvmaze', return_value=(None, [])), \
+                patch.object(tmdb, 'get_season', return_value=season_payload):
+            tmdb.sync_tv_show(1399, sync_credits=False)
+
+        self.assertEqual(Episode.objects.filter(season__show__tmdb_id=1399).count(), 3)
+        mock_rebuild.assert_called_once_with(1399)
+        mock_refresh.assert_called_once_with(1399, current_user_id=None)
+
+    def test_season_tvmaze_context_reuses_episodes_for_same_show(self):
+        show = TVShow.objects.create(tmdb_id=704, name='Reuse Show', external_ids={'tvmaze_id': 9001})
+        season_one = show.seasons.create(tmdb_id=7041, season_number=1, name='Season 1')
+        season_two = show.seasons.create(tmdb_id=7042, season_number=2, name='Season 2')
+        episodes = [{'id': 1, 'season': 1, 'number': 1}]
+
+        with patch.object(tvmaze, 'lookup_show_by_id', return_value={'id': 9001}), \
+                patch.object(tvmaze, 'get_show_episodes', return_value=episodes) as mock_episodes:
+            context: dict = {}
+            tmdb._season_tvmaze_context(show, season_one, context, None, None)
+            tmdb._season_tvmaze_context(show, season_two, context, None, None)
+
+        mock_episodes.assert_called_once_with(9001)
+
+    def test_season_brief_serialization_avoids_per_season_queries(self):
+        from django.db.models import Count, Min
+
+        from media.serializers import SeasonBriefSerializer
+
+        show = TVShow.objects.create(tmdb_id=703, name='Query Show')
+        for season_number in (1, 2, 3):
+            season = show.seasons.create(
+                tmdb_id=7030 + season_number, season_number=season_number, name=f'Season {season_number}'
+            )
+            season.episodes.create(tmdb_id=70300 + season_number * 10 + 1, episode_number=1, name='E1', air_date='2020-01-01')
+            season.episodes.create(tmdb_id=70300 + season_number * 10 + 2, episode_number=2, name='E2', air_date='2020-01-08')
+
+        seasons = show.seasons.order_by('season_number').annotate(
+            actual_episode_count=Count('episodes'),
+            computed_air_date=Min('episodes__air_date'),
+        )
+        with self.assertNumQueries(1):
+            data = SeasonBriefSerializer(seasons, many=True).data
+
+        self.assertEqual([row['episode_count'] for row in data], [2, 2, 2])
+        self.assertEqual(str(data[0]['air_date']), '2020-01-01')
+
     def test_movie_and_tv_detail_include_metadata_updated_at(self):
         Movie.objects.create(tmdb_id=777, title='Movie Detail')
         show = TVShow.objects.create(tmdb_id=888, name='Show Detail', number_of_seasons=1, number_of_episodes=2)

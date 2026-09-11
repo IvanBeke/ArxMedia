@@ -58,10 +58,35 @@ def _resolve_region(request):
     return 'US'
 
 
+def _queue_episode_credits_sync(tmdb_id: int) -> None:
+    try:
+        sync_show_episode_credits.delay(int(tmdb_id))
+    except Exception:
+        logger.warning('Failed to queue episode credits sync for tv %s', tmdb_id, exc_info=True)
+
+
+def _sync_tv_for_read(tmdb_id, *, user_id=None, use_cache=True, only_seasons=None):
+    """Sync seasons/episodes on the read path without blocking on credits.
+
+    Mirrors refresh_tv_metadata: per-episode credits fan out to Celery so a
+    cold first load pays for seasons/episodes (and TVMaze schedules) only.
+    """
+    show = tmdb.sync_tv_show(
+        tmdb_id,
+        user_id=user_id,
+        sync_credits=False,
+        use_cache=use_cache,
+        only_seasons=only_seasons,
+    )
+    transaction.on_commit(lambda: _queue_episode_credits_sync(tmdb_id))
+    return show
+
+
 def _serialize_tv_show_detail(show):
     data = TVShowSerializer(show).data
     seasons = show.seasons.order_by('season_number').annotate(
-        actual_episode_count=models.Count('episodes')
+        actual_episode_count=models.Count('episodes'),
+        computed_air_date=models.Min('episodes__air_date'),
     )
     data['seasons'] = SeasonBriefSerializer(seasons, many=True).data
     return data
@@ -328,14 +353,18 @@ def tv_detail(request, tmdb_id):
     try:
         show = TVShow.objects.get(tmdb_id=tmdb_id)
         required_seasons = show.number_of_seasons or 0
-        regular_seasons = show.seasons.filter(season_number__gte=1, season_number__lte=required_seasons)
-        has_complete_seasons = regular_seasons.count() >= required_seasons
-        has_complete_episodes = not regular_seasons.filter(episodes__isnull=True).exists()
-        if not has_complete_seasons or not has_complete_episodes:
-            show = tmdb.sync_tv_show(tmdb_id)
+        if required_seasons:
+            season_stats = dict(
+                show.seasons.filter(season_number__gte=1, season_number__lte=required_seasons)
+                .annotate(ep_count=models.Count('episodes'))
+                .values_list('season_number', 'ep_count')
+            )
+            missing = [n for n in range(1, required_seasons + 1) if season_stats.get(n, 0) == 0]
+            if missing:
+                show = _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=missing)
     except TVShow.DoesNotExist:
         try:
-            show = tmdb.sync_tv_show(tmdb_id)
+            show = _sync_tv_for_read(tmdb_id, user_id=request.user.id)
         except Exception:
             logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
             return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -386,12 +415,6 @@ def refresh_tv_metadata(request, tmdb_id):
         logger.warning('Failed to refresh TV show %s from TMDB', tmdb_id, exc_info=True)
         return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
 
-    def _queue_episode_credits_sync(show_id: int) -> None:
-        try:
-            sync_show_episode_credits.delay(show_id)
-        except Exception:
-            logger.warning('Failed to queue episode credits sync for tv %s', show_id, exc_info=True)
-
     transaction.on_commit(lambda: _queue_episode_credits_sync(tmdb_id))
 
     show.refresh_from_db()
@@ -408,7 +431,7 @@ def season_detail(request, tmdb_id, season_number):
         show = TVShow.objects.get(tmdb_id=tmdb_id)
     except TVShow.DoesNotExist:
         try:
-            show = tmdb.sync_tv_show(tmdb_id)
+            show = _sync_tv_for_read(tmdb_id, user_id=request.user.id)
         except Exception:
             logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
             return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -416,7 +439,7 @@ def season_detail(request, tmdb_id, season_number):
     season = show.seasons.filter(season_number=season_number).prefetch_related('episodes__credits').first()
     if season is None or not season.episodes.exists():
         try:
-            tmdb.sync_tv_show(tmdb_id)
+            _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=[season_number])
             season = show.seasons.filter(season_number=season_number).prefetch_related('episodes__credits').first()
         except Exception:
             logger.warning('Failed to fetch season %s for show %s from TMDB', season_number, tmdb_id, exc_info=True)
@@ -448,7 +471,7 @@ def episode_credits(request, tmdb_id, season_number, episode_number):
         show = TVShow.objects.get(tmdb_id=tmdb_id)
     except TVShow.DoesNotExist:
         try:
-            show = tmdb.sync_tv_show(tmdb_id)
+            show = _sync_tv_for_read(tmdb_id, user_id=request.user.id)
         except Exception:
             logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
             return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -458,7 +481,7 @@ def episode_credits(request, tmdb_id, season_number, episode_number):
 
     if episode is None:
         try:
-            tmdb.sync_tv_show(tmdb_id)
+            _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=[season_number])
             season = show.seasons.filter(season_number=season_number).first()
             episode = season.episodes.filter(episode_number=episode_number).first() if season else None
         except Exception:

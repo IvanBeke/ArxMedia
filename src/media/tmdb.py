@@ -236,17 +236,24 @@ class TMDBService:
             movie.genres.add(genre)
         return movie
 
-    def sync_tv_show(self, tmdb_id, user_id=None, sync_credits: bool = True, *, recompute_user_statuses: bool = True, use_cache: bool = True):
+    def sync_tv_show(self, tmdb_id, user_id=None, sync_credits: bool = True, *, recompute_user_statuses: bool = True, use_cache: bool = True, only_seasons: list[int] | None = None):
         """Fetch TV show from TMDB and save/update locally, including all seasons and episodes."""
-        data = self.get_tv_show(tmdb_id, use_cache=use_cache)
-        season_numbers = self._season_numbers(data)
-        data = self.get_tv_show_with_seasons(tmdb_id, season_numbers, use_cache=use_cache)
+        from .signals import suppress_episode_signals
+
+        if only_seasons:
+            season_numbers = [int(n) for n in only_seasons]
+            data = self.get_tv_show_with_seasons(tmdb_id, season_numbers, use_cache=use_cache)
+        else:
+            data = self.get_tv_show(tmdb_id, use_cache=use_cache)
+            season_numbers = self._season_numbers(data)
+            data = self.get_tv_show_with_seasons(tmdb_id, season_numbers, use_cache=use_cache)
         show = self._upsert_show(tmdb_id, data)
         tvmaze_show, _ = self._resolve_tvmaze(show, include_episodes=False)
         self._apply_tvmaze_metadata(show, tvmaze_show)
         tvmaze_context: dict[int, tuple[dict | None, list[dict]]] = {}
-        self._sync_show_genres(show, data)
-        self._sync_show_seasons(show, season_numbers, data, sync_credits, use_cache, tvmaze_context)
+        with suppress_episode_signals():
+            self._sync_show_genres(show, data)
+            self._sync_show_seasons(show, season_numbers, data, sync_credits, use_cache, tvmaze_context)
 
         if recompute_user_statuses:
             try:
@@ -319,16 +326,21 @@ class TMDBService:
 
     def sync_season(self, show, season_number, sync_episode_credits: bool = True, *, use_cache: bool = True, tvmaze_context=None):
         """Fetch a season from TMDB and save/update locally with all episodes."""
-        season = self._sync_season(
-            show,
-            season_number,
-            sync_episode_credits=sync_episode_credits,
-            use_cache=use_cache,
-            tvmaze_context=tvmaze_context,
-        )
-        from tracking.status_sync import rebuild_episode_chain
+        from .signals import episode_signals_suppressed, suppress_episode_signals
 
-        rebuild_episode_chain(show.tmdb_id)
+        nested = episode_signals_suppressed()
+        with suppress_episode_signals():
+            season = self._sync_season(
+                show,
+                season_number,
+                sync_episode_credits=sync_episode_credits,
+                use_cache=use_cache,
+                tvmaze_context=tvmaze_context,
+            )
+        if not nested:
+            from tracking.status_sync import rebuild_episode_chain
+
+            rebuild_episode_chain(show.tmdb_id)
         return season
 
     def _sync_season(self, show, season_number, *, sync_episode_credits=True, use_cache=True, tvmaze_context=None):
@@ -447,15 +459,31 @@ class TMDBService:
     def _season_tvmaze_context(self, show, season, context, tvmaze_show, tvmaze_episodes):
         context = context if context is not None else {season.season_number: (tvmaze_show, tvmaze_episodes or [])}
         if season.season_number not in context:
-            resolved = self._resolve_tvmaze_season(show, season)
-            if resolved is None and show.external_ids.get('tvmaze_id'):
-                resolved = tvmaze.lookup_show_by_id(show.external_ids['tvmaze_id'])
-            context[season.season_number] = (resolved, tvmaze.get_show_episodes(resolved['id']) if resolved else [])
+            parent_tvmaze_id = (show.external_ids or {}).get('tvmaze_id')
+            if not season.external_ids:
+                # No season-level IDs to match on: reuse the parent show (or
+                # skip) instead of firing one TVMaze search per season.
+                resolved = tvmaze.lookup_show_by_id(parent_tvmaze_id) if parent_tvmaze_id else None
+            else:
+                resolved = self._resolve_tvmaze_season(show, season)
+                if resolved is None and parent_tvmaze_id:
+                    resolved = tvmaze.lookup_show_by_id(parent_tvmaze_id)
+            context[season.season_number] = (resolved, self._cached_tvmaze_episodes(context, resolved))
         resolved, episodes = context[season.season_number]
         if resolved and resolved.get('id'):
             season.external_ids['tvmaze_id'] = int(resolved['id'])
             season.save(update_fields=['external_ids'])
         return resolved, episodes
+
+    @staticmethod
+    def _cached_tvmaze_episodes(context, resolved):
+        """Reuse an already-fetched episode list for the same TVMaze show."""
+        if not resolved or not resolved.get('id'):
+            return []
+        for existing_show, existing_episodes in context.values():
+            if isinstance(existing_show, dict) and existing_show.get('id') == resolved.get('id'):
+                return existing_episodes
+        return tvmaze.get_show_episodes(resolved['id']) if resolved else []
 
     def _sync_episode_credits_safely(self, show, season_number, episode_number, use_cache):
         try:
