@@ -2026,6 +2026,22 @@ class ListItemListCreateView(generics.ListCreateAPIView):
             raise PermissionDenied('You can only add items to your lists or lists where you collaborate.')
         from django.db.models import Max
 
+        media_type = serializer.validated_data.get('media_type')
+        tmdb_id = serializer.validated_data.get('tmdb_id')
+        try:
+            if media_type == MediaType.MOVIE:
+                from media.models import Movie
+
+                if not Movie.objects.filter(tmdb_id=tmdb_id).exists():
+                    tmdb.sync_movie(tmdb_id)
+            elif media_type == MediaType.TV:
+                from media.models import TVShow
+
+                if not TVShow.objects.filter(tmdb_id=tmdb_id).exists():
+                    tmdb.sync_tv_show(tmdb_id, sync_credits=False)
+        except Exception as exc:
+            logger.warning('Failed to sync %s metadata for list item tmdb_id=%s: %s', media_type, tmdb_id, exc)
+
         with transaction.atomic():
             max_order = ListItem.objects.filter(custom_list=custom_list).aggregate(m=Max('custom_order'))['m']
             next_order = (max_order + 1) if max_order is not None else 0

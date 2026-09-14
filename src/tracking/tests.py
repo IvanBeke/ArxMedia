@@ -2478,6 +2478,41 @@ class ListItemTests(BaseTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(ListItem.objects.count(), 1)
 
+    def test_add_movie_to_list_syncs_missing_metadata(self):
+        lst = CustomList.objects.create(user=self.user, name='Test List')
+
+        def _create_movie(tmdb_id):
+            return Movie.objects.create(tmdb_id=tmdb_id, title='Synced Movie')
+
+        with patch('tracking.views.tmdb.sync_movie', side_effect=_create_movie) as mock_sync:
+            response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': 124})
+        self.assertEqual(response.status_code, 201)
+        mock_sync.assert_called_once_with(124)
+        self.assertTrue(Movie.objects.filter(tmdb_id=124).exists())
+        self.assertEqual(response.data.get('title'), 'Synced Movie')
+
+    def test_add_movie_to_list_skips_sync_when_present(self):
+        lst = CustomList.objects.create(user=self.user, name='Test List')
+        Movie.objects.create(tmdb_id=125, title='Existing Movie')
+        with patch('tracking.views.tmdb.sync_movie') as mock_sync:
+            response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': 125})
+        self.assertEqual(response.status_code, 201)
+        mock_sync.assert_not_called()
+
+    def test_add_tv_to_list_syncs_missing_metadata_without_credits(self):
+        lst = CustomList.objects.create(user=self.user, name='Test List')
+        with patch('tracking.views.tmdb.sync_tv_show') as mock_sync:
+            response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'tv', 'tmdb_id': 457})
+        self.assertEqual(response.status_code, 201)
+        mock_sync.assert_called_once_with(457, sync_credits=False)
+
+    def test_add_to_list_creates_item_when_sync_fails(self):
+        lst = CustomList.objects.create(user=self.user, name='Test List')
+        with patch('tracking.views.tmdb.sync_movie', side_effect=Exception('boom')):
+            response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': 126})
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(ListItem.objects.filter(custom_list=lst, media_type='movie', tmdb_id=126).exists())
+
     def test_remove_item_from_list(self):
         lst = CustomList.objects.create(user=self.user, name='Test List')
         item = ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=123)
