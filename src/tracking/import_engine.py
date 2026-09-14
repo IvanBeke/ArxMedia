@@ -329,14 +329,39 @@ def _write_movie_watched(user, tmdb_id: int, event_at):
     )
 
 
-def reconcile_user_media_status(user, parsed: ParsedImport):
+def touched_status_keys(parsed: ParsedImport) -> set[tuple[str, int]]:
+    """Every (media_type, tmdb_id) whose UserMediaStatus row the import may
+    write: items with watch history (derived statuses) plus explicit winners."""
+    winners = _winning_statuses(parsed)
+    movie_ids = {r.tmdb_id for r in parsed.watch_entries() if r.media_type == WatchEntryMediaType.MOVIE}
+    movie_ids |= {tid for (media, tid) in winners if media == MediaType.MOVIE}
+    tv_ids = {r.tmdb_id for r in parsed.watch_entries() if r.media_type == WatchEntryMediaType.EPISODE}
+    tv_ids |= {tid for (media, tid) in winners if media == MediaType.TV}
+    return {(MediaType.MOVIE, tid) for tid in movie_ids} | {(MediaType.TV, tid) for tid in tv_ids}
+
+
+def reconcile_user_media_status(
+    user,
+    parsed: ParsedImport,
+    import_mode: str | None = None,
+    preexisting_status_keys: set[tuple[str, int]] | None = None,
+):
     """Impose the canonical post-import state.
 
     TV rules: watching/watched are always derived from materialized episode
     entries (refresh_show_status); only plan_to_watch and dropped survive as
     explicit imported statuses — dropped overlays the derived status while
     keeping its refreshed episode counts. Shows without history take their
-    explicit status as-is. Movies with history become watched."""
+    explicit status as-is. Movies with history become watched.
+
+    In NEW_ITEMS mode explicit imported statuses never overwrite a row that
+    predates the import (matching the _upsert_* guards); derived state (movie
+    watched from materialized history, TV refresh) still applies since it
+    follows entries that themselves respected the mode. ``preexisting_status_keys``
+    snapshots rows present before the import ran, so rows the import itself
+    just created are still finalized (e.g. the dropped overlay)."""
+    new_only = import_mode == DataImportMode.NEW_ITEMS
+    preexisting = None if preexisting_status_keys is None else set(preexisting_status_keys)
     winners = _winning_statuses(parsed)
     movie_ids = {r.tmdb_id for r in parsed.watch_entries() if r.media_type == WatchEntryMediaType.MOVIE}
     movie_ids |= {tid for (media, tid) in winners if media == MediaType.MOVIE}
@@ -352,7 +377,7 @@ def reconcile_user_media_status(user, parsed: ParsedImport):
     for tmdb_id in movie_ids - movie_history:
         winner = winners.get((MediaType.MOVIE, tmdb_id))
         if winner is not None:
-            _apply_status_winner(user, winner)
+            _apply_status_winner(user, winner, skip_existing=new_only)
 
     for tmdb_id in tv_history:
         refresh_show_status(user.id, tmdb_id)
@@ -360,6 +385,15 @@ def reconcile_user_media_status(user, parsed: ParsedImport):
         if winner is not None and winner.status == TvShowStatus.DROPPED:
             # Explicit dropped wins over the derived status; episode counts
             # computed by the refresh stay intact.
+            if new_only and (
+                (MediaType.TV, tmdb_id) in preexisting
+                if preexisting is not None
+                else UserMediaStatus.objects.for_user(user)
+                .for_media(MediaType.TV)
+                .filter(tmdb_id=tmdb_id)
+                .exists()
+            ):
+                continue
             dropped_at = winner.status_at or timezone.now()
             UserMediaStatus.objects.update_or_create(
                 user=user,
@@ -375,7 +409,7 @@ def reconcile_user_media_status(user, parsed: ParsedImport):
     for tmdb_id in tv_ids - tv_history:
         winner = winners.get((MediaType.TV, tmdb_id))
         if winner is not None:
-            _apply_status_winner(user, winner)
+            _apply_status_winner(user, winner, skip_existing=new_only)
 
     # Bulk writes skip signals, so cached stats/progress must be dropped here.
     tracking_cache.invalidate_user_stats(user.id)
@@ -383,7 +417,7 @@ def reconcile_user_media_status(user, parsed: ParsedImport):
         tracking_cache.invalidate_show_progress(user.id, tmdb_id)
 
 
-def _apply_status_winner(user, record: StatusRecord):
+def _apply_status_winner(user, record: StatusRecord, skip_existing: bool = False):
     """Single-row absolute write used only by reconciliation (items without
     watch history)."""
     effective_at = record.status_at or timezone.now()
@@ -395,6 +429,8 @@ def _apply_status_winner(user, record: StatusRecord):
         payload['last_watched_at'] = effective_at
 
     existing = UserMediaStatus.objects.filter(user=user, media_type=record.media_type, tmdb_id=record.tmdb_id).first()
+    if skip_existing and existing is not None:
+        return
     if existing is None:
         if record.media_type == MediaType.TV:
             payload.setdefault('started_at', effective_at)
@@ -533,10 +569,10 @@ def apply_imported_lists(user, parsed: ParsedImport, import_mode: str) -> dict[s
 def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_state: dict | None = None, list_counts: dict | None = None) -> dict:
     state = metadata_state or {}
     report = dict(parsed.report)
-    records_seen = report.get('media_records_seen', report.get('records_seen', 0))
-    metadata_only_shows = report.get('metadata_only_shows', 0)
-    records_imported = applied_count + metadata_only_shows
-    valid_records = len(parsed.records) + metadata_only_shows
+    # Skipped = rows rejected at parse time; mode-skips/no-change land in
+    # records_unchanged below. metadata_only_shows (Trakt watched-shows.json)
+    # emit no tracking rows, so they must not inflate records_imported.
+    records_imported = applied_count
     list_counts = list_counts or {
         'lists_created': 0,
         'lists_updated': 0,
@@ -547,7 +583,7 @@ def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_s
     report.update(
         {
             'records_imported': records_imported,
-            'records_skipped': max(0, records_seen - valid_records),
+            'records_skipped': max(0, parsed.invalid_count),
             'records_unchanged': max(0, len(parsed.records) - applied_count),
             'metadata_hits': state.get('metadata_hits', 0),
             'metadata_fetches': state.get('metadata_fetches', 0),

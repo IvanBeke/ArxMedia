@@ -3646,8 +3646,65 @@ class DataImportExportTests(BaseTestCase):
         self.assertGreaterEqual(job.metadata.get('unsupported_files', 0), 2)
         self.assertGreaterEqual(job.metadata.get('unsupported_records', 0), 1)
         self.assertEqual(job.metadata.get('files_failed'), 0)
-        self.assertGreaterEqual(job.metadata.get('records_imported', 0), 2)
+        # One watch entry applied; the metadata-only show emits no tracking
+        # rows and must not inflate the imported count.
+        self.assertEqual(job.metadata.get('records_imported', 0), 1)
+        self.assertEqual(job.metadata.get('records_skipped', 0), 1)
+        self.assertEqual(job.metadata.get('records_unchanged', 0), 0)
         self.assertTrue(mock_sync_tv_show.called)
+
+    def test_new_items_reimport_reports_unchanged_not_imported(self):
+        """Regression: re-importing the same file in new_items mode must not
+        inflate records_imported; existing rows land in records_unchanged."""
+        csv_content = self._build_yamtrack_csv([
+            {'source': 'tmdb', 'media_type': 'movie', 'media_id': 610, 'status': 'Completed', 'score': '8.4'},
+        ])
+
+        def _run_once():
+            upload = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+            job = DataTransferJob.objects.create(
+                user=self.user, job_type='import', data_format='csv', status='processing',
+                input_file=upload, source='yamtrack', import_mode='new_items', total_items=1,
+            )
+            self._run_import_pipeline(job.id)
+            job.refresh_from_db()
+            return job.metadata.get('report', {})
+
+        first = _run_once()
+        # One row fans out to a watch entry plus a rating.
+        self.assertEqual(first.get('records_imported'), 2)
+        self.assertEqual(first.get('records_skipped'), 0)
+        self.assertEqual(first.get('records_unchanged'), 0)
+
+        second = _run_once()
+        self.assertEqual(second.get('records_imported'), 0)
+        self.assertEqual(second.get('records_skipped'), 0)
+        self.assertEqual(second.get('records_unchanged'), 2)
+
+    def test_new_items_reimport_does_not_overwrite_existing_status(self):
+        """Regression: explicit statuses in new_items mode must not overwrite
+        an existing row via reconciliation."""
+        UserMediaStatus.objects.create(
+            user=self.user, media_type='movie', tmdb_id=777, status='watched',
+        )
+        csv_content = self._build_yamtrack_csv([
+            {'source': 'tmdb', 'media_type': 'movie', 'media_id': 777, 'status': 'Planning'},
+        ])
+        upload = SimpleUploadedFile('yamtrack.csv', csv_content, content_type='text/csv')
+        job = DataTransferJob.objects.create(
+            user=self.user, job_type='import', data_format='csv', status='processing',
+            input_file=upload, source='yamtrack', import_mode='new_items', total_items=1,
+        )
+        self._run_import_pipeline(job.id)
+
+        self.assertEqual(
+            UserMediaStatus.objects.get(user=self.user, media_type='movie', tmdb_id=777).status,
+            'watched',
+        )
+        job.refresh_from_db()
+        report = job.metadata.get('report', {})
+        self.assertEqual(report.get('records_imported'), 0)
+        self.assertEqual(report.get('records_unchanged'), 1)
 
     @patch('tracking.tasks.tmdb.sync_tv_show')
     def test_zip_import_syncs_show_metadata_for_episode_history(self, mock_sync_tv_show):

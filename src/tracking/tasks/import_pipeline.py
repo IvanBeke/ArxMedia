@@ -16,7 +16,7 @@ import logging
 
 from celery import shared_task
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.db.models.functions import Least
 
 from ..choices import DataImportMode
@@ -27,9 +27,10 @@ from ..import_engine import (
     delete_missing_rows,
     group_by_item,
     reconcile_user_media_status,
+    touched_status_keys,
 )
 from ..import_state_machine import fail, finish_apply, prepare_apply
-from ..models import DataTransferJob
+from ..models import DataTransferJob, UserMediaStatus
 from .import_commands import PrepareImportCommand
 from .provider_registry import get_import_parser
 
@@ -67,11 +68,27 @@ def run_import_job(job_id: int) -> dict[str, str]:
         # Same number the confirmation recap showed: raw units from the file.
         total_items = int(parsed.report.get('total_items') or 0)
 
+        # Snapshot status rows predating the import so NEW_ITEMS reconciliation
+        # can tell "already tracked, leave alone" from "just created, finalize".
+        touched = touched_status_keys(parsed)
+        condition = Q()
+        for media_type, tmdb_id in sorted(touched):
+            condition |= Q(media_type=media_type, tmdb_id=tmdb_id)
+        preexisting = (
+            set(
+                UserMediaStatus.objects.for_user(job.user)
+                .filter(condition)
+                .values_list('media_type', 'tmdb_id')
+            )
+            if touched
+            else set()
+        )
         metadata = dict(job.metadata or {})
         metadata['pipeline'] = {
             'stage': 'syncing',
             'applied': 0,
             'metadata_counters': {},
+            'preexisting_statuses': sorted([list(key) for key in preexisting]),
         }
         job.total_items = total_items
         job.processed_items = 0
@@ -182,7 +199,8 @@ def finish_import(job_id: int):
             deleted = delete_missing_rows(job.user, parsed)
         applied_lists = apply_imported_lists(job.user, parsed, import_mode)
 
-    reconcile_user_media_status(job.user, parsed)
+    preexisting = {tuple(key) for key in pipeline.get('preexisting_statuses') or []}
+    reconcile_user_media_status(job.user, parsed, import_mode, preexisting)
 
     report = build_final_report(
         job,
