@@ -132,6 +132,21 @@ class TMDBService:
     def get_movie_credits(self, tmdb_id):
         return self._get(f'/movie/{tmdb_id}/credits')
 
+    def get_movie_external_ids(self, tmdb_id):
+        return self._get(f'/movie/{tmdb_id}/external_ids')
+
+    def get_movie_recommendations(self, tmdb_id, page=1):
+        return self._get(f'/movie/{tmdb_id}/recommendations', {'page': page})
+
+    def get_tv_external_ids(self, tmdb_id):
+        return self._get(f'/tv/{tmdb_id}/external_ids')
+
+    def get_tv_recommendations(self, tmdb_id, page=1):
+        return self._get(f'/tv/{tmdb_id}/recommendations', {'page': page})
+
+    def get_collection(self, collection_id):
+        return self._get(f'/collection/{collection_id}')
+
     def get_tv_show(self, tmdb_id, *, use_cache=True):
         return self._get(f'/tv/{tmdb_id}', use_cache=use_cache)
 
@@ -158,6 +173,9 @@ class TMDBService:
 
     def get_tv_aggregate_credits(self, tmdb_id):
         return self._get(f'/tv/{tmdb_id}/aggregate_credits')
+
+    def get_season_aggregate_credits(self, show_id, season_number):
+        return self._get(f'/tv/{show_id}/season/{season_number}/aggregate_credits')
 
     def get_movie_watch_providers(self, tmdb_id):
         return self._get(f'/movie/{tmdb_id}/watch/providers')

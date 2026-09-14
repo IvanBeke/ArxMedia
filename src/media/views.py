@@ -326,6 +326,35 @@ def movie_detail(request, tmdb_id):
     except Exception as exc:
         logger.warning('Failed to fetch movie providers for %s: %s', tmdb_id, exc)
         data['watch_providers'] = _providers_for_region({}, region)
+    try:
+        raw = tmdb.get_movie(tmdb_id)
+        collection = raw.get('belongs_to_collection')
+        if isinstance(collection, dict) and collection.get('id'):
+            data['collection'] = {
+                'id': collection.get('id'),
+                'name': collection.get('name', ''),
+                'poster_path': collection.get('poster_path'),
+                'backdrop_path': collection.get('backdrop_path'),
+            }
+        else:
+            data['collection'] = None
+        external_ids = {
+            key: raw.get('external_ids', {}).get(key) if isinstance(raw.get('external_ids'), dict) else None
+            for key in ('imdb_id', 'facebook_id', 'instagram_id', 'twitter_id')
+        }
+        try:
+            ids_payload = tmdb.get_movie_external_ids(tmdb_id)
+            if isinstance(ids_payload, dict):
+                for key in ('imdb_id', 'facebook_id', 'instagram_id', 'twitter_id', 'wikidata_id', 'youtube_id'):
+                    if ids_payload.get(key):
+                        external_ids[key] = ids_payload.get(key)
+        except Exception as exc:
+            logger.warning('Failed to fetch movie external ids for %s: %s', tmdb_id, exc)
+        data['external_ids'] = {k: v for k, v in external_ids.items() if v}
+    except Exception as exc:
+        logger.warning('Failed to fetch movie extras for %s: %s', tmdb_id, exc)
+        data.setdefault('collection', None)
+        data.setdefault('external_ids', {})
 
     if request.user.is_authenticated:
         status_map = annotate_media_user_status(
@@ -450,6 +479,24 @@ def season_detail(request, tmdb_id, season_number):
 
     season_data = SeasonSerializer(season).data
 
+    try:
+        live = tmdb.get_season(tmdb_id, season_number)
+        if isinstance(live, dict):
+            credits = live.get('credits') or {}
+            season_data['credits'] = {
+                'cast': credits.get('cast') or [],
+                'crew': credits.get('crew') or [],
+                'guest_stars': [],
+            }
+            live_external = live.get('external_ids') or {}
+            if live_external:
+                merged_ids = dict(season_data.get('external_ids') or {})
+                merged_ids.update({k: v for k, v in live_external.items() if v})
+                season_data['external_ids'] = merged_ids
+    except Exception as exc:
+        logger.warning('Failed to fetch season credits for show %s season %s: %s', tmdb_id, season_number, exc)
+        season_data.setdefault('credits', {'cast': [], 'crew': [], 'guest_stars': []})
+
     season_status = annotate_season_user_status(
         request.user,
         [{'tmdb_id': tmdb_id, 'season_number': season_number}],
@@ -458,6 +505,23 @@ def season_detail(request, tmdb_id, season_number):
         season_data['user_status'] = season_status
 
     return Response(season_data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def season_credits(request, tmdb_id, season_number):
+    """Get season aggregate credits (cast with episode counts, crew) from TMDB."""
+    try:
+        data = tmdb.get_season_aggregate_credits(tmdb_id, season_number)
+    except Exception:
+        logger.warning('Failed to fetch season aggregate credits for show %s season %s from TMDB', tmdb_id, season_number, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response({
+        'cast': data.get('cast', []) if isinstance(data, dict) else [],
+        'crew': data.get('crew', []) if isinstance(data, dict) else [],
+        'guest_stars': [],
+    })
 
 
 @api_view(['GET'])
@@ -535,3 +599,95 @@ def tv_credits(request, tmdb_id):
         'crew': crew,
         'guest_stars': guest_stars
     })
+
+
+def _annotate_recommendation_results(user, results, media_type):
+    for item in results:
+        item['media_type'] = media_type
+    _normalize_media_release_date(results)
+    if user and user.is_authenticated:
+        status_map = annotate_media_user_status(
+            user,
+            [{'media_type': media_type, 'tmdb_id': item.get('id')} for item in results if item.get('id')],
+        )
+        for item in results:
+            key = (media_type, item.get('id'))
+            if key in status_map:
+                item['user_status'] = status_map[key]
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def movie_external_ids(request, tmdb_id):
+    try:
+        data = tmdb.get_movie_external_ids(tmdb_id)
+    except Exception:
+        logger.warning('Failed to fetch movie external ids for %s from TMDB', tmdb_id, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(data if isinstance(data, dict) else {})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def tv_external_ids(request, tmdb_id):
+    try:
+        show = TVShow.objects.filter(tmdb_id=tmdb_id).first()
+        stored = dict(show.external_ids) if show and show.external_ids else {}
+    except Exception:
+        stored = {}
+    try:
+        live = tmdb.get_tv_external_ids(tmdb_id)
+        if isinstance(live, dict):
+            stored.update({k: v for k, v in live.items() if v})
+    except Exception as exc:
+        logger.warning('Failed to fetch TV external ids for %s: %s', tmdb_id, exc)
+        if not stored:
+            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(stored)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def movie_recommendations(request, tmdb_id):
+    page, error = _parse_int_query(request, 'page', 1)
+    if error:
+        return error
+    try:
+        data = tmdb.get_movie_recommendations(tmdb_id, page)
+    except Exception:
+        logger.warning('Failed to fetch movie recommendations for %s from TMDB', tmdb_id, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    results = data.get('results', []) if isinstance(data, dict) else []
+    _annotate_recommendation_results(request.user, results, MediaType.MOVIE)
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def tv_recommendations(request, tmdb_id):
+    page, error = _parse_int_query(request, 'page', 1)
+    if error:
+        return error
+    try:
+        data = tmdb.get_tv_recommendations(tmdb_id, page)
+    except Exception:
+        logger.warning('Failed to fetch TV recommendations for %s from TMDB', tmdb_id, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    results = data.get('results', []) if isinstance(data, dict) else []
+    _annotate_recommendation_results(request.user, results, MediaType.TV)
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def collection_detail(request, collection_id):
+    try:
+        data = tmdb.get_collection(collection_id)
+    except Exception:
+        logger.warning('Failed to fetch collection %s from TMDB', collection_id, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if not isinstance(data, dict) or not data.get('id'):
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    parts = data.get('parts', []) or []
+    _annotate_recommendation_results(request.user, parts, MediaType.MOVIE)
+    return Response(data)

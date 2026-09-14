@@ -19,152 +19,113 @@
       @confirm="confirmRemoveWatchedEpisodes"
     />
 
-    <div class="relative h-72 md:h-[28rem]">
-      <img v-if="show?.backdrop_url" :src="show.backdrop_url" class="w-full h-full object-cover" />
-      <div class="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
-      <div class="absolute inset-0 bg-gradient-to-r from-surface/80 to-transparent"></div>
-    </div>
+    <EpisodeUnwatchDialog ref="unwatchEpisodeDialog" @unwatched="onEpisodeUnwatched" />
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-60 md:-mt-96 relative z-10 pb-20">
-      <div class="flex flex-col md:flex-row gap-8">
-        <div class="flex-shrink-0">
-          <div class="w-36 md:w-48 rounded-md overflow-hidden shadow-2xl border border-surface-200">
-            <img v-if="show?.poster_url" :src="show.poster_url" :alt="show?.name" class="w-full" />
-            <div v-else class="aspect-[2/3] bg-surface-200 flex flex-col items-center justify-center text-gray-500 p-4">
-              <svg class="w-12 h-12 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.069A1 1 0 0121 8.876V15.5a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-              </svg>
-              <span class="text-xs text-center">{{ show?.name }}</span>
-            </div>
-          </div>
+    <DetailHero
+      :backdrop-url="show?.backdrop_url"
+      :backdrop-alt="show?.name"
+      :poster-url="show?.poster_url"
+      :poster-alt="show?.name"
+      :loading="loading"
+    >
+      <template #eyebrow>
+        <div v-if="show" class="flex flex-wrap gap-2 mb-3">
+          <span v-for="g in show.genres" :key="g.id" class="badge bg-surface-200 text-secondary text-xs">{{ g.name }}</span>
         </div>
-
-        <div class="flex-1 pt-2">
-          <div v-if="loading" class="space-y-3">
-            <div class="h-10 w-3/4 skeleton rounded-md"></div>
-            <div class="h-4 w-1/2 skeleton rounded-md"></div>
-            <div class="h-20 skeleton rounded-md"></div>
+      </template>
+      <template #title>
+        <h1 v-if="show" class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ show.name }}</h1>
+      </template>
+      <template #meta>
+        <template v-if="show">
+          <p class="text-muted text-sm mb-3">
+            {{ show.first_air_date ? (temporalYear(show.first_air_date) || '') : '' }}
+            · {{ show.number_of_seasons }} Season{{ show.number_of_seasons !== 1 ? 's' : '' }}
+            · {{ show.number_of_episodes }} Episode{{ show.number_of_episodes !== 1 ? 's' : '' }}
+            <span v-if="show.episode_runtime"> · {{ show.episode_runtime }} min/ep</span>
+            <span v-if="show.status"> · {{ show.status }}</span>
+          </p>
+          <div class="flex items-center gap-4 mb-1 text-sm">
+            <RatingBadge :value="show.vote_average ?? 0" :votes="show.vote_count" out-of-ten />
           </div>
-
-          <template v-else-if="show">
-            <div class="flex flex-wrap gap-2 mb-3">
-              <span v-for="g in show.genres" :key="g.id" class="badge bg-surface-200 text-secondary text-xs">{{ g.name }}</span>
-            </div>
-
-            <h1 class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ show.name }}</h1>
-            <p class="text-muted text-sm mb-4">
-              {{ show.first_air_date ? (temporalYear(show.first_air_date) || '') : '' }}
-              · {{ show.number_of_seasons }} Season{{ show.number_of_seasons !== 1 ? 's' : '' }}
-              · {{ show.number_of_episodes }} Episode{{ show.number_of_episodes !== 1 ? 's' : '' }}
-              <span v-if="show.episode_runtime"> · {{ show.episode_runtime }} min/ep</span>
-              <span v-if="show.status"> · {{ show.status }}</span>
-            </p>
-
-            <div class="flex items-center gap-4 mb-4 text-sm">
-              <RatingBadge :value="show.vote_average ?? 0" :votes="show.vote_count" out-of-ten />
-            </div>
-
+          <p v-if="show.networks" class="text-muted text-sm mt-2">{{ displayNetworks }}</p>
+        </template>
+      </template>
+      <template #description>
+        <p v-if="show" class="text-secondary leading-relaxed mt-4 mb-4 max-w-2xl">{{ show.overview }}</p>
+      </template>
+      <template #links>
+        <ExternalLinks
+          v-if="show"
+          :tmdb-url="externalLinks.tmdbUrl"
+          :tvmaze-url="externalLinks.tvmazeUrl"
+          :imdb-url="externalLinks.imdbUrl"
+          class="mb-4"
+        />
+      </template>
+      <template #actions>
+        <MediaActionsBar v-if="show && auth.isAuthenticated">
+          <WatchSplitButton
+            :active="showStatus === WATCH_ENTRY_STATUS.WATCHING || showStatus === WATCH_ENTRY_STATUS.WATCHED"
+            :variant="showStatus === WATCH_ENTRY_STATUS.DROPPED ? 'danger' : 'default'"
+            :label="watchButtonLabel"
+            :release-date="show?.first_air_date ?? ''"
+            :loading="showMarking"
+            @trigger="handleWatchingAction"
+            @select="handleShowWatchOption"
+          >
+            <template #menuFooter>
+              <div v-if="showStatus === WATCH_ENTRY_STATUS.WATCHING || showStatus === WATCH_ENTRY_STATUS.WATCHED">
+                <button
+                  type="button"
+                  @click="handleRemoveWatchedEpisodes"
+                  class="block w-full px-3 py-2 text-left text-sm text-muted hover:bg-surface-200 hover:text-primary transition-colors rounded"
+                >
+                  Remove watched episodes
+                </button>
+                <button
+                  type="button"
+                  @click="handleDropShow"
+                  class="block w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-surface-200 hover:text-red-300 transition-colors rounded"
+                >
+                  Drop show
+                </button>
+              </div>
+              <div v-else>
+                <button
+                  type="button"
+                  @click="handleWatchingAction"
+                  class="block w-full px-3 py-2 text-left text-sm text-muted hover:bg-surface-200 hover:text-primary transition-colors rounded"
+                >
+                  Set as watching
+                </button>
+              </div>
+            </template>
+          </WatchSplitButton>
+          <ActionGhostButton v-if="showStatus !== WATCH_ENTRY_STATUS.WATCHING && !hasWatchedEpisodes" :active="showStatus === 'watchlist'" @click="handleWatchlistAction">
+            <template #icon>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+              </svg>
+            </template>
+            {{ showStatus === 'watchlist' ? 'In Watchlist' : 'Watchlist' }}
+          </ActionGhostButton>
+          <AddToListPopover
+            :media-type="MEDIA_TYPE.TV"
+            :tmdb-id="tmdbId"
+            @added="() => showSuccess('Added to list')"
+          />
+          <template #rating>
+            <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
+            <p v-else class="text-xs text-muted">{{ t('rating_show_requires_watching') }}</p>
+          </template>
+          <template #messages>
             <div v-if="metadataSuccessMsg" class="mb-3 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
               {{ metadataSuccessMsg }}
             </div>
             <div v-if="metadataErrorMsg" class="mb-3 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm inline-block">
               {{ metadataErrorMsg }}
             </div>
-
-            <div v-if="auth.isAuthenticated" class="mb-3 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                @click="refreshMetadata"
-                :disabled="refreshingMetadata"
-                class="btn-ghost text-xs border border-surface-200 bg-surface-100/70 hover:bg-surface-100"
-              >
-                {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB and TVMaze' }}
-              </button>
-              <span class="text-xs text-muted">
-                Last metadata update: {{ metadataUpdatedAtLabel }}
-              </span>
-            </div>
-
-            <p v-if="show.networks" class="text-muted text-sm mb-3">{{ show.networks }}</p>
-            <p class="text-secondary leading-relaxed mb-6 max-w-2xl">{{ show.overview }}</p>
-
-            <div v-if="show.watch_providers" class="mb-6">
-              <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">Watch Now (Powered by JustWatch)</p>
-              <div class="flex flex-wrap gap-2">
-                <div
-                  v-for="p in (show.watch_providers.flatrate || []).slice(0, 6)"
-                  :key="`provider-${p.provider_id}`"
-                  class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary"
-                >
-                  <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
-                  {{ p.provider_name }}
-                </div>
-                <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
-              </div>
-            </div>
-
-            <div v-if="auth.isAuthenticated" class="flex flex-wrap gap-2 mb-4">
-              <div class="relative" ref="statusMenuRef">
-                <button @click="toggleStatusMenu" class="btn-primary flex items-center gap-2 text-sm">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  </svg>
-                  {{ watchButtonLabel }}
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                  </svg>
-                </button>
-
-                <div
-                  v-if="statusMenuOpen"
-                  class="absolute left-0 mt-1 min-w-[210px] bg-surface border border-surface-200 rounded-md shadow-lg z-50"
-                >
-                  <button
-                    v-if="showStatus === WATCH_ENTRY_STATUS.WATCHING || showStatus === WATCH_ENTRY_STATUS.WATCHED"
-                    type="button"
-                    @click="handleRemoveWatchedEpisodes"
-                    class="block w-full px-3 py-2 text-left text-sm text-muted hover:bg-surface-200 hover:text-primary transition-colors"
-                  >
-                    Remove watched episodes
-                  </button>
-                  <button
-                    v-if="showStatus === WATCH_ENTRY_STATUS.WATCHING || showStatus === WATCH_ENTRY_STATUS.WATCHED"
-                    type="button"
-                    @click="handleDropShow"
-                    class="block w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-surface-200 hover:text-red-300 transition-colors"
-                  >
-                    Drop show
-                  </button>
-                  <button
-                    v-if="showStatus !== WATCH_ENTRY_STATUS.WATCHING && showStatus !== WATCH_ENTRY_STATUS.WATCHED"
-                    type="button"
-                    @click="handleWatchingAction"
-                    class="block w-full px-3 py-2 text-left text-sm text-muted hover:bg-surface-200 hover:text-primary transition-colors"
-                  >
-                    Set as watching
-                  </button>
-                </div>
-              </div>
-              <button v-if="showStatus !== WATCH_ENTRY_STATUS.WATCHING && !hasWatchedEpisodes" @click="handleWatchlistAction" class="btn-ghost flex items-center gap-2 text-sm">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
-                </svg>
-                {{ showStatus === 'watchlist' ? 'In Watchlist' : 'Watchlist' }}
-              </button>
-              <AddToListPopover
-                :media-type="MEDIA_TYPE.TV"
-                :tmdb-id="tmdbId"
-                @added="() => showSuccess('Added to list')"
-              />
-            </div>
-
-            <div v-if="auth.isAuthenticated" class="mb-4">
-              <p class="text-xs text-gray-500 mb-1.5 uppercase tracking-wider">Your Rating</p>
-              <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
-              <p v-else class="text-xs text-muted">{{ t('rating_show_requires_watching') }}</p>
-            </div>
-
             <div v-if="successMsg" class="mb-4 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
               {{ successMsg }}
             </div>
@@ -172,21 +133,73 @@
               {{ errorMsg }}
             </div>
           </template>
-        </div>
-      </div>
+        </MediaActionsBar>
+      </template>
+    </DetailHero>
 
-      <div class="mt-10 border-b border-surface-200">
-        <nav class="flex gap-6">
-          <button @click="activeTab = 'seasons'" class="pb-3 text-sm font-medium" :class="activeTab === 'seasons' ? 'tab-active' : 'tab-inactive'">
-            Seasons
-          </button>
-          <button @click="activeTab = 'overview'" class="pb-3 text-sm font-medium" :class="activeTab === 'overview' ? 'tab-active' : 'tab-inactive'">
-            Overview
-          </button>
-        </nav>
-      </div>
+    <div v-if="!loading && show" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+      <MediaTabs v-model="activeTab" :tabs="visibleTabs" aria-label="Show sections" />
 
-      <div class="mt-6">
+      <div class="mt-6" role="tabpanel" :id="`tabpanel-${activeTab}`" :aria-labelledby="`tab-${activeTab}`">
+        <template v-if="activeTab === 'overview'">
+          <div class="grid md:grid-cols-3 gap-8">
+            <div class="md:col-span-2 space-y-6">
+              <div>
+                <h3 class="text-primary font-medium mb-3">Synopsis</h3>
+                <p class="text-secondary leading-relaxed">{{ show?.overview }}</p>
+              </div>
+              <div v-if="show.watch_providers">
+                <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">Watch Now (Powered by JustWatch)</p>
+                <div class="flex flex-wrap gap-2">
+                  <div
+                    v-for="p in (show.watch_providers.flatrate || []).slice(0, 6)"
+                    :key="`provider-${p.provider_id}`"
+                    class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary"
+                  >
+                    <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
+                    {{ p.provider_name }}
+                  </div>
+                  <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
+                </div>
+              </div>
+              <div>
+                <h3 class="text-primary font-medium mb-3">Top cast</h3>
+                <CastGrid :people="(aggregateCredits?.cast || []).slice(0, 8)" />
+                <button v-if="(aggregateCredits?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
+                  View all cast →
+                </button>
+              </div>
+            </div>
+            <div class="space-y-4">
+              <div class="card p-4">
+                <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Details</p>
+                <dl class="text-sm space-y-1.5">
+                  <div class="flex justify-between gap-2"><dt class="text-muted">Status</dt><dd class="text-secondary">{{ show.status || '—' }}</dd></div>
+                  <div class="flex justify-between gap-2"><dt class="text-muted">Network</dt><dd class="text-secondary truncate max-w-[60%]">{{ displayNetworks || '—' }}</dd></div>
+                  <div class="flex justify-between gap-2"><dt class="text-muted">First aired</dt><dd class="text-secondary">{{ show.first_air_date || '—' }}</dd></div>
+                  <div class="flex justify-between gap-2"><dt class="text-muted">Last aired</dt><dd class="text-secondary">{{ show.last_air_date || '—' }}</dd></div>
+                  <div class="flex justify-between gap-2"><dt class="text-muted">Runtime</dt><dd class="text-secondary">{{ show.episode_runtime ? `${show.episode_runtime} min/ep` : '—' }}</dd></div>
+                  <div class="flex justify-between gap-2"><dt class="text-muted">Language</dt><dd class="text-secondary">{{ show.language || '—' }}</dd></div>
+                </dl>
+              </div>
+              <div class="card p-4 space-y-2">
+                <button
+                  v-if="auth.isAuthenticated"
+                  type="button"
+                  @click="refreshMetadata"
+                  :disabled="refreshingMetadata"
+                  class="btn-ghost text-xs border border-surface-200 bg-surface-100/70 hover:bg-surface-100 w-full"
+                >
+                  {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB and TVMaze' }}
+                </button>
+                <p class="text-xs text-muted">
+                  Last metadata update: {{ metadataUpdatedAtLabel }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <template v-if="activeTab === 'seasons'">
           <div v-if="loadingSeasons" class="space-y-4">
             <div v-for="n in 3" :key="n" class="h-20 skeleton rounded-lg"></div>
@@ -211,7 +224,7 @@
                       <button @click.stop="toggleSeasonWatched(season.season_number)" class="text-xs px-2.5 py-1 rounded-md font-medium transition-colors" :class="getSeasonProgress(season.season_number) === 100 ? 'bg-brand-500 text-white hover:bg-brand-600' : 'bg-surface-200 text-muted hover:text-primary hover:bg-surface-300'">
                         {{ getSeasonProgress(season.season_number) === 100 ? 'Watched' : 'Mark watched' }}
                       </button>
-                      <button @click="toggleSeason(season.season_number)" class="p-1 hover:bg-surface-200 rounded transition-colors">
+                      <button @click="toggleSeason(season.season_number)" class="p-1 hover:bg-surface-200 rounded transition-colors" :aria-label="`Expand ${season.name}`">
                         <svg class="w-5 h-5 text-muted transition-transform" :class="expandedSeason === season.season_number ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                         </svg>
@@ -219,6 +232,7 @@
                     </div>
                   </div>
                   <p class="text-muted text-sm mt-0.5">{{ season.episode_count }} episodes{{ season.air_date ? ` · ${temporalYear(season.air_date) || ''}` : '' }}</p>
+                  <p v-if="season.overview" class="text-muted text-xs mt-1 line-clamp-3">{{ season.overview }}</p>
                   <div class="mt-2">
                     <ProgressBar :pct="getSeasonProgress(season.season_number)" />
                     <p class="text-xs text-muted mt-1">{{ formatSeasonProgressFraction(season.season_number) }} watched</p>
@@ -249,13 +263,21 @@
           </div>
         </template>
 
-        <template v-if="activeTab === 'overview'">
-          <div class="grid md:grid-cols-3 gap-8">
-            <div class="md:col-span-2">
-              <h3 class="text-primary font-medium mb-3">Synopsis</h3>
-              <p class="text-secondary leading-relaxed">{{ show?.overview }}</p>
-            </div>
+        <template v-if="activeTab === 'cast'">
+          <h3 class="text-primary font-medium mb-3">Cast{{ aggregateCredits?.cast?.length ? ` (${aggregateCredits.cast.length})` : '' }}</h3>
+          <div v-if="loadingCredits" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            <div v-for="n in 8" :key="n" class="h-12 skeleton rounded-md"></div>
           </div>
+          <CastGrid v-else :people="aggregateCredits?.cast || []" />
+          <div v-if="(aggregateCredits?.crew || []).length" class="mt-8">
+            <h3 class="text-primary font-medium mb-3">Crew</h3>
+            <CastGrid :people="(aggregateCredits?.crew || []).slice(0, 24)" empty-label="No crew information available." />
+          </div>
+        </template>
+
+        <template v-if="activeTab === 'more'">
+          <p v-if="recsError" class="text-sm text-muted mb-3">Recommendations unavailable right now.</p>
+          <RecommendationsRow :items="recommendations" :media-type="MEDIA_TYPE.TV" :loading="loadingRecs" />
         </template>
       </div>
     </div>
@@ -263,46 +285,60 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { onClickOutside } from '@vueuse/core'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { mediaAPI, trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import StarRating from '@/components/StarRating.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import AddToListPopover from '@/components/AddToListPopover.vue'
-import SpoilerBlock from '@/components/SpoilerBlock.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
+import WatchSplitButton from '@/components/WatchSplitButton.vue'
+import ActionGhostButton from '@/components/ActionGhostButton.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
+import DetailHero from '@/components/DetailHero.vue'
+import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
+import MediaActionsBar from '@/components/MediaActionsBar.vue'
+import ExternalLinks from '@/components/ExternalLinks.vue'
+import CastGrid from '@/components/CastGrid.vue'
+import RecommendationsRow from '@/components/RecommendationsRow.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
 import { tmdbImageUrl } from '@/utils/images'
 import { canRateByStatus, formatUpdatedAtLabel } from '@/utils/mediaStatus'
+import { showExternalLinks } from '@/utils/externalLinks'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
 import { temporalYear } from '@/utils/temporal'
-import type { Episode, TVShow } from '@/types/api'
-import type { WatchEntryStatus } from '@/types/tracking'
+import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
 import type { WatchedAtOption } from '@/utils/watchOptions'
+import type { Credits, Episode, MediaResult, TVShow } from '@/types/api'
+import type { WatchEntryStatus } from '@/types/tracking'
 
 type ShowStatus = WatchEntryStatus | 'watchlist'
 type EpisodeTarget = { episodeNumber: number }
 
 const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const { t } = useI18n()
 const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10))
 
 const show = ref<TVShow | null>(null)
+const aggregateCredits = ref<Credits | null>(null)
+const recommendations = ref<MediaResult[]>([])
 const loading = ref(true)
 const loadingSeasons = ref(false)
+const loadingCredits = ref(false)
+const loadingRecs = ref(false)
+const recsError = ref(false)
 const userRating = ref(0)
 const showStatus = ref<ShowStatus>(WATCH_ENTRY_STATUS.NONE)
 const metadataFlash = useFlashMessages()
@@ -318,7 +354,39 @@ const removeHistoryDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const removingHistory = ref(false)
 const unwatchEpisodeDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
 
-const activeTab = ref<'seasons' | 'overview'>('seasons')
+const VALID_TABS = ['overview', 'seasons', 'cast', 'more'] as const
+type ShowTab = (typeof VALID_TABS)[number]
+
+function initialTab(): ShowTab {
+  const raw = String(route.query.tab || 'overview')
+  return (VALID_TABS as readonly string[]).includes(raw) ? (raw as ShowTab) : 'overview'
+}
+
+const activeTab = ref<ShowTab>(initialTab())
+
+const visibleTabs = computed((): MediaTab[] => {
+  const tabs: MediaTab[] = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'seasons', label: 'Seasons' },
+    { id: 'cast', label: 'Cast', count: aggregateCredits.value?.cast?.length },
+  ]
+  if (recommendations.value.length > 0 || loadingRecs.value) {
+    tabs.push({ id: 'more', label: 'More like this' })
+  }
+  if (!tabs.some((tab) => tab.id === activeTab.value)) {
+    activeTab.value = 'overview'
+  }
+  return tabs
+})
+
+function setTab(tab: ShowTab) {
+  activeTab.value = tab
+}
+
+watch(activeTab, (tab) => {
+  router.replace({ query: { ...route.query, tab } })
+})
+
 const expandedSeason = ref<number | null>(null)
 const seasonEpisodes = ref<Record<number, Episode[]>>({})
 const seasonLoading = ref<number | null>(null)
@@ -330,6 +398,7 @@ const {
 const {
   showDatePicker,
   pickerInitialValue,
+  pickWatchedDateTime,
   handleDatePickerConfirm,
   handleDatePickerCancel,
   markFromOption,
@@ -343,18 +412,24 @@ const {
   applyResponse: applyWatchedEpisodes,
 } = useWatchedEpisodes()
 
-const statusMenuOpen = ref(false)
-const statusMenuRef = ref<HTMLElement | null>(null)
+const showMarking = ref(false)
 
 const watchButtonLabel = computed(() => {
   if (showStatus.value === WATCH_ENTRY_STATUS.WATCHING) return 'Watching'
   if (showStatus.value === WATCH_ENTRY_STATUS.WATCHED) return 'Watched'
   if (showStatus.value === WATCH_ENTRY_STATUS.DROPPED) return 'Dropped'
-  if (showStatus.value === 'watchlist') return 'Watchlist'
   return 'Watch'
 })
 
 const metadataUpdatedAtLabel = computed(() => formatUpdatedAtLabel(show.value?.metadata_updated_at))
+
+const externalLinks = computed(() => showExternalLinks(tmdbId.value, show.value?.external_ids))
+
+const displayNetworks = computed(() => {
+  const networks = show.value?.networks
+  if (Array.isArray(networks)) return networks.join(', ')
+  return networks || ''
+})
 
 const canRate = computed(() => canRateByStatus(show.value?.user_status?.status))
 
@@ -373,14 +448,6 @@ function syncShowStatusFromUserStatus() {
     return
   }
   showStatus.value = WATCH_ENTRY_STATUS.NONE
-}
-
-onClickOutside(statusMenuRef, () => {
-  statusMenuOpen.value = false
-})
-
-function toggleStatusMenu() {
-  statusMenuOpen.value = !statusMenuOpen.value
 }
 
 function openRemoveHistoryDialog() {
@@ -409,8 +476,8 @@ function openEpisodeUnwatchConfirm(sn: number, payload: EpisodeTarget) {
   })
 }
 
-async function onEpisodeUnwatched(target: { seasonNumber: number; episodeNumber: number }) {
-  unmarkLocally(target.seasonNumber, target.episodeNumber)
+async function onEpisodeUnwatched(target: { seasonNumber: string | number; episodeNumber: string | number }) {
+  unmarkLocally(Number(target.seasonNumber), Number(target.episodeNumber))
   showSuccess('Episode unwatched')
 }
 
@@ -519,7 +586,6 @@ async function setShowStatus(status: ShowStatus): Promise<boolean> {
 }
 
 async function handleWatchingAction() {
-  statusMenuOpen.value = false
   if (showStatus.value === WATCH_ENTRY_STATUS.WATCHING) {
     const updated = await setShowStatus(WATCH_ENTRY_STATUS.NONE)
     if (!updated) {
@@ -535,8 +601,39 @@ async function handleWatchingAction() {
   }
 }
 
+async function handleShowWatchOption(option: WatchedAtOption) {
+  if (!show.value?.seasons?.length || showMarking.value) {
+    return
+  }
+  const resolution = await resolveWatchedAtFromOption(option, {
+    releaseDate: show.value.first_air_date || '',
+    pickDateTime: () => pickWatchedDateTime(''),
+  })
+  if (resolution.cancelled) {
+    return
+  }
+  showMarking.value = true
+  try {
+    for (const season of show.value.seasons) {
+      await trackingAPI.markSeasonWatched({
+        tmdb_id: tmdbId.value,
+        season_number: season.season_number,
+        watched_at: resolution.watchedAt ?? undefined,
+      })
+    }
+    const epsRes = await trackingAPI.getWatchedEpisodes(tmdbId.value)
+    applyWatchedEpisodes(epsRes)
+    seasonEpisodes.value = {}
+    await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
+    showSuccess('Show marked as watched')
+  } catch (error) {
+    showError(getApiErrorMessage(error, 'Could not mark show as watched.'))
+  } finally {
+    showMarking.value = false
+  }
+}
+
 async function handleRemoveWatchedEpisodes() {
-  statusMenuOpen.value = false
   openRemoveHistoryDialog()
 }
 
@@ -562,10 +659,7 @@ async function confirmRemoveWatchedEpisodes() {
 }
 
 async function handleDropShow() {
-  statusMenuOpen.value = false
   await trackingAPI.dropMedia({ tmdb_id: tmdbId.value, media_type: MEDIA_TYPE.TV })
-  watchedEps.value = new Set()
-  seasonEpisodes.value = {}
   await loadShow()
   showSuccess('Show dropped')
 }
@@ -621,9 +715,36 @@ async function refreshMetadata() {
   }
 }
 
+async function loadCredits() {
+  loadingCredits.value = true
+  try {
+    aggregateCredits.value = await mediaAPI.getTVCredits(tmdbId.value)
+  } catch (e) {
+    console.error('Failed to load credits:', e)
+  } finally {
+    loadingCredits.value = false
+  }
+}
+
+async function loadRecommendations() {
+  loadingRecs.value = true
+  recsError.value = false
+  try {
+    const data = await mediaAPI.getTVRecommendations(tmdbId.value)
+    recommendations.value = (data.results || []).map((item) => ({ ...item, media_type: MEDIA_TYPE.TV }))
+  } catch (e) {
+    console.error('Failed to load recommendations:', e)
+    recsError.value = true
+  } finally {
+    loadingRecs.value = false
+  }
+}
+
 onMounted(async () => {
   await loadShow()
   loading.value = false
+  void loadCredits()
+  void loadRecommendations()
 
   if (auth.isAuthenticated) {
     const [ratingRes, epsRes] = await Promise.allSettled([
@@ -634,7 +755,7 @@ onMounted(async () => {
     if (epsRes.status === 'fulfilled' && epsRes.value?.episodes?.length) {
       applyWatchedEpisodes(epsRes.value)
     }
-    
+
     if (ratingRes.status === 'fulfilled') {
       const ratings = Array.isArray(ratingRes.value) ? ratingRes.value : ratingRes.value.results
       const found = ratings[0]

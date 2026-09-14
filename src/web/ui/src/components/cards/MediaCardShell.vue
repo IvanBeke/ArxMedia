@@ -1,6 +1,6 @@
 <template>
   <div class="group block">
-    <div class="relative aspect-[2/3] bg-surface-100 overflow-hidden" :class="posterFrameClass">
+    <div class="relative isolate aspect-[2/3] bg-surface-100 overflow-hidden" :class="posterFrameClass">
       <RouterLink :to="posterLinkTo" class="absolute inset-0 z-10" :aria-label="posterAriaLabel" />
 
       <img

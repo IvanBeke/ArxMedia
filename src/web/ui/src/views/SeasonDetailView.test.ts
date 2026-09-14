@@ -6,12 +6,13 @@ import SeasonDetailView from '@/views/SeasonDetailView.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
-import WatchMenu from '@/components/WatchMenu.vue'
+import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types/api'
 
-const { getSeason, getWatchedEpisodes, markEpisodeWatched, markSeasonWatched } = vi.hoisted(() => ({
+const { getSeason, getSeasonCredits, getWatchedEpisodes, markEpisodeWatched, markSeasonWatched } = vi.hoisted(() => ({
   getSeason: vi.fn(),
+  getSeasonCredits: vi.fn(),
   getWatchedEpisodes: vi.fn(),
   markEpisodeWatched: vi.fn(),
   markSeasonWatched: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('@/api', () => {
   return {
     mediaAPI: {
       getSeason,
+      getSeasonCredits,
     },
     trackingAPI: {
       getWatchedEpisodes,
@@ -55,7 +57,10 @@ function seasonPayload(watchedCount: number, total = 50) {
     tmdb_id: TMDB_ID,
     show_name: 'Dark',
     name: 'Season 2',
+    overview: 'Season overview text',
+    poster_url: null,
     air_date: '2021-06-21',
+    credits: { cast: [{ credit_id: 'c1', name: 'Season Star', character: 'Lead', profile_path: null }], crew: [], guest_stars: [] },
     episodes: Array.from({ length: total }, (_, index) => ({
       episode_number: index + 1,
       name: `Episode ${index + 1}`,
@@ -83,7 +88,7 @@ function watchedPayload(pairs: [number, number][]) {
   }
 }
 
-async function mountView() {
+async function mountView(tab: string | null = 'episodes') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -91,7 +96,7 @@ async function mountView() {
       { path: '/tv/:id', name: 'tv-detail', component: { template: '<div />' } },
     ],
   })
-  await router.push(`/tv/${TMDB_ID}/season/${SEASON_NUMBER}`)
+  await router.push(tab ? `/tv/${TMDB_ID}/season/${SEASON_NUMBER}?tab=${tab}` : `/tv/${TMDB_ID}/season/${SEASON_NUMBER}`)
   await router.isReady()
 
   const pinia = createPinia()
@@ -116,6 +121,7 @@ async function mountView() {
 describe('SeasonDetailView progress', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    getSeasonCredits.mockResolvedValue(null)
     markEpisodeWatched.mockResolvedValue({})
     markSeasonWatched.mockResolvedValue({})
   })
@@ -191,7 +197,7 @@ describe('SeasonDetailView progress', () => {
     const wrapper = await mountView()
     expect(wrapper.text()).toContain('12/50')
 
-    wrapper.findComponent(WatchMenu).vm.$emit('select', 'unknown')
+    wrapper.findComponent(WatchSplitButton).vm.$emit('select', 'unknown')
     await flushPromises()
 
     expect(markSeasonWatched).toHaveBeenCalledWith(expect.objectContaining({
@@ -208,7 +214,7 @@ describe('SeasonDetailView progress', () => {
     getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
 
     const wrapper = await mountView()
-    wrapper.findComponent(WatchMenu).vm.$emit('select', 'release')
+    wrapper.findComponent(WatchSplitButton).vm.$emit('select', 'release')
     await flushPromises()
 
     expect(markSeasonWatched).toHaveBeenCalledWith(expect.objectContaining({
@@ -217,5 +223,48 @@ describe('SeasonDetailView progress', () => {
     expect(markSeasonWatched).not.toHaveBeenCalledWith(expect.objectContaining({
       use_release_date: true,
     }))
+  })
+
+  it('defaults to the overview tab and renders season overview there', async () => {
+    getSeason.mockResolvedValue(seasonPayload(12))
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView(null)
+
+    expect(wrapper.find('[role="tab"][aria-selected="true"]').text()).toContain('Overview')
+    expect(wrapper.text()).toContain('Season overview text')
+  })
+
+  it('renders season cast in the cast tab with a link to full show cast', async () => {
+    getSeason.mockResolvedValue(seasonPayload(12))
+    getSeasonCredits.mockResolvedValue({
+      cast: [{ credit_id: 'a1', name: 'Season Regular', character: 'Lead', profile_path: null, total_episode_count: 8 }],
+      crew: [],
+      guest_stars: [],
+    })
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView('overview')
+
+    const castTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Cast'))
+    expect(castTab).toBeTruthy()
+    await castTab?.trigger('click')
+
+    expect(wrapper.text()).toContain('Season Regular')
+    expect(wrapper.text()).toContain('8 eps')
+    expect(wrapper.text()).not.toContain('View full show cast')
+  })
+
+  it('falls back to season credits when aggregate credits fail', async () => {
+    getSeason.mockResolvedValue(seasonPayload(12))
+    getSeasonCredits.mockRejectedValue(new Error('offline'))
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView(null)
+
+    const castTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Cast'))
+    await castTab?.trigger('click')
+
+    expect(wrapper.text()).toContain('Season Star')
   })
 })

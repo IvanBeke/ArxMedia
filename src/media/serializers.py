@@ -36,7 +36,8 @@ class TVShowSerializer(serializers.ModelSerializer):
             'id', 'tmdb_id', 'name', 'overview', 'poster_path', 'backdrop_path',
             'poster_url', 'backdrop_url', 'first_air_date', 'last_air_date',
             'number_of_seasons', 'number_of_episodes', 'vote_average', 'vote_count',
-            'genres', 'language', 'status', 'networks', 'episode_runtime', 'metadata_updated_at'
+            'genres', 'language', 'status', 'networks', 'episode_runtime',
+            'external_ids', 'metadata_updated_at'
         ]
 
 
@@ -44,6 +45,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
     still_url = serializers.ReadOnlyField()
     air_time = serializers.ReadOnlyField()
     air_date = serializers.ReadOnlyField(source='display_air_date')
+    cast = serializers.SerializerMethodField()
     guest_stars = serializers.SerializerMethodField()
     crew = serializers.SerializerMethodField()
 
@@ -53,8 +55,14 @@ class EpisodeSerializer(serializers.ModelSerializer):
             'id', 'tmdb_id', 'episode_number', 'name', 'overview',
             'still_path', 'still_url', 'air_date', 'air_time',
             'broadcast_start', 'runtime', 'vote_average', 'vote_count',
-            'episode_type', 'guest_stars', 'crew'
+            'episode_type', 'cast', 'guest_stars', 'crew'
         ]
+
+    def get_cast(self, obj):
+        credits = getattr(obj, 'credits', None)
+        if credits:
+            return credits.cast
+        return []
 
     def get_guest_stars(self, obj):
         credits = getattr(obj, 'credits', None)
@@ -76,7 +84,7 @@ class SeasonBriefSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Season
-        fields = ['id', 'season_number', 'name', 'poster_path', 'poster_url', 'air_date', 'episode_count']
+        fields = ['id', 'season_number', 'name', 'overview', 'poster_path', 'poster_url', 'air_date', 'episode_count']
 
     def get_air_date(self, obj):
         # Prefer the annotated min air date from the list view to avoid one
@@ -100,7 +108,8 @@ class SeasonSerializer(serializers.ModelSerializer):
         model = Season
         fields = [
             'id', 'tmdb_id', 'season_number', 'name', 'overview',
-            'poster_path', 'poster_url', 'air_date', 'episode_count', 'episodes'
+            'poster_path', 'poster_url', 'air_date', 'episode_count',
+            'external_ids', 'episodes'
         ]
 
     def get_episode_count(self, obj):

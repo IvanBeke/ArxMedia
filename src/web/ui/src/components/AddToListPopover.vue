@@ -3,8 +3,8 @@
     <button
       v-if="!modalMode"
       type="button"
-      class="px-2 py-1 rounded-md text-xs border border-surface-200 text-muted hover:text-primary hover:bg-surface-200 transition-colors inline-flex items-center justify-center"
-      :class="[iconOnly ? 'w-8 h-8 p-0' : '', buttonClass]"
+      class="btn-ghost inline-flex items-center justify-center gap-2 text-sm"
+      :class="[iconOnly ? 'w-8 h-8 p-0' : 'h-9', buttonClass]"
       :disabled="loading"
       @click="toggleOpen"
       :title="iconOnly ? 'Add to list' : undefined"
@@ -13,7 +13,12 @@
       <svg v-if="iconOnly" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
       </svg>
-      <span v-else>{{ loading ? '...' : 'Add to list' }}</span>
+      <template v-else>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        <span>{{ loading ? '...' : 'Add to list' }}</span>
+      </template>
     </button>
 
     <div

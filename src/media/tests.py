@@ -1297,6 +1297,131 @@ class MediaTests(TestCase):
 
         mock_sync_episode_credits.assert_called_once_with(4242, 1, 1, show=show, use_cache=True)
 
+    @patch('media.views.tmdb.get_season_aggregate_credits')
+    def test_season_credits_returns_aggregate_cast(self, mock_credits):
+        mock_credits.return_value = {
+            'cast': [{'name': 'Season Regular', 'total_episode_count': 8}],
+            'crew': [{'name': 'Season Director', 'job': 'Director'}],
+        }
+
+        response = self.client.get('/api/media/tv/1399/seasons/1/credits/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['cast'][0]['total_episode_count'], 8)
+        self.assertEqual(response.data['crew'][0]['name'], 'Season Director')
+        mock_credits.assert_called_once_with(1399, 1)
+
+    @patch('media.views.tmdb.get_movie_recommendations')
+    def test_movie_recommendations_annotates_media_type_and_status(self, mock_recs):
+        mock_recs.return_value = {
+            'page': 1,
+            'results': [{'id': 551, 'title': 'Rec Movie', 'vote_average': 7.5}],
+            'total_pages': 1,
+            'total_results': 1,
+        }
+        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=551, status='plan_to_watch')
+
+        response = self.client.get('/api/media/movies/550/recommendations/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['results'][0]['media_type'], 'movie')
+        self.assertEqual(response.data['results'][0]['user_status']['status'], 'plan_to_watch')
+
+    @patch('media.views.tmdb.get_tv_recommendations')
+    def test_tv_recommendations_annotates_media_type(self, mock_recs):
+        mock_recs.return_value = {
+            'page': 1,
+            'results': [{'id': 1400, 'name': 'Rec Show', 'vote_average': 8.0}],
+            'total_pages': 1,
+            'total_results': 1,
+        }
+
+        response = self.client.get('/api/media/tv/1399/recommendations/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['results'][0]['media_type'], 'tv')
+
+    @patch('media.views.tmdb.get_collection')
+    def test_collection_detail_annotates_parts(self, mock_collection):
+        mock_collection.return_value = {
+            'id': 10,
+            'name': 'Test Collection',
+            'overview': 'A collection',
+            'parts': [{'id': 550, 'title': 'Fight Club'}],
+        }
+
+        response = self.client.get('/api/media/collections/10/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['name'], 'Test Collection')
+        self.assertEqual(response.data['parts'][0]['media_type'], 'movie')
+
+    @patch('media.views.tmdb.get_movie_external_ids')
+    def test_movie_external_ids_passthrough(self, mock_ids):
+        mock_ids.return_value = {'imdb_id': 'tt0137523', 'wikidata_id': 'Q42'}
+
+        response = self.client.get('/api/media/movies/550/external-ids/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['imdb_id'], 'tt0137523')
+
+    def test_tv_external_ids_returns_stored_ids(self):
+        TVShow.objects.create(tmdb_id=7777, name='Stored IDs', external_ids={'tvmaze_id': 123, 'imdb_id': 'tt1234567'})
+
+        with patch('media.views.tmdb.get_tv_external_ids', side_effect=Exception('offline')):
+            response = self.client.get('/api/media/tv/7777/external-ids/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['tvmaze_id'], 123)
+
+    @patch('media.views.tmdb.get_movie_watch_providers')
+    @patch('media.views.tmdb.get_movie')
+    @patch('media.views.tmdb.get_movie_external_ids')
+    def test_movie_detail_includes_collection_and_external_ids(self, mock_ids, mock_movie, mock_providers):
+        from media.models import Movie
+        Movie.objects.create(tmdb_id=999, title='Collection Movie')
+        mock_providers.return_value = {}
+        mock_movie.return_value = {
+            'id': 999,
+            'belongs_to_collection': {'id': 10, 'name': 'Test Collection', 'poster_path': '/p.jpg', 'backdrop_path': '/b.jpg'},
+        }
+        mock_ids.return_value = {'imdb_id': 'tt9999999'}
+
+        response = self.client.get('/api/media/movies/999/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['collection']['id'], 10)
+        self.assertEqual(response.data['external_ids']['imdb_id'], 'tt9999999')
+
+    @patch('media.views.tmdb.get_season')
+    def test_season_detail_includes_overview_credits_and_cast(self, mock_season):
+        show = TVShow.objects.create(tmdb_id=707, name='Season Extras', number_of_seasons=1, number_of_episodes=1)
+        season = show.seasons.create(tmdb_id=7070, season_number=1, name='Season 1', overview='Season overview')
+        episode = season.episodes.create(tmdb_id=70701, episode_number=1, name='Ep 1')
+        EpisodeCredit.objects.create(episode=episode, cast=[{'name': 'Ep Cast'}], crew=[], guest_stars=[])
+        mock_season.return_value = {
+            'credits': {'cast': [{'name': 'Season Cast'}], 'crew': []},
+            'external_ids': {'tvdb_id': 123},
+        }
+
+        response = self.client.get('/api/media/tv/707/seasons/1/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['overview'], 'Season overview')
+        self.assertEqual(response.data['credits']['cast'][0]['name'], 'Season Cast')
+        self.assertEqual(response.data['episodes'][0]['cast'][0]['name'], 'Ep Cast')
+
+    def test_tv_brief_includes_season_overview(self):
+        show = TVShow.objects.create(tmdb_id=708, name='Brief Overview', number_of_seasons=1, number_of_episodes=1)
+        show.seasons.create(tmdb_id=7080, season_number=1, name='Season 1', overview='Brief season overview')
+
+        with patch('media.views.tmdb.get_tv_watch_providers', return_value={}):
+            response = self.client.get('/api/media/tv/708/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['seasons'][0]['overview'], 'Brief season overview')
+        self.assertIn('external_ids', response.data)
+
 
 class TMDBUseCacheTests(TestCase):
     def test_get_without_cache_skips_read_and_overwrites_cached_entry(self):
