@@ -59,6 +59,8 @@ function seasonPayload(watchedCount: number, total = 50) {
     name: 'Season 2',
     overview: 'Season overview text',
     poster_url: null,
+    vote_average: 8.4,
+    vote_count: 0,
     air_date: '2021-06-21',
     credits: { cast: [{ credit_id: 'c1', name: 'Season Star', character: 'Lead', profile_path: null }], crew: [], guest_stars: [] },
     episodes: Array.from({ length: total }, (_, index) => ({
@@ -233,6 +235,16 @@ describe('SeasonDetailView progress', () => {
 
     expect(wrapper.find('[role="tab"][aria-selected="true"]').text()).toContain('Overview')
     expect(wrapper.text()).toContain('Season overview text')
+  })
+
+  it('renders the show name link and provider rating in the hero', async () => {
+    getSeason.mockResolvedValue(seasonPayload(12))
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView(null)
+
+    expect(wrapper.text()).toContain('Dark')
+    expect(wrapper.text()).toContain('8.4')
   })
 
   it('renders season cast in the cast tab with a link to full show cast', async () => {

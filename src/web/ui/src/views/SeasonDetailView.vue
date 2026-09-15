@@ -10,64 +10,71 @@
 
     <EpisodeUnwatchDialog ref="unwatchDialog" @unwatched="onEpisodeUnwatched" />
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <router-link :to="{ name: 'tv-detail', params: { id: route.params.id }, query: { tab: 'seasons' } }" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+      <router-link :to="{ name: 'tv-detail', params: { id: route.params.id }, query: { tab: 'seasons' } }" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-2">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
         </svg>
         Back to {{ showName }}
       </router-link>
+    </div>
 
-      <div v-if="loading" class="space-y-3 mb-8">
-        <div class="h-8 w-48 skeleton rounded-md"></div>
-        <div class="h-4 w-72 skeleton rounded-md"></div>
-      </div>
-
-      <template v-else-if="season">
-        <div class="flex flex-col md:flex-row gap-8 mb-8">
-          <div class="flex-shrink-0">
-            <div class="w-36 md:w-48 rounded-md overflow-hidden shadow-2xl border border-surface-200">
-              <img v-if="season.poster_url" :src="season.poster_url" :alt="season.name" class="w-full" />
-              <div v-else class="aspect-[2/3] bg-surface-200 flex items-center justify-center text-muted text-sm font-medium p-4 text-center">
-                {{ season.name }}
-              </div>
-            </div>
-          </div>
-
-          <div class="flex-1 min-w-0">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">{{ showName }}</p>
-                <h1 class="font-display text-2xl md:text-4xl text-primary font-semibold">{{ season.name }}</h1>
-                <p class="text-muted text-sm mt-2">
-                  Season {{ seasonNumber }} · {{ totalEpisodesCount }} episode{{ totalEpisodesCount !== 1 ? 's' : '' }}{{ seasonAirYear ? ` · ${seasonAirYear}` : '' }} · {{ seasonProgressFraction }} watched
-                </p>
-              </div>
-              <div class="flex items-center gap-3 shrink-0">
-                <WatchSplitButton
-                  v-if="auth.isAuthenticated"
-                  :active="seasonProgress === 100"
-                  :label="seasonProgress === 100 ? 'Season watched' : `${seasonProgressFraction} · Watch`"
-                  :release-date="season.air_date ? String(season.air_date) : ''"
-                  @trigger="handleSeasonWatchOption('now')"
-                  @select="handleSeasonWatchOption"
-                />
-                <div v-else>
-                  <p class="text-white text-lg font-medium">{{ seasonProgressFraction }}</p>
-                </div>
-                <ExternalLinks
-                  :tmdb-url="externalLinks.tmdbUrl"
-                  :tvmaze-url="externalLinks.tvmazeUrl"
-                  :imdb-url="externalLinks.imdbUrl"
-                />
-              </div>
-            </div>
-
-            <ProgressBar :pct="seasonProgress" class="mt-4 mb-4" />
-          </div>
+    <DetailHero
+      bare
+      :poster-url="season?.poster_url"
+      :poster-alt="season?.name"
+      :loading="loading"
+    >
+      <template #eyebrow>
+        <RouterLink :to="{ name: 'tv-detail', params: { id: route.params.id } }" class="text-xs text-gray-500 uppercase tracking-wider mb-3 hover:text-brand-400 transition inline-block">
+          {{ showName }}
+        </RouterLink>
+      </template>
+      <template #title>
+        <h1 v-if="season" class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ season.name }}</h1>
+      </template>
+      <template #meta>
+        <p v-if="season" class="text-muted text-sm mb-3">
+          Season {{ seasonNumber }} · {{ totalEpisodesCount }} episode{{ totalEpisodesCount !== 1 ? 's' : '' }}{{ seasonAirYear ? ` · ${seasonAirYear}` : '' }} · {{ seasonProgressFraction }} watched
+        </p>
+      </template>
+      <template #badges>
+        <div v-if="hasSeasonRating" class="flex items-center gap-4 mb-1 text-sm">
+          <RatingBadge :value="season?.vote_average ?? 0" :votes="season?.vote_count ?? 0" out-of-ten />
         </div>
+      </template>
+      <template #description>
+        <p v-if="season?.overview" class="text-secondary leading-relaxed mt-4 mb-4 max-w-2xl line-clamp-3">{{ season.overview }}</p>
+      </template>
+      <template #links>
+        <ExternalLinks
+          v-if="season"
+          :tmdb-url="externalLinks.tmdbUrl"
+          :tvmaze-url="externalLinks.tvmazeUrl"
+          :imdb-url="externalLinks.imdbUrl"
+          class="mb-4"
+        />
+      </template>
+      <template #actions>
+        <div v-if="season" class="flex flex-wrap gap-2 mb-4">
+          <WatchSplitButton
+            v-if="auth.isAuthenticated"
+            :active="seasonProgress === 100"
+            :label="seasonProgress === 100 ? 'Season watched' : `${seasonProgressFraction} · Watch`"
+            :release-date="season.air_date ? String(season.air_date) : ''"
+            @trigger="handleSeasonWatchOption('now')"
+            @select="handleSeasonWatchOption"
+          />
+          <p v-else class="text-white text-lg font-medium">{{ seasonProgressFraction }}</p>
+        </div>
+      </template>
+      <template #belowActions>
+        <ProgressBar v-if="season" :pct="seasonProgress" class="mt-2 max-w-2xl" />
+      </template>
+    </DetailHero>
 
-        <MediaTabs v-model="activeTab" :tabs="visibleTabs" aria-label="Season sections" />
+    <div v-if="!loading && season" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+      <MediaTabs v-model="activeTab" :tabs="visibleTabs" aria-label="Season sections" />
 
         <div class="mt-6" role="tabpanel" :id="`tabpanel-${activeTab}`" :aria-labelledby="`tab-${activeTab}`">
           <template v-if="activeTab === 'overview'">
@@ -123,23 +130,24 @@
             <CastGrid :people="displayCast" />
           </template>
         </div>
-      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { mediaAPI, trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import ProgressBar from '@/components/ProgressBar.vue'
+import RatingBadge from '@/components/RatingBadge.vue'
 import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import ExternalLinks from '@/components/ExternalLinks.vue'
 import CastGrid from '@/components/CastGrid.vue'
+import DetailHero from '@/components/DetailHero.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
@@ -232,6 +240,8 @@ const seasonAirYear = computed(() => {
   const airDate = season.value?.air_date
   return airDate ? temporalYear(String(airDate)) || '' : ''
 })
+
+const hasSeasonRating = computed(() => (season.value?.vote_average ?? 0) > 0)
 
 function countWatchedInSeasonFromSet(seasonNum: number) {
   const prefix = `${seasonNum}-`

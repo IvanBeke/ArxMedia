@@ -98,6 +98,8 @@ class Season(models.Model):
     name = models.CharField(max_length=200)
     overview = models.TextField(blank=True)
     poster_path = models.CharField(max_length=200, blank=True)
+    vote_average = models.FloatField(default=0)
+    vote_count = models.IntegerField(default=0)
     external_ids = models.JSONField(default=dict, blank=True)
 
     class Meta:

@@ -1,12 +1,15 @@
 <template>
   <div>
-    <div class="relative h-72 md:h-[28rem]">
+    <div v-if="!bare" class="relative h-72 md:h-[28rem]">
       <img v-if="backdropUrl" :src="backdropUrl" :alt="backdropAlt" class="w-full h-full object-cover" />
       <div class="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
       <div class="absolute inset-0 bg-gradient-to-r from-surface/80 to-transparent"></div>
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-60 md:-mt-96 relative z-10 pb-8">
+    <div
+      class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10"
+      :class="bare ? 'py-8' : '-mt-60 md:-mt-96 pb-8'"
+    >
       <div class="flex flex-col md:flex-row gap-8">
         <div class="flex-shrink-0">
           <div class="w-36 md:w-48 rounded-md overflow-hidden shadow-2xl border border-surface-200">
@@ -54,5 +57,6 @@ withDefaults(defineProps<{
   posterUrl?: string | null
   posterAlt?: string
   loading?: boolean
-}>(), { backdropUrl: null, backdropAlt: '', posterUrl: null, posterAlt: '', loading: false })
+  bare?: boolean
+}>(), { backdropUrl: null, backdropAlt: '', posterUrl: null, posterAlt: '', loading: false, bare: false })
 </script>

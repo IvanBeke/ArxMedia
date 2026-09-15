@@ -478,6 +478,7 @@ def season_detail(request, tmdb_id, season_number):
         return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     season_data = SeasonSerializer(season).data
+    season_data['show_name'] = show.name
 
     try:
         live = tmdb.get_season(tmdb_id, season_number)
@@ -488,6 +489,11 @@ def season_detail(request, tmdb_id, season_number):
                 'crew': credits.get('crew') or [],
                 'guest_stars': [],
             }
+            vote_average = live.get('vote_average')
+            if isinstance(vote_average, (int, float)):
+                season_data['vote_average'] = vote_average
+                vote_count = live.get('vote_count')
+                season_data['vote_count'] = vote_count if isinstance(vote_count, int) else 0
             live_external = live.get('external_ids') or {}
             if live_external:
                 merged_ids = dict(season_data.get('external_ids') or {})

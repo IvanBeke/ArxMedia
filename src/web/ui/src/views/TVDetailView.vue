@@ -41,7 +41,8 @@
           <p class="text-muted text-sm mb-3">
             {{ show.first_air_date ? (temporalYear(show.first_air_date) || '') : '' }}
             · {{ show.number_of_seasons }} Season{{ show.number_of_seasons !== 1 ? 's' : '' }}
-            · {{ show.number_of_episodes }} Episode{{ show.number_of_episodes !== 1 ? 's' : '' }}
+            <template v-if="auth.isAuthenticated"> · {{ showWatchedFraction }} watched</template>
+            <template v-else> · {{ show.number_of_episodes }} Episode{{ show.number_of_episodes !== 1 ? 's' : '' }}</template>
             <span v-if="show.episode_runtime"> · {{ show.episode_runtime }} min/ep</span>
             <span v-if="show.status"> · {{ show.status }}</span>
           </p>
@@ -134,6 +135,9 @@
             </div>
           </template>
         </MediaActionsBar>
+      </template>
+      <template #belowActions>
+        <ProgressBar v-if="show && auth.isAuthenticated" :pct="showProgress" class="mt-2 max-w-2xl" />
       </template>
     </DetailHero>
 
@@ -231,7 +235,7 @@
                       </button>
                     </div>
                   </div>
-                  <p class="text-muted text-sm mt-0.5">{{ season.episode_count }} episodes{{ season.air_date ? ` · ${temporalYear(season.air_date) || ''}` : '' }}</p>
+                  <p class="text-muted text-sm mt-0.5">{{ season.episode_count }} episodes{{ season.air_date ? ` · ${temporalYear(season.air_date) || ''}` : '' }}<RatingBadge v-if="season.vote_average" :value="season.vote_average" size="xs" class="ml-2 align-middle" /></p>
                   <p v-if="season.overview" class="text-muted text-xs mt-1 line-clamp-3">{{ season.overview }}</p>
                   <div class="mt-2">
                     <ProgressBar :pct="getSeasonProgress(season.season_number)" />
@@ -430,6 +434,29 @@ const displayNetworks = computed(() => {
   if (Array.isArray(networks)) return networks.join(', ')
   return networks || ''
 })
+
+const showWatchedCount = computed(() => {
+  let count = 0
+  for (const key of watchedEps.value) {
+    if (!key.startsWith('0-')) count++
+  }
+  return count
+})
+
+const showTotalCount = computed(() => {
+  const seasons = show.value?.seasons || []
+  if (seasons.length) {
+    const regular = seasons
+      .filter((season) => season.season_number >= 1)
+      .reduce((sum, season) => sum + (season.episode_count || 0), 0)
+    if (regular > 0) return regular
+  }
+  return show.value?.number_of_episodes || 0
+})
+
+const showProgress = computed(() => computeProgressPercent(showWatchedCount.value, showTotalCount.value))
+
+const showWatchedFraction = computed(() => formatProgressFraction(showWatchedCount.value, showTotalCount.value))
 
 const canRate = computed(() => canRateByStatus(show.value?.user_status?.status))
 

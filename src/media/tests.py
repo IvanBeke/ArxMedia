@@ -1006,6 +1006,12 @@ class MediaTests(TestCase):
         self.assertEqual(anon.get('/api/media/tv/1399/credits/').status_code, 401)
         self.assertEqual(anon.get('/api/media/tv/1399/seasons/1/').status_code, 401)
         self.assertEqual(anon.get('/api/media/tv/1399/seasons/1/episodes/1/credits/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/tv/1399/external-ids/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/tv/1399/recommendations/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/movies/550/external-ids/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/movies/550/recommendations/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/collections/10/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/tv/1399/seasons/1/credits/').status_code, 401)
 
     @patch('media.views.tmdb.sync_movie')
     @patch('media.views.tmdb.get_movie_watch_providers')
@@ -1297,6 +1303,23 @@ class MediaTests(TestCase):
 
         mock_sync_episode_credits.assert_called_once_with(4242, 1, 1, show=show, use_cache=True)
 
+    @patch('media.tmdb.tmdb.get_season')
+    def test_sync_season_persists_votes(self, mock_get_season):
+        show = TVShow.objects.create(tmdb_id=4343, name='Vote Show', number_of_seasons=1, number_of_episodes=1)
+        mock_get_season.return_value = {
+            'id': 434301,
+            'season_number': 1,
+            'name': 'Season 1',
+            'vote_average': 8.4,
+            'episodes': [],
+        }
+
+        season = tmdb.sync_season(show, 1)
+
+        season.refresh_from_db()
+        self.assertEqual(season.vote_average, 8.4)
+        self.assertEqual(season.vote_count, 0)
+
     @patch('media.views.tmdb.get_season_aggregate_credits')
     def test_season_credits_returns_aggregate_cast(self, mock_credits):
         mock_credits.return_value = {
@@ -1400,6 +1423,8 @@ class MediaTests(TestCase):
         episode = season.episodes.create(tmdb_id=70701, episode_number=1, name='Ep 1')
         EpisodeCredit.objects.create(episode=episode, cast=[{'name': 'Ep Cast'}], crew=[], guest_stars=[])
         mock_season.return_value = {
+            'vote_average': 8.4,
+            'vote_count': 42,
             'credits': {'cast': [{'name': 'Season Cast'}], 'crew': []},
             'external_ids': {'tvdb_id': 123},
         }
@@ -1407,19 +1432,27 @@ class MediaTests(TestCase):
         response = self.client.get('/api/media/tv/707/seasons/1/')
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['show_name'], 'Season Extras')
+        self.assertEqual(response.data['vote_average'], 8.4)
+        self.assertEqual(response.data['vote_count'], 42)
         self.assertEqual(response.data['overview'], 'Season overview')
         self.assertEqual(response.data['credits']['cast'][0]['name'], 'Season Cast')
         self.assertEqual(response.data['episodes'][0]['cast'][0]['name'], 'Ep Cast')
 
     def test_tv_brief_includes_season_overview(self):
         show = TVShow.objects.create(tmdb_id=708, name='Brief Overview', number_of_seasons=1, number_of_episodes=1)
-        show.seasons.create(tmdb_id=7080, season_number=1, name='Season 1', overview='Brief season overview')
+        season = show.seasons.create(tmdb_id=7080, season_number=1, name='Season 1', overview='Brief season overview')
+        season.vote_average = 8.1
+        season.vote_count = 15
+        season.save(update_fields=['vote_average', 'vote_count'])
 
         with patch('media.views.tmdb.get_tv_watch_providers', return_value={}):
             response = self.client.get('/api/media/tv/708/')
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['seasons'][0]['overview'], 'Brief season overview')
+        self.assertEqual(response.data['seasons'][0]['vote_average'], 8.1)
+        self.assertEqual(response.data['seasons'][0]['vote_count'], 15)
         self.assertIn('external_ids', response.data)
 
     @patch('media.views.tmdb.get_person_external_ids')

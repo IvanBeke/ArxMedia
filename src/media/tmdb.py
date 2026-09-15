@@ -459,6 +459,12 @@ class TMDBService:
             'poster_path': data.get('poster_path', '') or '',
             'external_ids': _external_ids(data),
         }
+        # A zero vote means "unknown" from TMDB: never let it wipe a stored
+        # rating the way _non_empty_defaults guards the other fields.
+        if isinstance(data.get('vote_average'), (int, float)) and data.get('vote_average'):
+            defaults['vote_average'] = data['vote_average']
+        if isinstance(data.get('vote_count'), int) and data.get('vote_count'):
+            defaults['vote_count'] = data['vote_count']
         season, _ = Season.objects.update_or_create(
             show=show, season_number=season_number,
             defaults=_non_empty_defaults(defaults), create_defaults=defaults,

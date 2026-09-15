@@ -84,7 +84,7 @@ class SeasonBriefSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Season
-        fields = ['id', 'season_number', 'name', 'overview', 'poster_path', 'poster_url', 'air_date', 'episode_count']
+        fields = ['id', 'season_number', 'name', 'overview', 'poster_path', 'poster_url', 'air_date', 'episode_count', 'vote_average', 'vote_count']
 
     def get_air_date(self, obj):
         # Prefer the annotated min air date from the list view to avoid one
@@ -109,7 +109,7 @@ class SeasonSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'tmdb_id', 'season_number', 'name', 'overview',
             'poster_path', 'poster_url', 'air_date', 'episode_count',
-            'external_ids', 'episodes'
+            'vote_average', 'vote_count', 'external_ids', 'episodes'
         ]
 
     def get_episode_count(self, obj):
