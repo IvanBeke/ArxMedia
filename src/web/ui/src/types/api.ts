@@ -29,7 +29,9 @@ export interface Genre { id?: number; tmdb_id: number; name: string }
 export interface MediaUserStatus { status: WatchEntryStatus; watched_at?: string | null; status_changed_at?: string | null; rating?: number | null }
 export interface MediaResult { id: number; media_type: MediaType; title?: string; name?: string; overview?: string; poster_path?: string | null; backdrop_path?: string | null; release_date?: string | null; first_air_date?: string | null; vote_average?: number; vote_count?: number; user_status?: MediaUserStatus }
 export interface MediaSearchResponse { results: MediaResult[]; page: number; total_pages: number; total_results: number }
-export interface Person { id: number; credit_id?: string; name: string; profile_path?: string | null; character?: string; job?: string; department?: string; total_episode_count?: number }
+export interface PersonRole { credit_id?: string; character?: string; episode_count?: number }
+export interface PersonJob { credit_id?: string; job?: string; episode_count?: number }
+export interface Person { id: number; credit_id?: string; name: string; profile_path?: string | null; character?: string; job?: string; department?: string; total_episode_count?: number; roles?: PersonRole[]; jobs?: PersonJob[] }
 export interface Credits { cast: Person[]; crew: Person[]; guest_stars: Person[] }
 export interface WatchProvider { provider_id: number; provider_name: string; logo_path: string | null; display_priority?: number }
 export interface WatchProviders { region: string; link: string | null; flatrate: WatchProvider[]; rent: WatchProvider[]; buy: WatchProvider[]; free: WatchProvider[]; ads: WatchProvider[] }
