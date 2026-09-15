@@ -19,6 +19,12 @@ function mountView(jobs: object[]) {
   return mount(DataTransferView, { global: { plugins: [createPinia()] } })
 }
 
+// Fixtures stay inside the view's "last 7 days" filter regardless of when
+// the suite runs (fixed dates age out and the jobs vanish from the list).
+function recentIso(offsetMs = 0): string {
+  return new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + offsetMs).toISOString()
+}
+
 describe('DataTransferView', () => {
   it('opens completed import details with report counters and warnings', async () => {
     const wrapper = mountView([{
@@ -30,8 +36,8 @@ describe('DataTransferView', () => {
       status: DATA_TRANSFER_STATUS.DONE,
       total_items: 10,
       processed_items: 10,
-      created_at: '2026-09-08T10:00:00Z',
-      updated_at: '2026-09-08T10:01:00Z',
+      created_at: recentIso(),
+      updated_at: recentIso(60_000),
       metadata: {
         report: {
           records_seen: 10,
@@ -77,8 +83,8 @@ describe('DataTransferView', () => {
       data_format: 'zip',
       source: 'trakt',
       status: DATA_TRANSFER_STATUS.FAILED,
-      created_at: '2026-09-08T10:00:00Z',
-      updated_at: '2026-09-08T10:01:00Z',
+      created_at: recentIso(),
+      updated_at: recentIso(60_000),
       error_message: 'Import worker stopped.',
       metadata: {
         report: {
@@ -128,8 +134,8 @@ describe('DataTransferView', () => {
         status: DATA_TRANSFER_STATUS.DONE,
         total_items: 1,
         processed_items: 1,
-        created_at: '2026-09-08T10:00:00Z',
-        updated_at: '2026-09-08T10:01:00Z',
+        created_at: recentIso(),
+        updated_at: recentIso(60_000),
       }],
     })
 
@@ -149,8 +155,8 @@ describe('DataTransferView', () => {
       status: DATA_TRANSFER_STATUS.DONE,
       total_items: 3,
       processed_items: 3,
-      created_at: '2026-09-08T10:00:00Z',
-      updated_at: '2026-09-08T10:01:00Z',
+      created_at: recentIso(),
+      updated_at: recentIso(60_000),
       metadata: {
         report: {
           records_seen: 1,
