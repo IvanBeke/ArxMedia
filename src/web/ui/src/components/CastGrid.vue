@@ -1,6 +1,12 @@
 <template>
   <div v-if="people.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-sm">
-    <div v-for="person in people" :key="person.credit_id || `${person.id}-${person.character}`" class="flex items-center gap-3 min-w-0">
+    <RouterLink
+      v-for="person in people"
+      :key="person.credit_id || `${person.id}-${person.character}`"
+      :to="`/people/${person.id}`"
+      :aria-label="`View profile for ${person.name}`"
+      class="flex items-center gap-3 min-w-0 rounded-md hover:bg-surface-200/60 p-1 -m-1 transition-colors"
+    >
       <img
         v-if="person.profile_path"
         :src="tmdbImageUrl(person.profile_path, 'w92') || ''"
@@ -17,12 +23,13 @@
         <p v-if="creditLine(person)" class="text-gray-500 truncate text-xs">{{ creditLine(person) }}</p>
         <span v-if="episodeCount(person)" class="text-[11px] text-muted">{{ episodeCount(person) }} eps</span>
       </div>
-    </div>
+    </RouterLink>
   </div>
   <p v-else class="text-sm text-muted">{{ emptyLabel }}</p>
 </template>
 
 <script setup lang="ts">
+import { RouterLink } from 'vue-router'
 import { tmdbImageUrl } from '@/utils/images'
 import { creditLine } from '@/utils/credits'
 import type { Person } from '@/types/api'

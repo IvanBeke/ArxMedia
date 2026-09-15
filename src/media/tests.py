@@ -1422,6 +1422,99 @@ class MediaTests(TestCase):
         self.assertEqual(response.data['seasons'][0]['overview'], 'Brief season overview')
         self.assertIn('external_ids', response.data)
 
+    @patch('media.views.tmdb.get_person_external_ids')
+    @patch('media.views.tmdb.get_person')
+    def test_person_detail_merges_external_ids_and_profile_url(self, mock_person, mock_ids):
+        mock_person.return_value = {
+            'id': 123,
+            'name': 'Test Actor',
+            'biography': 'A biography',
+            'profile_path': '/actor.jpg',
+            'also_known_as': ['T. Actor'],
+            'gender': 2,
+            'birthday': '1965-09-17',
+            'place_of_birth': 'Buffalo, New York, USA',
+            'known_for_department': 'Acting',
+        }
+        mock_ids.return_value = {'imdb_id': 'nm1234567'}
+
+        response = self.client.get('/api/media/people/123/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['name'], 'Test Actor')
+        self.assertEqual(response.data['external_ids']['imdb_id'], 'nm1234567')
+        self.assertEqual(response.data['profile_url'], 'https://image.tmdb.org/t/p/w500/actor.jpg')
+        self.assertEqual(response.data['also_known_as'], ['T. Actor'])
+        self.assertEqual(response.data['gender'], 2)
+
+    @patch('media.views.tmdb.get_person_combined_credits')
+    def test_person_credits_returns_cast_and_crew(self, mock_credits):
+        mock_credits.return_value = {
+            'cast': [{'id': 550, 'media_type': 'movie', 'title': 'Fight Club'}],
+            'crew': [{'id': 1399, 'media_type': 'tv', 'name': 'Show'}],
+        }
+
+        response = self.client.get('/api/media/people/123/credits/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['cast']), 1)
+        self.assertEqual(len(response.data['crew']), 1)
+        self.assertEqual(response.data['cast'][0]['media_type'], 'movie')
+        self.assertEqual(response.data['crew'][0]['media_type'], 'tv')
+
+    @patch('media.views.tmdb.get_person')
+    def test_person_detail_returns_404_when_missing(self, mock_person):
+        mock_person.return_value = {}
+
+        response = self.client.get('/api/media/people/999999/')
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch('media.views.tmdb.get_person')
+    def test_person_endpoints_require_authentication(self, mock_person):
+        anon = APIClient()
+        mock_person.return_value = {'id': 123, 'name': 'Test Actor'}
+
+        self.assertEqual(anon.get('/api/media/people/123/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/people/123/credits/').status_code, 401)
+        self.assertEqual(anon.get('/api/media/people/123/external-ids/').status_code, 401)
+
+    @patch('media.views.tmdb.search_people')
+    def test_people_search_returns_results(self, mock_search):
+        mock_search.return_value = {
+            'results': [{'id': 123, 'name': 'Test Actor', 'known_for_department': 'Acting'}],
+            'page': 1,
+            'total_pages': 1,
+            'total_results': 1,
+        }
+
+        response = self.client.get('/api/media/people/search/?q=test')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'Test Actor')
+        mock_search.assert_called_once_with('test', 1)
+
+    def test_people_search_returns_empty_without_query(self):
+        response = self.client.get('/api/media/people/search/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['results'], [])
+
+    @patch('media.views.tmdb.search_people')
+    def test_people_search_returns_empty_on_tmdb_error(self, mock_search):
+        mock_search.side_effect = Exception('TMDB offline')
+
+        response = self.client.get('/api/media/people/search/?q=test')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['results'], [])
+
+    def test_people_search_requires_authentication(self):
+        anon = APIClient()
+
+        self.assertEqual(anon.get('/api/media/people/search/?q=test').status_code, 401)
+
 
 class TMDBUseCacheTests(TestCase):
     def test_get_without_cache_skips_read_and_overwrites_cached_entry(self):

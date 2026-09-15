@@ -123,6 +123,9 @@ class TMDBService:
     def search_tv(self, query, page=1):
         return self._get('/search/tv', {'query': query, 'page': page})
 
+    def search_people(self, query, page=1):
+        return self._get('/search/person', {'query': query, 'page': page})
+
     def find_by_external_id(self, external_id, external_source):
         return self._get(f'/find/{external_id}', {'external_source': external_source})
 
@@ -143,6 +146,15 @@ class TMDBService:
 
     def get_tv_recommendations(self, tmdb_id, page=1):
         return self._get(f'/tv/{tmdb_id}/recommendations', {'page': page})
+
+    def get_person(self, person_id):
+        return self._get(f'/person/{person_id}')
+
+    def get_person_combined_credits(self, person_id):
+        return self._get(f'/person/{person_id}/combined_credits')
+
+    def get_person_external_ids(self, person_id):
+        return self._get(f'/person/{person_id}/external_ids')
 
     def get_collection(self, collection_id):
         return self._get(f'/collection/{collection_id}')

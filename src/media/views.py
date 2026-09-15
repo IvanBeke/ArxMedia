@@ -691,3 +691,84 @@ def collection_detail(request, collection_id):
     parts = data.get('parts', []) or []
     _annotate_recommendation_results(request.user, parts, MediaType.MOVIE)
     return Response(data)
+
+
+def _person_profile_url(profile_path):
+    if profile_path:
+        return f'https://image.tmdb.org/t/p/w500{profile_path}'
+    return None
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def person_detail(request, person_id):
+    try:
+        data = tmdb.get_person(person_id)
+    except Exception:
+        logger.warning('Failed to fetch person %s from TMDB', person_id, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if not isinstance(data, dict) or not data.get('id'):
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        ids_payload = tmdb.get_person_external_ids(person_id)
+        if isinstance(ids_payload, dict):
+            external_ids = {k: v for k, v in ids_payload.items() if v}
+            if external_ids:
+                data = {**data, 'external_ids': external_ids}
+    except Exception as exc:
+        logger.warning('Failed to fetch person external ids for %s: %s', person_id, exc)
+    data.setdefault('external_ids', {})
+    data['profile_url'] = _person_profile_url(data.get('profile_path'))
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def people_search(request):
+    query = request.query_params.get('q', '').strip()
+    page, error = _parse_int_query(request, 'page', 1)
+    if error:
+        return error
+
+    if not query:
+        return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
+
+    try:
+        data = tmdb.search_people(query, page)
+    except Exception as e:
+        logger.error(f"TMDB API error: {e}")
+        return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
+
+    if not isinstance(data, dict):
+        return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def person_credits(request, person_id):
+    try:
+        data = tmdb.get_person_combined_credits(person_id)
+    except Exception:
+        logger.warning('Failed to fetch person credits for %s from TMDB', person_id, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if not isinstance(data, dict):
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    cast = data.get('cast', []) if isinstance(data.get('cast'), list) else []
+    crew = data.get('crew', []) if isinstance(data.get('crew'), list) else []
+    _annotate_recommendation_results(request.user, [i for i in cast if i.get('media_type') == MediaType.MOVIE], MediaType.MOVIE)
+    _annotate_recommendation_results(request.user, [i for i in cast if i.get('media_type') == MediaType.TV], MediaType.TV)
+    _annotate_recommendation_results(request.user, [i for i in crew if i.get('media_type') == MediaType.MOVIE], MediaType.MOVIE)
+    _annotate_recommendation_results(request.user, [i for i in crew if i.get('media_type') == MediaType.TV], MediaType.TV)
+    return Response({'cast': cast, 'crew': crew})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def person_external_ids(request, person_id):
+    try:
+        data = tmdb.get_person_external_ids(person_id)
+    except Exception:
+        logger.warning('Failed to fetch person external ids for %s from TMDB', person_id, exc_info=True)
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(data if isinstance(data, dict) else {})

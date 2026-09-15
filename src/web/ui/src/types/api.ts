@@ -33,6 +33,12 @@ export interface PersonRole { credit_id?: string; character?: string; episode_co
 export interface PersonJob { credit_id?: string; job?: string; episode_count?: number }
 export interface Person { id: number; credit_id?: string; name: string; profile_path?: string | null; character?: string; job?: string; department?: string; total_episode_count?: number; roles?: PersonRole[]; jobs?: PersonJob[] }
 export interface Credits { cast: Person[]; crew: Person[]; guest_stars: Person[] }
+export interface PersonDetail { id: number; name: string; biography?: string; birthday?: string | null; deathday?: string | null; place_of_birth?: string | null; profile_path?: string | null; profile_url?: string | null; known_for_department?: string; popularity?: number; gender?: number | null; also_known_as?: string[]; external_ids?: ExternalIds }
+export interface PersonCredit extends MediaResult { character?: string; job?: string; department?: string; credit_id?: string; episode_count?: number; popularity?: number }
+export interface PersonCombinedCredits { cast: PersonCredit[]; crew: PersonCredit[] }
+export interface PersonKnownFor { id: number; media_type?: string; title?: string; name?: string }
+export interface PersonSearchResult { id: number; name: string; profile_path?: string | null; known_for_department?: string; popularity?: number; known_for?: PersonKnownFor[] }
+export interface PersonSearchResponse { results: PersonSearchResult[]; page: number; total_pages: number; total_results: number }
 export interface WatchProvider { provider_id: number; provider_name: string; logo_path: string | null; display_priority?: number }
 export interface WatchProviders { region: string; link: string | null; flatrate: WatchProvider[]; rent: WatchProvider[]; buy: WatchProvider[]; free: WatchProvider[]; ads: WatchProvider[] }
 export interface ExternalIds { imdb_id?: string | null; tvdb_id?: number | null; tvrage_id?: number | null; tvmaze_id?: number | null; facebook_id?: string | null; instagram_id?: string | null; twitter_id?: string | null; wikidata_id?: string | null; youtube_id?: string | null; [key: string]: unknown }

@@ -75,6 +75,7 @@
           @click="selectPreview(item)"
         >
           <UserRowCompact v-if="item.kind === 'user'" :user="item" />
+          <PersonRowCompact v-else-if="item.kind === 'person'" :person="item" />
           <SearchMediaPreviewRow v-else :item="item" />
         </button>
       </div>
@@ -90,13 +91,15 @@ import { authAPI, mediaAPI } from '@/api'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import SearchMediaPreviewRow from '@/components/SearchMediaPreviewRow.vue'
 import UserRowCompact from '@/components/UserRowCompact.vue'
-import type { MediaResult, UserCard } from '@/types/api'
+import PersonRowCompact from '@/components/PersonRowCompact.vue'
+import type { MediaResult, PersonSearchResult, UserCard } from '@/types/api'
 
-type SearchScope = 'all' | 'movies' | 'shows' | 'users'
+type SearchScope = 'all' | 'movies' | 'shows' | 'users' | 'people'
 type SearchSubmit = { query: string; scope: SearchScope }
 type SearchMediaPreview = MediaResult & { kind?: undefined; poster_url?: string | null }
 type SearchUserPreview = UserCard & { kind: 'user' }
-type SearchPreviewItem = SearchMediaPreview | SearchUserPreview
+type SearchPersonPreview = PersonSearchResult & { kind: 'person' }
+type SearchPreviewItem = SearchMediaPreview | SearchUserPreview | SearchPersonPreview
 
 const props = withDefaults(defineProps<{
   modelValue?: string
@@ -109,7 +112,7 @@ const props = withDefaults(defineProps<{
   submitOnClear?: boolean
   maxPreviewResults?: number
 }>(), {
-  modelValue: '', scope: 'all', placeholder: 'Search movies, shows, users, or #id...', autofocus: false,
+  modelValue: '', scope: 'all', placeholder: 'Search movies, shows, people, users, or #id...', autofocus: false,
   compact: false, enablePreview: true, inlineScopeSelector: false, submitOnClear: false, maxPreviewResults: 10,
 })
 
@@ -134,6 +137,7 @@ const scopeOptions: { label: string; value: SearchScope }[] = [
   { label: 'All', value: 'all' },
   { label: 'Movies', value: 'movies' },
   { label: 'Shows', value: 'shows' },
+  { label: 'People', value: 'people' },
   { label: 'Users', value: 'users' },
 ]
 
@@ -222,6 +226,9 @@ function previewKey(item: SearchPreviewItem, index: number): string {
   if (item.kind === 'user') {
     return `user-${item.id || item.username || index}`
   }
+  if (item.kind === 'person') {
+    return `person-${item.id || index}`
+  }
   return `${item.media_type || 'movie'}-${item.id || index}`
 }
 
@@ -262,6 +269,20 @@ async function loadPreview() {
       previewItems.value = users.slice(0, props.maxPreviewResults).map((row) => ({
         ...row,
         kind: 'user',
+      }))
+      return
+    }
+
+    if (localScope.value === 'people') {
+      if (query.length < 3) {
+        previewItems.value = []
+        return
+      }
+      const people = await mediaAPI.searchPeople(query, 1)
+      if (currentRequestId !== requestId) return
+      previewItems.value = (people?.results || []).slice(0, props.maxPreviewResults).map((row) => ({
+        ...row,
+        kind: 'person',
       }))
       return
     }

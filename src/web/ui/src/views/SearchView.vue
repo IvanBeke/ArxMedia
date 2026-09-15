@@ -16,7 +16,7 @@
         :enable-preview="false"
         :inline-scope-selector="true"
         :submit-on-clear="true"
-        placeholder="Search movies, series & anime, or #id"
+        placeholder="Search movies, series, people & anime, or #id"
         @update:scope="setScope"
         @submit="onSearchSubmit"
       />
@@ -35,8 +35,12 @@
       :following-label="t('profile_following_count_label')"
     />
 
-    <div v-else-if="results.length">
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+    <div v-else-if="results.length || peopleResults.length">
+      <PeopleList
+        v-if="isPeopleScope"
+        :people="peopleResults"
+      />
+      <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <MediaCard
           v-for="item in results"
           :key="`${item.media_type}-${item.id}`"
@@ -63,7 +67,7 @@
     </div>
 
     <!-- Default state -->
-    <div v-else-if="!query && !isUserScope">
+    <div v-else-if="!query && !isUserScope && !isPeopleScope">
       <h2 class="section-title mb-4">Trending Right Now</h2>
       <div v-if="loadingDefault" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
@@ -100,6 +104,10 @@
     <div v-else-if="!query && isUserScope" class="card p-6 text-sm text-muted">
       Search users by username.
     </div>
+
+    <div v-else-if="!query && isPeopleScope" class="card p-6 text-sm text-muted">
+      Search people by name.
+    </div>
   </div>
 </template>
 
@@ -110,18 +118,20 @@ import { authAPI, mediaAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import UserList from '@/components/UserList.vue'
+import PeopleList from '@/components/PeopleList.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { useAuthStore } from '@/stores/auth'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
-import type { MediaResult, MediaType, QueryParams, UserCard } from '@/types/api'
+import type { MediaResult, MediaType, PersonSearchResult, QueryParams, UserCard } from '@/types/api'
 
 const SCOPE_VALUE = {
   ALL: 'all',
   MOVIES: 'movies',
   SHOWS: 'shows',
   USERS: 'users',
+  PEOPLE: 'people',
 } as const
 type SearchScope = (typeof SCOPE_VALUE)[keyof typeof SCOPE_VALUE]
 type SearchFilter = MediaType | 'multi'
@@ -132,6 +142,7 @@ const router = useRouter()
 const query = ref('')
 const results = ref<MediaResult[]>([])
 const userResults = ref<UserCard[]>([])
+const peopleResults = ref<PersonSearchResult[]>([])
 const trendingMovies = ref<MediaResult[]>([])
 const trendingTvShows = ref<MediaResult[]>([])
 const loading = ref(false)
@@ -146,6 +157,7 @@ const { t } = useI18n()
 
 const activeScope = ref<SearchScope>(SCOPE_VALUE.ALL)
 const isUserScope = ref(false)
+const isPeopleScope = ref(false)
 const pageTitle = ref('Discover')
 
 async function doSearch({ page = 1 }: { page?: number } = {}) {
@@ -153,6 +165,7 @@ async function doSearch({ page = 1 }: { page?: number } = {}) {
   if (!trimmedQuery) {
     results.value = []
     userResults.value = []
+    peopleResults.value = []
     totalResults.value = 0
     totalPages.value = 1
     currentPage.value = 1
@@ -170,6 +183,24 @@ async function doSearch({ page = 1 }: { page?: number } = {}) {
       }
       userResults.value = await authAPI.searchUsers(trimmedQuery)
       results.value = []
+      peopleResults.value = []
+      return
+    }
+
+    if (isPeopleScope.value) {
+      if (trimmedQuery.length < 3) {
+        peopleResults.value = []
+        totalResults.value = 0
+        totalPages.value = 1
+        return
+      }
+      const peopleData = await mediaAPI.searchPeople(trimmedQuery, page)
+      peopleResults.value = peopleData?.results || []
+      results.value = []
+      userResults.value = []
+      totalPages.value = Number.isFinite(peopleData?.total_pages) ? Math.max(1, peopleData.total_pages) : 1
+      totalResults.value = Number.isFinite(peopleData?.total_results) ? peopleData.total_results : peopleResults.value.length
+      currentPage.value = Number.isFinite(peopleData?.page) ? Math.min(peopleData.page, totalPages.value) : Math.min(page, totalPages.value)
       return
     }
 
@@ -193,6 +224,7 @@ async function doSearch({ page = 1 }: { page?: number } = {}) {
       totalResults.value = Number.isFinite(data.total_results) ? data.total_results : typedRows.length
       currentPage.value = Number.isFinite(data.page) ? Math.min(data.page, totalPages.value) : Math.min(page, totalPages.value)
       userResults.value = []
+      peopleResults.value = []
     }
   } finally {
     loading.value = false
@@ -209,13 +241,15 @@ function mapFilterToScope(value: unknown): SearchScope {
   if (value === MEDIA_TYPE.MOVIE) return SCOPE_VALUE.MOVIES
   if (value === MEDIA_TYPE.TV) return SCOPE_VALUE.SHOWS
   if (value === 'users') return SCOPE_VALUE.USERS
+  if (value === 'people') return SCOPE_VALUE.PEOPLE
   return SCOPE_VALUE.ALL
 }
 
 function applyScope(scope: SearchScope) {
   activeScope.value = scope
   isUserScope.value = scope === SCOPE_VALUE.USERS
-  activeFilter.value = isUserScope.value ? 'multi' : mapScopeToFilter(scope)
+  isPeopleScope.value = scope === SCOPE_VALUE.PEOPLE
+  activeFilter.value = isUserScope.value || isPeopleScope.value ? 'multi' : mapScopeToFilter(scope)
 }
 
 function syncPageTitle() {
@@ -223,7 +257,7 @@ function syncPageTitle() {
 }
 
 function buildSearchQuery(scope: SearchScope, rawQuery: string, page = 1): QueryParams {
-  const scopedValue = scope === SCOPE_VALUE.USERS ? 'users' : mapScopeToFilter(scope)
+  const scopedValue = scope === SCOPE_VALUE.USERS ? 'users' : scope === SCOPE_VALUE.PEOPLE ? 'people' : mapScopeToFilter(scope)
   const trimmedQuery = String(rawQuery || '').trim()
   const searchQuery: QueryParams = {}
 
@@ -274,6 +308,7 @@ function setScope(scope: SearchScope) {
   } else {
     results.value = []
     userResults.value = []
+    peopleResults.value = []
   }
   syncRouteFromState()
 }
@@ -289,6 +324,7 @@ function onSearchSubmit({ query: nextQuery, scope }: SearchSubmit) {
   } else {
     results.value = []
     userResults.value = []
+    peopleResults.value = []
   }
   syncRouteFromState()
 }
@@ -318,6 +354,7 @@ watch(
     } else {
       results.value = []
       userResults.value = []
+      peopleResults.value = []
       totalResults.value = 0
       totalPages.value = 1
       currentPage.value = 1

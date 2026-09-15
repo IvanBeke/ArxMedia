@@ -20,6 +20,9 @@ function imdbUrlFor(ids: ExternalIds | undefined | null): string | null {
   if (imdb && /^tt\d+$/.test(imdb)) {
     return `https://www.imdb.com/title/${imdb}/`
   }
+  if (imdb && /^nm\d+$/.test(imdb)) {
+    return `https://www.imdb.com/name/${imdb}/`
+  }
   return null
 }
 
@@ -59,5 +62,13 @@ export function episodeExternalLinks(
     tmdbUrl: `https://www.themoviedb.org/tv/${tmdbId}/season/${seasonNumber}/episode/${episodeNumber}`,
     tvmazeUrl: null,
     imdbUrl: null,
+  }
+}
+
+export function personExternalLinks(personId: string | number, ids?: ExternalIds | null): DetailExternalLinks {
+  return {
+    tmdbUrl: `https://www.themoviedb.org/person/${personId}`,
+    tvmazeUrl: null,
+    imdbUrl: imdbUrlFor(ids ?? null),
   }
 }

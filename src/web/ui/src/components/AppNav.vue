@@ -21,7 +21,7 @@
             v-model="searchQuery"
             :scope="searchScope"
             compact
-            placeholder="Search movies, series & anime, or #id"
+            placeholder="Search movies, series, people & anime, or #id"
             @update:scope="searchScope = $event"
             @submit="goSearch"
             @select-preview="goToPreviewItem"
@@ -160,11 +160,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useI18n } from '@/i18n'
 import { MEDIA_TYPE } from '@/constants/tracking'
-import type { UserCard } from '@/types/api'
+import type { PersonSearchResult, UserCard } from '@/types/api'
 
-type SearchScope = 'all' | 'movies' | 'shows' | 'users'
+type SearchScope = 'all' | 'movies' | 'shows' | 'users' | 'people'
 type SearchSubmission = { query: string; scope: SearchScope }
-type SearchPreviewItem = (UserCard & { kind: 'user' }) | { id: number; media_type: (typeof MEDIA_TYPE)[keyof typeof MEDIA_TYPE] }
+type SearchPreviewItem = (UserCard & { kind: 'user' }) | (PersonSearchResult & { kind: 'person' }) | { id: number; media_type: (typeof MEDIA_TYPE)[keyof typeof MEDIA_TYPE] }
 
 const auth = useAuthStore()
 const theme = useThemeStore()
@@ -186,6 +186,7 @@ function scopeToQueryValue(scope: SearchScope) {
   if (scope === 'movies') return MEDIA_TYPE.MOVIE
   if (scope === 'shows') return MEDIA_TYPE.TV
   if (scope === 'users') return 'users'
+  if (scope === 'people') return 'people'
   return 'all'
 }
 
@@ -201,6 +202,10 @@ function goSearch({ query, scope }: SearchSubmission) {
 
 function goToPreviewItem(item: SearchPreviewItem) {
   if ('kind' in item) {
+    if (item.kind === 'person') {
+      router.push(`/people/${item.id}`)
+      return
+    }
     router.push(`/profile/${item.username}`)
     return
   }

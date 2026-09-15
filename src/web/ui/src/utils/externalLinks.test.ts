@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { episodeExternalLinks, movieExternalLinks, seasonExternalLinks, showExternalLinks } from '@/utils/externalLinks'
+import { episodeExternalLinks, movieExternalLinks, personExternalLinks, seasonExternalLinks, showExternalLinks } from '@/utils/externalLinks'
 
 describe('externalLinks', () => {
   it('builds movie links and hides tvmaze', () => {
@@ -26,5 +26,17 @@ describe('externalLinks', () => {
     expect(episodeExternalLinks(1399, 1, 2).tmdbUrl).toBe(
       'https://www.themoviedb.org/tv/1399/season/1/episode/2',
     )
+  })
+
+  it('builds person links with imdb name url', () => {
+    const links = personExternalLinks(123, { imdb_id: 'nm1234567' })
+    expect(links.tmdbUrl).toBe('https://www.themoviedb.org/person/123')
+    expect(links.tvmazeUrl).toBeNull()
+    expect(links.imdbUrl).toBe('https://www.imdb.com/name/nm1234567/')
+  })
+
+  it('hides person imdb link when id is missing or invalid', () => {
+    expect(personExternalLinks(123, {}).imdbUrl).toBeNull()
+    expect(personExternalLinks(123, { imdb_id: 'invalid' }).imdbUrl).toBeNull()
   })
 })
