@@ -17,6 +17,8 @@
         :item="item"
         :media-type="item.media_type || mediaType"
         @error="showQuickActionError"
+        @status-changed="emit('status-changed', $event)"
+        @watchlist-removed="emit('watchlist-removed', $event)"
       />
     </div>
     <p v-else class="text-sm text-muted">No recommendations found.</p>
@@ -28,6 +30,7 @@ import MediaCard from '@/components/MediaCard.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import type { MediaResult, MediaType } from '@/types/api'
+import type { MediaStatusChangedPayload } from '@/utils/mediaStatusSync'
 
 withDefaults(defineProps<{
   items: MediaResult[]
@@ -35,6 +38,11 @@ withDefaults(defineProps<{
   loading?: boolean
   loadError?: boolean
 }>(), { mediaType: MEDIA_TYPE.MOVIE, loading: false, loadError: false })
+
+const emit = defineEmits<{
+  'status-changed': [payload: MediaStatusChangedPayload]
+  'watchlist-removed': [payload: { tmdb_id: number | undefined; media_type: MediaType }]
+}>()
 
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 </script>

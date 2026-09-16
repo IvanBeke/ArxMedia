@@ -281,7 +281,7 @@
 
         <template v-if="activeTab === 'more'">
           <p v-if="recsError" class="text-sm text-muted mb-3">Recommendations unavailable right now.</p>
-          <RecommendationsRow :items="recommendations" :media-type="MEDIA_TYPE.TV" :loading="loadingRecs" />
+          <RecommendationsRow :items="recommendations" :media-type="MEDIA_TYPE.TV" :loading="loadingRecs" @status-changed="handleRecommendationStatusChanged" />
         </template>
       </div>
     </div>
@@ -314,6 +314,7 @@ import { useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
 import { tmdbImageUrl } from '@/utils/images'
+import { applyStatusChanged, type MediaStatusChangedPayload } from '@/utils/mediaStatusSync'
 import { canRateByStatus, formatUpdatedAtLabel } from '@/utils/mediaStatus'
 import { showExternalLinks } from '@/utils/externalLinks'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
@@ -765,6 +766,10 @@ async function loadRecommendations() {
   } finally {
     loadingRecs.value = false
   }
+}
+
+function handleRecommendationStatusChanged(payload: MediaStatusChangedPayload) {
+  applyStatusChanged(recommendations.value, payload)
 }
 
 onMounted(async () => {

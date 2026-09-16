@@ -21,7 +21,7 @@
         <p v-if="overview" class="text-sm text-muted mt-1 line-clamp-3 max-w-2xl">{{ overview }}</p>
       </div>
     </div>
-    <RecommendationsRow :items="parts" :media-type="MEDIA_TYPE.MOVIE" />
+    <RecommendationsRow :items="parts" :media-type="MEDIA_TYPE.MOVIE" @status-changed="handleStatusChanged" />
   </div>
 </template>
 
@@ -30,6 +30,7 @@ import { computed } from 'vue'
 import RecommendationsRow from '@/components/RecommendationsRow.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { tmdbImageUrl } from '@/utils/images'
+import { applyStatusChanged, sortMediaByReleaseDate, type MediaStatusChangedPayload } from '@/utils/mediaStatusSync'
 import type { CollectionDetail, MediaResult } from '@/types/api'
 
 const props = withDefaults(defineProps<{
@@ -42,9 +43,18 @@ const overview = computed(() => props.collection?.overview || '')
 const parts = computed((): MediaResult[] => {
   const rawParts = props.collection?.parts
   if (!Array.isArray(rawParts)) return []
-  return rawParts.map((part) => ({
-    ...part,
-    media_type: 'movie' as const,
-  }))
+  return sortMediaByReleaseDate(
+    rawParts.map((part) => ({
+      ...part,
+      media_type: 'movie' as const,
+    })),
+  )
 })
+
+function handleStatusChanged(payload: MediaStatusChangedPayload) {
+  const source = props.collection?.parts
+  if (Array.isArray(source)) {
+    applyStatusChanged(source, payload)
+  }
+}
 </script>

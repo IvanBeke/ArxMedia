@@ -127,6 +127,7 @@ import { getApiErrorMessage } from '@/utils/errors'
 import type { MediaCardItem } from '@/composables/useMediaCardModel'
 import type { MediaType } from '@/types/api'
 import type { WatchEntryStatus } from '@/types/tracking'
+import type { MediaStatusChangedPayload } from '@/utils/mediaStatusSync'
 import type { WatchedAtOption } from '@/utils/watchOptions'
 
 const props = withDefaults(defineProps<{
@@ -150,7 +151,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   error: [message: string]
-  'status-changed': [payload: { tmdb_id: number | undefined; media_type: MediaType; status: WatchEntryStatus; watched_at: string | null; status_changed_at: string | null }]
+  'status-changed': [payload: MediaStatusChangedPayload]
   'watchlist-removed': [payload: { tmdb_id: number | undefined; media_type: MediaType }]
   'list-item-removed': [payload: { list_id: number; item_id: number; tmdb_id: number | null; media_type: MediaType }]
   'list-item-added': [payload: { list_id: number; tmdb_id: number; media_type: MediaType }]
