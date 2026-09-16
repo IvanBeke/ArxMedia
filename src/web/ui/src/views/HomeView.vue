@@ -12,13 +12,13 @@
             <span class="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
             Track · Rate · Discover
           </div>
-          <h1 class="font-display text-5xl md:text-7xl text-primary font-semibold leading-tight mb-4">
-            Never lose track of<br />what you're <span class="text-brand-500">watching</span>
+          <h1 class="font-display text-4xl sm:text-5xl md:text-7xl text-primary font-semibold leading-tight mb-4">
+            Never lose track of<br class="hidden sm:block" />what you're <span class="text-brand-500">watching</span>
           </h1>
           <p class="text-muted text-base mb-6">
             Track every movie and TV show. Build your watchlist, log what you watched, and keep your progress organized in one place.
           </p>
-          <div class="flex gap-3">
+          <div class="flex flex-wrap gap-3">
             <RouterLink to="/login" class="btn-primary px-5 py-2.5 text-sm">
               Log in
             </RouterLink>

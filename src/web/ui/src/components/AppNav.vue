@@ -21,7 +21,6 @@
             v-model="searchQuery"
             :scope="searchScope"
             compact
-            placeholder="Search movies, series, people & anime, or #id"
             @update:scope="searchScope = $event"
             @submit="goSearch"
             @select-preview="goToPreviewItem"

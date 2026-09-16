@@ -1,6 +1,6 @@
 <template>
-  <div class="border-b border-surface-200">
-    <nav class="flex gap-6" role="tablist" :aria-label="ariaLabel" @keydown="onKeydown">
+  <div class="border-b border-surface-200 overflow-x-auto">
+    <nav class="flex gap-6 whitespace-nowrap min-h-[44px]" role="tablist" :aria-label="ariaLabel" @keydown="onKeydown">
       <button
         v-for="(tab, index) in tabs"
         :key="tab.id"
@@ -11,7 +11,7 @@
         :aria-selected="tab.id === modelValue"
         :aria-controls="`tabpanel-${tab.id}`"
         :tabindex="tab.id === modelValue ? 0 : -1"
-        class="pb-3 text-sm font-medium transition-colors"
+        class="pb-3 text-sm font-medium transition-colors shrink-0 min-h-[44px]"
         :class="tab.id === modelValue ? 'tab-active' : 'tab-inactive'"
         :title="tab.tooltip || undefined"
         @click="select(tab.id)"

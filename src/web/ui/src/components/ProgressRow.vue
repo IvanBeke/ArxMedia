@@ -1,8 +1,8 @@
 <template>
   <article class="card p-3 md:p-4 progress-row-deferred">
-    <div class="progress-row-grid" :class="hasNextEpisode(item) ? 'row-with-episode' : 'row-no-episode'">
-      <section class="show-section">
-        <RouterLink :to="`/tv/${item.tmdb_id}`" class="w-[113px] h-[170px] rounded-md overflow-hidden bg-surface-200 flex-shrink-0 border border-surface-200">
+    <div class="progress-row-grid grid gap-[0.8rem] lg:gap-4 grid-cols-[minmax(0,1fr)]" :class="hasNextEpisode(item) ? 'lg:grid-cols-[minmax(0,1fr)_470px] lg:items-start' : ''">
+      <section class="show-section items-start gap-[0.6rem] sm:gap-[0.8rem]">
+        <RouterLink :to="`/tv/${item.tmdb_id}`" class="w-[84px] h-[126px] sm:w-[113px] sm:h-[170px] rounded-md overflow-hidden bg-surface-200 flex-shrink-0 border border-surface-200">
           <img v-if="item.poster_url" :src="item.poster_url" :alt="item.show_name" class="w-full h-full object-cover" loading="lazy">
         </RouterLink>
         <div class="show-main min-w-0">
@@ -10,18 +10,20 @@
             <RouterLink :to="`/tv/${item.tmdb_id}`" class="block text-xl leading-tight font-display text-primary font-semibold hover:text-brand-400 truncate">{{ item.show_name }}</RouterLink>
           </div>
 
-          <div class="show-meta-row mt-1">
-            <p class="show-meta-left text-xs text-muted">
+          <div class="show-meta-row mt-1 items-center gap-[0.6rem] max-lg:items-start max-lg:gap-y-[0.4rem]">
+            <p class="show-meta-left text-xs text-muted gap-[0.35rem] whitespace-nowrap overflow-hidden max-lg:whitespace-normal max-lg:flex-wrap max-lg:overflow-visible">
                 <span class="status-pill" :class="statusClass(item.status)">{{ statusText(item.status) }}</span>
                 <UserRating v-if="item.user_rating" :value="item.user_rating" size="xs" />
                 <RatingBadge v-if="hasProviderRating(item.vote_average)" :value="item.vote_average" size="xs" out-of-ten />
-                <span class="meta-separator" aria-hidden="true">·</span>
-                <span class="meta-text">{{ providerShowStatus(item.provider_status) }}</span>
-                <span class="meta-separator" aria-hidden="true">·</span>
-                <span class="meta-text">{{ minutesPerEpisode(item) }}</span>
+                <span class="meta-group">
+                  <span class="meta-separator meta-separator-lead inline-flex max-md:hidden" aria-hidden="true">·</span>
+                  <span class="meta-text">{{ providerShowStatus(item.provider_status) }}</span>
+                  <span class="meta-separator inline-flex" aria-hidden="true">·</span>
+                  <span class="meta-text">{{ minutesPerEpisode(item) }}</span>
+                </span>
             </p>
-            <div class="show-headline-meta">
-              <div class="show-headline-actions">
+            <div class="show-headline-meta items-center gap-[0.55rem] max-lg:items-end max-lg:gap-[0.45rem] max-lg:ml-auto">
+              <div class="show-headline-actions gap-[0.45rem] max-lg:gap-[0.35rem]">
                 <details ref="menuRef" class="control-menu">
                   <summary class="row-pill-trigger" title="Manage" aria-label="Manage show">
                     <span>Manage</span>
@@ -83,7 +85,7 @@
         </div>
       </section>
 
-      <section v-if="hasNextEpisode(item)" class="episode-section">
+      <section v-if="hasNextEpisode(item)" class="episode-section grid gap-[0.65rem] border-l border-surface-200 pl-[0.85rem] grid-cols-[minmax(0,1fr)_272px] max-lg:border-l-0 max-lg:pl-0 max-lg:border-t max-lg:border-surface-200 max-lg:pt-3 max-lg:grid-cols-[minmax(0,1fr)]">
         <div>
           <p class="episode-kicker">Next episode</p>
           <EpisodeCodePill
@@ -95,7 +97,7 @@
             class="episode-code"
           />
           <EpisodeTypePill :value="item.next_episode?.episode_type ?? undefined" class="episode-type" />
-          <p class="episode-title" :title="item.next_episode?.name || ''">{{ item.next_episode?.name }}</p>
+          <p class="episode-title text-[1.12rem] max-lg:text-xl" :title="item.next_episode?.name || ''">{{ item.next_episode?.name }}</p>
           <p class="episode-air">{{ item.next_episode?.air_date ? formatDateTimeByLocale(item.next_episode.air_date) : '' }}</p>
           <div class="mt-3 flex items-center gap-2">
             <RatingBadge
@@ -107,7 +109,7 @@
             />
           </div>
         </div>
-        <div class="episode-media">
+        <div class="episode-media max-lg:mt-[0.1rem]">
           <RouterLink :to="episodeLink(item)" class="episode-still">
             <img
               v-if="item.next_episode?.still_url"
@@ -420,12 +422,10 @@ function seasonsLabel(item: ShowProgressItem) {
 
 .progress-row-grid {
   display: grid;
-  gap: 1rem;
 }
 
 .show-section {
   display: flex;
-  gap: 0.8rem;
   min-width: 0;
 }
 
@@ -471,18 +471,15 @@ function seasonsLabel(item: ShowProgressItem) {
 .show-meta-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 0.6rem;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .show-meta-left {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
   min-width: 0;
   line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
 }
 
@@ -492,22 +489,25 @@ function seasonsLabel(item: ShowProgressItem) {
 }
 
 .meta-separator {
-  display: inline-flex;
   align-items: center;
   color: var(--text-muted);
 }
 
+.meta-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
 .show-headline-meta {
   display: flex;
-  align-items: center;
-  gap: 0.55rem;
   flex-shrink: 0;
 }
 
 .show-headline-actions {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
 }
 
 .show-percent {
@@ -549,6 +549,8 @@ function seasonsLabel(item: ShowProgressItem) {
   align-items: flex-start;
   gap: 1.1rem;
   margin-top: 0.1rem;
+  flex-wrap: wrap;
+  row-gap: 0.6rem;
 }
 
 .stats-inline-item {
@@ -583,14 +585,6 @@ function seasonsLabel(item: ShowProgressItem) {
   --brand-500: var(--progress-accent-bg);
 }
 
-.episode-section {
-  display: grid;
-  gap: 0.65rem;
-  border-left: 1px solid var(--bg-surface-200);
-  padding-left: 0.85rem;
-  grid-template-columns: minmax(0, 1fr) 272px;
-}
-
 .episode-kicker {
   margin-bottom: 0.35rem;
   font-size: 0.72rem;
@@ -606,7 +600,6 @@ function seasonsLabel(item: ShowProgressItem) {
 
 .episode-title {
   margin-top: 0.45rem;
-  font-size: 1.12rem;
   line-height: 1.2;
   font-family: var(--font-display);
   color: var(--text-primary);
@@ -647,58 +640,5 @@ function seasonsLabel(item: ShowProgressItem) {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-@media (max-width: 1099px) {
-  .show-section {
-    align-items: flex-start;
-  }
-
-  .progress-row-grid {
-    gap: 0.8rem;
-  }
-
-  .show-meta-row {
-    align-items: flex-start;
-    flex-wrap: wrap;
-    row-gap: 0.4rem;
-  }
-
-  .show-headline-meta {
-    align-items: flex-end;
-    gap: 0.45rem;
-    margin-left: auto;
-  }
-
-  .show-headline-actions {
-    gap: 0.35rem;
-  }
-
-  .episode-section {
-    border-left: 0;
-    padding-left: 0;
-    border-top: 1px solid var(--bg-surface-200);
-    padding-top: 0.75rem;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .episode-title {
-    font-size: 1.25rem;
-  }
-
-  .episode-media {
-    margin-top: 0.1rem;
-  }
-}
-
-@media (min-width: 1100px) {
-  .progress-row-grid.row-with-episode {
-    grid-template-columns: minmax(0, 1fr) 470px;
-    align-items: start;
-  }
-
-  .progress-row-grid.row-no-episode {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 </style>

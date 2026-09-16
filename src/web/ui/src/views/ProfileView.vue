@@ -7,11 +7,11 @@
     </div>
 
     <template v-else-if="profile">
-      <div class="flex items-start gap-5 mb-6">
-        <div class="w-16 h-16 rounded-full bg-brand-500/20 border-2 border-brand-500/30 flex items-center justify-center text-brand-400 text-2xl font-medium">
+      <div class="flex flex-wrap items-start gap-4 sm:gap-5 mb-6">
+        <div class="w-16 h-16 rounded-full bg-brand-500/20 border-2 border-brand-500/30 flex items-center justify-center text-brand-400 text-2xl font-medium flex-shrink-0">
           {{ profile.username.charAt(0).toUpperCase() }}
         </div>
-        <div>
+        <div class="min-w-0 flex-1">
           <h1 class="font-display text-2xl text-primary font-semibold">{{ profile.username }}</h1>
           <p v-if="profile.bio" class="text-gray-400 text-sm mt-1">{{ profile.bio }}</p>
           <div class="flex flex-wrap gap-2 mt-2 text-xs text-gray-500">
@@ -40,7 +40,7 @@
             <span v-if="profile.viewer_relationship?.is_friend && !profile.viewer_relationship?.is_self" class="badge bg-brand-500/20 text-brand-400 text-[10px]">{{ t('profile_badge_friend') }}</span>
           </div>
         </div>
-        <div class="ml-auto" v-if="!profile.viewer_relationship?.is_self && auth.isAuthenticated">
+        <div class="ml-auto shrink-0" v-if="!profile.viewer_relationship?.is_self && auth.isAuthenticated">
           <button @click="toggleFollow" class="btn-primary text-sm" :disabled="followLoading">{{ isFollowing ? 'Unfollow' : 'Follow' }}</button>
         </div>
       </div>

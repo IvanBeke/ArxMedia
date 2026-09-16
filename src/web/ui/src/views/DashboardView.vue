@@ -35,7 +35,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
       </RouterLink>
-      <div v-if="loadingUpNext" class="flex gap-4">
+      <div v-if="loadingUpNext" class="flex gap-4 overflow-x-auto pb-2">
         <div v-for="n in 3" :key="n" class="w-40 h-60 skeleton rounded-lg flex-shrink-0"></div>
       </div>
       <div v-else-if="upNext?.length" class="flex gap-4 overflow-x-auto pb-2">
@@ -78,7 +78,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
       </RouterLink>
-      <div v-if="loadingUpcoming" class="flex gap-4">
+      <div v-if="loadingUpcoming" class="flex gap-4 overflow-x-auto pb-2">
         <div v-for="n in 3" :key="n" class="w-40 h-60 skeleton rounded-lg flex-shrink-0"></div>
       </div>
       <div v-else-if="upcoming?.length" class="flex gap-4 overflow-x-auto pb-2">

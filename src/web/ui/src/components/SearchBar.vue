@@ -31,12 +31,12 @@
       </button>
     </div>
 
-    <div v-if="inlineScopeSelector" class="mt-2 flex items-center gap-1">
+    <div v-if="inlineScopeSelector" class="mt-2 flex flex-wrap items-center gap-1">
       <button
         v-for="option in scopeOptions"
         :key="`inline-${option.value}`"
         type="button"
-        class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+        class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors min-h-[44px] sm:min-h-0"
         :class="localScope === option.value ? 'bg-brand-500 text-white' : 'text-muted hover:bg-surface-100 hover:text-primary'"
         @mousedown.prevent
         @click="setScope(option.value)"
@@ -49,12 +49,12 @@
       v-if="showPanel"
       class="absolute z-[140] mt-2 w-full overflow-hidden rounded-md border border-surface-200 bg-surface shadow-xl"
     >
-      <div class="flex items-center gap-1 border-b border-surface-200 p-2">
+      <div class="flex flex-wrap items-center gap-1 border-b border-surface-200 p-2">
         <button
           v-for="option in scopeOptions"
           :key="option.value"
           type="button"
-          class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+          class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors min-h-[44px] sm:min-h-0"
           :class="localScope === option.value ? 'bg-brand-500 text-white' : 'text-muted hover:bg-surface-100 hover:text-primary'"
           @mousedown.prevent
           @click="setScope(option.value)"

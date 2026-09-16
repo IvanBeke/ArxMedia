@@ -220,8 +220,8 @@
                 </div>
 
                 <div class="flex-1 min-w-0">
-                  <div class="flex items-center justify-between">
-                    <RouterLink :to="`/tv/${tmdbId}/season/${season.season_number}`" class="text-primary font-medium hover:text-brand-400 transition-colors">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <RouterLink :to="`/tv/${tmdbId}/season/${season.season_number}`" class="min-w-0 flex-1 truncate text-primary font-medium hover:text-brand-400 transition-colors">
                       {{ season.name }}
                     </RouterLink>
                     <div class="flex items-center gap-2">

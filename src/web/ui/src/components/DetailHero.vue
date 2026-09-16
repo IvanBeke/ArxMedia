@@ -10,9 +10,9 @@
       class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10"
       :class="bare ? 'py-8' : '-mt-60 md:-mt-96 pb-8'"
     >
-      <div class="flex flex-col md:flex-row gap-8">
+      <div class="flex flex-col items-center text-center sm:text-left md:flex-row md:items-start md:text-left gap-6 md:gap-8">
         <div class="flex-shrink-0">
-          <div class="w-36 md:w-48 rounded-md overflow-hidden shadow-2xl border border-surface-200">
+          <div class="w-32 sm:w-40 md:w-48 rounded-md overflow-hidden shadow-2xl border border-surface-200">
             <img v-if="posterUrl" :src="posterUrl" :alt="posterAlt" class="w-full" />
             <div v-else class="aspect-[2/3] bg-surface-200 flex flex-col items-center justify-center text-gray-500 p-4">
               <span class="text-xs text-center">{{ posterAlt }}</span>
@@ -23,7 +23,7 @@
           </div>
         </div>
 
-        <div class="flex-1 pt-2 min-w-0">
+        <div class="flex-1 pt-2 min-w-0 w-full">
           <div v-if="loading" class="space-y-3">
             <div class="h-10 w-3/4 skeleton rounded-md"></div>
             <div class="h-4 w-1/2 skeleton rounded-md"></div>

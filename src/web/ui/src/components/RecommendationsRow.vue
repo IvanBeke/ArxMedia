@@ -6,11 +6,11 @@
       </div>
     </Transition>
 
-    <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+    <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       <div v-for="n in 10" :key="n" class="aspect-[2/3] skeleton rounded-md"></div>
     </div>
     <p v-else-if="loadError" class="text-sm text-muted">Recommendations unavailable right now.</p>
-    <div v-else-if="items.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+    <div v-else-if="items.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       <MediaCard
         v-for="item in items"
         :key="`${item.media_type}-${item.id}`"

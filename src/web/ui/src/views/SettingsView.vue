@@ -52,12 +52,12 @@
       <div class="card p-6 space-y-4">
         <h2 class="text-sm font-medium text-primary">{{ t('settings_privacy') }}</h2>
 
-        <div class="flex items-center justify-between">
-          <div>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="min-w-0">
             <p class="text-sm text-primary">Account Visibility</p>
             <p class="text-xs text-gray-500">Choose who can view your profile activity and social graph</p>
           </div>
-          <select v-model="form.account_visibility" @change="updateAccountVisibility" class="input rounded-md text-sm max-w-[220px]">
+          <select v-model="form.account_visibility" @change="updateAccountVisibility" class="input rounded-md text-sm w-full sm:w-auto sm:max-w-[220px]">
             <option :value="ACCOUNT_VISIBILITY.PUBLIC">Public</option>
             <option :value="ACCOUNT_VISIBILITY.PRIVATE">Private</option>
             <option :value="ACCOUNT_VISIBILITY.FRIENDS_ONLY">Friends only</option>
@@ -67,7 +67,7 @@
 
       <div class="card p-6 space-y-4">
         <h2 class="text-sm font-medium text-primary">{{ t('settings_language') }}</h2>
-        <select v-model="selectedLocale" @change="updateLocale" class="input rounded-md text-sm max-w-[220px]">
+        <select v-model="selectedLocale" @change="updateLocale" class="input rounded-md text-sm w-full sm:w-auto sm:max-w-[220px]">
           <option value="en">English</option>
           <option value="es">Español</option>
         </select>

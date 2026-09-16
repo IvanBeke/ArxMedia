@@ -117,4 +117,13 @@ describe('MovieRow', () => {
     expect(required(required(wrapper.emitted('error'), 'Error event')[0], 'Error event payload')[0]).toBe('Rating rejected.')
     expect(dialog.element.open).toBe(true)
   })
+
+  it('keeps the title and manage control within the row on narrow screens', async () => {
+    const wrapper = await mountRow(makeItem({ title: 'A very long movie title that should truncate on mobile' }))
+
+    const titleLink = wrapper.findAll('a').find((a) => a.text().includes('very long movie'))
+    expect(required(titleLink, 'Movie title link').classes()).toContain('min-w-0')
+    expect(required(titleLink, 'Movie title link').classes()).toContain('flex-1')
+    expect(wrapper.find('.show-meta-row').exists()).toBe(true)
+  })
 })

@@ -37,4 +37,20 @@ describe('MediaTabs', () => {
     await wrapper.find('[role="tablist"]').trigger('keydown', { key: 'ArrowRight' })
     expect(wrapper.emitted('update:modelValue')).toEqual([['cast']])
   })
+
+  it('allows horizontal scrolling on narrow screens', () => {
+    const wrapper = mount(MediaTabs, {
+      props: {
+        modelValue: 'overview',
+        tabs: [
+          { id: 'overview', label: 'Overview' },
+          { id: 'cast', label: 'Cast' },
+          { id: 'more', label: 'More like this' },
+        ],
+      },
+    })
+
+    expect(wrapper.find('nav').classes()).toContain('whitespace-nowrap')
+    expect(wrapper.findAll('[role="tab"]')[0]?.classes()).toContain('shrink-0')
+  })
 })

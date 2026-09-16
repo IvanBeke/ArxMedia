@@ -1,6 +1,16 @@
 @import "tailwindcss";
 @config "../../tailwind.config.ts";
 
+/* Breakpoints, single-sourced: keep in sync with BREAKPOINTS in
+   src/constants/breakpoints.ts and the :root vars below. */
+@theme {
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -11,6 +21,11 @@
   }
 
   :root {
+    --breakpoint-sm: 640px;
+    --breakpoint-md: 768px;
+    --breakpoint-lg: 1024px;
+    --breakpoint-xl: 1280px;
+    --breakpoint-2xl: 1536px;
     --bg-primary: #111111;
     --bg-surface: #1a1a1a;
     --bg-surface-100: #1d1d1d;
@@ -255,6 +270,8 @@
 
   .app-dialog {
     margin: auto;
+    max-width: calc(100vw - 2rem);
+    box-sizing: border-box;
   }
 
   .app-dialog::backdrop {

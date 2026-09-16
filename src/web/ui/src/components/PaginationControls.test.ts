@@ -146,4 +146,13 @@ describe('PaginationControls', () => {
 
     expect(wrapper.emitted('update:page')).toEqual([[3]])
   })
+
+  it('stays scrollable instead of clipping on narrow screens', () => {
+    const wrapper = mount(PaginationControls, {
+      props: { count: 400, page: 1, loadedCount: 20 },
+    })
+
+    expect(wrapper.find('nav').classes()).toContain('overflow-x-auto')
+    expect(wrapper.find('nav').classes()).toContain('max-w-full')
+  })
 })

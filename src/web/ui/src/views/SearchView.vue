@@ -16,14 +16,13 @@
         :enable-preview="false"
         :inline-scope-selector="true"
         :submit-on-clear="true"
-        placeholder="Search movies, series, people & anime, or #id"
         @update:scope="setScope"
         @submit="onSearchSubmit"
       />
     </div>
 
     <!-- Loading -->
-    <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+    <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
     </div>
 
@@ -40,7 +39,7 @@
         v-if="isPeopleScope"
         :people="peopleResults"
       />
-      <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
         <MediaCard
           v-for="item in results"
           :key="`${item.media_type}-${item.id}`"
@@ -69,13 +68,13 @@
     <!-- Default state -->
     <div v-else-if="!query && !isUserScope && !isPeopleScope">
       <h2 class="section-title mb-4">Trending Right Now</h2>
-      <div v-if="loadingDefault" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div v-if="loadingDefault" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
         <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
       </div>
       <div v-else class="space-y-8">
         <div v-if="(activeFilter === 'multi' || activeFilter === MEDIA_TYPE.MOVIE) && trendingMovies.length">
           <h3 class="section-title mb-4">Movies</h3>
-          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             <MediaCard
               v-for="item in trendingMovies"
               :key="`movie-${item.id}`"
@@ -88,7 +87,7 @@
 
         <div v-if="(activeFilter === 'multi' || activeFilter === MEDIA_TYPE.TV) && trendingTvShows.length">
           <h3 class="section-title mb-4">TV Shows</h3>
-          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             <MediaCard
               v-for="item in trendingTvShows"
               :key="`tv-${item.id}`"

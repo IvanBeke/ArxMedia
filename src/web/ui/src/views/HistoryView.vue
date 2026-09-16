@@ -1,6 +1,6 @@
 <template>
   <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
       <h1 class="font-display text-2xl text-primary font-semibold">History</h1>
       <div class="text-sm text-muted">
         <span class="text-brand-400 font-medium">{{ stats?.movies_watched || 0 }}</span> movies · 

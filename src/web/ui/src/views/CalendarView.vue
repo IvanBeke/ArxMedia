@@ -99,11 +99,11 @@
         </div>
       </div>
 
-      <div v-else class="calendar-grid grid grid-cols-7 gap-2 flex-1">
+      <div v-else class="calendar-grid grid grid-cols-7 gap-1 sm:gap-2 flex-1">
         <div
           v-for="day in calendarDays"
           :key="day.iso"
-          class="rounded border border-surface-300 p-2 flex flex-col min-w-0"
+          class="rounded border border-surface-300 p-1.5 sm:p-2 flex flex-col min-w-0"
           :class="day.inCurrentMonth ? 'bg-surface-100/40' : 'bg-surface-200/30 opacity-60'"
         >
           <div class="text-xs mb-2 shrink-0" :class="day.isToday ? 'text-brand-400 font-semibold' : 'text-muted'">
@@ -126,7 +126,7 @@
                   variant="plain"
                   size="11px"
                 />
-                <span v-if="item.airTime" class="ml-1.5">{{ item.airTime }}</span>
+                <span v-if="item.airTime" class="ml-1 hidden lg:inline">{{ item.airTime }}</span>
                 <template v-else>{{ item.sublabel }}</template>
               </span>
             </RouterLink>
@@ -143,6 +143,7 @@ import { ChevronLeft, ChevronRight } from '@lucide/vue'
 import { useMediaQuery } from '@vueuse/core'
 import { calendarAPI } from '@/api'
 import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
+import { BREAKPOINTS, belowBreakpoint } from '@/constants/breakpoints'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { isoDateKey, monthBounds, nowInstantIso, parsePlainDate, weekBounds } from '@/utils/temporal'
 import type { CalendarItem } from '@/types/api'
@@ -175,7 +176,7 @@ const desktopViewMode = ref<ViewMode>('month')
 const anchorIso = ref(todayIso())
 const items = ref<CalendarItem[]>([])
 
-const isMobile = useMediaQuery('(max-width: 767px)')
+const isMobile = useMediaQuery(belowBreakpoint(BREAKPOINTS.md))
 const effectiveViewMode = computed<ViewMode>(() => (isMobile.value ? 'day' : desktopViewMode.value))
 
 const skeletonCount = computed(() => {

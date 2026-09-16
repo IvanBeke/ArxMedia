@@ -35,12 +35,12 @@
       @change="onFilterBarChange"
     />
 
-    <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+    <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
     </div>
 
     <div v-else-if="items.length">
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
         <MediaCard
           v-for="item in items"
           :key="`${item.media_type}-${item.id}`"

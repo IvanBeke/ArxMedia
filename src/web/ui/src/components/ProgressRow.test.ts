@@ -76,4 +76,39 @@ describe('ProgressRow plan-to-watch', () => {
 
     expect(wrapper.text()).not.toContain('Next episode')
   })
+
+  it('keeps provider and runtime meta visible in the wrapped meta row', () => {
+    const wrapper = mountRow(planToWatchItem())
+
+    expect(wrapper.find('.show-meta-row').exists()).toBe(true)
+    expect(wrapper.find('.show-meta-left').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Returning Series')
+    expect(wrapper.text()).toContain('42 min/ep')
+  })
+
+  it('keeps manage on the meta row and provider with runtime as one group', () => {
+    const wrapper = mountRow(planToWatchItem())
+
+    expect(wrapper.find('.show-meta-row .show-headline-meta').exists()).toBe(true)
+    expect(wrapper.find('.show-meta-left .meta-group').exists()).toBe(true)
+    expect(wrapper.find('.show-meta-left .meta-separator-lead').exists()).toBe(true)
+    expect(wrapper.find('.show-title-row .show-headline-meta').exists()).toBe(false)
+  })
+
+  it('lays out the grid single-column with a two-column desktop variant', () => {
+    const wrapper = mountRow(planToWatchItem())
+
+    const grid = wrapper.find('.progress-row-grid')
+    expect(grid.classes()).toContain('grid-cols-[minmax(0,1fr)]')
+    expect(grid.classes()).toContain('lg:grid-cols-[minmax(0,1fr)_470px]')
+    expect(grid.classes()).toContain('lg:items-start')
+  })
+
+  it('hides the leading separator on phones via utilities only', () => {
+    const wrapper = mountRow(planToWatchItem())
+
+    const lead = wrapper.find('.meta-separator-lead')
+    expect(lead.classes()).toContain('inline-flex')
+    expect(lead.classes()).toContain('max-md:hidden')
+  })
 })

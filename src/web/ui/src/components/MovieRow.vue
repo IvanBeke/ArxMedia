@@ -7,9 +7,9 @@
 
       <div class="flex-1 min-w-0">
         <div class="show-meta-row">
-          <RouterLink :to="`/movies/${item.tmdb_id}`" class="block text-xl leading-tight font-display text-primary font-semibold hover:text-brand-400 truncate" :title="item.title">{{ item.title }}</RouterLink>
+          <RouterLink :to="`/movies/${item.tmdb_id}`" class="movie-title min-w-0 flex-1 block text-lg sm:text-xl leading-tight font-display text-primary font-semibold hover:text-brand-400 truncate" :title="item.title">{{ item.title }}</RouterLink>
 
-          <div class="show-headline-meta">
+          <div class="show-headline-meta max-md:ml-auto">
             <details ref="menuRef" class="control-menu">
               <summary class="row-pill-trigger" title="Manage" aria-label="Manage movie">
                 <span>Manage</span>
@@ -293,6 +293,8 @@ function genresText(item: MovieRowItem) {
   justify-content: space-between;
   align-items: flex-start;
   gap: 0.6rem;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .show-headline-meta {
@@ -321,10 +323,4 @@ function genresText(item: MovieRowItem) {
   border-color: color-mix(in srgb, #22c55e 40%, var(--bg-surface-300));
 }
 .status-dropped { background: color-mix(in srgb, var(--action-danger) 14%, var(--bg-surface-100)); color: var(--text-secondary); border-color: color-mix(in srgb, var(--action-danger) 45%, var(--bg-surface-300)); }
-
-@media (max-width: 767px) {
-  .show-headline-meta {
-    margin-left: auto;
-  }
-}
 </style>

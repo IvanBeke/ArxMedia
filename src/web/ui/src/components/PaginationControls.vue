@@ -1,9 +1,9 @@
 <template>
-  <nav v-if="totalPages > 1" class="mt-8 flex items-center justify-center" aria-label="Pagination">
-    <div class="inline-flex overflow-hidden rounded-md border border-surface-200 bg-surface-100">
+  <nav v-if="totalPages > 1" class="mt-8 flex items-center justify-center max-w-full overflow-x-auto px-1" aria-label="Pagination">
+    <div class="inline-flex max-w-full overflow-x-auto rounded-md border border-surface-200 bg-surface-100">
       <button
         type="button"
-        class="pagination-btn border-r border-surface-200"
+        class="pagination-btn min-w-11 h-11 sm:min-w-9 sm:h-9 border-r border-surface-200"
       :disabled="isFirst"
       :class="{ 'opacity-50': isFirst }"
       aria-label="Go to first page"
@@ -16,7 +16,7 @@
       </button>
       <button
         type="button"
-        class="pagination-btn border-r border-surface-200"
+        class="pagination-btn min-w-11 h-11 sm:min-w-9 sm:h-9 border-r border-surface-200"
       :disabled="isFirst"
       :class="{ 'opacity-50': isFirst }"
       aria-label="Go to previous page"
@@ -32,7 +32,7 @@
         v-for="pageNum in visiblePages"
         :key="pageNum"
         type="button"
-        class="pagination-btn border-r border-surface-200"
+        class="pagination-btn min-w-11 h-11 sm:min-w-9 sm:h-9 border-r border-surface-200"
         :class="pageNum === currentPage ? 'pagination-btn-active bg-brand-500 text-white hover:bg-brand-500' : ''"
         :disabled="disabled"
         :aria-current="pageNum === currentPage ? 'page' : undefined"
@@ -45,7 +45,7 @@
 
       <button
         type="button"
-        class="pagination-btn border-r border-surface-200"
+        class="pagination-btn min-w-11 h-11 sm:min-w-9 sm:h-9 border-r border-surface-200"
       :disabled="isLast"
       :class="{ 'opacity-50': isLast }"
       aria-label="Go to next page"
@@ -57,7 +57,7 @@
       </button>
       <button
         type="button"
-        class="pagination-btn"
+        class="pagination-btn min-w-11 h-11 sm:min-w-9 sm:h-9"
       :disabled="isLast"
       :class="{ 'opacity-50': isLast }"
       aria-label="Go to last page"
@@ -74,10 +74,9 @@
 
 <style scoped>
 .pagination-btn {
-  min-width: 2.25rem;
-  height: 2.25rem;
   padding: 0 0.5rem;
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   font-size: 0.875rem;
