@@ -129,7 +129,7 @@ def process_media_item(job_id: int, item: dict, recompute_status: bool = False):
                     tmdb.sync_movie(item['tmdb_id'])
                 else:
                     # recompute_status=False: reconciliation owns final statuses.
-                    tmdb.sync_tv_show(item['tmdb_id'], sync_credits=False, recompute_user_statuses=recompute_status)
+                    tmdb.sync_tv_show(item['tmdb_id'], recompute_user_statuses=recompute_status)
             except Exception as exc:
                 # A bad id must never discard tracking data; count and continue.
                 logger.warning('TMDB/TVMaze sync failed for %s %s: %s', item['media_type'], item['tmdb_id'], exc)

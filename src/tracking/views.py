@@ -1270,13 +1270,6 @@ def _apply_progress_filters(items, request):
 
 def _annotate_my_shows_episodes(status_queryset, user, now):
     upcoming_episode = _episode_candidates(user, now, aired=False)
-    oldest_watched_episode = WatchEntry.objects.filter(
-        user=user,
-        media_type=WatchEntryMediaType.EPISODE,
-        tmdb_id=OuterRef('tmdb_id'),
-    ).annotate(
-        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
-    ).order_by('event_at', 'id')
     latest_watched_episode = WatchEntry.objects.filter(
         user=user,
         media_type=WatchEntryMediaType.EPISODE,
@@ -1293,7 +1286,6 @@ def _annotate_my_shows_episodes(status_queryset, user, now):
         upcoming_episode_type=Subquery(upcoming_episode.values('episode_type')[:1]),
         upcoming_air_date=Subquery(upcoming_episode.values('air_date')[:1]),
         upcoming_broadcast_start=Subquery(upcoming_episode.values('broadcast_start')[:1]),
-        started_watch_at=Subquery(oldest_watched_episode.values('event_at')[:1]),
         last_watched_season_number=Subquery(latest_watched_episode.values('season_number')[:1]),
         last_watched_episode_number=Subquery(latest_watched_episode.values('episode_number')[:1]),
     )
@@ -1331,7 +1323,7 @@ def _my_shows_status_rows(user, now, status_queryset):
             'watched_episodes', 'total_episodes', 'episodes_left', 'time_left_minutes',
             'time_left_has_unknown', 'next_episode_id', 'upcoming_season_number', 'upcoming_episode_number',
             'upcoming_episode_name', 'upcoming_episode_type', 'upcoming_air_date',
-            'upcoming_broadcast_start', 'started_watch_at', 'last_watched_season_number',
+            'upcoming_broadcast_start', 'last_watched_season_number',
             'last_watched_episode_number',
         )
     )
@@ -1382,7 +1374,7 @@ def _build_my_show_item(tmdb_id, show, row, user_rating, new_threshold, today):
         'watched_episodes': row['watched_episodes'] or 0,
         'total_episodes': row['total_episodes'] or 0,
         'last_watched_at': row['last_watched_at'],
-        'started_at': row['started_watch_at'] or row['started_at'],
+        'started_at': row['started_at'],
         'episodes_left': row['episodes_left'],
         'runtime_left_minutes': row['time_left_minutes'],
         'runtime_left_has_unknown': row['time_left_has_unknown'],
@@ -2038,7 +2030,7 @@ class ListItemListCreateView(generics.ListCreateAPIView):
                 from media.models import TVShow
 
                 if not TVShow.objects.filter(tmdb_id=tmdb_id).exists():
-                    tmdb.sync_tv_show(tmdb_id, sync_credits=False)
+                    tmdb.sync_tv_show(tmdb_id)
         except Exception as exc:
             logger.warning('Failed to sync %s metadata for list item tmdb_id=%s: %s', media_type, tmdb_id, exc)
 

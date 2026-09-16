@@ -237,12 +237,19 @@ def _upsert_status(user, media_type: str, tmdb_id: int, records: list[StatusReco
     if marker_field:
         payload[marker_field] = effective_at
     if media_type == MediaType.TV:
-        payload['last_watched_at'] = effective_at
+        # plan_to_watch means not started with nothing watched: no dates,
+        # and any stale values on existing rows are cleared.
+        if record.status == TvShowStatus.PLAN_TO_WATCH:
+            payload['last_watched_at'] = None
+            payload['started_at'] = None
+        else:
+            payload['last_watched_at'] = effective_at
 
     existing = UserMediaStatus.objects.filter(user=user, media_type=media_type, tmdb_id=tmdb_id).first()
     if existing is None:
         if media_type == MediaType.TV:
-            payload.setdefault('started_at', effective_at)
+            if record.status != TvShowStatus.PLAN_TO_WATCH:
+                payload.setdefault('started_at', effective_at)
             payload['watched_episodes'] = record.progress or 0
             payload['total_episodes'] = 0
             payload['progress_percent'] = 0
@@ -426,7 +433,11 @@ def _apply_status_winner(user, record: StatusRecord, skip_existing: bool = False
     if marker_field:
         payload[marker_field] = effective_at
     if record.media_type == MediaType.TV:
-        payload['last_watched_at'] = effective_at
+        if record.status == TvShowStatus.PLAN_TO_WATCH:
+            payload['last_watched_at'] = None
+            payload['started_at'] = None
+        else:
+            payload['last_watched_at'] = effective_at
 
     existing = UserMediaStatus.objects.filter(user=user, media_type=record.media_type, tmdb_id=record.tmdb_id).first()
     if skip_existing and existing is not None:

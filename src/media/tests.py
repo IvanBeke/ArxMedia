@@ -671,7 +671,7 @@ class MediaTests(TestCase):
         self.assertEqual(episode.still_path, '/still.jpg')
 
     def test_sync_episode_credits_preserves_existing_lists_when_tmdb_returns_empty(self):
-        tmdb.sync_tv_show(1399)
+        tmdb.sync_tv_show(1399, sync_credits=True)
         show = TVShow.objects.get(tmdb_id=1399)
         episode = show.seasons.get(season_number=1).episodes.get(episode_number=1)
         credit = episode.credits
@@ -682,6 +682,40 @@ class MediaTests(TestCase):
 
         credit.refresh_from_db()
         self.assertEqual(credit.cast, [{'name': 'Emilia Clarke'}])
+
+    def _sync_season_and_capture_appends(self, **sync_kwargs):
+        show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones')
+        requested = []
+
+        def capture(endpoint, params=None, **kwargs):
+            requested.append((endpoint, params))
+            if endpoint == '/tv/1399/season/1':
+                return {'id': 139901, 'season_number': 1, 'name': 'Season 1', 'episodes': []}
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=capture):
+            tmdb.sync_season(show, 1, **sync_kwargs)
+
+        return [
+            (params or {}).get('append_to_response', '')
+            for endpoint, params in requested
+            if endpoint == '/tv/1399/season/1'
+        ]
+
+    def test_sync_season_skips_credits_append_when_episode_credits_disabled(self):
+        appends = self._sync_season_and_capture_appends(sync_episode_credits=False)
+
+        self.assertTrue(appends)
+        for append_value in appends:
+            self.assertNotIn('credits', append_value)
+            self.assertIn('external_ids', append_value)
+
+    def test_sync_season_includes_credits_append_when_episode_credits_enabled(self):
+        appends = self._sync_season_and_capture_appends(sync_episode_credits=True)
+
+        self.assertTrue(appends)
+        for append_value in appends:
+            self.assertIn('credits', append_value)
 
     @patch('media.views.tmdb.sync_season')
     @patch('media.views.tmdb.get_tv_watch_providers')
@@ -1094,10 +1128,10 @@ class MediaTests(TestCase):
         mock_sync_tv_show.assert_called_once_with(
             1399,
             user_id=self.user.id,
-            sync_credits=False,
+            sync_credits=True,
             use_cache=False,
         )
-        mock_sync_credits_task.delay.assert_called_once_with(1399)
+        mock_sync_credits_task.delay.assert_not_called()
 
     @patch('media.views.sync_show_episode_credits')
     def test_tv_detail_cold_load_defers_episode_credits(self, mock_credits_task):
@@ -1131,7 +1165,7 @@ class MediaTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_sync.assert_called_once_with(
-            701, user_id=self.user.id, sync_credits=False, use_cache=True, only_seasons=[2]
+            701, user_id=self.user.id, use_cache=True, only_seasons=[2]
         )
         mock_credits_task.delay.assert_called_once_with(701)
 
@@ -1164,7 +1198,7 @@ class MediaTests(TestCase):
         }
         with patch.object(tmdb, '_resolve_tvmaze', return_value=(None, [])), \
                 patch.object(tmdb, 'get_season', return_value=season_payload):
-            tmdb.sync_tv_show(1399, sync_credits=False)
+            tmdb.sync_tv_show(1399)
 
         self.assertEqual(Episode.objects.filter(season__show__tmdb_id=1399).count(), 3)
         mock_rebuild.assert_called_once_with(1399)
@@ -1275,7 +1309,7 @@ class MediaTests(TestCase):
         show = tmdb.sync_tv_show(556, user_id=self.user.id)
 
         self.assertEqual(show.tmdb_id, 556)
-        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True, use_cache=True, tvmaze_context={})
+        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=False, use_cache=True, tvmaze_context={})
         mock_refresh_statuses.assert_called_once_with(556, current_user_id=self.user.id)
 
     @patch('media.tmdb.tmdb.sync_episode_credits')
@@ -1299,7 +1333,7 @@ class MediaTests(TestCase):
             ],
         }
 
-        tmdb.sync_season(show, 1)
+        tmdb.sync_season(show, 1, sync_episode_credits=True)
 
         mock_sync_episode_credits.assert_called_once_with(4242, 1, 1, show=show, use_cache=True)
 
@@ -1628,8 +1662,8 @@ class TMDBUseCacheTests(TestCase):
 
         self.assertEqual(show.tmdb_id, 557)
         mock_get_tv_show.assert_called_once_with(557, use_cache=False)
-        mock_get_with_seasons.assert_called_once_with(557, [1], use_cache=False)
-        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=True, use_cache=False, tvmaze_context={})
+        mock_get_with_seasons.assert_called_once_with(557, [1], use_cache=False, include_credits=False)
+        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=False, use_cache=False, tvmaze_context={})
 
     @patch('media.tmdb.tmdb.get_movie')
     def test_sync_movie_propagates_use_cache_false(self, mock_get_movie):

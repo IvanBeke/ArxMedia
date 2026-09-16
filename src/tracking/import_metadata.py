@@ -56,7 +56,7 @@ def _ensure_tv_season_metadata(tmdb_id: int, season_number: int | None, state: d
         return
 
     try:
-        tmdb.sync_season(show, season_number, sync_episode_credits=False)
+        tmdb.sync_season(show, season_number)
         state['metadata_fetches'] += 1
     except Exception as exc:
         state['metadata_errors'] += 1
@@ -74,7 +74,7 @@ def _ensure_tmdb_metadata(media_type: str, tmdb_id: int | None) -> bool:
         elif media_type in (MediaType.TV, WatchEntryMediaType.EPISODE):
             # Episode credits are display-only and have their own sync task;
             # imports skip them to keep the request count per show minimal.
-            tmdb.sync_tv_show(int(tmdb_id), sync_credits=False)
+            tmdb.sync_tv_show(int(tmdb_id))
         else:
             return False
         return True

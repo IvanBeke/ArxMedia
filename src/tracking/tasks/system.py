@@ -84,7 +84,7 @@ def sync_tmdb_metadata_item(media_type: str, tmdb_id: int) -> dict[str, int | st
         if media_type == MediaType.MOVIE:
             tmdb.sync_movie(int(tmdb_id), use_cache=False)
         elif media_type in {MediaType.TV, WatchEntryMediaType.EPISODE}:
-            tmdb.sync_tv_show(int(tmdb_id), sync_credits=False, use_cache=False)
+            tmdb.sync_tv_show(int(tmdb_id), use_cache=False)
         else:
             return {
                 'status': 'skipped',

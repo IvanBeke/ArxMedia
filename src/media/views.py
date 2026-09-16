@@ -74,7 +74,6 @@ def _sync_tv_for_read(tmdb_id, *, user_id=None, use_cache=True, only_seasons=Non
     show = tmdb.sync_tv_show(
         tmdb_id,
         user_id=user_id,
-        sync_credits=False,
         use_cache=use_cache,
         only_seasons=only_seasons,
     )
@@ -437,14 +436,12 @@ def refresh_tv_metadata(request, tmdb_id):
         show = tmdb.sync_tv_show(
             tmdb_id,
             user_id=request.user.id,
-            sync_credits=False,
+            sync_credits=True,
             use_cache=False,
         )
     except Exception:
         logger.warning('Failed to refresh TV show %s from TMDB', tmdb_id, exc_info=True)
         return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
-
-    transaction.on_commit(lambda: _queue_episode_credits_sync(tmdb_id))
 
     show.refresh_from_db()
     return Response(_serialize_tv_show_detail(show))

@@ -1866,6 +1866,8 @@ class ProgressListTests(BaseTestCase):
         self.assertEqual(item['episodes_left'], 1)
         self.assertEqual(item['runtime_left_minutes'], 42)
         self.assertEqual(item['next_episode']['episode_number'], 1)
+        self.assertIsNone(item['started_at'])
+        self.assertIsNone(item['last_watched_at'])
 
     def test_plan_to_watch_row_excluded_from_other_status_filters(self):
         watching = self.client.get('/api/tracking/my-shows/?status=watching')
@@ -2504,7 +2506,7 @@ class ListItemTests(BaseTestCase):
         with patch('tracking.views.tmdb.sync_tv_show') as mock_sync:
             response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'tv', 'tmdb_id': 457})
         self.assertEqual(response.status_code, 201)
-        mock_sync.assert_called_once_with(457, sync_credits=False)
+        mock_sync.assert_called_once_with(457)
 
     def test_add_to_list_creates_item_when_sync_fails(self):
         lst = CustomList.objects.create(user=self.user, name='Test List')
@@ -3061,6 +3063,33 @@ class DataImportExportTests(BaseTestCase):
         self.assertFalse(UserMediaStatus.objects.filter(id=stale_watchlist.id).exists())
         self.assertFalse(Rating.objects.filter(id=stale_rating.id).exists())
 
+    def test_plan_to_watch_import_writes_no_watch_dates(self):
+        from tracking.import_engine import _apply_status_winner, _upsert_status
+        from tracking.import_records import StatusRecord
+
+        record = StatusRecord(media_type='tv', tmdb_id=6101, status='plan_to_watch')
+        _upsert_status(self.user, 'tv', 6101, [record], 'new_items')
+        created = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=6101)
+        self.assertEqual(created.status, 'plan_to_watch')
+        self.assertIsNone(created.started_at)
+        self.assertIsNone(created.last_watched_at)
+
+        stale = UserMediaStatus.objects.create(
+            user=self.user,
+            media_type='tv',
+            tmdb_id=6102,
+            status='plan_to_watch',
+            started_at=timezone.now(),
+            last_watched_at=timezone.now(),
+        )
+        _apply_status_winner(
+            self.user,
+            StatusRecord(media_type='tv', tmdb_id=6102, status='plan_to_watch'),
+        )
+        stale.refresh_from_db()
+        self.assertIsNone(stale.started_at)
+        self.assertIsNone(stale.last_watched_at)
+
     def _build_yamtrack_csv(self, rows):
         header = [
             'source',
@@ -3557,6 +3586,10 @@ class DataImportExportTests(BaseTestCase):
 
         self.assertTrue(UserMediaStatus.objects.filter(user=self.user, media_type='movie', tmdb_id=404, status='plan_to_watch').exists())
         self.assertTrue(UserMediaStatus.objects.filter(user=self.user, media_type='tv', tmdb_id=505, status='plan_to_watch').exists())
+
+        planned_show = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=505)
+        self.assertIsNone(planned_show.started_at)
+        self.assertIsNone(planned_show.last_watched_at)
 
         self.assertTrue(Rating.objects.filter(user=self.user, media_type='movie', tmdb_id=606, score=9).exists())
         self.assertTrue(Rating.objects.filter(user=self.user, media_type='tv', tmdb_id=707, score=8).exists())
@@ -4132,7 +4165,7 @@ class SystemTaskTests(TestCase):
         self.assertEqual(result_movie['status'], 'ok')
         self.assertEqual(result_tv['status'], 'ok')
         mock_sync_movie.assert_called_once_with(11, use_cache=False)
-        mock_sync_tv_show.assert_called_once_with(22, sync_credits=False, use_cache=False)
+        mock_sync_tv_show.assert_called_once_with(22, use_cache=False)
 
     @patch('tracking.tasks.system.tmdb.sync_episode_credits')
     def test_sync_show_episode_credits_syncs_all_local_episodes(self, mock_sync_credits):
