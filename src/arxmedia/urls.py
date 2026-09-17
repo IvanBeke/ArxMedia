@@ -23,5 +23,5 @@ urlpatterns = [
 ]
 
 urlpatterns += [
-    re_path(r'^(?!static/|media/|api/|admin/|healthz/).*$', SPAView.as_view(), name='spa-fallback'),
+    re_path(r'^(?!static/|media/|api/|admin/|healthz/|sw\.js|manifest\.webmanifest).*$', SPAView.as_view(), name='spa-fallback'),
 ]

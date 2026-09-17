@@ -8,9 +8,11 @@
         </Transition>
       </RouterView>
     </main>
+    <PwaStatus />
   </div>
 </template>
 
 <script setup lang="ts">
 import AppNav from '@/components/AppNav.vue'
+import PwaStatus from '@/components/PwaStatus.vue'
 </script>

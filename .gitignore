@@ -41,6 +41,13 @@ build/
 src/web/static/web/.vite/
 src/web/static/web/assets/
 src/web/static/web/index.html
+src/web/static/web/sw.js
+src/web/static/web/manifest.webmanifest
+src/web/static/web/workbox-*.js
+src/web/static/web/pwa-192.png
+src/web/static/web/pwa-512.png
+src/web/static/web/maskable-512.png
+src/web/static/web/apple-touch-icon.png
 
 # IDE/editor
 .vscode/

@@ -91,6 +91,19 @@
         </div>
       </div>
 
+      <div class="card p-6 space-y-4">
+        <h2 class="text-sm font-medium text-primary">{{ t('pwa_settings_title') }}</h2>
+        <p class="text-xs text-gray-500">{{ offlineReady ? t('pwa_settings_ready') : t('pwa_settings_not_ready') }}</p>
+        <div v-if="canInstall || needRefresh" class="flex flex-wrap gap-2">
+          <button v-if="canInstall" @click="install" class="btn-primary text-sm">
+            {{ t('pwa_settings_install') }}
+          </button>
+          <button v-if="needRefresh" @click="update" class="btn-primary text-sm">
+            {{ t('pwa_settings_update') }}
+          </button>
+        </div>
+      </div>
+
       <!-- Change Password -->
       <div class="card p-6 space-y-4">
         <h2 class="text-sm font-medium text-primary">Change Password</h2>
@@ -126,6 +139,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { usePwa } from '@/composables/usePwa'
 import { ACCOUNT_VISIBILITY } from '@/constants/tracking'
 import type { ApiError, ProfileUpdatePayload, User } from '@/types/api'
 
@@ -140,6 +154,7 @@ const loading = ref(true)
 const saving = ref(false)
 const changingPassword = ref(false)
 const { successMsg, showSuccess } = useFlashMessages({ successDurationMs: 3000 })
+const { offlineReady, canInstall, needRefresh, install, update } = usePwa()
 const errorMsg = ref('')
 const selectedLocale = ref(prefs.locale)
 
