@@ -63,7 +63,14 @@ class ServiceWorkerViewTests(TestCase):
         self.assertNotIn('text/html', manifest_response['Content-Type'])
 
     def test_spa_fallback_still_serves_unknown_routes(self) -> None:
-        response = self.client.get('/dashboard')
+        # Rendering the SPA template requires the built Vite manifest, which
+        # does not exist in environments without a UI build (e.g. CI).
+        # Stub the asset tag: this test verifies routing, not the build.
+        with mock.patch(
+            'django_vite.templatetags.django_vite.DjangoViteAssetLoader.instance'
+        ) as loader_instance:
+            loader_instance.return_value.generate_vite_asset.return_value = ''
+            response = self.client.get('/dashboard')
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('text/html', response['Content-Type'])
