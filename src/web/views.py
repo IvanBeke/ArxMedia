@@ -36,8 +36,6 @@ class SPAView(TemplateView):
 
 
 class ManifestView(View):
-    """Serve the PWA web manifest at root scope for installability."""
-
     def get(self, request: HttpRequest) -> HttpResponse:
         response = JsonResponse(PWA_MANIFEST)
         response['Cache-Control'] = 'public, max-age=86400'
@@ -45,19 +43,12 @@ class ManifestView(View):
 
 
 def resolve_service_worker_path() -> Path | None:
-    """Locate the Vite-built service worker so it can be served at root scope.
-
-    A worker served under /static/web/ would be scoped to that prefix and could
-    not intercept app navigations, so Django serves the built file at /sw.js.
-    Returns None when the UI has not been built yet (e.g. fresh dev checkout).
-    """
+    """Built worker path for serving at /sw.js (root scope); None if not built."""
     found = finders.find('web/sw.js')
     return Path(found) if found else None
 
 
 class ServiceWorkerView(View):
-    """Serve the generated service worker at /sw.js with root scope allowed."""
-
     def get(self, request: HttpRequest) -> HttpResponse | FileResponse:
         path = resolve_service_worker_path()
         if path is None:

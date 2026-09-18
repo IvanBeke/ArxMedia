@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { isMobileDevice } from '@/pwa/device'
+import { isInstalledApp, isMobileDevice } from '@/pwa/device'
 
 const DESKTOP_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
@@ -85,5 +85,38 @@ describe('isMobileDevice', () => {
     setTouchPoints(0)
 
     expect(isMobileDevice()).toBe(false)
+  })
+})
+
+function stubDisplayMode(mode: string): void {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({ matches: query === `(display-mode: ${mode})` }),
+  })
+}
+
+describe('isInstalledApp', () => {
+  it('returns true in standalone display mode', () => {
+    stubDisplayMode('standalone')
+
+    expect(isInstalledApp()).toBe(true)
+  })
+
+  it('returns false in browser display mode', () => {
+    stubDisplayMode('browser')
+
+    expect(isInstalledApp()).toBe(false)
+  })
+
+  it('returns true from the iOS standalone flag', () => {
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true })
+
+    expect(isInstalledApp()).toBe(true)
+    delete (navigator as unknown as Record<string, unknown>).standalone
+  })
+
+  it('returns false without matchMedia or standalone flag', () => {
+    expect(isInstalledApp()).toBe(false)
   })
 })

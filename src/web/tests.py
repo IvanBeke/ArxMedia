@@ -57,15 +57,13 @@ class ServiceWorkerViewTests(TestCase):
             sw_response = self.client.get('/sw.js')
         manifest_response = self.client.get('/manifest.webmanifest')
 
-        # SPA fallback renders the app shell with 200; these endpoints must not.
         self.assertEqual(sw_response.status_code, 404)
         self.assertEqual(manifest_response.status_code, 200)
         self.assertNotIn('text/html', manifest_response['Content-Type'])
 
     def test_spa_fallback_still_serves_unknown_routes(self) -> None:
-        # Rendering the SPA template requires the built Vite manifest, which
-        # does not exist in environments without a UI build (e.g. CI).
-        # Stub the asset tag: this test verifies routing, not the build.
+        # No UI build exists in some environments (e.g. CI): stub the asset
+        # tag and verify routing, not the build.
         with mock.patch(
             'django_vite.templatetags.django_vite.DjangoViteAssetLoader.instance'
         ) as loader_instance:

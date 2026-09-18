@@ -8,6 +8,7 @@ const pwaState = vi.hoisted(() => ({
   offlineReady: { value: false },
   isOnline: { value: true },
   canInstall: { value: false },
+  installedApp: true,
   install: vi.fn(),
   dismissInstall: vi.fn(),
   update: vi.fn(),
@@ -30,6 +31,7 @@ describe('PwaStatus', () => {
     pwaState.offlineReady.value = false
     pwaState.isOnline.value = true
     pwaState.canInstall.value = false
+    pwaState.installedApp = true
     vi.clearAllMocks()
   })
 
@@ -59,6 +61,14 @@ describe('PwaStatus', () => {
 
     await toast.findAll('button')[1]?.trigger('click')
     expect(pwaState.update).toHaveBeenCalledTimes(1)
+  })
+
+  it('withholds the update toast in browser tabs', () => {
+    pwaState.needRefresh.value = true
+    pwaState.installedApp = false
+    const wrapper = mountStatus()
+
+    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false)
   })
 
   it('shows the install banner and handles install and dismiss', async () => {

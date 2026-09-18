@@ -58,10 +58,10 @@ import { useI18n } from '@/i18n'
 import { usePwa } from '@/composables/usePwa'
 
 const { t } = useI18n()
-const { needRefresh, isOnline, canInstall, install, dismissInstall, update } = usePwa()
+const { needRefresh, isOnline, canInstall, installedApp, install, dismissInstall, update } = usePwa()
 
 const updateDismissed = ref(false)
-const showUpdate = computed(() => needRefresh.value && !updateDismissed.value)
+const showUpdate = computed(() => needRefresh.value && !updateDismissed.value && installedApp)
 // Read `.value` explicitly so these stay plain booleans even when the
 // service-worker state is stubbed (tests, unsupported browsers).
 const showOffline = computed(() => !isOnline.value)

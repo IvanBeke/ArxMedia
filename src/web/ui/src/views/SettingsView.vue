@@ -98,7 +98,7 @@
           <button v-if="canInstall" @click="install" class="btn-primary text-sm">
             {{ t('pwa_settings_install') }}
           </button>
-          <button v-if="needRefresh" @click="update" class="btn-primary text-sm">
+          <button v-if="needRefresh && installedApp" @click="update" class="btn-primary text-sm">
             {{ t('pwa_settings_update') }}
           </button>
         </div>
@@ -154,7 +154,7 @@ const loading = ref(true)
 const saving = ref(false)
 const changingPassword = ref(false)
 const { successMsg, showSuccess } = useFlashMessages({ successDurationMs: 3000 })
-const { offlineReady, canInstall, needRefresh, install, update } = usePwa()
+const { offlineReady, canInstall, needRefresh, installedApp, install, update } = usePwa()
 const errorMsg = ref('')
 const selectedLocale = ref(prefs.locale)
 

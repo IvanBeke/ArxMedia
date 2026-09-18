@@ -7,20 +7,16 @@ export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
-      // App shell + fallback scope: precache the built shell, stay NetworkOnly for APIs.
-      // The web manifest is served by Django at /manifest.webmanifest (single source of truth).
-      // Registration is manual (see src/pwa/client.ts): the worker is emitted into
-      // /static/web/ but served at /sw.js for root scope, so neither the plugin's
-      // auto-registration nor its relative precache URLs would be correct as-is.
+      // The worker is emitted into /static/web/ but served at /sw.js for root
+      // scope, so auto-registration and relative precache URLs don't apply.
+      // The web manifest is served by Django at /manifest.webmanifest.
       registerType: 'prompt',
       injectRegister: false,
       devOptions: { enabled: false },
       manifest: false,
       filename: 'sw.js',
       workbox: {
-        // Precache entries are relative to the emitted location (/static/web/);
-        // rewrite them to absolute URLs because the worker runs at root scope.
-        // '/' (navigateFallback target) and already-absolute URLs pass through.
+        // Precache URLs must be absolute: the worker runs at root scope.
         manifestTransforms: [
           (entries) => ({
             manifest: entries.map((entry) => ({
@@ -33,8 +29,7 @@ export default defineConfig({
             warnings: [],
           }),
         ],
-        // The app shell ('/') and install icons are not build outputs, so they
-        // are listed explicitly; revision null refreshes them on SW updates.
+        // '/' and icons are not build outputs; revision null refreshes them on SW updates.
         additionalManifestEntries: [
           { url: '/', revision: null },
           { url: '/static/web/pwa-192.png', revision: null },
@@ -58,7 +53,6 @@ export default defineConfig({
         skipWaiting: false,
         runtimeCaching: [
           {
-            // Lazy route chunks must work offline after first visit.
             urlPattern: /\/static\/web\/assets\//,
             handler: 'CacheFirst',
             options: {

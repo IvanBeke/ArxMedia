@@ -1,7 +1,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { Workbox } from 'workbox-window'
 import { createWorkbox } from '@/pwa/client'
-import { isMobileDevice } from '@/pwa/device'
+import { isInstalledApp, isMobileDevice } from '@/pwa/device'
 
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -14,14 +14,7 @@ function isInstallPrompt(event: Event): event is BeforeInstallPromptEvent {
   return 'prompt' in event && 'userChoice' in event
 }
 
-/**
- * PWA install/update/offline state.
- *
- * Service-worker registration is production-only (see @/pwa/client); this
- * composable only wires UI state around it and degrades gracefully where
- * service workers or install prompts are unsupported (private mode, iOS
- * Safari, dev server, tests).
- */
+/** PWA install/update/offline UI state; safe where SW registration is unavailable. */
 export function usePwa() {
   const needRefresh = ref(false)
   const offlineReady = ref(false)
@@ -36,12 +29,13 @@ export function usePwa() {
     dismissed.value = false
   }
 
-  // Install nudges target phones/tablets only; desktop browsers expose
-  // their own chrome install UI. Evaluated once — device class is static.
+  // Install prompts target phones/tablets, update prompts the installed app.
+  // Evaluated once — neither device class nor launch mode changes at runtime.
   const isInstallTargetDevice = isMobileDevice()
   const canInstall = computed(
     () => installPrompt.value !== null && !dismissed.value && isInstallTargetDevice,
   )
+  const installedApp = isInstalledApp()
 
   function onInstallPrompt(event: Event): void {
     if (!isInstallPrompt(event)) return
@@ -107,5 +101,5 @@ export function usePwa() {
     window.removeEventListener('offline', onNetworkChange)
   })
 
-  return { needRefresh, offlineReady, isOnline, canInstall, install, dismissInstall, update }
+  return { needRefresh, offlineReady, isOnline, canInstall, installedApp, install, dismissInstall, update }
 }
