@@ -114,7 +114,7 @@ import PaginationControls from '@/components/PaginationControls.vue'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
-import { invalidPageRecovery, normalizePagedResponse, parsePage } from '@/utils/pagination'
+import { invalidPageRecovery, normalizePagedResponse, parsePage, toRouteQuery } from '@/utils/pagination'
 import type { MediaType, QueryParams, WatchEntry, WatchEntryMediaType } from '@/types/api'
 
 type HistoryFilter = 'all' | MediaType | WatchEntryMediaType
@@ -283,13 +283,7 @@ function syncUrlWithState() {
     return
   }
 
-  router.push({ query: stateToRouteQuery(nextQuery) })
-}
-
-function stateToRouteQuery(query: QueryParams): Record<string, string> {
-  return Object.fromEntries(Object.entries(query).flatMap(([key, value]) => (
-    typeof value === 'string' || typeof value === 'number' ? [[key, String(value)]] : []
-  )))
+  router.push({ query: toRouteQuery(nextQuery) })
 }
 
 function setFilter(nextFilter: HistoryFilter) {

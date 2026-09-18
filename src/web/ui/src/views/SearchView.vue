@@ -123,6 +123,7 @@ import { useAuthStore } from '@/stores/auth'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { toRouteQuery } from '@/utils/pagination'
 import type { MediaResult, MediaType, PersonSearchResult, QueryParams, UserCard } from '@/types/api'
 
 const SCOPE_VALUE = {
@@ -286,9 +287,7 @@ function syncRouteFromState() {
     return
   }
 
-  router.push({ name: 'search', query: Object.fromEntries(Object.entries(nextQuery).flatMap(([key, value]) => (
-    typeof value === 'string' || typeof value === 'number' ? [[key, String(value)]] : []
-  ))) })
+  router.push({ name: 'search', query: toRouteQuery(nextQuery) })
 }
 
 function goToPage(page: number) {

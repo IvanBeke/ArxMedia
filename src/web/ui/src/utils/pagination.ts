@@ -1,4 +1,5 @@
 // Shared pagination helpers for views backed by DRF PageNumberPagination.
+import type { QueryParams } from '@/types/api'
 
 // Bootstrap mirror of the server's page size until a full first response
 // calibrates it (see PaginationControls).
@@ -52,4 +53,11 @@ export function invalidPageRecovery(error: unknown, requestedPage: number, fallb
     return null
   }
   return fallback
+}
+
+// Stringifies API query params for vue-router pushes (drops non-scalar values).
+export function toRouteQuery(query: QueryParams): Record<string, string> {
+  return Object.fromEntries(Object.entries(query).flatMap(([key, value]) => (
+    typeof value === 'string' || typeof value === 'number' ? [[key, String(value)]] : []
+  )))
 }

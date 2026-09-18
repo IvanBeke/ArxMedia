@@ -4,6 +4,7 @@ import {
   invalidPageRecovery,
   normalizePagedResponse,
   parsePage,
+  toRouteQuery,
 } from '@/utils/pagination'
 
 describe('parsePage', () => {
@@ -71,5 +72,18 @@ describe('invalidPageRecovery', () => {
 describe('DEFAULT_PAGE_SIZE', () => {
   it('mirrors the server page size', () => {
     expect(DEFAULT_PAGE_SIZE).toBe(20)
+  })
+})
+
+describe('toRouteQuery', () => {
+  it('stringifies scalar params and drops the rest', () => {
+    expect(toRouteQuery({ page: 2, order: 'oldest', missing: undefined })).toEqual({
+      page: '2',
+      order: 'oldest',
+    })
+  })
+
+  it('returns an empty query for empty input', () => {
+    expect(toRouteQuery({})).toEqual({})
   })
 })

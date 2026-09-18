@@ -104,7 +104,7 @@
             @click="openJobModal(recentJob)"
           >
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <p class="text-sm text-secondary">Started: <span class="text-primary">{{ formatDateTime(recentJob.created_at) }}</span></p>
+              <p class="text-sm text-secondary">Started: <span class="text-primary">{{ formatDateTimeByLocale(recentJob.created_at) }}</span></p>
               <span class="text-xs font-semibold uppercase tracking-wide" :class="statusClass(recentJob.status)">{{ humanStatus(recentJob.status) }}</span>
             </div>
             <p class="text-sm text-secondary mt-1">Progress: <span class="text-primary">{{ recentJob.processed_items }} / {{ progressTotal(recentJob) }}</span><span v-if="stageLabel(recentJob)" class="text-muted"> · {{ stageLabel(recentJob) }}</span></p>
@@ -692,10 +692,6 @@ function statusClass(value: DataTransferStatus | undefined) {
   if (value === DATA_TRANSFER_STATUS.FAILED || value === DATA_TRANSFER_STATUS.CANCELLED) return 'text-red-400'
   if (value === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION) return 'text-amber-400'
   return 'text-blue-400'
-}
-
-function formatDateTime(value: string) {
-  return formatDateTimeByLocale(value)
 }
 
 async function confirmImportMode() {

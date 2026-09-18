@@ -35,7 +35,7 @@
         <p class="text-gray-500 text-sm mb-3 line-clamp-2">{{ list.description || 'No description' }}</p>
         <div class="flex items-center justify-between text-xs text-gray-600">
           <span>{{ list.item_count }} items</span>
-          <span>{{ formatDate(list.created_at) }}</span>
+          <span>{{ formatDateByLocale(list.created_at) }}</span>
         </div>
       </RouterLink>
     </div>
@@ -210,10 +210,6 @@ const newList = ref({
 })
 
 const showUserResults = ref(false)
-
-function formatDate(d: string): string {
-  return formatDateByLocale(d)
-}
 
 function privacyClass(privacy: CustomList['privacy']): string {
   const classes = {

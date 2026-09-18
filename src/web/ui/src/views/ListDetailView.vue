@@ -24,7 +24,7 @@
             </div>
             <p class="text-sm text-secondary">{{ list.description || 'No description' }}</p>
             <p class="text-xs text-muted">
-              {{ list.username }} · {{ list.item_count }} items · Created {{ formatDate(list.created_at) }}
+              {{ list.username }} · {{ list.item_count }} items · Created {{ formatDateByLocale(list.created_at) }}
             </p>
             <p class="text-xs text-muted">
               <span v-if="list.privacy === LIST_PRIVACY.PUBLIC">Public lists follow the owner profile visibility settings.</span>
@@ -532,10 +532,6 @@ const hasActiveFilters = computed(() => {
 function listId(): string | number {
   const id = route.params.id
   return Array.isArray(id) ? id[0] || '' : id || ''
-}
-
-function formatDate(d: string) {
-  return formatDateByLocale(d)
 }
 
 function showFeedback(message: string, kind: 'success' | 'error' = 'success') {
