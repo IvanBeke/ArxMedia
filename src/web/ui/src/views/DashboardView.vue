@@ -51,8 +51,8 @@
             :season-number="item.next_episode?.season_number || 0"
             :episode-number="item.next_episode?.episode_number || 0"
             :poster-url="item.poster_url"
-            :poster-link-to="getUpNextPosterLink(item)"
-            :title-link-to="`/tv/${item.tmdb_id}`"
+            :poster-link-to="getEpisodeLink(item.tmdb_id, item.next_episode?.season_number, item.next_episode?.episode_number)"
+            :title-link-to="getShowLink(item.tmdb_id)"
             :show-new-badge="item.is_new"
             :show-watch-action="true"
             :watch-loading="markingId === item.tmdb_id"
@@ -94,8 +94,8 @@
             :season-number="item.season_number"
             :episode-number="item.episode_number"
             :poster-url="item.poster_url"
-            :poster-link-to="getUpcomingPosterLink(item)"
-            :title-link-to="`/tv/${item.tmdb_id}`"
+            :poster-link-to="getEpisodeLink(item.tmdb_id, item.season_number, item.episode_number)"
+            :title-link-to="getShowLink(item.tmdb_id)"
             :meta-text="formatUpcomingDateTime(item.air_date)"
           />
         </div>
@@ -120,8 +120,8 @@
           v-for="entry in stats.recent_activity"
           :key="entry.id"
           :entry="entry"
-          :link-to="getLink(entry)"
-          :title-link-to="getTitleLink(entry)"
+          :link-to="getWatchEntryLink(entry)"
+          :title-link-to="getWatchEntryTitleLink(entry)"
           :show-remove-action="true"
           :remove-loading="deletingEntryId === entry.id"
           :remove-confirm-text="getRemoveHistoryConfirmText(entry)"
@@ -142,9 +142,10 @@ import { ref, onMounted } from 'vue'
 import { trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useI18n } from '@/i18n'
-import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
+import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
+import { getEpisodeLink, getShowLink, getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import type { DashboardStats, UpNextItem, UpcomingItem } from '@/api'
 import type { WatchEntry } from '@/types/api'
 
@@ -171,27 +172,6 @@ const upcomingDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
 function formatUpcomingDateTime(value: string | null): string {
   if (!value) return ''
   return upcomingDateTimeFormatter.format(new Date(value)).replace(',', '')
-}
-
-function getLink(entry: WatchEntry): string {
-  if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
-  if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
-    return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
-  }
-  return `/tv/${entry.tmdb_id}`
-}
-
-function getTitleLink(entry: WatchEntry): string {
-  if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
-  return `/tv/${entry.tmdb_id}`
-}
-
-function getUpNextPosterLink(item: UpNextItem): string {
-  return `/tv/${item.tmdb_id}/season/${item.next_episode?.season_number}/episode/${item.next_episode?.episode_number}`
-}
-
-function getUpcomingPosterLink(item: UpcomingItem): string {
-  return `/tv/${item.tmdb_id}/season/${item.season_number}/episode/${item.episode_number}`
 }
 
 function getRemoveHistoryConfirmText(entry: WatchEntry): string {

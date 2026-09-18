@@ -71,8 +71,8 @@
             v-for="entry in group.items"
             :key="entry.id"
             :entry="entry"
-            :link-to="getLink(entry)"
-            :title-link-to="getTitleLink(entry)"
+            :link-to="getWatchEntryLink(entry)"
+            :title-link-to="getWatchEntryTitleLink(entry)"
             :show-remove-action="true"
             :remove-loading="deletingEntryId === entry.id"
             :remove-confirm-text="getRemoveHistoryConfirmText(entry)"
@@ -113,6 +113,7 @@ import { useI18n } from '@/i18n'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
+import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import { invalidPageRecovery, normalizePagedResponse, parsePage } from '@/utils/pagination'
 import type { MediaType, QueryParams, WatchEntry, WatchEntryMediaType } from '@/types/api'
 
@@ -167,19 +168,6 @@ const groupedEntries = computed<HistoryGroup[]>(() => {
 
   return grouped
 })
-
-function getLink(entry: WatchEntry): string {
-  if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
-  if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
-    return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
-  }
-  return `/tv/${entry.tmdb_id}`
-}
-
-function getTitleLink(entry: WatchEntry): string {
-  if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
-  return `/tv/${entry.tmdb_id}`
-}
 
 function getRemoveHistoryConfirmText(entry: WatchEntry): string {
   if (entry?.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {

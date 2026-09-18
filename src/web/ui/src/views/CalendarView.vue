@@ -146,6 +146,7 @@ import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
 import { BREAKPOINTS, belowBreakpoint } from '@/constants/breakpoints'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { isoDateKey, monthBounds, nowInstantIso, parsePlainDate, weekBounds } from '@/utils/temporal'
+import { getEpisodeLink, getMovieLink } from '@/utils/watchEntryLinks'
 import type { CalendarItem } from '@/types/api'
 import type { Temporal as TemporalPolyfill } from '@js-temporal/polyfill'
 
@@ -239,7 +240,7 @@ const itemMap = computed(() => {
         kind: MEDIA_TYPE.MOVIE,
         label: item.title,
         sublabel: 'Movie',
-        to: `/movies/${item.tmdb_id}`
+        to: getMovieLink(item.tmdb_id)
       })
     } else {
       list.push({
@@ -249,7 +250,7 @@ const itemMap = computed(() => {
         seasonNumber: item.season_number,
         episodeNumber: item.episode_number,
         airTime: item.air_time || undefined,
-        to: `/tv/${item.tmdb_id}/season/${item.season_number}/episode/${item.episode_number}`
+        to: getEpisodeLink(item.tmdb_id, item.season_number, item.episode_number)
       })
     }
     map.set(dateKey, list)

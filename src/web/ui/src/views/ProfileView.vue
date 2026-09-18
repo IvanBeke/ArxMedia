@@ -101,8 +101,8 @@
             <div v-for="entry in profile.recent_activity" :key="entry.id" class="group relative">
               <HistoryMediaCard
                 :entry="entry"
-                :link-to="getEntryLink(entry)"
-                :title-link-to="getTitleLink(entry)"
+                :link-to="getWatchEntryLink(entry)"
+                :title-link-to="getWatchEntryTitleLink(entry)"
               />
             </div>
           </div>
@@ -135,10 +135,10 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { authAPI } from '@/api'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
-import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import { useAuthStore } from '@/stores/auth'
+import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import { formatDateByLocale, useI18n } from '@/i18n'
-import type { UserProfile, WatchEntry } from '@/types/api'
+import type { UserProfile } from '@/types/api'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -173,19 +173,6 @@ async function loadProfile() {
   } finally {
     loading.value = false
   }
-}
-
-function getEntryLink(entry: WatchEntry) {
-  if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
-  if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
-    return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
-  }
-  return `/tv/${entry.tmdb_id}`
-}
-
-function getTitleLink(entry: WatchEntry) {
-  if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
-  return `/tv/${entry.tmdb_id}`
 }
 
 async function toggleFollow() {
