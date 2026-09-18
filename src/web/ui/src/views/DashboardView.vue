@@ -121,6 +121,7 @@
           :key="entry.id"
           :entry="entry"
           :link-to="getLink(entry)"
+          :title-link-to="getTitleLink(entry)"
           :show-remove-action="true"
           :remove-loading="deletingEntryId === entry.id"
           :remove-confirm-text="getRemoveHistoryConfirmText(entry)"
@@ -177,6 +178,11 @@ function getLink(entry: WatchEntry): string {
   if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
     return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
   }
+  return `/tv/${entry.tmdb_id}`
+}
+
+function getTitleLink(entry: WatchEntry): string {
+  if (entry.media_type === MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
   return `/tv/${entry.tmdb_id}`
 }
 

@@ -102,6 +102,7 @@
               <HistoryMediaCard
                 :entry="entry"
                 :link-to="getEntryLink(entry)"
+                :title-link-to="getTitleLink(entry)"
               />
             </div>
           </div>
@@ -179,6 +180,11 @@ function getEntryLink(entry: WatchEntry) {
   if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
     return `/tv/${entry.tmdb_id}/season/${entry.season_number}/episode/${entry.episode_number}`
   }
+  return `/tv/${entry.tmdb_id}`
+}
+
+function getTitleLink(entry: WatchEntry) {
+  if (entry.media_type === WATCH_ENTRY_MEDIA_TYPE.MOVIE) return `/movies/${entry.tmdb_id}`
   return `/tv/${entry.tmdb_id}`
 }
 
