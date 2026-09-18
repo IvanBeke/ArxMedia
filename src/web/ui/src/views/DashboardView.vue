@@ -141,16 +141,13 @@
 import { ref, onMounted } from 'vue'
 import { trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
-import { useI18n } from '@/i18n'
-import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
+import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { getEpisodeLink, getShowLink, getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import type { DashboardStats, UpNextItem, UpcomingItem } from '@/api'
-import type { WatchEntry } from '@/types/api'
 
 const auth = useAuthStore()
-const { t } = useI18n()
 const stats = ref<DashboardStats | null>(null)
 const loadingStats = ref(true)
 const upNext = ref<UpNextItem[] | null>(null)
@@ -158,7 +155,6 @@ const loadingUpNext = ref(true)
 const upcoming = ref<UpcomingItem[] | null>(null)
 const loadingUpcoming = ref(true)
 const markingId = ref<number | null>(null)
-const deletingEntryId = ref<number | null>(null)
 
 const upcomingDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
@@ -172,13 +168,6 @@ const upcomingDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
 function formatUpcomingDateTime(value: string | null): string {
   if (!value) return ''
   return upcomingDateTimeFormatter.format(new Date(value)).replace(',', '')
-}
-
-function getRemoveHistoryConfirmText(entry: WatchEntry): string {
-  if (entry?.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
-    return t('remove_history_confirm_episode')
-  }
-  return t('remove_history_confirm_movie')
 }
 
 async function refreshTrackingLists() {
@@ -207,19 +196,9 @@ async function markNextEpisodeWatched(item: UpNextItem) {
   }
 }
 
-async function removeRecentEntry(entry: WatchEntry) {
-  if (deletingEntryId.value) return
-  deletingEntryId.value = entry.id
-
-  try {
-    await trackingAPI.deleteHistory(entry.id)
-    await refreshTrackingLists()
-  } catch (e) {
-    console.error('Failed to delete history entry', e)
-  } finally {
-    deletingEntryId.value = null
-  }
-}
+const { deletingEntryId, deleteEntry: removeRecentEntry } = useHistoryDelete({
+  onDeleted: () => refreshTrackingLists(),
+})
 
 onMounted(async () => {
   const [statsRes, upNextRes, upcomingRes] = await Promise.allSettled([

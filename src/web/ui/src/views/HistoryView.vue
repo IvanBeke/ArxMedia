@@ -109,9 +109,9 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { trackingAPI } from '@/api'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
-import { useI18n } from '@/i18n'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
+import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import { invalidPageRecovery, normalizePagedResponse, parsePage } from '@/utils/pagination'
@@ -124,7 +124,6 @@ type HistoryGroup = { key: string; label: string; items: WatchEntry[] }
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
 
 const entries = ref<WatchEntry[]>([])
 const stats = ref<HistoryStats | null>(null)
@@ -135,7 +134,6 @@ const groupByDay = ref(true)
 const currentPage = ref(1)
 const count = ref(0)
 const lastLoadedCount = ref(0)
-const deletingEntryId = ref<number | null>(null)
 let suppressRouteLoad = false
 
 const filters: { label: string; value: HistoryFilter }[] = [
@@ -168,13 +166,6 @@ const groupedEntries = computed<HistoryGroup[]>(() => {
 
   return grouped
 })
-
-function getRemoveHistoryConfirmText(entry: WatchEntry): string {
-  if (entry?.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
-    return t('remove_history_confirm_episode')
-  }
-  return t('remove_history_confirm_movie')
-}
 
 function decrementHistoryStats(currentStats: HistoryStats | null, mediaType: WatchEntryMediaType): HistoryStats | null {
   if (!currentStats) return currentStats
@@ -318,14 +309,8 @@ function toggleDayGrouping() {
   groupByDay.value = !groupByDay.value
 }
 
-async function deleteEntry(entry: WatchEntry) {
-  if (deletingEntryId.value) {
-    return
-  }
-  deletingEntryId.value = entry.id
-
-  try {
-    await trackingAPI.deleteHistory(entry.id)
+const { deletingEntryId, deleteEntry } = useHistoryDelete({
+  onDeleted: async (entry) => {
     const nextPage = entries.value.length === 1 && currentPage.value > 1
       ? currentPage.value - 1
       : currentPage.value
@@ -337,12 +322,8 @@ async function deleteEntry(entry: WatchEntry) {
 
     await loadHistoryEntries(nextPage)
     stats.value = decrementHistoryStats(stats.value, entry.media_type)
-  } catch (e) {
-    console.error('Failed to delete', e)
-  } finally {
-    deletingEntryId.value = null
-  }
-}
+  },
+})
 
 watch([activeFilter, sortOrder, groupByDay, currentPage], syncUrlWithState)
 
