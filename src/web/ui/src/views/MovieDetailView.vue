@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="overflow-x-hidden">
     <WatchedDateTimePicker
       :open="showDatePicker"
       :initial-value="pickerInitialValue"
@@ -23,11 +23,11 @@
         </div>
       </template>
       <template #title>
-        <h1 v-if="movie" class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ movie.title }}</h1>
+        <h1 v-if="movie" class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1 break-words">{{ movie.title }}</h1>
       </template>
       <template #meta>
         <template v-if="movie">
-          <p v-if="movie.tagline" class="text-gray-500 italic text-sm mb-2">{{ movie.tagline }}</p>
+          <p v-if="movie.tagline" class="text-gray-500 italic text-sm mb-2 break-words">{{ movie.tagline }}</p>
           <p class="text-gray-500 text-sm mb-1">
             {{ releaseYear(movie.release_date) }}
             <span v-if="runtimeLabel"> · {{ runtimeLabel }}</span>
@@ -41,7 +41,7 @@
       </template>
       <template #description>
         <SpoilerBlock v-if="movie" :item-key="`movie-overview-${route.params.id}`" :watched="watchedCount > 0" class="mt-4 mb-4 max-w-2xl">
-          <p class="text-secondary leading-relaxed">{{ movie.overview }}</p>
+          <p class="text-secondary leading-relaxed break-words">{{ movie.overview }}</p>
         </SpoilerBlock>
       </template>
       <template #links>
@@ -125,30 +125,30 @@
       <div class="mt-6" role="tabpanel" :id="`tabpanel-${activeTab}`" :aria-labelledby="`tab-${activeTab}`">
         <template v-if="activeTab === 'overview'">
           <div class="grid md:grid-cols-3 gap-8">
-            <div class="md:col-span-2 space-y-6">
-              <div v-if="movie.watch_providers">
+            <div class="md:col-span-2 space-y-6 min-w-0">
+              <div v-if="movie.watch_providers" class="min-w-0">
                 <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">Watch Now (Powered by JustWatch)</p>
                 <div class="flex flex-wrap gap-2">
                   <div
                     v-for="p in (movie.watch_providers.flatrate || []).slice(0, 6)"
                     :key="`provider-${p.provider_id}`"
-                    class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary"
+                    class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary max-w-full"
                   >
                     <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
-                    {{ p.provider_name }}
+                    <span class="truncate">{{ p.provider_name }}</span>
                   </div>
                   <span v-if="!(movie.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
                 </div>
               </div>
-              <div v-if="topCrew.length">
+              <div v-if="topCrew.length" class="min-w-0">
                 <p class="text-gray-500 text-xs mb-2">Crew highlights</p>
                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                  <div v-for="person in topCrew" :key="person.credit_id" class="text-gray-400">
+                  <div v-for="person in topCrew" :key="person.credit_id" class="text-gray-400 max-w-full break-words">
                     <span class="text-gray-500">{{ person.job }}:</span> {{ person.name }}
                   </div>
                 </div>
               </div>
-              <div>
+              <div class="min-w-0">
                 <h3 class="text-primary font-medium mb-3">Top cast</h3>
                 <CastGrid :people="(creditsData?.cast || []).slice(0, 8)" />
                 <button v-if="(creditsData?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
@@ -156,14 +156,26 @@
                 </button>
               </div>
             </div>
-            <div class="space-y-4">
+            <div class="space-y-4 min-w-0">
               <div class="card p-4">
                 <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Details</p>
                 <dl class="text-sm space-y-1.5">
-                  <div class="flex justify-between gap-2"><dt class="text-muted">Status</dt><dd class="text-secondary">{{ movie.status || '—' }}</dd></div>
-                  <div class="flex justify-between gap-2"><dt class="text-muted">Runtime</dt><dd class="text-secondary">{{ runtimeLabel || '—' }}</dd></div>
-                  <div class="flex justify-between gap-2"><dt class="text-muted">Released</dt><dd class="text-secondary">{{ formatDateByLocale(movie.release_date) || '—' }}</dd></div>
-                  <div class="flex justify-between gap-2"><dt class="text-muted">Language</dt><dd class="text-secondary">{{ movie.language || '—' }}</dd></div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Status</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.status || '—' }}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Runtime</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ runtimeLabel || '—' }}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Released</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ formatDateByLocale(movie.release_date) || '—' }}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Language</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.language || '—' }}</dd>
+                  </div>
                 </dl>
               </div>
               <div class="card p-4 space-y-2">
@@ -176,7 +188,7 @@
                 >
                   {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB and TVMaze' }}
                 </button>
-                <p class="text-xs text-muted">
+                <p class="text-xs text-muted break-words">
                   Last metadata update: {{ metadataUpdatedAtLabel }}
                 </p>
               </div>

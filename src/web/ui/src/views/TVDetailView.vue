@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="overflow-x-hidden">
     <WatchedDateTimePicker
       :open="showDatePicker"
       :initial-value="pickerInitialValue"
@@ -34,7 +34,7 @@
         </div>
       </template>
       <template #title>
-        <h1 v-if="show" class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ show.name }}</h1>
+        <h1 v-if="show" class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1 break-words">{{ show.name }}</h1>
       </template>
       <template #meta>
         <template v-if="show">
@@ -49,11 +49,11 @@
           <div class="flex items-center gap-4 mb-1 text-sm">
             <RatingBadge :value="show.vote_average ?? 0" :votes="show.vote_count" out-of-ten />
           </div>
-          <p v-if="show.networks" class="text-muted text-sm mt-2">{{ displayNetworks }}</p>
+          <p v-if="show.networks" class="text-muted text-sm mt-2 break-words">{{ displayNetworks }}</p>
         </template>
       </template>
       <template #description>
-        <p v-if="show" class="text-secondary leading-relaxed mt-4 mb-4 max-w-2xl">{{ show.overview }}</p>
+        <p v-if="show" class="text-secondary leading-relaxed mt-4 mb-4 max-w-2xl break-words">{{ show.overview }}</p>
       </template>
       <template #links>
         <ExternalLinks
@@ -147,26 +147,26 @@
       <div class="mt-6" role="tabpanel" :id="`tabpanel-${activeTab}`" :aria-labelledby="`tab-${activeTab}`">
         <template v-if="activeTab === 'overview'">
           <div class="grid md:grid-cols-3 gap-8">
-            <div class="md:col-span-2 space-y-6">
+            <div class="md:col-span-2 space-y-6 min-w-0">
               <div>
                 <h3 class="text-primary font-medium mb-3">Synopsis</h3>
-                <p class="text-secondary leading-relaxed">{{ show?.overview }}</p>
+                <p class="text-secondary leading-relaxed break-words">{{ show?.overview }}</p>
               </div>
-              <div v-if="show.watch_providers">
+              <div v-if="show.watch_providers" class="min-w-0">
                 <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">Watch Now (Powered by JustWatch)</p>
                 <div class="flex flex-wrap gap-2">
                   <div
                     v-for="p in (show.watch_providers.flatrate || []).slice(0, 6)"
                     :key="`provider-${p.provider_id}`"
-                    class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary"
+                    class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary max-w-full"
                   >
                     <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
-                    {{ p.provider_name }}
+                    <span class="truncate">{{ p.provider_name }}</span>
                   </div>
                   <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
                 </div>
               </div>
-              <div>
+              <div class="min-w-0">
                 <h3 class="text-primary font-medium mb-3">Top cast</h3>
                 <CastGrid :people="(aggregateCredits?.cast || []).slice(0, 8)" />
                 <button v-if="(aggregateCredits?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
@@ -174,16 +174,34 @@
                 </button>
               </div>
             </div>
-            <div class="space-y-4">
+            <div class="space-y-4 min-w-0">
               <div class="card p-4">
                 <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Details</p>
                 <dl class="text-sm space-y-1.5">
-                  <div class="flex justify-between gap-2"><dt class="text-muted">Status</dt><dd class="text-secondary">{{ show.status || '—' }}</dd></div>
-                  <div class="flex justify-between gap-2"><dt class="text-muted">Network</dt><dd class="text-secondary truncate max-w-[60%]">{{ displayNetworks || '—' }}</dd></div>
-                  <div class="flex justify-between gap-2"><dt class="text-muted">First aired</dt><dd class="text-secondary">{{ show.first_air_date || '—' }}</dd></div>
-                  <div class="flex justify-between gap-2"><dt class="text-muted">Last aired</dt><dd class="text-secondary">{{ show.last_air_date || '—' }}</dd></div>
-                  <div class="flex justify-between gap-2"><dt class="text-muted">Runtime</dt><dd class="text-secondary">{{ show.episode_runtime ? `${show.episode_runtime} min/ep` : '—' }}</dd></div>
-                  <div class="flex justify-between gap-2"><dt class="text-muted">Language</dt><dd class="text-secondary">{{ show.language || '—' }}</dd></div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Status</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.status || '—' }}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Network</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ displayNetworks || '—' }}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">First aired</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.first_air_date || '—' }}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Last aired</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.last_air_date || '—' }}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Runtime</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.episode_runtime ? `${show.episode_runtime} min/ep` : '—' }}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Language</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.language || '—' }}</dd>
+                  </div>
                 </dl>
               </div>
               <div class="card p-4 space-y-2">
@@ -196,7 +214,7 @@
                 >
                   {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB and TVMaze' }}
                 </button>
-                <p class="text-xs text-muted">
+                <p class="text-xs text-muted break-words">
                   Last metadata update: {{ metadataUpdatedAtLabel }}
                 </p>
               </div>
@@ -224,8 +242,8 @@
                     <RouterLink :to="`/tv/${tmdbId}/season/${season.season_number}`" class="min-w-0 flex-1 truncate text-primary font-medium hover:text-brand-400 transition-colors">
                       {{ season.name }}
                     </RouterLink>
-                    <div class="flex items-center gap-2">
-                      <button @click.stop="toggleSeasonWatched(season.season_number)" class="text-xs px-2.5 py-1 rounded-md font-medium transition-colors" :class="getSeasonProgress(season.season_number) === 100 ? 'bg-brand-500 text-white hover:bg-brand-600' : 'bg-surface-200 text-muted hover:text-primary hover:bg-surface-300'">
+                    <div class="flex items-center gap-2 shrink-0">
+                      <button @click.stop="toggleSeasonWatched(season.season_number)" class="text-xs px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap" :class="getSeasonProgress(season.season_number) === 100 ? 'bg-brand-500 text-white hover:bg-brand-600' : 'bg-surface-200 text-muted hover:text-primary hover:bg-surface-300'">
                         {{ getSeasonProgress(season.season_number) === 100 ? 'Watched' : 'Mark watched' }}
                       </button>
                       <button @click="toggleSeason(season.season_number)" class="p-1 hover:bg-surface-200 rounded transition-colors" :aria-label="`Expand ${season.name}`">
@@ -236,7 +254,7 @@
                     </div>
                   </div>
                   <p class="text-muted text-sm mt-0.5">{{ season.episode_count }} episodes{{ season.air_date ? ` · ${temporalYear(season.air_date) || ''}` : '' }}<RatingBadge v-if="season.vote_average" :value="season.vote_average" size="xs" class="ml-2 align-middle" /></p>
-                  <p v-if="season.overview" class="text-muted text-xs mt-1 line-clamp-3">{{ season.overview }}</p>
+                  <p v-if="season.overview" class="text-muted text-xs mt-1 line-clamp-3 break-words">{{ season.overview }}</p>
                   <div class="mt-2">
                     <ProgressBar :pct="getSeasonProgress(season.season_number)" />
                     <p class="text-xs text-muted mt-1">{{ formatSeasonProgressFraction(season.season_number) }} watched</p>
