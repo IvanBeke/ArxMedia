@@ -12,8 +12,8 @@ beforeEach(() => {
 })
 
 const episodes: Episode[] = [
-  { id: 11, tmdb_id: 11, episode_number: 3, name: 'Third', overview: '', still_path: null, still_url: null, air_date: '2020-03-01', air_time: null, broadcast_start: null, runtime: null, vote_average: 0, vote_count: 0, episode_type: '', guest_stars: [], crew: [] },
-  { id: 12, tmdb_id: 12, episode_number: 4, name: 'Fourth', overview: '', still_path: null, still_url: null, air_date: null, air_time: null, broadcast_start: null, runtime: null, vote_average: 0, vote_count: 0, episode_type: '', guest_stars: [], crew: [] },
+  { id: 11, tmdb_id: 11, episode_number: 3, name: 'Third', overview: '', still_path: null, still_url: null, air_date: '2020-03-01', air_time: null, broadcast_start: null, runtime: null, vote_average: 0, vote_count: 0, episode_type: 'finale', guest_stars: [], crew: [] },
+  { id: 12, tmdb_id: 12, episode_number: 4, name: 'Fourth', overview: '', still_path: null, still_url: null, air_date: null, air_time: null, broadcast_start: null, runtime: null, vote_average: 0, vote_count: 0, episode_type: 'standard', guest_stars: [], crew: [] },
 ]
 
 function mountList() {
@@ -32,6 +32,64 @@ function mountList() {
 }
 
 describe('SeasonEpisodeList', () => {
+  it('stacks episode content into two mobile rows and restores the row at md', () => {
+    const wrapper = mountList()
+    const rows = wrapper.findAll('.episode-row')
+
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      expect(row.classes()).toEqual(expect.arrayContaining([
+        'grid',
+        'grid-cols-[auto_minmax(0,1fr)]',
+        'md:flex',
+      ]))
+      expect(row.find('.episode-controls').classes()).toEqual(expect.arrayContaining([
+        'flex-row',
+        'md:flex-col',
+      ]))
+      expect(row.find('.episode-details').classes()).toEqual(expect.arrayContaining([
+        'col-span-2',
+        'md:col-auto',
+        'md:flex-1',
+      ]))
+    }
+  })
+
+  it('keeps episode thumbnails at an adaptive 16:9 frame', () => {
+    const wrapper = mountList()
+    const thumbnails = wrapper.findAll('.episode-thumbnail')
+
+    expect(thumbnails).toHaveLength(2)
+    for (const thumbnail of thumbnails) {
+      expect(thumbnail.classes()).toEqual(expect.arrayContaining([
+        'self-start',
+        'w-full',
+        'max-w-64',
+        'aspect-video',
+        'md:max-w-none',
+        'md:w-40',
+        'md:flex-shrink-0',
+      ]))
+    }
+  })
+
+  it('overlays special episode types on thumbnails at every breakpoint', () => {
+    const wrapper = mountList()
+    const badges = wrapper.findAll('.episode-thumbnail .episode-type-pill')
+
+    expect(badges).toHaveLength(1)
+    expect(badges[0]?.text()).toBe('finale')
+    expect(badges[0]?.classes()).toEqual(expect.arrayContaining([
+      'pointer-events-none',
+      'absolute',
+      'top-2',
+      'left-2',
+    ]))
+    expect(badges[0]?.classes()).not.toContain('hidden')
+    expect(badges[0]?.classes()).not.toContain('md:hidden')
+    expect(wrapper.find('.episode-meta .episode-type-pill').exists()).toBe(false)
+  })
+
   it('forwards watch-option payloads with the episode number and air date', async () => {
     const wrapper = mountList()
     const menus = wrapper.findAllComponents(WatchCheckmarkMenu)

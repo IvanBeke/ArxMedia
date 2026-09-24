@@ -3,9 +3,9 @@
     <div
       v-for="ep in episodes"
       :key="ep.id || `${seasonNumber}-${ep.episode_number}`"
-      class="flex gap-4 py-4 first:pt-0 group"
+      class="episode-row grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-3 py-4 first:pt-0 group md:flex md:gap-4"
     >
-      <div class="flex flex-col items-center gap-2 pt-4">
+      <div class="episode-controls flex flex-row items-center gap-2 md:flex-col md:pt-4">
         <WatchCheckmarkMenu
           :watched="isEpisodeWatched(ep.episode_number)"
           :watched-at="getEpisodeWatchedAt(ep.episode_number)"
@@ -16,29 +16,35 @@
         <span class="text-muted text-xs font-mono w-6 text-center">{{ String(ep.episode_number).padStart(2, '0') }}</span>
       </div>
 
-      <RouterLink :to="`/tv/${tmdbId}/season/${seasonNumber}/episode/${ep.episode_number}`" class="flex-shrink-0 w-32 sm:w-40 aspect-video rounded-md bg-surface-200 overflow-hidden mt-1 block">
-        <img
-          v-if="ep.still_path"
-          :src="tmdbImageUrl(ep.still_path ?? '') || ''"
-          :alt="ep.name"
-          class="w-full h-full object-cover"
-          loading="lazy"
+      <div class="episode-thumbnail relative self-start w-full max-w-64 aspect-video overflow-hidden rounded-md bg-surface-200 md:max-w-none md:w-40 md:flex-shrink-0">
+        <RouterLink :to="`/tv/${tmdbId}/season/${seasonNumber}/episode/${ep.episode_number}`" class="block h-full w-full">
+          <img
+            v-if="ep.still_path"
+            :src="tmdbImageUrl(ep.still_path ?? '') || ''"
+            :alt="ep.name"
+            class="w-full h-full object-cover"
+            loading="lazy"
+          />
+          <div v-else class="w-full h-full flex items-center justify-center text-gray-600 text-xl">
+            {{ ep.episode_number }}
+          </div>
+        </RouterLink>
+        <EpisodeTypePill
+          :value="ep.episode_type"
+          size="s"
+          class="pointer-events-none absolute top-2 left-2 z-10 shadow ring-1 ring-black/10"
         />
-        <div v-else class="w-full h-full flex items-center justify-center text-gray-600 text-xl">
-          {{ ep.episode_number }}
-        </div>
-      </RouterLink>
+      </div>
 
-      <div class="flex-1 min-w-0 pt-1">
+      <div class="episode-details col-span-2 min-w-0 md:col-auto md:flex-1 md:pt-1">
         <RouterLink :to="`/tv/${tmdbId}/season/${seasonNumber}/episode/${ep.episode_number}`" class="text-primary text-sm font-medium hover:text-brand-400 transition-colors">
           {{ ep.name }}
         </RouterLink>
         <p v-if="ep.overview" class="text-muted text-xs mt-1.5 line-clamp-3">{{ ep.overview }}</p>
-        <div class="flex items-center gap-3 mt-2 text-xs text-muted">
-           <span v-if="ep.air_date">{{ formatDateTimeByLocale(ep.air_date) }}</span>
-          <span v-if="ep.runtime">· {{ ep.runtime }} min</span>
+        <div class="episode-meta mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted">
+          <span v-if="ep.air_date">{{ formatDateTimeByLocale(ep.air_date) }}</span>
+          <span v-if="ep.runtime">{{ ep.runtime }} min</span>
           <RatingBadge v-if="ep.vote_average" :value="ep.vote_average" size="xs" />
-          <EpisodeTypePill :value="ep.episode_type" size="s" />
         </div>
       </div>
     </div>
