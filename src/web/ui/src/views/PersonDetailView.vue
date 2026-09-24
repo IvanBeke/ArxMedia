@@ -150,7 +150,7 @@ const biographyText = computed(() => {
 const isBiographyTruncated = computed(() => biographyFull.value.length > BIOGRAPHY_PREVIEW_LENGTH)
 
 const actingCredits = computed(() => credits.value?.cast ?? [])
-const crewCredits = computed(() => [...(credits.value?.crew ?? [])].slice(0, 30))
+const crewCredits = computed(() => credits.value?.crew ?? [])
 const actingCount = computed(() => actingCredits.value.length)
 const knownCredits = computed(() => knownCreditsCount(credits.value))
 const knownFor = computed(() => topKnownFor(actingCredits.value, 8))

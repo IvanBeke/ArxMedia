@@ -44,8 +44,20 @@ export function ageFor(birthday: string | null | undefined, endDate?: string | n
   return age >= 0 ? age : null
 }
 
+// Person filmography is dated by the credit, not the media's release or first-air date.
+function creditDate(item: PersonCredit): string | null {
+  return item.first_credit_air_date || item.release_date || item.first_air_date || null
+}
+
+function creditTime(item: PersonCredit): number {
+  const value = creditDate(item)
+  if (!value) return Number.NEGATIVE_INFINITY
+  const time = Date.parse(value)
+  return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY
+}
+
 export function creditYear(item: PersonCredit): number | null {
-  return temporalYear(item.release_date ?? item.first_air_date ?? null)
+  return temporalYear(creditDate(item))
 }
 
 export function creditTitle(item: PersonCredit): string {
@@ -129,7 +141,15 @@ export function groupCreditsByYear(items: PersonCredit[]): YearGroup[] {
   const groups: YearGroup[] = [...byYear.entries()].map(([year, yearItems]) => ({
     year,
     label: year === null ? '—' : String(year),
-    items: [...yearItems].sort((a, b) => creditTitle(a).localeCompare(creditTitle(b))),
+    items: yearItems
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const aTime = creditTime(a.item)
+        const bTime = creditTime(b.item)
+        if (aTime === bTime) return a.index - b.index
+        return bTime - aTime
+      })
+      .map(({ item }) => item),
   }))
   groups.sort((a, b) => (b.year ?? Number.MIN_SAFE_INTEGER) - (a.year ?? Number.MIN_SAFE_INTEGER))
   return groups

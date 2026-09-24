@@ -1518,7 +1518,12 @@ class MediaTests(TestCase):
     def test_person_credits_returns_cast_and_crew(self, mock_credits):
         mock_credits.return_value = {
             'cast': [{'id': 550, 'media_type': 'movie', 'title': 'Fight Club'}],
-            'crew': [{'id': 1399, 'media_type': 'tv', 'name': 'Show'}],
+            'crew': [{
+                'id': 1399,
+                'media_type': 'tv',
+                'name': 'Show',
+                'first_credit_air_date': '2014-05-11',
+            }],
         }
 
         response = self.client.get('/api/media/people/123/credits/')
@@ -1528,6 +1533,7 @@ class MediaTests(TestCase):
         self.assertEqual(len(response.data['crew']), 1)
         self.assertEqual(response.data['cast'][0]['media_type'], 'movie')
         self.assertEqual(response.data['crew'][0]['media_type'], 'tv')
+        self.assertEqual(response.data['crew'][0]['first_credit_air_date'], '2014-05-11')
 
     @patch('media.views.tmdb.get_person')
     def test_person_detail_returns_404_when_missing(self, mock_person):

@@ -34,7 +34,7 @@ export interface PersonJob { credit_id?: string; job?: string; episode_count?: n
 export interface Person { id: number; credit_id?: string; name: string; profile_path?: string | null; character?: string; job?: string; department?: string; total_episode_count?: number; roles?: PersonRole[]; jobs?: PersonJob[] }
 export interface Credits { cast: Person[]; crew: Person[]; guest_stars: Person[] }
 export interface PersonDetail { id: number; name: string; biography?: string; birthday?: string | null; deathday?: string | null; place_of_birth?: string | null; profile_path?: string | null; profile_url?: string | null; known_for_department?: string; popularity?: number; gender?: number | null; also_known_as?: string[]; external_ids?: ExternalIds }
-export interface PersonCredit extends MediaResult { character?: string; job?: string; department?: string; credit_id?: string; episode_count?: number; popularity?: number }
+export interface PersonCredit extends MediaResult { character?: string; job?: string; department?: string; credit_id?: string; episode_count?: number; first_credit_air_date?: string | null; popularity?: number }
 export interface PersonCombinedCredits { cast: PersonCredit[]; crew: PersonCredit[] }
 export interface PersonKnownFor { id: number; media_type?: string; title?: string; name?: string }
 export interface PersonSearchResult { id: number; name: string; profile_path?: string | null; known_for_department?: string; popularity?: number; known_for?: PersonKnownFor[] }

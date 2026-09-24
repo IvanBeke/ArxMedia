@@ -22,21 +22,48 @@ describe('person utils', () => {
     expect(ageFor(null)).toBeNull()
   })
 
-  it('resolves credit year from movie or tv dates', () => {
+  it('prefers the first credit air date when resolving a credit year', () => {
     expect(creditYear(credit({ id: 1, release_date: '2019-05-31' }))).toBe(2019)
-    expect(creditYear(credit({ id: 2, media_type: 'tv', first_air_date: '2015-03-04' }))).toBe(2015)
-    expect(creditYear(credit({ id: 3 }))).toBeNull()
+    expect(creditYear(credit({
+      id: 2,
+      media_type: 'tv',
+      first_air_date: '2015-03-04',
+      first_credit_air_date: '2024-06-12',
+    }))).toBe(2024)
+    expect(creditYear(credit({ id: 3, media_type: 'tv', first_air_date: '2015-03-04' }))).toBe(2015)
+    expect(creditYear(credit({ id: 4 }))).toBeNull()
   })
 
-  it('groups credits by year descending with unknown last', () => {
+  it('groups credits by effective year and orders each group newest first', () => {
     const groups = groupCreditsByYear([
-      credit({ id: 1, title: 'B Movie', release_date: '2019-01-01' }),
-      credit({ id: 2, title: 'A Movie', release_date: '2019-06-01' }),
-      credit({ id: 3, title: 'Oldie', release_date: '2005-01-01' }),
-      credit({ id: 4, title: 'Mystery' }),
+      credit({ id: 1, title: 'A Movie', release_date: '2019-01-01' }),
+      credit({ id: 2, title: 'Z Movie', release_date: '2019-06-01' }),
+      credit({
+        id: 3,
+        name: 'Game of Thrones',
+        media_type: 'tv',
+        first_air_date: '2011-04-17',
+        first_credit_air_date: '2014-05-11',
+      }),
+      credit({
+        id: 4,
+        name: 'Inside No. 9',
+        media_type: 'tv',
+        first_air_date: '2014-02-05',
+        first_credit_air_date: '2024-06-12',
+      }),
+      credit({
+        id: 5,
+        name: 'Moonflower Murders',
+        media_type: 'tv',
+        first_air_date: '2024-11-16',
+        first_credit_air_date: '2024-11-16',
+      }),
+      credit({ id: 6, title: 'Mystery' }),
     ])
-    expect(groups.map((group) => group.label)).toEqual(['2019', '2005', '—'])
-    expect(groups[0]?.items.map((item) => item.title)).toEqual(['A Movie', 'B Movie'])
+    expect(groups.map((group) => group.label)).toEqual(['2024', '2019', '2014', '—'])
+    expect(groups[0]?.items.map((item) => item.name)).toEqual(['Moonflower Murders', 'Inside No. 9'])
+    expect(groups[1]?.items.map((item) => item.title)).toEqual(['Z Movie', 'A Movie'])
   })
 
   it('filters by media type and ranks known-for by popularity', () => {
