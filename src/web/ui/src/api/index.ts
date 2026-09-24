@@ -38,9 +38,11 @@ async function refreshAccessToken(origin: string): Promise<string> {
   if (isRefreshing) return new Promise<string>((resolve, reject) => refreshSubscribers.push({ resolve, reject }))
   isRefreshing = true
   try {
-    const refreshData = await parseResponse<Partial<Tokens>>(await fetch(origin + '/api/auth/token/refresh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh }) }))
+    const refreshData = await parseResponse<Tokens>(await fetch(origin + '/api/auth/token/refresh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh }) }))
     if (!refreshData.access) throw new Error('Refresh token response missing access token')
+    if (!refreshData.refresh) throw new Error('Refresh token response missing refresh token')
     localStorage.setItem('access_token', refreshData.access)
+    localStorage.setItem('refresh_token', refreshData.refresh)
     refreshSubscribers.forEach(({ resolve }) => resolve(refreshData.access as string))
     refreshSubscribers = []
     return refreshData.access

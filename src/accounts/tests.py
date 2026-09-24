@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from social.models import Follow
@@ -42,6 +45,25 @@ class AccountTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('access', response.data)
         self.assertIn('refresh', response.data)
+
+    def test_refresh_user_rotates_refresh_token_and_extends_expiration(self):
+        old_issued_at = timezone.now() - timedelta(days=6, hours=23)
+        refresh = RefreshToken.for_user(self.user)
+        refresh.set_iat(at_time=old_issued_at)
+        refresh.set_exp(from_time=old_issued_at)
+
+        response = self.client.post(
+            '/api/auth/token/refresh/',
+            {'refresh': str(refresh)},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        rotated_refresh = RefreshToken(response.data['refresh'])
+        self.assertNotEqual(rotated_refresh['jti'], refresh['jti'])
+        self.assertGreater(rotated_refresh['exp'], refresh['exp'])
 
     def test_login_unknown_user(self):
         response = self.client.post('/api/auth/login/', {
