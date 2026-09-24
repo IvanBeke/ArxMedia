@@ -23,6 +23,11 @@
           size="s"
           extra-class="shadow ring-1 ring-black/10"
         />
+        <EpisodeTypePill
+          v-if="card.episodeCode.visible"
+          :value="entry.episode_type"
+          class="shadow ring-1 ring-black/10"
+        />
         <CardUserRating v-if="hasRating" :value="card.userRating!" size="xs" />
       </div>
     </template>
@@ -78,6 +83,7 @@ import CardActionRemoveHistoryEntry from '@/components/cards/primitives/CardActi
 import CardEpisodeCodePill from '@/components/cards/primitives/CardEpisodeCodePill.vue'
 import CardMediaTypeBadge from '@/components/cards/primitives/CardMediaTypeBadge.vue'
 import CardUserRating from '@/components/cards/primitives/CardUserRating.vue'
+import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import { useMediaCardModel } from '@/composables/useMediaCardModel'
 import { formatIsoAsDDMMYYYY, formatIsoTimeHHMM } from '@/utils/temporal'
 import type { WatchEntry } from '@/types/api'

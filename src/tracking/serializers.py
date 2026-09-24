@@ -116,29 +116,45 @@ class MediaCardSerializer(serializers.ModelSerializer):
 
 class WatchEntrySerializer(MediaCardSerializer):
     show_name = serializers.SerializerMethodField()
+    episode_type = serializers.SerializerMethodField()
 
     class Meta:
         model = WatchEntry
         fields = [
             'id', 'media_type', 'tmdb_id', 'watched_at',
             'season_number', 'episode_number', 'created_at', 'title', 'poster_path',
-            'poster_url', 'vote_average', 'show_name'
+            'poster_url', 'vote_average', 'show_name', 'episode_type'
         ]
         read_only_fields = ['id', 'created_at']
 
+    def _get_episode(self, obj):
+        if obj.media_type != WatchEntryMediaType.EPISODE or not obj.season_number or not obj.episode_number:
+            return None
+
+        season = self._get_season(obj)
+        if season is None:
+            return None
+
+        cache = getattr(self, '_episode_cache', None)
+        if cache is None:
+            cache = {}
+            self._episode_cache = cache
+
+        cache_key = (season.id, obj.episode_number)
+        if cache_key in cache:
+            return cache[cache_key]
+
+        from media.models import Episode
+
+        episode = Episode.objects.filter(season=season, episode_number=obj.episode_number).first()
+        cache[cache_key] = episode
+        return episode
+
     def get_title(self, obj):
         if obj.media_type == WatchEntryMediaType.EPISODE:
-            from media.models import Episode, Season
-
-            if obj.season_number and obj.episode_number:
-                season = Season.objects.filter(
-                    show__tmdb_id=obj.tmdb_id,
-                    season_number=obj.season_number,
-                ).first()
-                if season:
-                    episode = Episode.objects.filter(season=season, episode_number=obj.episode_number).first()
-                    if episode and episode.name:
-                        return episode.name
+            episode = self._get_episode(obj)
+            if episode and episode.name:
+                return episode.name
 
             if obj.episode_number:
                 return f'Episode {obj.episode_number}'
@@ -150,6 +166,10 @@ class WatchEntrySerializer(MediaCardSerializer):
             show = self._get_media(obj)
             return show.name if show else None
         return None
+
+    def get_episode_type(self, obj):
+        episode = self._get_episode(obj)
+        return episode.episode_type if episode else ''
 
 
 class RatingSerializer(serializers.ModelSerializer):

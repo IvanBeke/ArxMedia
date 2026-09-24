@@ -23,6 +23,7 @@ function entry(overrides: Partial<WatchEntry>): WatchEntry {
     poster_url: null,
     vote_average: 0,
     show_name: 'Show',
+    episode_type: '',
     ...overrides,
   }
 }

@@ -333,7 +333,7 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]['tmdb_id'], 600)
 
-    def test_history_episode_payload_includes_show_fields(self):
+    def test_history_episode_payload_includes_show_and_episode_type_fields(self):
         show = TVShow.objects.create(tmdb_id=5001, name='Runtime Show', episode_runtime=41)
         season = Season.objects.create(
             show=show,
@@ -347,6 +347,7 @@ class WatchEntryTests(BaseTestCase):
             episode_number=1,
             name='Pilot',
             runtime=44,
+            episode_type='season finale',
         )
         WatchEntry.objects.create(
             user=self.user,
@@ -362,6 +363,7 @@ class WatchEntryTests(BaseTestCase):
         entries = response.data.get('results', response.data)
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]['show_name'], 'Runtime Show')
+        self.assertEqual(entries[0]['episode_type'], 'season finale')
 
     def test_history_list_filters_media_type(self):
         WatchEntry.objects.create(
@@ -1683,7 +1685,14 @@ class SeasonPosterCardsTests(BaseTestCase):
         self.assertEqual(response.data[0]['poster_path'], '/up-s1.jpg')
         self.assertEqual(response.data[0]['poster_url'], 'https://image.tmdb.org/t/p/w500/up-s1.jpg')
 
-    def test_user_stats_recent_activity_uses_season_poster(self):
+    def test_user_stats_recent_activity_uses_season_poster_and_episode_type(self):
+        Episode.objects.create(
+            season=self.season1,
+            tmdb_id=80011,
+            episode_number=1,
+            name='Poster Episode',
+            episode_type='finale',
+        )
         WatchEntry.objects.create(
             user=self.user,
             media_type='episode',
@@ -1698,6 +1707,7 @@ class SeasonPosterCardsTests(BaseTestCase):
         self.assertEqual(len(recent), 1)
         self.assertEqual(recent[0]['poster_path'], '/season1-poster.jpg')
         self.assertEqual(recent[0]['poster_url'], 'https://image.tmdb.org/t/p/w500/season1-poster.jpg')
+        self.assertEqual(recent[0]['episode_type'], 'finale')
 
 
 class ProgressListTests(BaseTestCase):
