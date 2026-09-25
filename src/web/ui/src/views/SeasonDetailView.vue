@@ -129,6 +129,10 @@
             <h3 class="text-primary font-medium mb-3">Season cast{{ displayCast.length ? ` (${displayCast.length})` : '' }}</h3>
             <CastGrid :people="displayCast" />
           </template>
+
+          <template v-else-if="activeTab === 'history'">
+            <MediaHistoryTab :filter="historyFilter" />
+          </template>
         </div>
     </div>
   </div>
@@ -138,6 +142,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { mediaAPI, trackingAPI } from '@/api'
+import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import { useAuthStore } from '@/stores/auth'
 import ProgressBar from '@/components/ProgressBar.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
@@ -149,6 +154,7 @@ import ExternalLinks from '@/components/ExternalLinks.vue'
 import CastGrid from '@/components/CastGrid.vue'
 import DetailHero from '@/components/DetailHero.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
+import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
 import { getApiErrorMessage } from '@/utils/errors'
@@ -165,6 +171,11 @@ const route = useRoute()
 const router = useRouter()
 const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10))
 const seasonNumber = computed(() => Number.parseInt(String(route.params.seasonNumber), 10))
+const historyFilter = computed(() => ({
+  media_type: WATCH_ENTRY_MEDIA_TYPE.EPISODE,
+  tmdb_id: tmdbId.value,
+  season_number: seasonNumber.value,
+}))
 const auth = useAuthStore()
 const season = ref<Season | null>(null)
 const aggregateCredits = ref<Credits | null>(null)
@@ -192,7 +203,7 @@ const {
 // adjusted locally as episodes are marked/unmarked.
 const watchedEpisodesCount = ref(0)
 
-const VALID_TABS = ['overview', 'episodes', 'cast'] as const
+const VALID_TABS = ['overview', 'episodes', 'cast', 'history'] as const
 type SeasonTab = (typeof VALID_TABS)[number]
 
 function initialTab(): SeasonTab {
@@ -219,6 +230,7 @@ const visibleTabs = computed((): MediaTab[] => {
     { id: 'overview', label: 'Overview' },
     { id: 'episodes', label: 'Episodes', count: totalEpisodesCount.value || undefined },
     { id: 'cast', label: 'Cast', count: displayCast.value.length || undefined },
+    { id: 'history', label: 'History' },
   ]
   if (!tabs.some((tab) => tab.id === activeTab.value)) {
     activeTab.value = 'overview'

@@ -209,6 +209,10 @@
           <CollectionStrip :collection="collectionDetail" :loading="loadingCollection" />
         </template>
 
+        <template v-else-if="activeTab === 'history'">
+          <MediaHistoryTab :filter="historyFilter" />
+        </template>
+
         <template v-else-if="activeTab === 'more'">
           <p v-if="recsError" class="text-sm text-muted mb-3">Recommendations unavailable right now.</p>
           <RecommendationsRow :items="recommendations" :loading="loadingRecs" @status-changed="handleRecommendationStatusChanged" />
@@ -233,12 +237,13 @@ import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import MovieUnwatchDialog from '@/components/MovieUnwatchDialog.vue'
 import DetailHero from '@/components/DetailHero.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
+import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import MediaActionsBar from '@/components/MediaActionsBar.vue'
 import ExternalLinks from '@/components/ExternalLinks.vue'
 import CastGrid from '@/components/CastGrid.vue'
 import RecommendationsRow from '@/components/RecommendationsRow.vue'
 import CollectionStrip from '@/components/CollectionStrip.vue'
-import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
+import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { formatDateByLocale, useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
@@ -256,6 +261,10 @@ import type { WatchedAtOption } from '@/utils/watchOptions'
 const route = useRoute()
 const router = useRouter()
 const movieId = computed(() => String(route.params.id ?? ''))
+const historyFilter = computed(() => ({
+  media_type: WATCH_ENTRY_MEDIA_TYPE.MOVIE,
+  tmdb_id: movieId.value,
+}))
 const auth = useAuthStore()
 const { t } = useI18n()
 const movie = ref<Movie | null>(null)
@@ -322,7 +331,7 @@ const topCrew = computed(() => {
     .slice(0, 6)
 })
 
-const VALID_TABS = ['overview', 'cast', 'collection', 'more'] as const
+const VALID_TABS = ['overview', 'cast', 'collection', 'history', 'more'] as const
 type MovieTab = (typeof VALID_TABS)[number]
 
 function initialTab(): MovieTab {
@@ -336,6 +345,7 @@ const visibleTabs = computed((): MediaTab[] => {
   const tabs: MediaTab[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'cast', label: 'Cast', count: creditsData.value?.cast?.length },
+    { id: 'history', label: 'History' },
   ]
   if (movie.value?.collection?.id) {
     tabs.push({ id: 'collection', label: 'Collection' })

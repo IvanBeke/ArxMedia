@@ -55,6 +55,12 @@
       </div>
     </div>
 
+    <!-- Error -->
+    <div v-else-if="loadError" class="card p-10 text-center" role="alert">
+      <p class="text-secondary">Could not load watch history.</p>
+      <button type="button" class="btn-ghost mt-4" @click="loadHistory">Try again</button>
+    </div>
+
     <!-- History List -->
     <div v-else-if="entries.length" class="space-y-6">
       <template v-for="group in groupedEntries" :key="group.label">
@@ -98,7 +104,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
       </div>
-      <p class="text-muted mb-4">No watch history yet</p>
+      <p class="text-muted mb-4">{{ hasItemFilter ? 'No matching watch history' : 'No watch history yet' }}</p>
       <RouterLink to="/search" class="btn-primary">Start Watching</RouterLink>
     </div>
   </div>
@@ -114,6 +120,7 @@ import PaginationControls from '@/components/PaginationControls.vue'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
+import { historyItemQueryFromRoute } from '@/utils/historyFilters'
 import { invalidPageRecovery, normalizePagedResponse, parsePage, toRouteQuery } from '@/utils/pagination'
 import type { MediaType, QueryParams, WatchEntry, WatchEntryMediaType } from '@/types/api'
 
@@ -128,6 +135,7 @@ const router = useRouter()
 const entries = ref<WatchEntry[]>([])
 const stats = ref<HistoryStats | null>(null)
 const loading = ref(true)
+const loadError = ref(false)
 const activeFilter = ref<HistoryFilter>('all')
 const sortOrder = ref<HistoryOrder>('newest')
 const groupByDay = ref(true)
@@ -141,6 +149,8 @@ const filters: { label: string; value: HistoryFilter }[] = [
   { label: 'Movies', value: MEDIA_TYPE.MOVIE },
   { label: 'Episodes', value: WATCH_ENTRY_MEDIA_TYPE.EPISODE },
 ]
+
+const hasItemFilter = computed(() => Object.keys(historyItemQueryFromRoute(route.query)).length > 0)
 
 const groupedEntries = computed<HistoryGroup[]>(() => {
   if (!groupByDay.value) {
@@ -189,6 +199,7 @@ function decrementHistoryStats(currentStats: HistoryStats | null, mediaType: Wat
 
 async function loadHistory() {
   loading.value = true
+  loadError.value = false
   try {
     const [historyRes, statsRes] = await Promise.all([
       trackingAPI.getHistory(buildHistoryParams()),
@@ -202,6 +213,10 @@ async function loadHistory() {
       currentPage.value = recoveryPage
       return
     }
+    entries.value = []
+    count.value = 0
+    lastLoadedCount.value = 0
+    loadError.value = true
     console.error('Failed to load history', e)
   } finally {
     loading.value = false
@@ -210,6 +225,7 @@ async function loadHistory() {
 
 function buildHistoryParams(page = currentPage.value): QueryParams {
   const params: QueryParams = {
+    ...historyItemQueryFromRoute(route.query),
     order: sortOrder.value,
     page,
   }
@@ -247,7 +263,7 @@ function queryToState() {
 }
 
 function stateToQuery(): QueryParams {
-  const query: QueryParams = {}
+  const query: QueryParams = { ...historyItemQueryFromRoute(route.query) }
   if (activeFilter.value !== 'all') {
     query.media_type = activeFilter.value
   }

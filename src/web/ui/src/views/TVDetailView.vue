@@ -297,6 +297,10 @@
           </div>
         </template>
 
+        <template v-if="activeTab === 'history'">
+          <MediaHistoryTab :filter="historyFilter" />
+        </template>
+
         <template v-if="activeTab === 'more'">
           <p v-if="recsError" class="text-sm text-muted mb-3">Recommendations unavailable right now.</p>
           <RecommendationsRow :items="recommendations" :media-type="MEDIA_TYPE.TV" :loading="loadingRecs" @status-changed="handleRecommendationStatusChanged" />
@@ -323,6 +327,7 @@ import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import DetailHero from '@/components/DetailHero.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
+import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import MediaActionsBar from '@/components/MediaActionsBar.vue'
 import ExternalLinks from '@/components/ExternalLinks.vue'
 import CastGrid from '@/components/CastGrid.vue'
@@ -353,6 +358,10 @@ const router = useRouter()
 const auth = useAuthStore()
 const { t } = useI18n()
 const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10))
+const historyFilter = computed(() => ({
+  media_type: WATCH_ENTRY_MEDIA_TYPE.EPISODE,
+  tmdb_id: tmdbId.value,
+}))
 
 const show = ref<TVShow | null>(null)
 const aggregateCredits = ref<Credits | null>(null)
@@ -377,7 +386,7 @@ const removeHistoryDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const removingHistory = ref(false)
 const unwatchEpisodeDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
 
-const VALID_TABS = ['overview', 'seasons', 'cast', 'more'] as const
+const VALID_TABS = ['overview', 'seasons', 'cast', 'history', 'more'] as const
 type ShowTab = (typeof VALID_TABS)[number]
 
 function initialTab(): ShowTab {
@@ -392,6 +401,7 @@ const visibleTabs = computed((): MediaTab[] => {
     { id: 'overview', label: 'Overview' },
     { id: 'seasons', label: 'Seasons' },
     { id: 'cast', label: 'Cast', count: aggregateCredits.value?.cast?.length },
+    { id: 'history', label: 'History' },
   ]
   if (recommendations.value.length > 0 || loadingRecs.value) {
     tabs.push({ id: 'more', label: 'More like this' })

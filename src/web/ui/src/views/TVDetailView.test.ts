@@ -3,16 +3,18 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import TVDetailView from '@/views/TVDetailView.vue'
+import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types/api'
 
-const { getTV, getTVCredits, getTVRecommendations, getRatings, getWatchedEpisodes } = vi.hoisted(() => ({
+const { getTV, getTVCredits, getTVRecommendations, getRatings, getWatchedEpisodes, getHistory } = vi.hoisted(() => ({
   getTV: vi.fn(),
   getTVCredits: vi.fn(),
   getTVRecommendations: vi.fn(),
   getRatings: vi.fn(),
   getWatchedEpisodes: vi.fn(),
+  getHistory: vi.fn(),
 }))
 
 vi.mock('@/api', () => {
@@ -25,6 +27,7 @@ vi.mock('@/api', () => {
     trackingAPI: {
       getRatings,
       getWatchedEpisodes,
+      getHistory,
       markSeasonWatched: vi.fn().mockResolvedValue({ episodes: [] }),
       unmarkSeasonWatched: vi.fn().mockResolvedValue({ episodes: [] }),
       unmarkShowWatched: vi.fn().mockResolvedValue({}),
@@ -92,7 +95,10 @@ function watchedPayload(pairs: [number, number][]) {
 async function mountView(authenticated: boolean) {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/tv/:id', name: 'tv-detail', component: TVDetailView }],
+    routes: [
+      { path: '/tv/:id', name: 'tv-detail', component: TVDetailView },
+      { path: '/history', name: 'history', component: { template: '<div />' } },
+    ],
   })
   await router.push(`/tv/${TMDB_ID}`)
   await router.isReady()
@@ -156,6 +162,25 @@ describe('TVDetailView hero progress', () => {
     await seasonsTab?.trigger('click')
 
     expect(wrapper.text()).toContain('8.1')
+  })
+
+  it('shows a history tab scoped to the show', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1]]))
+    getHistory.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+
+    const wrapper = await mountView(true)
+    const historyTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('History'))
+    expect(historyTab).toBeTruthy()
+    await historyTab?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(MediaHistoryTab).exists()).toBe(true)
+    expect(getHistory).toHaveBeenCalledWith({
+      media_type: 'episode',
+      tmdb_id: TMDB_ID,
+      order: 'newest',
+      page: 1,
+    })
   })
 
   it('falls back to plain episode counts without a progress bar for guests', async () => {

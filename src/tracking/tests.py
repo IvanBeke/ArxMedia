@@ -388,6 +388,51 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(data[0]['media_type'], 'movie')
         self.assertEqual(data[0]['tmdb_id'], 701)
 
+    def test_history_list_filters_item_scope(self):
+        matching = WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=702,
+            season_number=1,
+            episode_number=1,
+            watched_at=timezone.now(),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=702,
+            season_number=1,
+            episode_number=2,
+            watched_at=timezone.now(),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=702,
+            season_number=2,
+            episode_number=1,
+            watched_at=timezone.now(),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='movie',
+            tmdb_id=702,
+            watched_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            '/api/tracking/history/',
+            {
+                'media_type': 'episode',
+                'tmdb_id': 702,
+                'season_number': 1,
+                'episode_number': 1,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.data.get('results', response.data)
+        self.assertEqual([entry['id'] for entry in data], [matching.id])
+
     def test_history_list_oldest_order(self):
         older = timezone.make_aware(timezone.datetime(2026, 2, 1, 10, 0, 0))
         newer = timezone.make_aware(timezone.datetime(2026, 2, 3, 10, 0, 0))

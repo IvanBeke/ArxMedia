@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import SeasonDetailView from '@/views/SeasonDetailView.vue'
+import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
@@ -10,10 +11,11 @@ import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types/api'
 
-const { getSeason, getSeasonCredits, getWatchedEpisodes, markEpisodeWatched, markSeasonWatched } = vi.hoisted(() => ({
+const { getSeason, getSeasonCredits, getWatchedEpisodes, getHistory, markEpisodeWatched, markSeasonWatched } = vi.hoisted(() => ({
   getSeason: vi.fn(),
   getSeasonCredits: vi.fn(),
   getWatchedEpisodes: vi.fn(),
+  getHistory: vi.fn(),
   markEpisodeWatched: vi.fn(),
   markSeasonWatched: vi.fn(),
 }))
@@ -26,6 +28,7 @@ vi.mock('@/api', () => {
     },
     trackingAPI: {
       getWatchedEpisodes,
+      getHistory,
       markEpisodeWatched,
       unmarkEpisodeWatched: vi.fn().mockResolvedValue({}),
       markSeasonWatched,
@@ -96,6 +99,7 @@ async function mountView(tab: string | null = 'episodes') {
     routes: [
       { path: '/tv/:id/season/:seasonNumber', name: 'season-detail', component: SeasonDetailView },
       { path: '/tv/:id', name: 'tv-detail', component: { template: '<div />' } },
+      { path: '/history', name: 'history', component: { template: '<div />' } },
     ],
   })
   await router.push(tab ? `/tv/${TMDB_ID}/season/${SEASON_NUMBER}?tab=${tab}` : `/tv/${TMDB_ID}/season/${SEASON_NUMBER}`)
@@ -136,6 +140,25 @@ describe('SeasonDetailView progress', () => {
 
     expect(wrapper.text()).toContain('12/50')
     expect(wrapper.findComponent(ProgressBar).props('pct')).toBe(24)
+  })
+
+  it('shows a history tab scoped to the season', async () => {
+    getHistory.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+
+    const wrapper = await mountView('overview')
+    const historyTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('History'))
+    expect(historyTab).toBeTruthy()
+    await historyTab?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(MediaHistoryTab).exists()).toBe(true)
+    expect(getHistory).toHaveBeenCalledWith({
+      media_type: 'episode',
+      tmdb_id: TMDB_ID,
+      season_number: SEASON_NUMBER,
+      order: 'newest',
+      page: 1,
+    })
   })
 
   it('increments the count optimistically when an unwatched episode is marked', async () => {
