@@ -85,13 +85,6 @@
                   <p v-if="season.overview" class="text-secondary leading-relaxed max-w-2xl">{{ season.overview }}</p>
                   <p v-else class="text-muted text-sm">No season overview available.</p>
                 </div>
-                <div>
-                  <h3 class="text-primary font-medium mb-3">Top cast</h3>
-                  <CastGrid :people="displayCast.slice(0, 8)" />
-                  <button v-if="displayCast.length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
-                    View all cast →
-                  </button>
-                </div>
               </div>
               <div class="space-y-4">
                 <div class="card p-4">
@@ -105,6 +98,14 @@
                   </dl>
                 </div>
               </div>
+            </div>
+
+            <div class="mt-8">
+              <h3 class="text-primary font-medium mb-3">Top cast</h3>
+              <CastGrid :people="displayCast.slice(0, 8)" />
+              <button v-if="displayCast.length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
+                View all cast →
+              </button>
             </div>
           </template>
 

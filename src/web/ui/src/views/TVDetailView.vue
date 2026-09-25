@@ -166,13 +166,6 @@
                   <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
                 </div>
               </div>
-              <div class="min-w-0">
-                <h3 class="text-primary font-medium mb-3">Top cast</h3>
-                <CastGrid :people="(aggregateCredits?.cast || []).slice(0, 8)" />
-                <button v-if="(aggregateCredits?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
-                  View all cast →
-                </button>
-              </div>
             </div>
             <div class="space-y-4 min-w-0">
               <div class="card p-4">
@@ -219,6 +212,14 @@
                 </p>
               </div>
             </div>
+          </div>
+
+          <div class="mt-8">
+            <h3 class="text-primary font-medium mb-3">Top cast</h3>
+            <CastGrid :people="(aggregateCredits?.cast || []).slice(0, 8)" />
+            <button v-if="(aggregateCredits?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
+              View all cast →
+            </button>
           </div>
         </template>
 
