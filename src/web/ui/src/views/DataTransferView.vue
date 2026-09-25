@@ -2,7 +2,7 @@
   <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <header class="mb-6">
       <h1 class="font-display text-3xl text-primary font-semibold tracking-tight">Import Data</h1>
-      <p class="text-sm text-muted mt-1">Import from Trakt ZIP exports, Yamtrack CSV exports, or JSON backups created by ArxMedia.</p>
+      <p class="text-sm text-muted mt-1">Import from Trakt and WeTrackr ZIP exports, Yamtrack CSV exports, or JSON backups created by ArxMedia.</p>
     </header>
 
     <div class="space-y-6">
@@ -34,6 +34,33 @@
 
             <div class="mt-3">
               <button type="button" class="btn-primary text-sm" :disabled="!zipFileName" @click="startZipImport">Upload ZIP</button>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-surface-200 bg-surface-100 p-4">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <h3 class="text-primary font-medium">Import WeTrackr ZIP</h3>
+            </div>
+
+            <div class="space-y-2">
+              <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-surface-200 bg-surface px-3 py-2 text-sm transition-colors hover:border-brand-500/60 hover:bg-surface-200">
+                <span class="min-w-0 flex-1 truncate font-medium text-primary">{{ wetrakrFileName || 'Choose ZIP' }}</span>
+                <span class="inline-flex items-center rounded-md bg-brand-500/15 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-brand-300">Browse</span>
+                <input
+                  ref="wetrakrInput"
+                  type="file"
+                  class="sr-only"
+                  accept=".zip,application/zip"
+                  aria-label="Import WeTrackr ZIP"
+                  @change="handleWetrakrFileSelect"
+                />
+              </label>
+              <p class="text-xs text-muted">For WeTrackr export ZIP files only.</p>
+              <p v-if="wetrakrError" class="text-xs text-red-400">{{ wetrakrError }}</p>
+            </div>
+
+            <div class="mt-3">
+              <button type="button" class="btn-primary text-sm" :disabled="!wetrakrFileName" @click="startWetrakrImport">Upload ZIP</button>
             </div>
           </div>
 
@@ -274,16 +301,20 @@ type ImportModeOption = { value: ImportMode; tag: string; title: string; descrip
 type FinishedWarning = { key: string; label: string; value: string | number; detail: string }
 
 const zipInput = ref<HTMLInputElement | null>(null)
+const wetrakrInput = ref<HTMLInputElement | null>(null)
 const yamtrackInput = ref<HTMLInputElement | null>(null)
 const jsonInput = ref<HTMLInputElement | null>(null)
 const jobs = ref<DataTransferJob[]>([])
 const zipError = ref('')
+const wetrakrError = ref('')
 const yamtrackError = ref('')
 const jsonError = ref('')
 const zipFileName = ref('')
+const wetrakrFileName = ref('')
 const yamtrackFileName = ref('')
 const jsonFileName = ref('')
 const zipFile = ref<File | null>(null)
+const wetrakrFile = ref<File | null>(null)
 const yamtrackFile = ref<File | null>(null)
 const jsonFile = ref<File | null>(null)
 const exportError = ref('')
@@ -454,9 +485,21 @@ const finishedWarningDetails = computed(() => {
       label: 'Invalid statuses skipped',
       detail: 'The row contained a status that could not be mapped to an ArxMedia status.',
     },
+    skipped_invalid_rating: {
+      label: 'Invalid ratings skipped',
+      detail: 'The row did not contain a whole-number rating from 1 to 10.',
+    },
     skipped_missing_tmdb_id: {
       label: 'Rows missing a TMDB ID',
       detail: 'The row did not include a TMDB ID, so it could not be matched to media.',
+    },
+    unresolved_episode_records: {
+      label: 'Unresolved episodes skipped',
+      detail: 'Some episode IDs could not be matched to exactly one local parent show.',
+    },
+    ambiguous_episode_parent: {
+      label: 'Ambiguous episode parents skipped',
+      detail: 'Some episode IDs matched more than one local parent show.',
     },
     files_failed: {
       label: 'Files failed',
@@ -503,6 +546,7 @@ function progressTotal(job: DataTransferJob) {
 function stageLabel(job: DataTransferJob) {
   if (job.status !== 'processing') return ''
   const stage = job.metadata?.pipeline?.stage
+  if (stage === 'resolving_episodes') return 'Resolving episode IDs'
   if (stage === 'finalizing') return 'Finalizing'
   return 'Importing'
 }
@@ -528,6 +572,7 @@ async function pollJob(jobId: number) {
         status?.status === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION
         || status?.status === DATA_TRANSFER_STATUS.DONE
         || status?.status === DATA_TRANSFER_STATUS.FAILED
+        || status?.status === DATA_TRANSFER_STATUS.CANCELLED
       ) {
         if (timer !== null) clearInterval(timer)
         timer = null
@@ -544,6 +589,12 @@ function handleZipFileSelect(event: Event) {
   zipError.value = ''
   zipFile.value = selectedFile(event)
   zipFileName.value = zipFile.value?.name || ''
+}
+
+function handleWetrakrFileSelect(event: Event) {
+  wetrakrError.value = ''
+  wetrakrFile.value = selectedFile(event)
+  wetrakrFileName.value = wetrakrFile.value?.name || ''
 }
 
 function handleYamtrackFileSelect(event: Event) {
@@ -585,6 +636,31 @@ async function startZipImport() {
     await pollJob(created.id)
   } catch (error) {
     zipError.value = getApiErrorMessage(error, 'The ZIP import could not be started.')
+  }
+}
+
+async function startWetrakrImport() {
+  wetrakrError.value = ''
+  confirmErrorCode.value = ''
+  const file = wetrakrFile.value
+  if (!file) {
+    wetrakrError.value = 'Please choose a WeTrackr ZIP file before uploading.'
+    wetrakrFileName.value = ''
+    return
+  }
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    wetrakrError.value = 'This import accepts ZIP files only.'
+    return
+  }
+  try {
+    const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.ZIP, 'wetrakr')
+    updateJob(created)
+    selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
+    modalJobId.value = created.id
+    showImportModeModal.value = true
+    await pollJob(created.id)
+  } catch (error) {
+    wetrakrError.value = getApiErrorMessage(error, 'The WeTrackr ZIP import could not be started.')
   }
 }
 
@@ -680,7 +756,13 @@ function humanStatus(value: DataTransferStatus | undefined) {
 }
 
 function humanValue(value: string | undefined) {
-  return String(value || 'unknown').replaceAll('_', ' ')
+  const labels: Record<string, string> = {
+    arxmedia: 'ArxMedia',
+    trakt: 'Trakt',
+    wetrakr: 'WeTrackr',
+    yamtrack: 'Yamtrack',
+  }
+  return labels[String(value)] || String(value || 'unknown').replaceAll('_', ' ')
 }
 
 function isJobDetailsOpenable(job: DataTransferJob) {

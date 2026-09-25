@@ -41,7 +41,7 @@ from .choices import (
     TvShowStatus,
     WatchEntryMediaType,
 )
-from .import_config import expected_format_for_source, supported_import_sources
+from .import_config import expected_formats_for_source, supported_import_sources
 from .import_errors import ImportDomainError, ImportErrorCode, raise_import_validation_error
 from .models import (
     CustomList,
@@ -2161,11 +2161,12 @@ class DataImportView(generics.CreateAPIView):
         supported_sources = supported_import_sources()
         if not source:
             raise ValidationError({'source': f"source is required ({', '.join(supported_sources)})."})
-        expected_format = expected_format_for_source(source)
-        if expected_format is None:
+        expected_formats = expected_formats_for_source(source)
+        if expected_formats is None:
             raise ValidationError({'source': f"source must be {', '.join(supported_sources)}"})
-        if fmt != expected_format:
-            raise ValidationError({'format': f'format must be {expected_format} for source={source}.'})
+        if fmt not in expected_formats:
+            expected = ' or '.join(expected_formats)
+            raise ValidationError({'format': f'format must be {expected} for source={source}.'})
 
         job = DataTransferJob.objects.create(
             user=request.user,

@@ -2,6 +2,7 @@
 
     prepare_import_job     (after upload)          -> awaiting_confirmation
     run_import_job         (after user confirms)   -> processing
+      ├─ resolve episode TMDB IDs to parent shows
       ├─ process_media_item ×N  (sync TMDB and TVMaze metadata for one item, apply its records)
       └─ waits for all of them, then calls finish_import():
            ├─ delete_missing_rows   (mirror mode only, explicit call site)
@@ -19,7 +20,7 @@ from django.db import transaction
 from django.db.models import F, Q
 from django.db.models.functions import Least
 
-from ..choices import DataImportMode
+from ..choices import DataImportMode, DataTransferStatus
 from ..import_engine import (
     apply_imported_lists,
     apply_item_records,
@@ -29,12 +30,24 @@ from ..import_engine import (
     reconcile_user_media_status,
     touched_status_keys,
 )
+from ..import_records import ParsedImport
+from ..import_resolution import candidate_show_ids, episode_parent_map, resolve_episode_records
 from ..import_state_machine import fail, finish_apply, prepare_apply
 from ..models import DataTransferJob, UserMediaStatus
 from .import_commands import PrepareImportCommand
 from .provider_registry import get_import_parser
 
 logger = logging.getLogger(__name__)
+
+
+class ImportJobCancelled(Exception):
+    """Raised internally when an import is cancelled between task stages."""
+
+
+def _ensure_processing(job: DataTransferJob) -> None:
+    job.refresh_from_db()
+    if job.status != DataTransferStatus.PROCESSING:
+        raise ImportJobCancelled
 
 
 def _load_parsed(job):
@@ -52,6 +65,82 @@ def prepare_import_job(job_id: int) -> dict[str, str]:
     return PrepareImportCommand(job_id).execute()
 
 
+@shared_task(name='tracking.sync_import_show_metadata', acks_late=True, reject_on_worker_lost=True)
+def sync_import_show_metadata(job_id: int, tmdb_id: int) -> dict[str, str | bool]:
+    """Synchronize one candidate show without applying tracking records."""
+    job = DataTransferJob.objects.filter(id=job_id).first()
+    if job is None:
+        return {'status': 'missing'}
+    try:
+        _ensure_processing(job)
+    except ImportJobCancelled:
+        return {'status': 'cancelled'}
+
+    from media.models import Season, TVShow
+    from media.tmdb import tmdb
+
+    if TVShow.objects.filter(tmdb_id=tmdb_id).exists() and Season.objects.filter(show__tmdb_id=tmdb_id).exists():
+        return {'status': 'ok', 'cached': True}
+    try:
+        tmdb.sync_tv_show(tmdb_id, recompute_user_statuses=False, use_cache=True)
+        return {'status': 'ok', 'cached': False}
+    except Exception as exc:
+        logger.warning('TMDB/TVMaze pre-resolution sync failed for tv %s: %s', tmdb_id, exc)
+        return {'status': 'error', 'error': str(exc)}
+
+
+def _set_import_stage(job: DataTransferJob, stage: str, counters: dict[str, int] | None = None):
+    metadata = dict(job.metadata or {})
+    pipeline = dict(metadata.get('pipeline') or {})
+    pipeline['stage'] = stage
+    if counters:
+        merged = dict(pipeline.get('metadata_counters') or {})
+        for key, value in counters.items():
+            merged[key] = merged.get(key, 0) + value
+        pipeline['metadata_counters'] = merged
+    metadata['pipeline'] = pipeline
+    job.metadata = metadata
+    job.save(update_fields=['metadata', 'updated_at'])
+
+
+def _resolve_episode_records(job: DataTransferJob, parsed: ParsedImport) -> tuple[ParsedImport, dict[str, int]]:
+    if not parsed.unresolved_episodes:
+        return parsed, {}
+
+    _ensure_processing(job)
+    _set_import_stage(job, 'resolving_episodes')
+    episode_ids = {record.episode_tmdb_id for record in parsed.unresolved_episodes}
+    parent_map = episode_parent_map(episode_ids)
+    counters: dict[str, int] = {'metadata_fetches': 0, 'metadata_hits': 0, 'metadata_errors': 0}
+    unresolved = [
+        record
+        for record in parsed.unresolved_episodes
+        if len(parent_map.get(record.episode_tmdb_id, frozenset())) != 1
+    ]
+    candidates = set(candidate_show_ids(parsed)) if unresolved else set()
+
+    candidate_ids = tuple(sorted(candidates))
+    for start in range(0, len(candidate_ids), 2):
+        _ensure_processing(job)
+        batch = candidate_ids[start:start + 2]
+        results = [sync_import_show_metadata.delay(job.id, tmdb_id) for tmdb_id in batch]
+        for result in results:
+            outcome = result.get(disable_sync_subtasks=False)
+            if outcome.get('status') == 'cancelled':
+                raise ImportJobCancelled
+            if outcome.get('status') == 'error':
+                counters['metadata_errors'] += 1
+            elif outcome.get('cached'):
+                counters['metadata_hits'] += 1
+            else:
+                counters['metadata_fetches'] += 1
+
+    _ensure_processing(job)
+    parent_map = episode_parent_map(episode_ids)
+    resolved = resolve_episode_records(parsed, parent_map)
+    return resolved, counters
+
+
 @shared_task(name='tracking.run_import_job', acks_late=True, reject_on_worker_lost=True)
 def run_import_job(job_id: int) -> dict[str, str]:
     from . import process_media_item
@@ -59,10 +148,15 @@ def run_import_job(job_id: int) -> dict[str, str]:
     job = DataTransferJob.objects.filter(id=job_id).first()
     if job is None:
         return {'status': 'missing'}
+    if job.status != DataTransferStatus.PROCESSING:
+        return {'status': job.status}
 
     try:
         prepare_apply(job)
+        _ensure_processing(job)
         parsed = _load_parsed(job)
+        parsed, resolution_counters = _resolve_episode_records(job, parsed)
+        _ensure_processing(job)
 
         items = group_by_item(parsed)
         # Same number the confirmation recap showed: raw units from the file.
@@ -87,7 +181,7 @@ def run_import_job(job_id: int) -> dict[str, str]:
         metadata['pipeline'] = {
             'stage': 'syncing',
             'applied': 0,
-            'metadata_counters': {},
+            'metadata_counters': resolution_counters,
             'preexisting_statuses': sorted([list(key) for key in preexisting]),
         }
         job.total_items = total_items
@@ -103,8 +197,11 @@ def run_import_job(job_id: int) -> dict[str, str]:
         for result in results:
             result.get(disable_sync_subtasks=False)
 
-        finish_import(job_id)
+        finish_import(job_id, parsed=parsed)
 
+        job.refresh_from_db()
+        return {'status': job.status}
+    except ImportJobCancelled:
         job.refresh_from_db()
         return {'status': job.status}
     except Exception as exc:
@@ -120,6 +217,8 @@ def process_media_item(job_id: int, item: dict, recompute_status: bool = False):
     job = DataTransferJob.objects.filter(id=job_id).first()
     if job is None:
         return
+    if job.status != DataTransferStatus.PROCESSING:
+        return
 
     try:
         sync_error = False
@@ -134,6 +233,10 @@ def process_media_item(job_id: int, item: dict, recompute_status: bool = False):
                 # A bad id must never discard tracking data; count and continue.
                 logger.warning('TMDB/TVMaze sync failed for %s %s: %s', item['media_type'], item['tmdb_id'], exc)
                 sync_error = True
+
+        job.refresh_from_db()
+        if job.status != DataTransferStatus.PROCESSING:
+            return
 
         applied = apply_item_records(
             job.user, item['media_type'], item['tmdb_id'], item['records'], job.import_mode
@@ -185,10 +288,12 @@ def _bump_pipeline(job_id: int, applied_delta: int = 0, counter_deltas: dict | N
         job.save(update_fields=['metadata', 'updated_at'])
 
 
-def finish_import(job_id: int):
+def finish_import(job_id: int, parsed: ParsedImport | None = None):
     """Mirror deletions, reconcile canonical statuses, write report, finish."""
     job = DataTransferJob.objects.get(id=job_id)
-    parsed = _load_parsed(job)
+    if job.status != DataTransferStatus.PROCESSING:
+        return
+    parsed = parsed or _load_parsed(job)
     pipeline = dict((job.metadata or {}).get('pipeline') or {})
     pipeline['stage'] = 'finalizing'
 

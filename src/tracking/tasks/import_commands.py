@@ -1,5 +1,5 @@
 from ..choices import DataImportMode, DataTransferJobType
-from ..import_config import expected_format_for_source, source_requires_confirmation
+from ..import_config import expected_formats_for_source, source_requires_confirmation
 from ..import_errors import ImportDomainError, ImportErrorCode
 from ..import_state_machine import confirm as confirm_transition
 from ..import_state_machine import fail, finish_prepare, start_prepare
@@ -21,7 +21,8 @@ class PrepareImportCommand:
             finish_prepare(job, report)
             return {'status': job.status}
         except Exception as exc:
-            fail(job, str(exc))
+            message = getattr(exc, 'message', None) or str(exc) or exc.__class__.__name__
+            fail(job, message)
             return {'status': job.status}
 
 
@@ -37,13 +38,13 @@ class ConfirmImportCommand:
                 message='Only import jobs can be confirmed.',
             )
 
-        expected_format = expected_format_for_source(self.job.source)
-        if expected_format is None:
+        expected_formats = expected_formats_for_source(self.job.source)
+        if expected_formats is None:
             raise ImportDomainError(
                 code=ImportErrorCode.IMPORT_SOURCE_UNSUPPORTED,
                 message='Import source is not supported.',
             )
-        if self.job.data_format != expected_format:
+        if self.job.data_format not in expected_formats:
             raise ImportDomainError(
                 code=ImportErrorCode.IMPORT_SOURCE_FORMAT_MISMATCH,
                 message='Import source and format do not match.',

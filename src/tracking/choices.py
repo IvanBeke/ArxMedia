@@ -31,6 +31,7 @@ class ListPrivacy(models.TextChoices):
 class DataTransferSource(models.TextChoices):
     ARXMEDIA = 'arxmedia', 'ArxMedia'
     TRAKT = 'trakt', 'Trakt'
+    WETRAKR = 'wetrakr', 'WeTrackr'
     YAMTRACK = 'yamtrack', 'Yamtrack'
 
 

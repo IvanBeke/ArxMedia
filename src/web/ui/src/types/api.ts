@@ -75,7 +75,7 @@ export interface ListItemsResponse extends PaginatedResponse<ListItem> {
 }
 export type DataTransferStatus = 'pending' | 'processing' | 'awaiting_confirmation' | 'done' | 'failed' | 'cancelled'
 export type DataTransferJobType = 'import' | 'export'
-export type DataTransferSource = 'arxmedia' | 'trakt' | 'yamtrack'
+export type DataTransferSource = 'arxmedia' | 'trakt' | 'wetrakr' | 'yamtrack'
 export type DataTransferFormat = 'json' | 'csv' | 'zip'
 export type DataImportMode = 'new_items' | 'update_existing' | 'mirror_imported_set'
 export interface DataTransferFileReport { file: string; status: string; error?: string; records_seen?: number }
@@ -85,8 +85,8 @@ export interface DataTransferReport {
   summary?: { watch_history?: number; watchlist?: number; ratings?: number; lists?: number }
   deleted?: { watch_history?: number; watchlist?: number; ratings?: number; lists?: number }
   lists_created?: number; lists_updated?: number; list_items_seen?: number; list_items_created?: number; list_items_updated?: number; list_items_deleted?: number
-  invalid_count?: number; unsupported_files?: number; unsupported_records?: number; skipped_non_tmdb?: number
-  skipped_unsupported_media_type?: number; skipped_invalid_status?: number; skipped_missing_tmdb_id?: number; files_failed?: number
+  invalid_count?: number; unsupported_files?: number; unsupported_records?: number; resolved_episode_records?: number; unresolved_episode_records?: number; skipped_non_tmdb?: number
+  skipped_unsupported_media_type?: number; skipped_invalid_status?: number; skipped_invalid_rating?: number; skipped_missing_tmdb_id?: number; files_failed?: number
   warnings?: DataTransferWarning[]; files?: DataTransferFileReport[]
   [key: string]: unknown
 }

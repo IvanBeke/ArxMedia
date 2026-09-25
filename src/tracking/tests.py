@@ -1,3 +1,4 @@
+import csv
 import io
 import json
 import zipfile
@@ -3324,6 +3325,43 @@ class DataImportExportTests(BaseTestCase):
         self.assertIsNone(stale.started_at)
         self.assertIsNone(stale.last_watched_at)
 
+    def _csv_bytes(self, fieldnames, rows):
+        output = io.StringIO(newline='')
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(rows)
+        return output.getvalue().encode('utf-8')
+
+    def _build_wetrakr_zip(self, tracklog=(), ratings=(), favorites=(), lists=(), prefix=''):
+        schemas = {
+            'tracklog.csv': (
+                [
+                    'title', 'year', 'type', 'tmdb_id', 'imdb_id', 'show_title',
+                    'season_number', 'episode_number', 'status', 'tracked_at', 'updated_at', 'source',
+                ],
+                tracklog,
+            ),
+            'ratings.csv': (
+                ['title', 'year', 'type', 'tmdb_id', 'imdb_id', 'show_title', 'season_number', 'episode_number', 'rating', 'rated_at'],
+                ratings,
+            ),
+            'favorites.csv': (['title', 'year', 'type', 'tmdb_id', 'imdb_id', 'created_at'], favorites),
+            'lists.csv': (
+                ['list_name', 'list_description', 'title', 'year', 'type', 'tmdb_id', 'imdb_id', 'rank', 'created_at'],
+                lists,
+            ),
+            'notes.csv': (
+                ['title', 'year', 'type', 'tmdb_id', 'imdb_id', 'show_title', 'season_number', 'episode_number', 'text', 'privacy', 'spoiler', 'created_at'],
+                (),
+            ),
+            'profile.csv': (['username', 'email', 'display_name', 'joined_at', 'plan', 'timezone', 'country'], ()),
+        }
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            for file_name, (fieldnames, rows) in schemas.items():
+                archive.writestr(f'{prefix}{file_name}', self._csv_bytes(fieldnames, rows))
+        return buffer.getvalue()
+
     def _build_yamtrack_csv(self, rows):
         header = [
             'source',
@@ -3428,6 +3466,155 @@ class DataImportExportTests(BaseTestCase):
         with patch('tracking.tasks.process_media_item.delay', side_effect=apply_item):
             run_import_job(job_id)
 
+    def test_wetrakr_parser_maps_supported_csv_files(self):
+        from tracking.tasks.providers.wetrakr import parse_wetrakr_zip
+
+        content = self._build_wetrakr_zip(
+            tracklog=[
+                {'type': 'movie', 'tmdb_id': 700, 'status': 'watched', 'tracked_at': '2025-02-03T04:05:06Z', 'updated_at': '2026-09-21T08:41:01.768Z'},
+                {'type': 'episode', 'tmdb_id': 701, 'season_number': '1', 'episode_number': '2', 'status': 'watched', 'tracked_at': '2025-02-04T00:00:00Z'},
+                {'type': 'show', 'tmdb_id': 702, 'status': 'watched', 'tracked_at': '2025-02-05T00:00:00Z'},
+                {'type': 'show', 'tmdb_id': 703, 'status': 'waiting', 'tracked_at': '2025-02-06T00:00:00Z'},
+                {'type': 'show', 'tmdb_id': 704, 'status': 'discarded', 'tracked_at': '2025-02-07T00:00:00Z'},
+                {'type': 'show', 'tmdb_id': 705, 'status': 'plantowatch', 'tracked_at': '2025-02-08T00:00:00Z'},
+                {'type': 'movie', 'tmdb_id': 706, 'status': 'plantowatch', 'tracked_at': '2025-02-09T00:00:00Z'},
+            ],
+            ratings=[
+                {'type': 'show', 'tmdb_id': 703, 'rating': '9', 'rated_at': '2026-02-01T00:00:00Z'},
+                {'type': 'movie', 'tmdb_id': 707, 'rating': '11', 'rated_at': '2026-02-01T00:00:00Z'},
+            ],
+            favorites=[{'type': 'show', 'tmdb_id': 708, 'created_at': '2025-02-10T00:00:00Z'}],
+            lists=[
+                {'list_name': 'Top', 'list_description': 'Imported list', 'type': 'movie', 'tmdb_id': 709, 'rank': '2', 'created_at': '2025-02-11T00:00:00Z'},
+                {'list_name': 'Top', 'list_description': 'Imported list', 'type': 'show', 'tmdb_id': 710, 'rank': '1', 'created_at': '2025-02-12T00:00:00Z'},
+            ],
+        )
+
+        parsed = parse_wetrakr_zip(content)
+
+        self.assertEqual(parsed.report['summary'], {
+            'watch_history': 2,
+            'watchlist': 2,
+            'ratings': 1,
+            'lists': 2,
+        })
+        self.assertEqual(parsed.report['records_seen'], 12)
+        self.assertEqual(parsed.report['unsupported_files'], 2)
+        self.assertEqual(parsed.report['skipped_invalid_rating'], 1)
+        self.assertEqual(len(parsed.unresolved_episodes), 1)
+        self.assertFalse(any(record.media_type == 'episode' for record in parsed.watch_entries()))
+        movie_entry = next(record for record in parsed.watch_entries() if record.tmdb_id == 700)
+        self.assertEqual(movie_entry.watched_at.isoformat(), '2025-02-03T04:05:06+00:00')
+        self.assertEqual(
+            {(record.tmdb_id, record.status) for record in parsed.statuses()},
+            {(702, 'watched'), (703, 'watching'), (704, 'dropped'), (705, 'plan_to_watch'), (706, 'plan_to_watch')},
+        )
+        favorites = next(record for record in parsed.lists if record.name == 'Favorites (WeTrackr)')
+        self.assertEqual(favorites.privacy, 'private')
+        self.assertEqual(favorites.items[0].tmdb_id, 708)
+        top = next(record for record in parsed.lists if record.name == 'Top')
+        self.assertEqual({item.tmdb_id: item.custom_order for item in top.items}, {709: 1, 710: 0})
+
+    def test_wetrakr_resolves_episode_ids_to_exact_parent_shows(self):
+        from tracking.import_resolution import episode_parent_map, resolve_episode_records
+        from tracking.tasks.providers.wetrakr import parse_wetrakr_zip
+
+        first_show = TVShow.objects.create(tmdb_id=800, name='Shared Show')
+        first_season = Season.objects.create(show=first_show, tmdb_id=8000, season_number=1, name='Season 1')
+        Episode.objects.create(season=first_season, tmdb_id=80001, episode_number=1, name='First')
+        second_show = TVShow.objects.create(tmdb_id=801, name='Shared Show')
+        second_season = Season.objects.create(show=second_show, tmdb_id=8010, season_number=1, name='Season 1')
+        Episode.objects.create(season=second_season, tmdb_id=80101, episode_number=1, name='Second')
+        content = self._build_wetrakr_zip(
+            tracklog=[
+                {'type': 'show', 'title': 'Shared Show', 'tmdb_id': 800, 'status': 'watched'},
+                {'type': 'show', 'title': 'Shared Show', 'tmdb_id': 801, 'status': 'watched'},
+                {'type': 'episode', 'show_title': 'Deliberately Wrong Title', 'tmdb_id': 80001, 'season_number': '1', 'episode_number': '1', 'status': 'watched'},
+                {'type': 'episode', 'show_title': 'Deliberately Wrong Title', 'tmdb_id': 80101, 'season_number': '1', 'episode_number': '1', 'status': 'watched'},
+            ],
+        )
+
+        parsed = parse_wetrakr_zip(content)
+        resolved = resolve_episode_records(
+            parsed,
+            episode_parent_map({record.episode_tmdb_id for record in parsed.unresolved_episodes}),
+        )
+
+        self.assertEqual(
+            {(record.tmdb_id, record.season_number, record.episode_number) for record in resolved.watch_entries()},
+            {(800, 1, 1), (801, 1, 1)},
+        )
+        self.assertEqual(resolved.report['resolved_episode_records'], 2)
+        self.assertEqual(resolved.report['unresolved_episode_records'], 0)
+
+    def test_wetrakr_pre_resolution_syncs_candidates_then_uses_episode_id(self):
+        from tracking.tasks.import_pipeline import _resolve_episode_records
+        from tracking.tasks.providers.wetrakr import parse_wetrakr_zip
+
+        class Result:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self, **kwargs):
+                return self.value
+
+        parsed = parse_wetrakr_zip(self._build_wetrakr_zip(
+            tracklog=[
+                {'type': 'show', 'title': 'Candidate Show', 'tmdb_id': 900, 'status': 'watched'},
+                {'type': 'episode', 'show_title': 'Deliberately Wrong Title', 'tmdb_id': 90001, 'season_number': '1', 'episode_number': '1', 'status': 'watched'},
+            ],
+        ))
+        job = DataTransferJob.objects.create(
+            user=self.user,
+            job_type='import',
+            data_format='zip',
+            source='wetrakr',
+            status='processing',
+        )
+
+        def fake_sync(job_id, show_id):
+            show = TVShow.objects.create(tmdb_id=show_id, name='Candidate Show')
+            season = Season.objects.create(show=show, tmdb_id=9000, season_number=1, name='Season 1')
+            Episode.objects.create(season=season, tmdb_id=90001, episode_number=1, name='Episode 1')
+            return Result({'status': 'ok', 'cached': False})
+
+        with patch(
+            'tracking.tasks.import_pipeline.sync_import_show_metadata.delay',
+            side_effect=fake_sync,
+        ) as delay:
+            resolved, counters = _resolve_episode_records(job, parsed)
+
+        delay.assert_called_once_with(job.id, 900)
+        self.assertEqual([(record.tmdb_id, record.episode_number) for record in resolved.watch_entries()], [(900, 1)])
+        self.assertEqual(counters['metadata_fetches'], 1)
+        self.assertEqual(resolved.report['unresolved_episode_records'], 0)
+
+    def test_wetrakr_does_not_guess_an_unresolved_episode_parent(self):
+        from tracking.import_resolution import episode_parent_map, resolve_episode_records
+        from tracking.tasks.providers.wetrakr import parse_wetrakr_zip
+
+        content = self._build_wetrakr_zip(
+            tracklog=[
+                {'type': 'show', 'title': 'Uncached Show', 'tmdb_id': 900, 'status': 'watched'},
+                {'type': 'episode', 'show_title': 'Uncached Show', 'tmdb_id': 90001, 'season_number': '1', 'episode_number': '1', 'status': 'watched'},
+            ],
+        )
+        parsed = parse_wetrakr_zip(content)
+
+        resolved = resolve_episode_records(parsed, episode_parent_map({90001}))
+
+        self.assertEqual(resolved.watch_entries(), ())
+        self.assertEqual(resolved.report['unresolved_episode_records'], 1)
+        self.assertIn('unresolved_episode', {warning['code'] for warning in resolved.report['warnings']})
+
+    def test_wetrakr_parser_rejects_csv_files_in_a_folder(self):
+        from tracking.tasks.providers.wetrakr import parse_wetrakr_zip
+
+        content = self._build_wetrakr_zip(prefix='wetrakr_export_user/')
+
+        with self.assertRaisesMessage(ValueError, 'must be stored at the ZIP root'):
+            parse_wetrakr_zip(content)
+
     def test_prepare_zip_import_sets_awaiting_confirmation(self):
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -3451,6 +3638,113 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(job.processed_items, 0)
         self.assertEqual(job.metadata.get('summary', {}).get('watch_history'), 1)
         self.assertEqual(job.metadata.get('summary', {}).get('watchlist'), 1)
+
+    def test_prepare_wetrakr_zip_sets_awaiting_confirmation(self):
+        upload = SimpleUploadedFile(
+            'wetrakr_export_user.zip',
+            self._build_wetrakr_zip(
+                tracklog=[
+                    {'type': 'movie', 'tmdb_id': 100, 'status': 'watched', 'tracked_at': '2026-01-01T00:00:00Z'},
+                    {'type': 'episode', 'tmdb_id': 200, 'season_number': '1', 'episode_number': '1', 'status': 'watched', 'tracked_at': '2026-01-02T00:00:00Z'},
+                ],
+                ratings=[{'type': 'movie', 'tmdb_id': 100, 'rating': '8', 'rated_at': '2026-01-01T00:00:00Z'}],
+                favorites=[{'type': 'show', 'tmdb_id': 300, 'created_at': '2026-01-03T00:00:00Z'}],
+            ),
+            content_type='application/zip',
+        )
+        response = self.client.post(
+            '/api/tracking/data/import/?data_format=zip&source=wetrakr',
+            {'file': upload},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 201)
+
+        from tracking.tasks import prepare_import_job
+
+        prepare_import_job(response.data['id'])
+
+        job = DataTransferJob.objects.get(id=response.data['id'])
+        self.assertEqual(job.status, 'awaiting_confirmation')
+        self.assertEqual(job.total_items, 4)
+        self.assertEqual(job.metadata['summary'], {
+            'watch_history': 2,
+            'watchlist': 0,
+            'ratings': 1,
+            'lists': 1,
+        })
+
+    def test_wetrakr_import_pipeline_applies_history_statuses_ratings_and_lists(self):
+        show = TVShow.objects.create(tmdb_id=200, name='Mapped Show')
+        season = Season.objects.create(show=show, tmdb_id=2000, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=20001, episode_number=1, name='Episode 1')
+        existing_favorites = CustomList.objects.create(user=self.user, name='Favorites')
+        ListItem.objects.create(custom_list=existing_favorites, media_type='movie', tmdb_id=999)
+        content = self._build_wetrakr_zip(
+            tracklog=[
+                {'type': 'movie', 'tmdb_id': 100, 'status': 'watched', 'tracked_at': '2026-01-01T00:00:00Z'},
+                {'type': 'episode', 'tmdb_id': 20001, 'season_number': '1', 'episode_number': '1', 'status': 'watched', 'tracked_at': '2026-01-02T00:00:00Z'},
+                {'type': 'show', 'tmdb_id': 201, 'status': 'discarded', 'tracked_at': '2026-01-03T00:00:00Z'},
+            ],
+            ratings=[{'type': 'movie', 'tmdb_id': 100, 'rating': '8', 'rated_at': '2026-01-01T00:00:00Z'}],
+            favorites=[{'type': 'show', 'tmdb_id': 300, 'created_at': '2026-01-04T00:00:00Z'}],
+            lists=[{'list_name': 'Owned', 'type': 'movie', 'tmdb_id': 400, 'rank': '1', 'created_at': '2026-01-05T00:00:00Z'}],
+        )
+        job = DataTransferJob.objects.create(
+            user=self.user,
+            job_type='import',
+            data_format='zip',
+            status='processing',
+            input_file=SimpleUploadedFile('wetrakr_export_user.zip', content, content_type='application/zip'),
+            source='wetrakr',
+            import_mode='new_items',
+            total_items=6,
+        )
+
+        self._run_import_pipeline(job.id)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, 'done')
+        self.assertTrue(WatchEntry.objects.filter(user=self.user, media_type='movie', tmdb_id=100).exists())
+        self.assertTrue(WatchEntry.objects.filter(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=200,
+            season_number=1,
+            episode_number=1,
+        ).exists())
+        self.assertTrue(UserMediaStatus.objects.filter(
+            user=self.user,
+            media_type='tv',
+            tmdb_id=201,
+            status='dropped',
+        ).exists())
+        self.assertTrue(Rating.objects.filter(user=self.user, media_type='movie', tmdb_id=100, score=8).exists())
+        favorites = CustomList.objects.get(user=self.user, name='Favorites (WeTrackr)')
+        self.assertEqual(favorites.privacy, 'private')
+        self.assertTrue(ListItem.objects.filter(custom_list=favorites, media_type='tv', tmdb_id=300).exists())
+        existing_favorites.refresh_from_db()
+        self.assertEqual(list(existing_favorites.items.values_list('tmdb_id', flat=True)), [999])
+        owned = CustomList.objects.get(user=self.user, name='Owned')
+        self.assertEqual(owned.items.get().custom_order, 0)
+
+    def test_cancelled_import_item_task_does_not_apply_records(self):
+        from tracking.tasks import process_media_item
+
+        job = DataTransferJob.objects.create(
+            user=self.user,
+            job_type='import',
+            data_format='zip',
+            source='wetrakr',
+            status='cancelled',
+        )
+
+        process_media_item.run(job.id, {
+            'media_type': 'movie',
+            'tmdb_id': 9999,
+            'records': [{'kind': 'watch_entry', 'media_type': 'movie'}],
+        })
+
+        self.assertFalse(WatchEntry.objects.filter(user=self.user, tmdb_id=9999).exists())
 
     def test_prepare_yamtrack_csv_sets_awaiting_confirmation(self):
         csv_content = self._build_yamtrack_csv([

@@ -22,6 +22,7 @@ def add_import_warning(warnings: list[dict], code: str, message: str, location: 
 WATCH_HISTORY_COLLECTION = 'watch_history'
 WATCHLIST_COLLECTION = 'watchlist'
 RATINGS_COLLECTION = 'ratings'
+DROPPED_COLLECTION = 'dropped'
 LISTS_COLLECTION = 'lists'
 
 
@@ -54,6 +55,18 @@ class WatchEntryRecord:
             self.episode_number if self.episode_number is not None else -1,
             _dt_key(self.watched_at),
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class UnresolvedEpisodeRecord:
+    """A WeTrackr episode row whose parent show still needs ID resolution."""
+
+    episode_tmdb_id: int
+    season_number: int
+    episode_number: int
+    watched_at: datetime | None = None
+    origin: str = ''
+    row_number: int | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -121,6 +134,8 @@ class ParsedImport:
     report: dict  # Provider-specific static report (seen counts, warnings, files[], skipped_* breakdowns, total_items).
     prefetch_only_ids: dict[str, frozenset[int]] = dataclasses.field(default_factory=dict)  # ids needing metadata but producing no record
     lists: tuple[ListRecord, ...] = ()
+    unresolved_episodes: tuple[UnresolvedEpisodeRecord, ...] = ()
+    show_ids_for_metadata: frozenset[int] = dataclasses.field(default_factory=frozenset)
 
     def sorted_records(self) -> tuple[ImportRecord, ...]:
         return tuple(sorted(self.records, key=lambda record: record.sort_key()))
