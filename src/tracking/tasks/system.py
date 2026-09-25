@@ -2,11 +2,13 @@ import logging
 from datetime import date, timedelta
 
 from celery import shared_task
+from django.db.models import Q
 from django.utils import timezone
 from media.models import Movie, TVShow
 from media.tmdb import TMDBNotFoundError, tmdb
 
-from ..choices import MediaType, WatchEntryMediaType
+from ..choices import DataTransferJobType, DataTransferStatus, MediaType, WatchEntryMediaType
+from ..models import DataTransferJob
 from ..status_sync import refresh_show_status
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,36 @@ def _fetch_changed_tmdb_ids(fetch_page) -> set[int]:
 def heartbeat() -> dict[str, str]:
     now = timezone.now().isoformat()
     return {"status": "ok", "timestamp": now}
+
+
+@shared_task(name='tracking.cleanup_data_transfer_jobs')
+def cleanup_data_transfer_jobs() -> dict[str, int]:
+    """Daily retention: file-less export rows are removed, and imports older
+    than a week are removed together with their uploaded files. Live
+    (processing) jobs are never touched."""
+    terminal_statuses = (
+        DataTransferStatus.DONE,
+        DataTransferStatus.FAILED,
+        DataTransferStatus.CANCELLED,
+    )
+    fileless_exports = DataTransferJob.objects.filter(
+        job_type=DataTransferJobType.EXPORT,
+        status__in=terminal_statuses,
+    ).filter(Q(output_file='') | Q(output_file__isnull=True))
+    exports_removed = fileless_exports.count()
+    fileless_exports.delete()
+
+    cutoff = timezone.now() - timedelta(days=7)
+    old_imports = DataTransferJob.objects.filter(
+        job_type=DataTransferJobType.IMPORT, created_at__lt=cutoff,
+    ).exclude(status=DataTransferStatus.PROCESSING)
+    imports_removed = 0
+    for job in old_imports.iterator():
+        if job.input_file:
+            job.input_file.delete(save=False)
+        job.delete()
+        imports_removed += 1
+    return {'exports_removed': exports_removed, 'imports_removed': imports_removed}
 
 
 @shared_task(name='tracking.sync_tmdb_changed_items')

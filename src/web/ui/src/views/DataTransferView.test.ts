@@ -139,6 +139,21 @@ describe('DataTransferView', () => {
     expect(wrapper.find('details').element.open).toBe(false)
   })
 
+  it('shows the selected ArxMedia backup filename and enables upload', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+
+    const input = wrapper.find('input[aria-label="Import ArxMedia backup"]')
+    const file = new File(['zip'], 'backup.zip', { type: 'application/zip' })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+
+    await input.trigger('change')
+
+    expect(wrapper.text()).toContain('backup.zip')
+    const uploadButton = wrapper.findAll('button').find((button) => button.text() === 'Upload backup')
+    expect(uploadButton?.attributes('disabled')).toBeUndefined()
+  })
+
   it('shows the selected WeTrackr ZIP filename and enables upload', async () => {
     const wrapper = mountView([])
     await flushPromises()
@@ -173,6 +188,23 @@ describe('DataTransferView', () => {
     wrapper.unmount()
   })
 
+  it('rejects ArxMedia JSON files', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+    importData.mockResolvedValue(pendingJob({ source: 'arxmedia', data_format: 'zip' }))
+
+    const input = wrapper.find('input[aria-label="Import ArxMedia backup"]')
+    const file = new File(['{}'], 'backup.json', { type: 'application/json' })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+    const uploadButton = wrapper.findAll('button').find((button) => button.text() === 'Upload backup')
+    await uploadButton?.trigger('click')
+    await flushPromises()
+
+    expect(importData).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('ZIP backups only')
+  })
+
   it('uploads new ArxMedia exports as ZIP backups', async () => {
     const wrapper = mountView([])
     await flushPromises()
@@ -190,6 +222,66 @@ describe('DataTransferView', () => {
     wrapper.unmount()
   })
 
+  it('shows export download button states', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+
+    const emptyButton = wrapper.findAll('button').find((button) => button.text() === 'No export yet')
+    expect(emptyButton?.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('a.btn-primary').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('shows generating state while the export runs', async () => {
+    const wrapper = mountView([pendingJob({ job_type: 'export', status: DATA_TRANSFER_STATUS.PROCESSING })])
+    await flushPromises()
+
+    const generatingButton = wrapper.findAll('button').find((button) => button.text() === 'Generating…')
+    expect(generatingButton?.attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('lists recent exports with per-file delete', async () => {
+    const ready = pendingJob({
+      job_type: 'export',
+      status: DATA_TRANSFER_STATUS.DONE,
+      output_url: 'http://localhost:8000/media/exports/arxmedia_export_admin_2026_09_25_23_05.zip',
+    })
+    const wrapper = mountView([ready])
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Recent exports')
+    expect(wrapper.text()).toContain('arxmedia_export_admin_2026_09_25_23_05.zip')
+    deleteExportFile.mockResolvedValue({ ...ready, output_url: null })
+    const deleteButton = wrapper.findAll('button').find((button) => button.text() === 'Delete file')
+    await deleteButton?.trigger('click')
+    await flushPromises()
+
+    expect(deleteExportFile).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Delete export file?')
+    await wrapper.findComponent(ConfirmDialog).vm.$emit('confirm')
+    await flushPromises()
+
+    expect(deleteExportFile).toHaveBeenCalledWith(99)
+    expect(wrapper.text()).not.toContain('arxmedia_export_admin_2026_09_25_23_05.zip')
+    expect(wrapper.text()).toContain('Deleted')
+    wrapper.unmount()
+  })
+
+  it('shows a download button when the export is ready', async () => {
+    const wrapper = mountView([pendingJob({
+      job_type: 'export',
+      status: DATA_TRANSFER_STATUS.DONE,
+      output_url: '/media/exports/arxmedia_export_admin_2026_09_25_23_05.zip',
+    })])
+    await flushPromises()
+
+    const download = wrapper.find('a.btn-primary')
+    expect(download.text()).toBe('Download export')
+    expect(download.attributes('href')).toBe('/media/exports/arxmedia_export_admin_2026_09_25_23_05.zip')
+    wrapper.unmount()
+  })
+
   it('creates ZIP exports', async () => {
     const wrapper = mountView([])
     await flushPromises()
@@ -201,21 +293,6 @@ describe('DataTransferView', () => {
 
     expect(exportData).toHaveBeenCalledWith('zip')
     wrapper.unmount()
-  })
-
-  it('shows the selected ArxMedia backup filename and enables upload', async () => {
-    const wrapper = mountView([])
-    await flushPromises()
-
-    const input = wrapper.find('input[aria-label="Import ArxMedia backup"]')
-    const file = new File(['zip'], 'backup.zip', { type: 'application/zip' })
-    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
-
-    await input.trigger('change')
-
-    expect(wrapper.text()).toContain('backup.zip')
-    const uploadButton = wrapper.findAll('button').find((button) => button.text() === 'Upload backup')
-    expect(uploadButton?.attributes('disabled')).toBeUndefined()
   })
 
   it('normalizes paginated job responses before rendering', async () => {
@@ -245,7 +322,7 @@ describe('DataTransferView', () => {
     const wrapper = mountView([{
       id: 15,
       job_type: 'import',
-      data_format: 'json',
+      data_format: 'zip',
       source: 'arxmedia',
       status: DATA_TRANSFER_STATUS.DONE,
       total_items: 3,
@@ -260,6 +337,14 @@ describe('DataTransferView', () => {
           list_items_created: 2,
           summary: { lists: 1 },
           deleted: { lists: 1 },
+          list_details: [{
+            name: 'Owned',
+            privacy: 'private',
+            items: [
+              { media_type: 'movie', tmdb_id: 400, title: 'Detail Movie' },
+              { media_type: 'tv', tmdb_id: 401, title: null },
+            ],
+          }],
         },
       },
     }])
@@ -274,5 +359,9 @@ describe('DataTransferView', () => {
     expect(wrapper.text()).toContain('1 deleted')
     expect(wrapper.text()).toContain('1 lists created')
     expect(wrapper.text()).toContain('2 list items added')
+    expect(wrapper.text()).toContain('Lists in detail (1)')
+    expect(wrapper.text()).toContain('Owned')
+    expect(wrapper.text()).toContain('Detail Movie')
+    expect(wrapper.text()).toContain('TMDB 401')
   })
 })

@@ -587,6 +587,24 @@ def apply_imported_lists(user, parsed: ParsedImport, import_mode: str) -> dict[s
     return applied
 
 
+def _list_details(parsed: ParsedImport) -> list[dict]:
+    """Per-list breakdown for the import report, with catalog titles when known."""
+    from media.models import Movie, TVShow
+
+    movie_ids = {item.tmdb_id for record in parsed.lists for item in record.items if item.media_type == MediaType.MOVIE}
+    tv_ids = {item.tmdb_id for record in parsed.lists for item in record.items if item.media_type == MediaType.TV}
+    movie_titles = dict(Movie.objects.filter(tmdb_id__in=movie_ids).values_list('tmdb_id', 'title')) if movie_ids else {}
+    show_titles = dict(TVShow.objects.filter(tmdb_id__in=tv_ids).values_list('tmdb_id', 'name')) if tv_ids else {}
+    details = []
+    for record in parsed.lists:
+        items = []
+        for item in record.items:
+            title = movie_titles.get(item.tmdb_id) if item.media_type == MediaType.MOVIE else show_titles.get(item.tmdb_id)
+            items.append({'media_type': item.media_type, 'tmdb_id': item.tmdb_id, 'title': title})
+        details.append({'name': record.name, 'privacy': record.privacy, 'items': items})
+    return details
+
+
 def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_state: dict | None = None, list_counts: dict | None = None) -> dict:
     state = metadata_state or {}
     report = dict(parsed.report)
@@ -615,6 +633,7 @@ def build_final_report(job, parsed: ParsedImport, applied_count: int, metadata_s
             'list_items_created': list_counts['items_created'],
             'list_items_updated': list_counts['items_updated'],
             'list_items_deleted': list_counts['items_deleted'],
+            'list_details': _list_details(parsed),
         }
     )
     return report

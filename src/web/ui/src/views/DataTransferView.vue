@@ -145,17 +145,57 @@
 
       <section class="card p-5">
         <h2 class="text-primary font-semibold text-xl mb-1">Export File</h2>
-        <p class="text-sm text-muted mb-4">Create a JSON backup export of your data.</p>
-        <button type="button" class="btn-primary text-sm" @click="startExport">Create export</button>
+        <p class="text-sm text-muted mb-4">Create a ZIP backup with a separate JSON file for each data category.</p>
+        <div class="flex items-center gap-3">
+          <button type="button" class="btn-primary text-sm" @click="startExport">Create export</button>
+          <a
+            v-if="latestExport?.output_url"
+            :href="latestExport.output_url"
+            download
+            class="btn-primary text-sm"
+          >
+            Download export
+          </a>
+          <button v-else type="button" class="btn-primary text-sm" disabled>
+            {{ exportRunning ? 'Generating…' : 'No export yet' }}
+          </button>
+        </div>
         <p v-if="exportError" class="text-xs text-red-400 mt-2">{{ exportError }}</p>
-        <a
-          v-if="latestExport?.output_url"
-          :href="latestExport.output_url"
-          target="_blank"
-          class="ml-4 text-sm text-brand-400 hover:text-brand-300"
-        >
-          Download latest export
-        </a>
+        <div v-if="recentExports.length" class="mt-4 space-y-2">
+          <p class="text-xs uppercase tracking-wide text-muted">Recent exports</p>
+          <div
+            v-for="exportJob in recentExports"
+            :key="exportJob.id"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-surface-200 bg-surface-100 p-3"
+          >
+            <div class="min-w-0">
+              <p class="text-sm text-secondary">Created: <span class="text-primary">{{ formatDateTimeByLocale(exportJob.created_at) }}</span></p>
+              <p class="text-xs text-muted mt-0.5">
+                <span class="font-semibold uppercase tracking-wide" :class="exportStatusById[exportJob.id]?.className">{{ exportStatusById[exportJob.id]?.text }}</span>
+                <span v-if="exportJob.output_url"> · <a :href="exportJob.output_url" download class="text-brand-400 hover:text-brand-300">{{ exportFileName(exportJob.output_url) }}</a></span>
+              </p>
+            </div>
+            <button
+              v-if="exportJob.output_url"
+              type="button"
+              class="btn-ghost text-xs border-red-500/40 text-red-300 hover:bg-red-500/10"
+              :disabled="deletingExportId === exportJob.id"
+              @click="askDeleteExport(exportJob.id)"
+            >
+              {{ deletingExportId === exportJob.id ? 'Deleting…' : 'Delete file' }}
+            </button>
+          </div>
+        </div>
+        <p v-else class="text-sm text-muted mt-4">No exports yet.</p>
+        <ConfirmDialog
+          ref="deleteExportDialog"
+          title="Delete export file?"
+          message="The ZIP file will be removed from the server. This cannot be undone."
+          confirm-label="Delete file"
+          loading-label="Deleting…"
+          :loading="deletingExportId !== null"
+          @confirm="confirmDeleteExport"
+        />
       </section>
     </div>
 
@@ -222,6 +262,23 @@
                   <p v-if="collection.deleted" class="text-xs text-amber-300">{{ collection.deleted }} deleted</p>
               </div>
             </div>
+            <details v-if="finishedListDetails.length" class="mt-3 rounded-lg border border-surface-200 bg-surface p-3">
+              <summary class="cursor-pointer text-sm font-medium text-secondary hover:text-primary">Lists in detail ({{ finishedListDetails.length }})</summary>
+              <div class="mt-3 space-y-3 border-t border-surface-200 pt-3">
+                <div v-for="list in finishedListDetails" :key="list.name">
+                  <div class="flex items-baseline justify-between gap-3">
+                    <p class="text-sm font-medium text-primary">{{ list.name }}</p>
+                    <p class="shrink-0 text-xs text-muted">{{ list.items.length }} items{{ list.privacy ? ` · ${list.privacy}` : '' }}</p>
+                  </div>
+                  <ul class="mt-1 space-y-1">
+                    <li v-for="item in list.items" :key="`${item.media_type}-${item.tmdb_id}`" class="flex items-baseline justify-between gap-3 text-xs">
+                      <span class="min-w-0 truncate text-secondary">{{ item.title || `TMDB ${item.tmdb_id}` }}</span>
+                      <span class="shrink-0 text-muted">{{ item.media_type }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </details>
           </div>
 
           <details v-if="finishedWarningDetails.length" class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
@@ -290,11 +347,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { trackingAPI } from '@/api'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { DATA_IMPORT_MODE, DATA_TRANSFER_FORMAT, DATA_TRANSFER_STATUS } from '@/constants/tracking'
 import { formatDateTimeByLocale } from '@/i18n'
 import { instantEpochMs, nowEpochMs } from '@/utils/temporal'
 import { getApiErrorMessage } from '@/utils/errors'
-import type { DataTransferFileReport, DataTransferJob, DataTransferReport, DataTransferStatus, DataTransferWarning } from '@/types/api'
+import type { DataTransferFileReport, DataTransferJob, DataTransferListDetail, DataTransferReport, DataTransferStatus, DataTransferWarning } from '@/types/api'
 
 type ImportMode = (typeof DATA_IMPORT_MODE)[keyof typeof DATA_IMPORT_MODE]
 type ImportModeOption = { value: ImportMode; tag: string; title: string; description: string }
@@ -369,6 +427,19 @@ const latestExport = computed(() => {
     .filter((job) => job.job_type === 'export')
     .sort((a, b) => instantEpochMs(b.created_at) - instantEpochMs(a.created_at))[0] || null
 })
+const exportRunning = computed(() => {
+  const status = latestExport.value?.status
+  return status === DATA_TRANSFER_STATUS.PENDING || status === DATA_TRANSFER_STATUS.PROCESSING
+})
+const recentExports = computed(() => {
+  return jobs.value
+    .filter((job) => job.job_type === 'export')
+    .sort((a, b) => instantEpochMs(b.created_at) - instantEpochMs(a.created_at))
+    .slice(0, 7)
+})
+const deletingExportId = ref<number | null>(null)
+const deleteExportDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
+const pendingDeleteExportId = ref<number | null>(null)
 const modalSummary = computed(() => {
   const targetJob = jobs.value.find((item) => item.id === modalJobId.value)
   const summary = targetJob?.metadata?.summary
@@ -449,6 +520,7 @@ const finishedCollections = computed(() => {
   ]
 })
 const finishedFiles = computed<DataTransferFileReport[]>(() => Array.isArray(finishedReport.value.files) ? finishedReport.value.files : [])
+const finishedListDetails = computed<DataTransferListDetail[]>(() => Array.isArray(finishedReport.value.list_details) ? finishedReport.value.list_details : [])
 const finishedWarningDetails = computed(() => {
   const report = finishedReport.value
   const warnings: FinishedWarning[] = []
@@ -713,6 +785,43 @@ async function startArxmediaImport() {
     arxmediaError.value = getApiErrorMessage(error, 'The ArxMedia backup import could not be started.')
   }
 }
+
+function exportFileName(outputUrl: string | null | undefined): string {
+  if (!outputUrl) return ''
+  const segments = String(outputUrl).split('?')[0]?.split('/') || []
+  return decodeURIComponent(segments[segments.length - 1] || outputUrl)
+}
+
+function askDeleteExport(jobId: number) {
+  pendingDeleteExportId.value = jobId
+  deleteExportDialog.value?.showModal()
+}
+
+async function confirmDeleteExport() {
+  const jobId = pendingDeleteExportId.value
+  if (jobId === null || deletingExportId.value !== null) return
+  deletingExportId.value = jobId
+  exportError.value = ''
+  try {
+    const updated = await trackingAPI.deleteExportFile(jobId)
+    updateJob(updated)
+    pendingDeleteExportId.value = null
+    deleteExportDialog.value?.close()
+  } catch (error) {
+    exportError.value = getApiErrorMessage(error, 'The export file could not be deleted.')
+  } finally {
+    deletingExportId.value = null
+  }
+}
+
+const exportStatusById = computed<Record<number, { text: string; className: string }>>(() => {
+  return Object.fromEntries(recentExports.value.map((job) => {
+    if (job.job_type === 'export' && job.status === DATA_TRANSFER_STATUS.DONE && !job.output_url) {
+      return [job.id, { text: 'Deleted', className: 'text-red-400' }]
+    }
+    return [job.id, { text: humanStatus(job.status), className: statusClass(job.status) }]
+  }))
+})
 
 async function startExport() {
   exportError.value = ''

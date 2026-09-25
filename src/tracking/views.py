@@ -2257,6 +2257,24 @@ class DataJobCancelView(generics.GenericAPIView):
         return Response(self.get_serializer(job, context={'request': request}).data, status=status.HTTP_200_OK)
 
 
+class DataJobDeleteFileView(generics.GenericAPIView):
+    serializer_class = DataTransferJobSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, *args, **kwargs):
+        # Scoped to the requesting user: nobody can delete another user's file.
+        job = DataTransferJob.objects.filter(user=request.user, id=kwargs.get('pk')).first()
+        if not job:
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+        if job.job_type != DataTransferJobType.EXPORT:
+            raise ValidationError({'job': 'Only export jobs have a downloadable file.'})
+        if job.output_file:
+            job.output_file.delete(save=False)
+            job.output_file = None
+            job.save(update_fields=['output_file', 'updated_at'])
+        return Response(self.get_serializer(job, context={'request': request}).data, status=status.HTTP_200_OK)
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def recommendations(request):

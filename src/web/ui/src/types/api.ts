@@ -79,6 +79,8 @@ export type DataTransferSource = 'arxmedia' | 'trakt' | 'wetrakr' | 'yamtrack'
 export type DataTransferFormat = 'json' | 'csv' | 'zip'
 export type DataImportMode = 'new_items' | 'update_existing' | 'mirror_imported_set'
 export interface DataTransferFileReport { file: string; status: string; error?: string; records_seen?: number }
+export interface DataTransferListItemDetail { media_type: string; tmdb_id: number; title?: string | null }
+export interface DataTransferListDetail { name: string; privacy?: string; items: DataTransferListItemDetail[] }
 export interface DataTransferWarning { code?: string; location?: { kind?: string; file?: string; row?: number; column?: string | number; record?: number; collection?: string; index?: number; field?: string }; message?: string }
 export interface DataTransferReport {
   records_seen?: number; records_imported?: number; records_skipped?: number; records_unchanged?: number; deleted_total?: number; metadata_errors?: number
@@ -87,7 +89,7 @@ export interface DataTransferReport {
   lists_created?: number; lists_updated?: number; list_items_seen?: number; list_items_created?: number; list_items_updated?: number; list_items_deleted?: number
   invalid_count?: number; unsupported_files?: number; unsupported_records?: number; resolved_episode_records?: number; unresolved_episode_records?: number; skipped_non_tmdb?: number
   skipped_unsupported_media_type?: number; skipped_invalid_status?: number; skipped_invalid_rating?: number; skipped_missing_tmdb_id?: number; files_failed?: number
-  warnings?: DataTransferWarning[]; files?: DataTransferFileReport[]
+  warnings?: DataTransferWarning[]; files?: DataTransferFileReport[]; list_details?: DataTransferListDetail[]
   [key: string]: unknown
 }
 export interface DataTransferJob {

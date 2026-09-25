@@ -33,4 +33,5 @@ urlpatterns = [
     path('data/jobs/<int:pk>/', views.DataJobStatusView.as_view(), name='data_job_status'),
     path('data/jobs/<int:pk>/confirm/', views.DataJobConfirmView.as_view(), name='data_job_confirm'),
     path('data/jobs/<int:pk>/cancel/', views.DataJobCancelView.as_view(), name='data_job_cancel'),
+    path('data/jobs/<int:pk>/file/', views.DataJobDeleteFileView.as_view(), name='data_job_file'),
 ]

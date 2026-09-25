@@ -15,6 +15,7 @@ else:
 
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', _default_celery_redis_url)
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', _default_celery_redis_url)
+CELERY_TIMEZONE = os.environ.get('TIME_ZONE', 'Europe/Madrid')
 CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_TASK_ALWAYS_EAGER', 'False') == 'True'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
@@ -37,5 +38,9 @@ CELERY_BEAT_SCHEDULE = {
     'tracking-sync-tmdb-changed-items': {
         'task': 'tracking.sync_tmdb_changed_items',
         'schedule': crontab(hour='*/6', minute=0),
+    },
+    'tracking-cleanup-data-transfer-jobs-daily': {
+        'task': 'tracking.cleanup_data_transfer_jobs',
+        'schedule': crontab(hour=5, minute=0),
     },
 }

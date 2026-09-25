@@ -4,6 +4,7 @@ import zipfile
 
 from celery import shared_task
 from django.core.files.base import ContentFile
+from django.utils import timezone
 
 from ..choices import DataTransferStatus
 from ..models import CustomList, DataTransferJob, Rating, UserMediaStatus, WatchEntry
@@ -64,7 +65,8 @@ def export_user_data(job_id: int) -> dict[str, str]:
             for collection, records in payload.items():
                 raw = json.dumps(records, default=str, indent=2)
                 archive.writestr(f'{collection}.json', raw.encode('utf-8'))
-        filename = f'user-{user.id}-export-{job.id}.zip'
+        stamp = timezone.localtime(timezone.now()).strftime('%Y_%m_%d_%H_%M')
+        filename = f'arxmedia_export_{user.username}_{stamp}.zip'
         job.output_file.save(filename, ContentFile(buffer.getvalue()), save=False)
         job.status = DataTransferStatus.DONE
         job.total_items = len(watch_history) + len(watchlist) + len(ratings) + len(dropped) + sum(

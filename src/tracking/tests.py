@@ -3141,6 +3141,10 @@ class DataImportExportTests(BaseTestCase):
 
         job.refresh_from_db()
         self.assertTrue(job.output_file.name.endswith('.zip'))
+        self.assertRegex(
+            job.output_file.name,
+            r'arxmedia_export_testuser_\d{4}(_\d{2}){4}(_\w+)?\.zip$',
+        )
         with job.output_file.open('rb') as export_file, zipfile.ZipFile(export_file) as archive:
             self.assertEqual(
                 set(archive.namelist()),
@@ -3319,6 +3323,69 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(rating.score, 9)
         self.assertEqual(rating.created_at, rated_at)
         self.assertEqual(rating.updated_at, rated_at)
+
+    def test_export_file_delete_is_scoped_to_owner(self):
+        import os
+
+        from django.core.files.base import ContentFile
+
+        job = DataTransferJob.objects.create(user=self.user, job_type='export', data_format='zip', status='done')
+        job.output_file.save('arxmedia_export_testuser_2026_09_25_23_05.zip', ContentFile(b'zip-bytes'), save=True)
+        stored_path = job.output_file.path
+        self.assertTrue(os.path.exists(stored_path))
+
+        self.authenticate(self.user2)
+        response = self.client.delete(f'/api/tracking/data/jobs/{job.id}/file/')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data.get('error_code'), 'IMPORT_JOB_NOT_FOUND')
+        self.assertTrue(os.path.exists(stored_path))
+
+        self.authenticate(self.user)
+        response = self.client.delete(f'/api/tracking/data/jobs/{job.id}/file/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data['output_url'])
+        job.refresh_from_db()
+        self.assertFalse(job.output_file)
+        self.assertFalse(os.path.exists(stored_path))
+
+    def test_export_file_delete_rejects_import_jobs(self):
+        job = DataTransferJob.objects.create(user=self.user, job_type='import', data_format='zip', status='done', source='trakt')
+        response = self.client.delete(f'/api/tracking/data/jobs/{job.id}/file/')
+        self.assertEqual(response.status_code, 400)
+
+    def test_final_report_includes_list_details_with_titles(self):
+        from tracking.import_engine import build_final_report
+        from tracking.import_records import LISTS_COLLECTION, ListItemRecord, ListRecord, ParsedImport
+
+        Movie.objects.create(tmdb_id=9501, title='Detail Movie')
+        parsed = ParsedImport(
+            records=(),
+            collections_present=frozenset({LISTS_COLLECTION}),
+            invalid_count=0,
+            report={},
+            lists=(
+                ListRecord(
+                    name='Details',
+                    privacy='private',
+                    items=(
+                        ListItemRecord(media_type='movie', tmdb_id=9501, added_at=timezone.now()),
+                        ListItemRecord(media_type='tv', tmdb_id=9502, added_at=timezone.now()),
+                    ),
+                ),
+            ),
+        )
+        job = DataTransferJob.objects.create(user=self.user, job_type='import', data_format='zip', status='processing')
+
+        report = build_final_report(job, parsed, applied_count=0)
+
+        self.assertEqual(report['list_details'], [{
+            'name': 'Details',
+            'privacy': 'private',
+            'items': [
+                {'media_type': 'movie', 'tmdb_id': 9501, 'title': 'Detail Movie'},
+                {'media_type': 'tv', 'tmdb_id': 9502, 'title': None},
+            ],
+        }])
 
     def test_invalid_only_lists_are_not_mirrorable(self):
         from tracking.import_records import LISTS_COLLECTION
@@ -4783,6 +4850,44 @@ class DataImportExportTests(BaseTestCase):
 
 
 class SystemTaskTests(TestCase):
+    def test_cleanup_data_transfer_jobs_removes_stale_rows_and_files(self):
+        import os
+
+        from django.core.files.base import ContentFile
+
+        from tracking.tasks.system import cleanup_data_transfer_jobs
+
+        user = User.objects.create_user(username='cleanupuser', email='cleanup@example.com', password='testpass123')
+
+        old_import = DataTransferJob.objects.create(user=user, job_type='import', data_format='zip', status='done', source='trakt')
+        old_import.input_file.save('old-import.zip', ContentFile(b'import-bytes'), save=True)
+        old_import_path = old_import.input_file.path
+        DataTransferJob.objects.filter(id=old_import.id).update(created_at=timezone.now() - timedelta(days=8))
+
+        recent_import = DataTransferJob.objects.create(user=user, job_type='import', data_format='zip', status='done', source='trakt')
+        recent_import.input_file.save('recent-import.zip', ContentFile(b'import-bytes'), save=True)
+
+        fileless_export = DataTransferJob.objects.create(user=user, job_type='export', data_format='zip', status='done')
+
+        live_export = DataTransferJob.objects.create(user=user, job_type='export', data_format='zip', status='processing')
+
+        kept_export = DataTransferJob.objects.create(user=user, job_type='export', data_format='zip', status='done')
+        kept_export.output_file.save('kept-export.zip', ContentFile(b'zip-bytes'), save=True)
+
+        stuck_import = DataTransferJob.objects.create(user=user, job_type='import', data_format='zip', status='processing', source='trakt')
+        DataTransferJob.objects.filter(id=stuck_import.id).update(created_at=timezone.now() - timedelta(days=8))
+
+        result = cleanup_data_transfer_jobs()
+
+        self.assertEqual(result, {'exports_removed': 1, 'imports_removed': 1})
+        self.assertFalse(DataTransferJob.objects.filter(id=old_import.id).exists())
+        self.assertFalse(os.path.exists(old_import_path))
+        self.assertTrue(DataTransferJob.objects.filter(id=recent_import.id).exists())
+        self.assertFalse(DataTransferJob.objects.filter(id=fileless_export.id).exists())
+        self.assertTrue(DataTransferJob.objects.filter(id=live_export.id).exists())
+        self.assertTrue(DataTransferJob.objects.filter(id=kept_export.id).exists())
+        self.assertTrue(DataTransferJob.objects.filter(id=stuck_import.id).exists())
+
     @patch('tracking.tasks.system.tmdb.sync_tv_show')
     @patch('tracking.tasks.system.tmdb.sync_movie')
     @patch('tracking.tasks.system.tmdb.get_tv_changes')
