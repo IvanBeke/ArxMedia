@@ -6,7 +6,7 @@ import re
 import zipfile
 
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
-from ...import_metadata import _parse_watched_at, _safe_int
+from ...import_metadata import UNKNOWN_IMPORTED_DATE, _parse_watched_at, _safe_int
 from ...import_records import (
     RATINGS_COLLECTION,
     WATCH_HISTORY_COLLECTION,
@@ -178,11 +178,12 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                 elif lower.startswith('ratings-movies-') or lower == 'ratings-shows.json':
                     media_type, tmdb_id = _media_from_record(record)
                     score = _safe_int(record.get('rating'))
-                    if not tmdb_id or not score:
+                    rated_at = _parse_watched_at(record.get('rated_at'))
+                    if not tmdb_id or not score or rated_at is None:
                         invalid_count += 1
-                        add_import_warning(warnings, 'invalid_rating', 'The rating record is missing a TMDB ID or valid rating.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
+                        add_import_warning(warnings, 'invalid_rating', 'The rating record is missing a TMDB ID, valid rating, or valid rated_at.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
                         continue
-                    records.append(RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=score, origin=file_name))
+                    records.append(RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=score, rated_at=rated_at, origin=file_name))
 
                 elif lower in ('hidden-progress-watched.json', 'hidden-progress-watched-reset.json'):
                     media_type, tmdb_id = _media_from_record(record)
@@ -190,7 +191,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                         invalid_count += 1
                         add_import_warning(warnings, 'missing_tmdb_id', 'The hidden progress record does not contain a TMDB ID.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
                         continue
-                    records.append(StatusRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, status=TvShowStatus.DROPPED, origin=file_name))
+                    records.append(StatusRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, status=TvShowStatus.DROPPED, status_at=_parse_watched_at(record.get('hidden_at')) or UNKNOWN_IMPORTED_DATE, origin=file_name))
 
                 elif lower == 'watched-shows.json':
                     # Show-level history entries carry no per-episode data here;

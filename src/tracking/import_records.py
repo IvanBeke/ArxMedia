@@ -95,6 +95,7 @@ class RatingRecord:
     media_type: str  # MediaType: movie | tv
     tmdb_id: int
     score: int
+    rated_at: datetime | None = None
     origin: str = ''
 
     @property

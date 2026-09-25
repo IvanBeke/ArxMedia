@@ -99,7 +99,11 @@ def _status_payload_dict(record: StatusRecord) -> dict:
 
 
 def _rating_payload(record: RatingRecord) -> dict:
-    return {'kind': 'rating', 'score': record.score}
+    return {
+        'kind': 'rating',
+        'score': record.score,
+        'rated_at': record.rated_at.isoformat() if record.rated_at else None,
+    }
 
 
 def _parse_dt(value):
@@ -136,7 +140,7 @@ def _status_record(payload: dict, media_type: str, tmdb_id: int) -> StatusRecord
 
 
 def _rating_record(media_type: str, tmdb_id: int, payload: dict) -> RatingRecord:
-    return RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=payload['score'])
+    return RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=payload['score'], rated_at=_parse_dt(payload.get('rated_at')))
 
 
 def apply_item_records(user, media_type: str, tmdb_id: int, payloads: list[dict], import_mode: str) -> int:
@@ -278,18 +282,24 @@ def _upsert_rating(user, media_type: str, tmdb_id: int, records: list[RatingReco
     record = records[-1]  # sorted order: last wins
     existing = Rating.objects.filter(user=user, media_type=media_type, tmdb_id=tmdb_id).first()
     if existing is None:
-        Rating.objects.bulk_create(
-            [Rating(user=user, media_type=media_type, tmdb_id=tmdb_id, score=record.score)],
-            ignore_conflicts=True,
-        )
+        created = Rating.objects.create(user=user, media_type=media_type, tmdb_id=tmdb_id, score=record.score)
+        if record.rated_at is not None:
+            # auto_now/auto_now_add would stamp import time: restore the source rating date instead.
+            Rating.objects.filter(pk=created.pk).update(created_at=record.rated_at, updated_at=record.rated_at)
         return 1
     if import_mode == DataImportMode.NEW_ITEMS:
         return 0
+    updates: dict = {}
     if existing.score != record.score:
-        existing.score = record.score
-        Rating.objects.bulk_update([existing], ['score'])
-        return 1
-    return 0
+        updates['score'] = record.score
+    if record.rated_at is not None and existing.updated_at != record.rated_at:
+        updates['updated_at'] = record.rated_at
+    if not updates:
+        return 0
+    for field, value in updates.items():
+        setattr(existing, field, value)
+    Rating.objects.bulk_update([existing], sorted(updates))
+    return 1
 
 
 def _winning_statuses(parsed: ParsedImport) -> dict[tuple[str, int], StatusRecord]:

@@ -7,7 +7,7 @@ import zipfile
 from django.utils import timezone
 
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
-from ...import_metadata import _parse_watched_at, _safe_int
+from ...import_metadata import UNKNOWN_IMPORTED_DATE, _parse_watched_at, _safe_int
 from ...import_records import (
     DROPPED_COLLECTION,
     LISTS_COLLECTION,
@@ -127,7 +127,11 @@ def _parse_arxmedia_document(
             media_type=media_type,
             tmdb_id=tmdb_id,
             status=TvShowStatus.PLAN_TO_WATCH,
-            status_at=_parse_watched_at(item.get('plan_to_watch_at') or item.get('status_changed_at')),
+            status_at=(
+                _parse_watched_at(item.get('plan_to_watch_at'))
+                or _parse_watched_at(item.get('status_changed_at'))
+                or UNKNOWN_IMPORTED_DATE
+            ),
         ))
 
     for index, item in enumerate(dropped, start=1):
@@ -148,6 +152,7 @@ def _parse_arxmedia_document(
             status_at=(
                 _parse_watched_at(item.get('dropped_at'))
                 or _parse_watched_at(item.get('status_changed_at'))
+                or UNKNOWN_IMPORTED_DATE
             ),
         ))
 
@@ -159,11 +164,12 @@ def _parse_arxmedia_document(
         score = _safe_int(item.get('score'))
         media_type = item.get('media_type', MediaType.MOVIE)
         tmdb_id = _safe_int(item.get('tmdb_id'))
-        if not score or not tmdb_id:
+        rated_at = _parse_watched_at(item.get('updated_at')) or _parse_watched_at(item.get('created_at'))
+        if not score or not tmdb_id or rated_at is None:
             invalid_count += 1
-            add_import_warning(warnings, 'invalid_rating', 'The rating item is missing a TMDB ID or valid score.', {'kind': 'json_item', 'collection': 'ratings', 'index': index, 'field': 'score' if not score else 'tmdb_id'})
+            add_import_warning(warnings, 'invalid_rating', 'The rating item is missing a TMDB ID, valid score, or valid rating date.', {'kind': 'json_item', 'collection': 'ratings', 'index': index, 'field': 'score' if not score else ('tmdb_id' if not tmdb_id else 'updated_at')})
             continue
-        records.append(RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=score))
+        records.append(RatingRecord(media_type=media_type, tmdb_id=tmdb_id, score=score, rated_at=rated_at))
 
     parsed_lists: list[ListRecord] = []
     seen_list_names: set[str] = set()

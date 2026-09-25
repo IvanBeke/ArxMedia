@@ -8,7 +8,7 @@ from datetime import datetime
 from django.utils import timezone
 
 from ...choices import DataTransferFormat, ListPrivacy, MediaType, TvShowStatus, WatchEntryMediaType
-from ...import_metadata import _parse_watched_at, _safe_int
+from ...import_metadata import UNKNOWN_IMPORTED_DATE, _parse_watched_at, _safe_int
 from ...import_records import (
     LISTS_COLLECTION,
     RATINGS_COLLECTION,
@@ -29,7 +29,7 @@ WETRAKR_SUPPORTED_FILES = ('tracklog.csv', 'ratings.csv', 'favorites.csv', 'list
 WETRAKR_IGNORED_FILES = ('notes.csv', 'profile.csv')
 WETRAKR_REQUIRED_HEADERS = {
     'tracklog.csv': {'type', 'tmdb_id', 'season_number', 'episode_number', 'status', 'tracked_at', 'updated_at'},
-    'ratings.csv': {'type', 'tmdb_id', 'rating'},
+    'ratings.csv': {'type', 'tmdb_id', 'rating', 'rated_at'},
     'favorites.csv': {'type', 'tmdb_id', 'created_at'},
     'lists.csv': {'list_name', 'list_description', 'type', 'tmdb_id', 'rank', 'created_at'},
 }
@@ -187,7 +187,9 @@ def parse_wetrakr_zip(content: bytes) -> ParsedImport:
                         )
                         continue
 
-                    event_at = _timestamp(row.get('tracked_at') or '', row.get('updated_at') or '')
+                    # tracked_at is the event date; updated_at is export/sync time
+                    # and must never stand in for a missing event date.
+                    event_at = _parse_watched_at(row.get('tracked_at')) or UNKNOWN_IMPORTED_DATE
                     if status == 'watched':
                         if item_type == MediaType.MOVIE:
                             records.append(
@@ -264,6 +266,7 @@ def parse_wetrakr_zip(content: bytes) -> ParsedImport:
                     media_type = _media_type((row.get('type') or '').strip().lower())
                     tmdb_id = _positive_int(row.get('tmdb_id'))
                     score = _safe_int(row.get('rating'))
+                    rated_at = _parse_watched_at(row.get('rated_at'))
                     if not media_type:
                         unsupported_records += 1
                         reject(
@@ -285,13 +288,13 @@ def parse_wetrakr_zip(content: bytes) -> ParsedImport:
                             'skipped_missing_tmdb_id',
                         )
                         continue
-                    if score is None or not 1 <= score <= 10:
+                    if score is None or not 1 <= score <= 10 or rated_at is None:
                         reject(
                             'invalid_rating',
-                            'The rating must be a whole number from 1 to 10.',
+                            'The rating must be a whole number from 1 to 10 with a valid rated_at.',
                             file_name,
                             index,
-                            'rating',
+                            'rating' if score is None or not 1 <= score <= 10 else 'rated_at',
                             'skipped_invalid_rating',
                         )
                         continue
@@ -300,6 +303,7 @@ def parse_wetrakr_zip(content: bytes) -> ParsedImport:
                             media_type=media_type,
                             tmdb_id=tmdb_id,
                             score=score,
+                            rated_at=rated_at,
                             origin=file_name,
                         )
                     )

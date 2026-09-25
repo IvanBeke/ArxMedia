@@ -3179,7 +3179,7 @@ class DataImportExportTests(BaseTestCase):
                 {'media_type': 'tv', 'tmdb_id': 9251},
             ]))
             archive.writestr('ratings.json', json.dumps([
-                {'media_type': 'movie', 'tmdb_id': 9252, 'score': 8},
+                {'media_type': 'movie', 'tmdb_id': 9252, 'score': 8, 'created_at': '2025-01-03T03:04:05Z', 'updated_at': '2025-01-03T03:04:05Z'},
             ]))
             archive.writestr('dropped.json', json.dumps([
                 {'media_type': 'tv', 'tmdb_id': 9254, 'dropped_at': '2025-01-04T03:04:05Z'},
@@ -3296,6 +3296,29 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(status.status, 'dropped')
         self.assertEqual(status.tmdb_id, 9205)
         self.assertEqual(status.status_at, dropped_at)
+
+    def test_imported_rating_preserves_source_rated_at(self):
+        from tracking.import_engine import apply_item_records, group_by_item
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
+
+        rated_at = datetime(2025, 1, 6, 3, 4, 5, tzinfo=UTC)
+        parsed = parse_arxmedia_zip(self._build_arxmedia_zip({
+            'ratings': [{
+                'media_type': 'movie',
+                'tmdb_id': 9206,
+                'score': 9,
+                'created_at': rated_at.isoformat(),
+                'updated_at': rated_at.isoformat(),
+            }],
+        }))
+
+        item = next(item for item in group_by_item(parsed) if item['tmdb_id'] == 9206)
+        apply_item_records(self.user, item['media_type'], item['tmdb_id'], item['records'], 'new_items')
+
+        rating = Rating.objects.get(user=self.user, media_type='movie', tmdb_id=9206)
+        self.assertEqual(rating.score, 9)
+        self.assertEqual(rating.created_at, rated_at)
+        self.assertEqual(rating.updated_at, rated_at)
 
     def test_invalid_only_lists_are_not_mirrorable(self):
         from tracking.import_records import LISTS_COLLECTION
@@ -3785,6 +3808,21 @@ class DataImportExportTests(BaseTestCase):
         with self.assertRaisesMessage(ValueError, 'must be stored at the ZIP root'):
             parse_wetrakr_zip(content)
 
+    def test_wetrakr_missing_tracked_at_uses_unknown_sentinel(self):
+        from tracking.import_metadata import UNKNOWN_IMPORTED_DATE
+        from tracking.tasks.providers.wetrakr import parse_wetrakr_zip
+
+        content = self._build_wetrakr_zip(
+            tracklog=[
+                {'type': 'movie', 'tmdb_id': 710, 'status': 'watched', 'tracked_at': '', 'updated_at': '2026-09-21T08:41:01.768Z'},
+                {'type': 'episode', 'tmdb_id': 711, 'season_number': '1', 'episode_number': '2', 'status': 'watched', 'tracked_at': '', 'updated_at': '2026-09-21T08:41:01.768Z'},
+            ],
+        )
+        parsed = parse_wetrakr_zip(content)
+
+        self.assertEqual(parsed.watch_entries()[0].watched_at, UNKNOWN_IMPORTED_DATE)
+        self.assertEqual(parsed.unresolved_episodes[0].watched_at, UNKNOWN_IMPORTED_DATE)
+
     def test_prepare_zip_import_sets_awaiting_confirmation(self):
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -4236,10 +4274,10 @@ class DataImportExportTests(BaseTestCase):
             {'type': 'show', 'show': {'ids': {'tmdb': 505}}},
         ]
         ratings_movies = [
-            {'type': 'movie', 'rating': 9, 'movie': {'ids': {'tmdb': 606}}},
+            {'type': 'movie', 'rating': 9, 'rated_at': '2026-07-04T10:00:00.000Z', 'movie': {'ids': {'tmdb': 606}}},
         ]
         ratings_shows = [
-            {'type': 'show', 'rating': 8, 'show': {'ids': {'tmdb': 707}}},
+            {'type': 'show', 'rating': 8, 'rated_at': '2026-07-05T10:00:00.000Z', 'show': {'ids': {'tmdb': 707}}},
         ]
 
         buffer = io.BytesIO()
@@ -4291,6 +4329,10 @@ class DataImportExportTests(BaseTestCase):
 
         self.assertTrue(Rating.objects.filter(user=self.user, media_type='movie', tmdb_id=606, score=9).exists())
         self.assertTrue(Rating.objects.filter(user=self.user, media_type='tv', tmdb_id=707, score=8).exists())
+
+        movie_rating = Rating.objects.get(user=self.user, media_type='movie', tmdb_id=606)
+        self.assertEqual(movie_rating.created_at.isoformat(), '2026-07-04T10:00:00+00:00')
+        self.assertEqual(movie_rating.updated_at.isoformat(), '2026-07-04T10:00:00+00:00')
 
     @patch('tracking.tasks.tmdb.sync_tv_show')
     @patch('tracking.tasks.tmdb.sync_movie')
@@ -4496,14 +4538,14 @@ class DataImportExportTests(BaseTestCase):
         job.save(update_fields=['import_mode', 'status', 'updated_at'])
         self._run_import_pipeline(response.data['id'])
 
-        self.assertTrue(
-            UserMediaStatus.objects.filter(
-                user=self.user,
-                media_type='tv',
-                tmdb_id=9090,
-                status='dropped',
-            ).exists()
+        dropped = UserMediaStatus.objects.get(
+            user=self.user,
+            media_type='tv',
+            tmdb_id=9090,
+            status='dropped',
         )
+        self.assertEqual(dropped.dropped_at.isoformat(), '2026-07-01T10:00:00+00:00')
+        self.assertEqual(dropped.status_changed_at.isoformat(), '2026-07-01T10:00:00+00:00')
 
     @patch('tracking.tasks.tmdb.sync_tv_show')
     @patch('tracking.tasks.tmdb.sync_movie')
