@@ -1,4 +1,6 @@
+import io
 import json
+import zipfile
 
 from celery import shared_task
 from django.core.files.base import ContentFile
@@ -24,6 +26,15 @@ def export_user_data(job_id: int) -> dict[str, str]:
             }
             for item in UserMediaStatus.objects.for_user(user).planning()
         ]
+        dropped = [
+            {
+                'media_type': item.media_type,
+                'tmdb_id': item.tmdb_id,
+                'dropped_at': item.dropped_at.isoformat() if item.dropped_at else None,
+                'status_changed_at': item.status_changed_at.isoformat() if item.status_changed_at else None,
+            }
+            for item in UserMediaStatus.objects.for_user(user).dropped()
+        ]
         ratings = list(Rating.objects.filter(user=user).values())
         lists = []
         for custom_list in CustomList.objects.filter(user=user).prefetch_related('items'):
@@ -45,13 +56,18 @@ def export_user_data(job_id: int) -> dict[str, str]:
             'watch_history': watch_history,
             'watchlist': watchlist,
             'ratings': ratings,
+            'dropped': dropped,
             'lists': lists,
         }
-        raw = json.dumps(payload, default=str, indent=2)
-        filename = f'user-{user.id}-export-{job.id}.json'
-        job.output_file.save(filename, ContentFile(raw.encode('utf-8')), save=False)
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            for collection, records in payload.items():
+                raw = json.dumps(records, default=str, indent=2)
+                archive.writestr(f'{collection}.json', raw.encode('utf-8'))
+        filename = f'user-{user.id}-export-{job.id}.zip'
+        job.output_file.save(filename, ContentFile(buffer.getvalue()), save=False)
         job.status = DataTransferStatus.DONE
-        job.total_items = len(watch_history) + len(watchlist) + len(ratings) + sum(
+        job.total_items = len(watch_history) + len(watchlist) + len(ratings) + len(dropped) + sum(
             1 + len(custom_list['items']) for custom_list in lists
         )
         job.processed_items = job.total_items

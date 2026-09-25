@@ -2,7 +2,7 @@
   <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <header class="mb-6">
       <h1 class="font-display text-3xl text-primary font-semibold tracking-tight">Import Data</h1>
-      <p class="text-sm text-muted mt-1">Import from Trakt and WeTrackr ZIP exports, Yamtrack CSV exports, or JSON backups created by ArxMedia.</p>
+      <p class="text-sm text-muted mt-1">Import from Trakt and WeTrackr ZIP exports, Yamtrack CSV exports, or ArxMedia backups.</p>
     </header>
 
     <div class="space-y-6">
@@ -93,28 +93,28 @@
 
           <div class="rounded-lg border border-surface-200 bg-surface-100 p-4">
             <div class="flex items-center justify-between gap-2 mb-2">
-              <h3 class="text-primary font-medium">Import ArxMedia JSON</h3>
+              <h3 class="text-primary font-medium">Import ArxMedia Backup</h3>
             </div>
 
             <div class="space-y-2">
               <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-surface-200 bg-surface px-3 py-2 text-sm transition-colors hover:border-brand-500/60 hover:bg-surface-200">
-                <span class="min-w-0 flex-1 truncate font-medium text-primary">{{ jsonFileName || 'Choose JSON' }}</span>
+                <span class="min-w-0 flex-1 truncate font-medium text-primary">{{ arxmediaFileName || 'Choose ZIP' }}</span>
                 <span class="inline-flex items-center rounded-md bg-brand-500/15 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-brand-300">Browse</span>
                 <input
-                  ref="jsonInput"
+                  ref="arxmediaInput"
                   type="file"
                   class="sr-only"
-                  accept=".json,application/json"
-                  aria-label="Import ArxMedia JSON"
-                  @change="handleJsonFileSelect"
+                  accept=".zip,application/zip"
+                  aria-label="Import ArxMedia backup"
+                  @change="handleArxmediaFileSelect"
                 />
               </label>
-              <p class="text-xs text-muted">For JSON files exported from this app.</p>
-              <p v-if="jsonError" class="text-xs text-red-400">{{ jsonError }}</p>
+              <p class="text-xs text-muted">For ZIP backups from this app only.</p>
+              <p v-if="arxmediaError" class="text-xs text-red-400">{{ arxmediaError }}</p>
             </div>
 
             <div class="mt-3">
-              <button type="button" class="btn-primary text-sm" :disabled="!jsonFileName" @click="startJsonImport">Upload JSON</button>
+              <button type="button" class="btn-primary text-sm" :disabled="!arxmediaFileName" @click="startArxmediaImport">Upload backup</button>
             </div>
           </div>
         </div>
@@ -303,20 +303,20 @@ type FinishedWarning = { key: string; label: string; value: string | number; det
 const zipInput = ref<HTMLInputElement | null>(null)
 const wetrakrInput = ref<HTMLInputElement | null>(null)
 const yamtrackInput = ref<HTMLInputElement | null>(null)
-const jsonInput = ref<HTMLInputElement | null>(null)
+const arxmediaInput = ref<HTMLInputElement | null>(null)
 const jobs = ref<DataTransferJob[]>([])
 const zipError = ref('')
 const wetrakrError = ref('')
 const yamtrackError = ref('')
-const jsonError = ref('')
+const arxmediaError = ref('')
 const zipFileName = ref('')
 const wetrakrFileName = ref('')
 const yamtrackFileName = ref('')
-const jsonFileName = ref('')
+const arxmediaFileName = ref('')
 const zipFile = ref<File | null>(null)
 const wetrakrFile = ref<File | null>(null)
 const yamtrackFile = ref<File | null>(null)
-const jsonFile = ref<File | null>(null)
+const arxmediaFile = ref<File | null>(null)
 const exportError = ref('')
 const showImportModeModal = ref(false)
 const modalJobId = ref<number | null>(null)
@@ -603,10 +603,10 @@ function handleYamtrackFileSelect(event: Event) {
   yamtrackFileName.value = yamtrackFile.value?.name || ''
 }
 
-function handleJsonFileSelect(event: Event) {
-  jsonError.value = ''
-  jsonFile.value = selectedFile(event)
-  jsonFileName.value = jsonFile.value?.name || ''
+function handleArxmediaFileSelect(event: Event) {
+  arxmediaError.value = ''
+  arxmediaFile.value = selectedFile(event)
+  arxmediaFileName.value = arxmediaFile.value?.name || ''
 }
 
 function selectedFile(event: Event): File | null {
@@ -689,35 +689,35 @@ async function startYamtrackImport() {
   }
 }
 
-async function startJsonImport() {
-  jsonError.value = ''
+async function startArxmediaImport() {
+  arxmediaError.value = ''
   confirmErrorCode.value = ''
-  const file = jsonFile.value
+  const file = arxmediaFile.value
   if (!file) {
-    jsonError.value = 'Please choose an ArxMedia JSON backup before uploading.'
-    jsonFileName.value = ''
+    arxmediaError.value = 'Please choose an ArxMedia ZIP backup before uploading.'
+    arxmediaFileName.value = ''
     return
   }
-  if (!file.name.toLowerCase().endsWith('.json')) {
-    jsonError.value = 'This import accepts JSON files only.'
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    arxmediaError.value = 'This import accepts ArxMedia ZIP backups only.'
     return
   }
   try {
-    const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.JSON, 'arxmedia')
+    const created = await trackingAPI.importData(file, DATA_TRANSFER_FORMAT.ZIP, 'arxmedia')
     updateJob(created)
     selectedImportMode.value = DATA_IMPORT_MODE.NEW_ITEMS
     modalJobId.value = created.id
     showImportModeModal.value = true
     await pollJob(created.id)
   } catch (error) {
-    jsonError.value = getApiErrorMessage(error, 'The JSON import could not be started.')
+    arxmediaError.value = getApiErrorMessage(error, 'The ArxMedia backup import could not be started.')
   }
 }
 
 async function startExport() {
   exportError.value = ''
   try {
-    const created = await trackingAPI.exportData(DATA_TRANSFER_FORMAT.JSON)
+    const created = await trackingAPI.exportData(DATA_TRANSFER_FORMAT.ZIP)
     updateJob(created)
     await pollJob(created.id)
   } catch (error) {

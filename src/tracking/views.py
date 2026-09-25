@@ -2150,9 +2150,9 @@ class DataImportView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.JSON)).lower()
-        if fmt not in (DataTransferFormat.JSON, DataTransferFormat.CSV, DataTransferFormat.ZIP):
-            raise ValidationError({'format': 'format must be json, csv, or zip'})
+        fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.ZIP)).lower()
+        if fmt not in (DataTransferFormat.CSV, DataTransferFormat.ZIP):
+            raise ValidationError({'format': 'format must be csv or zip'})
         source = (request.query_params.get('source') or '').strip().lower()
         uploaded = request.FILES.get('file')
         if not uploaded:
@@ -2188,9 +2188,9 @@ class DataExportView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.JSON)).lower()
-        if fmt != DataTransferFormat.JSON:
-            raise ValidationError({'format': 'format must be json'})
+        fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.ZIP)).lower()
+        if fmt != DataTransferFormat.ZIP:
+            raise ValidationError({'format': 'format must be zip'})
         job = DataTransferJob.objects.create(
             user=request.user,
             job_type=DataTransferJobType.EXPORT,

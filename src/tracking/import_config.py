@@ -1,7 +1,7 @@
 from .choices import DataTransferFormat, DataTransferSource
 
 IMPORT_SOURCE_FORMATS: dict[str, tuple[str, ...]] = {
-    DataTransferSource.ARXMEDIA: (DataTransferFormat.JSON,),
+    DataTransferSource.ARXMEDIA: (DataTransferFormat.ZIP,),
     DataTransferSource.TRAKT: (DataTransferFormat.ZIP,),
     DataTransferSource.WETRAKR: (DataTransferFormat.ZIP,),
     DataTransferSource.YAMTRACK: (DataTransferFormat.CSV,),

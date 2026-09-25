@@ -173,19 +173,48 @@ describe('DataTransferView', () => {
     wrapper.unmount()
   })
 
-  it('shows the selected JSON filename and enables upload', async () => {
+  it('uploads new ArxMedia exports as ZIP backups', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+    importData.mockResolvedValue(pendingJob({ source: 'arxmedia', data_format: 'zip' }))
+
+    const input = wrapper.find('input[aria-label="Import ArxMedia backup"]')
+    const file = new File(['zip'], 'backup.zip', { type: 'application/zip' })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+    const uploadButton = wrapper.findAll('button').find((button) => button.text() === 'Upload backup')
+    await uploadButton?.trigger('click')
+    await flushPromises()
+
+    expect(importData).toHaveBeenCalledWith(file, 'zip', 'arxmedia')
+    wrapper.unmount()
+  })
+
+  it('creates ZIP exports', async () => {
+    const wrapper = mountView([])
+    await flushPromises()
+    exportData.mockResolvedValue(pendingJob({ job_type: 'export', data_format: 'zip' }))
+
+    const exportButton = wrapper.findAll('button').find((button) => button.text() === 'Create export')
+    await exportButton?.trigger('click')
+    await flushPromises()
+
+    expect(exportData).toHaveBeenCalledWith('zip')
+    wrapper.unmount()
+  })
+
+  it('shows the selected ArxMedia backup filename and enables upload', async () => {
     const wrapper = mountView([])
     await flushPromises()
 
-    const input = wrapper.find('input[aria-label="Import ArxMedia JSON"]')
-    const file = new File(['{}'], 'backup.json', { type: 'application/json' })
+    const input = wrapper.find('input[aria-label="Import ArxMedia backup"]')
+    const file = new File(['zip'], 'backup.zip', { type: 'application/zip' })
     Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
 
     await input.trigger('change')
 
-    expect(wrapper.text()).toContain('backup.json')
-    expect(wrapper.find('button').element).toBeDefined()
-    const uploadButton = wrapper.findAll('button').find((button) => button.text() === 'Upload JSON')
+    expect(wrapper.text()).toContain('backup.zip')
+    const uploadButton = wrapper.findAll('button').find((button) => button.text() === 'Upload backup')
     expect(uploadButton?.attributes('disabled')).toBeUndefined()
   })
 
@@ -195,7 +224,7 @@ describe('DataTransferView', () => {
       results: [{
         id: 14,
         job_type: 'import',
-        data_format: 'json',
+        data_format: 'zip',
         source: 'arxmedia',
         status: DATA_TRANSFER_STATUS.DONE,
         total_items: 1,

@@ -2,7 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..import_errors import ImportDomainError, ImportErrorCode
-from .providers.arxmedia import analyze_arxmedia_json, parse_arxmedia_json
+from .providers.arxmedia import analyze_arxmedia_zip, parse_arxmedia_zip
 from .providers.trakt import analyze_trakt_zip, parse_trakt_zip
 from .providers.wetrakr import analyze_wetrakr_zip, parse_wetrakr_zip
 from .providers.yamtrack import analyze_yamtrack_csv, parse_yamtrack_csv
@@ -21,7 +21,7 @@ class ImportProviderFunctions:
 
 
 _PROVIDERS: dict[str, ImportProviderFunctions] = {
-    'arxmedia': ImportProviderFunctions(analyze_arxmedia_json, parse_arxmedia_json),
+    'arxmedia': ImportProviderFunctions(analyze_arxmedia_zip, parse_arxmedia_zip),
     'trakt': ImportProviderFunctions(analyze_trakt_zip, parse_trakt_zip),
     'wetrakr': ImportProviderFunctions(analyze_wetrakr_zip, parse_wetrakr_zip),
     'yamtrack': ImportProviderFunctions(analyze_yamtrack_csv, parse_yamtrack_csv),

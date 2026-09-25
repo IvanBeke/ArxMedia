@@ -3115,7 +3115,7 @@ class ListCollaborationTest(BaseTestCase):
 
 
 class DataImportExportTests(BaseTestCase):
-    def test_export_contains_watchlist_plan_date_and_lists_without_collaborators(self):
+    def test_export_contains_json_file_per_key_and_lists_without_collaborators(self):
         from tracking.tasks.export import export_user_data
 
         planned_at = datetime(2025, 4, 5, 12, 30, tzinfo=UTC)
@@ -3135,28 +3135,103 @@ class DataImportExportTests(BaseTestCase):
         )
         ListItem.objects.create(custom_list=custom_list, media_type='movie', tmdb_id=9102, custom_order=3)
         ListCollaborator.objects.create(custom_list=custom_list, user=self.user2)
-        job = DataTransferJob.objects.create(user=self.user, job_type='export', data_format='json')
+        job = DataTransferJob.objects.create(user=self.user, job_type='export', data_format='zip')
 
         export_user_data.run(job.id)
 
         job.refresh_from_db()
-        payload = json.loads(job.output_file.read().decode('utf-8'))
+        self.assertTrue(job.output_file.name.endswith('.zip'))
+        with job.output_file.open('rb') as export_file, zipfile.ZipFile(export_file) as archive:
+            self.assertEqual(
+                set(archive.namelist()),
+                {'watch_history.json', 'watchlist.json', 'ratings.json', 'dropped.json', 'lists.json'},
+            )
+            payload = {
+                file_name.removesuffix('.json'): json.loads(archive.read(file_name))
+                for file_name in archive.namelist()
+            }
+        self.assertEqual(payload['watch_history'], [])
         self.assertEqual(payload['watchlist'], [
             {'media_type': 'movie', 'tmdb_id': 9101, 'plan_to_watch_at': planned_at.isoformat()},
         ])
-        self.assertNotIn('reviews', payload)
+        self.assertEqual(payload['dropped'], [])
+        self.assertEqual(payload['ratings'], [])
         self.assertEqual(payload['lists'][0]['name'], 'Exported List')
         self.assertNotIn('collaborators', payload['lists'][0])
         self.assertEqual(payload['lists'][0]['items'][0]['custom_order'], 3)
 
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
+
+        with job.output_file.open('rb') as export_file:
+            parsed = parse_arxmedia_zip(export_file.read())
+        self.assertEqual(parsed.report['summary']['lists'], 1)
+        self.assertEqual(parsed.lists[0].items[0].tmdb_id, 9102)
+
+    def test_arxmedia_zip_import_reads_each_json_key(self):
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('watch_history.json', json.dumps([
+                {'media_type': 'movie', 'tmdb_id': 9250, 'watched_at': '2025-01-02T03:04:05Z'},
+            ]))
+            archive.writestr('watchlist.json', json.dumps([
+                {'media_type': 'tv', 'tmdb_id': 9251},
+            ]))
+            archive.writestr('ratings.json', json.dumps([
+                {'media_type': 'movie', 'tmdb_id': 9252, 'score': 8},
+            ]))
+            archive.writestr('dropped.json', json.dumps([
+                {'media_type': 'tv', 'tmdb_id': 9254, 'dropped_at': '2025-01-04T03:04:05Z'},
+            ]))
+            archive.writestr('lists.json', json.dumps([
+                {'name': 'Zipped List', 'items': [{'media_type': 'tv', 'tmdb_id': 9253}]},
+            ]))
+
+        parsed = parse_arxmedia_zip(buffer.getvalue())
+
+        self.assertEqual(parsed.report['format'], 'zip')
+        self.assertEqual(parsed.report['files_processed'], 5)
+        self.assertEqual(parsed.report['summary'], {
+            'watch_history': 1,
+            'watchlist': 1,
+            'ratings': 1,
+            'dropped': 1,
+            'lists': 1,
+        })
+        self.assertEqual(parsed.watch_entries()[0].tmdb_id, 9250)
+        self.assertEqual(parsed.statuses()[0].tmdb_id, 9251)
+        self.assertEqual(parsed.ratings()[0].tmdb_id, 9252)
+        dropped = next(record for record in parsed.statuses() if record.status == 'dropped')
+        self.assertEqual(dropped.tmdb_id, 9254)
+        self.assertEqual(dropped.status_at.isoformat(), '2025-01-04T03:04:05+00:00')
+        self.assertEqual(parsed.lists[0].name, 'Zipped List')
+
+    def test_arxmedia_zip_reports_a_bad_collection_without_discarding_others(self):
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('watch_history.json', json.dumps([
+                {'media_type': 'movie', 'tmdb_id': 9260},
+            ]))
+            archive.writestr('ratings.json', '{invalid json')
+
+        parsed = parse_arxmedia_zip(buffer.getvalue())
+
+        self.assertEqual(parsed.report['files_failed'], 1)
+        self.assertEqual(parsed.report['summary']['watch_history'], 1)
+        self.assertEqual(parsed.report['summary']['ratings'], 0)
+        self.assertIn('file_parse_error', {warning['code'] for warning in parsed.report['warnings']})
+
     def test_arxmedia_import_preserves_plan_date_and_restores_lists(self):
         from tracking.import_engine import apply_imported_lists
         from tracking.import_records import LISTS_COLLECTION
-        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
 
         planned_at = datetime(2024, 8, 9, 10, 15, tzinfo=UTC)
         added_at = datetime(2024, 8, 10, 10, 15, tzinfo=UTC)
-        parsed = parse_arxmedia_json(json.dumps({
+        parsed = parse_arxmedia_zip(self._build_arxmedia_zip({
             'watchlist': [{
                 'media_type': 'movie',
                 'tmdb_id': 9201,
@@ -3173,7 +3248,7 @@ class DataImportExportTests(BaseTestCase):
                     'custom_order': 4,
                 }],
             }],
-        }).encode('utf-8'))
+        }))
 
         status = parsed.statuses()[0]
         self.assertEqual(status.status_at, planned_at)
@@ -3197,12 +3272,37 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(imported_item.added_at, added_at)
         self.assertFalse(ListCollaborator.objects.filter(custom_list=imported_list).exists())
 
+    def test_arxmedia_export_import_round_trips_dropped_status(self):
+        from tracking.tasks.export import export_user_data
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
+
+        dropped_at = datetime(2024, 5, 6, 7, 8, tzinfo=UTC)
+        UserMediaStatus.objects.create(
+            user=self.user,
+            media_type='tv',
+            tmdb_id=9205,
+            status='dropped',
+            dropped_at=dropped_at,
+            status_changed_at=dropped_at,
+        )
+        job = DataTransferJob.objects.create(user=self.user, job_type='export', data_format='zip')
+        export_user_data.run(job.id)
+
+        job.refresh_from_db()
+        with job.output_file.open('rb') as export_file:
+            parsed = parse_arxmedia_zip(export_file.read())
+
+        status = parsed.statuses()[0]
+        self.assertEqual(status.status, 'dropped')
+        self.assertEqual(status.tmdb_id, 9205)
+        self.assertEqual(status.status_at, dropped_at)
+
     def test_invalid_only_lists_are_not_mirrorable(self):
         from tracking.import_records import LISTS_COLLECTION
-        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
 
         CustomList.objects.create(user=self.user, name='Keep Me')
-        parsed = parse_arxmedia_json(json.dumps({'lists': [{'name': ''}]}).encode('utf-8'))
+        parsed = parse_arxmedia_zip(self._build_arxmedia_zip({'lists': [{'name': ''}]}))
 
         self.assertNotIn(LISTS_COLLECTION, parsed.collections_present)
         from tracking.import_engine import delete_missing_rows
@@ -3210,16 +3310,16 @@ class DataImportExportTests(BaseTestCase):
         self.assertTrue(CustomList.objects.filter(user=self.user, name='Keep Me').exists())
 
     def test_arxmedia_parser_warns_on_invalid_collections_and_list_privacy(self):
-        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
 
-        parsed = parse_arxmedia_json(json.dumps({
+        parsed = parse_arxmedia_zip(self._build_arxmedia_zip({
             'watch_history': {},
             'lists': [{
                 'name': 'Needs normalization',
                 'privacy': 'unknown',
                 'items': [{'media_type': 'movie', 'tmdb_id': 9401, 'custom_order': -1}],
             }],
-        }).encode('utf-8'))
+        }))
 
         warning_codes = {warning['code'] for warning in parsed.report['warnings']}
         self.assertIn('invalid_collection', warning_codes)
@@ -3228,26 +3328,26 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(parsed.lists[0].privacy, 'public')
 
     def test_arxmedia_parser_rejects_case_insensitive_duplicate_lists(self):
-        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
 
-        parsed = parse_arxmedia_json(json.dumps({'lists': [
+        parsed = parse_arxmedia_zip(self._build_arxmedia_zip({'lists': [
             {'name': 'Favorites'},
             {'name': 'favorites'},
-        ]}).encode('utf-8'))
+        ]}))
 
         self.assertEqual(len(parsed.lists), 1)
         self.assertIn('duplicate_list', {warning['code'] for warning in parsed.report['warnings']})
 
     def test_update_existing_import_updates_list_item_order(self):
         from tracking.import_engine import apply_imported_lists
-        from tracking.tasks.providers.arxmedia import parse_arxmedia_json
+        from tracking.tasks.providers.arxmedia import parse_arxmedia_zip
 
         custom_list = CustomList.objects.create(user=self.user, name='Ordered List')
         existing = ListItem.objects.create(custom_list=custom_list, media_type='movie', tmdb_id=9301, custom_order=0)
-        parsed = parse_arxmedia_json(json.dumps({'lists': [{
+        parsed = parse_arxmedia_zip(self._build_arxmedia_zip({'lists': [{
             'name': 'Ordered List',
             'items': [{'media_type': 'movie', 'tmdb_id': 9301, 'custom_order': 7}],
-        }]}).encode('utf-8'))
+        }]}))
 
         self.assertEqual(apply_imported_lists(self.user, parsed, 'update_existing'), {
             'lists_created': 0, 'lists_updated': 1,
@@ -3332,6 +3432,13 @@ class DataImportExportTests(BaseTestCase):
         writer.writerows(rows)
         return output.getvalue().encode('utf-8')
 
+    def _build_arxmedia_zip(self, payload=None):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            for collection in ('watch_history', 'watchlist', 'ratings', 'dropped', 'lists'):
+                archive.writestr(f'{collection}.json', json.dumps((payload or {}).get(collection, [])))
+        return buffer.getvalue()
+
     def _build_wetrakr_zip(self, tracklog=(), ratings=(), favorites=(), lists=(), prefix=''):
         schemas = {
             'tracklog.csv': (
@@ -3384,21 +3491,51 @@ class DataImportExportTests(BaseTestCase):
             lines.append(','.join(values))
         return ('\n'.join(lines) + '\n').encode('utf-8')
 
-    def test_export_job_creation(self):
-        response = self.client.post('/api/tracking/data/export/?format=json', {})
+    def test_export_job_creation_defaults_to_zip(self):
+        response = self.client.post('/api/tracking/data/export/', {})
         self.assertEqual(response.status_code, 201)
         self.assertIn('id', response.data)
+        self.assertEqual(response.data['data_format'], 'zip')
 
-    def test_export_rejects_non_json_format(self):
-        response = self.client.post('/api/tracking/data/export/?data_format=csv', {})
+    def test_export_rejects_non_zip_format(self):
+        response = self.client.post('/api/tracking/data/export/?data_format=json', {})
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.data['format'], 'format must be json')
+        self.assertEqual(response.data['format'], 'format must be zip')
 
     def test_import_job_creation(self):
-        file_obj = SimpleUploadedFile('import.json', b'{"watch_history": []}', content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
+        file_obj = SimpleUploadedFile(
+            'arxmedia-export.zip',
+            self._build_arxmedia_zip({'watch_history': []}),
+            content_type='application/zip',
+        )
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=arxmedia', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
         self.assertIn('id', response.data)
+        self.assertEqual(response.data['data_format'], 'zip')
+
+    def test_arxmedia_import_rejects_json_format(self):
+        file_obj = SimpleUploadedFile('arxmedia-export.json', b'{"watch_history": []}', content_type='application/json')
+        response = self.client.post(
+            '/api/tracking/data/import/?data_format=json&source=arxmedia',
+            {'file': file_obj},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['format'], 'format must be csv or zip')
+
+    def test_arxmedia_import_defaults_to_zip(self):
+        file_obj = SimpleUploadedFile(
+            'arxmedia-export.zip',
+            self._build_arxmedia_zip(),
+            content_type='application/zip',
+        )
+        response = self.client.post(
+            '/api/tracking/data/import/?source=arxmedia',
+            {'file': file_obj},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['data_format'], 'zip')
 
     def test_zip_import_job_creation(self):
         buffer = io.BytesIO()
@@ -3409,6 +3546,39 @@ class DataImportExportTests(BaseTestCase):
         response = self.client.post('/api/tracking/data/import/?data_format=zip&source=trakt', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['data_format'], 'zip')
+
+    def test_arxmedia_zip_import_job_creation(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('watch_history.json', '[]')
+        upload = SimpleUploadedFile('arxmedia-export.zip', buffer.getvalue(), content_type='application/zip')
+
+        response = self.client.post(
+            '/api/tracking/data/import/?data_format=zip&source=arxmedia',
+            {'file': upload},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['data_format'], 'zip')
+        self.assertEqual(response.data['source'], 'arxmedia')
+
+    def test_wetrakr_zip_import_job_creation(self):
+        upload = SimpleUploadedFile(
+            'wetrakr_export_user.zip',
+            self._build_wetrakr_zip(),
+            content_type='application/zip',
+        )
+
+        response = self.client.post(
+            '/api/tracking/data/import/?data_format=zip&source=wetrakr',
+            {'file': upload},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['data_format'], 'zip')
+        self.assertEqual(response.data['source'], 'wetrakr')
 
     def test_import_requires_source(self):
         file_obj = SimpleUploadedFile('import.csv', b'collection,media_type,tmdb_id\n', content_type='text/csv')
@@ -3427,15 +3597,15 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(response.data.get('source'), 'yamtrack')
 
     def test_import_rejects_source_format_mismatch(self):
-        file_obj = SimpleUploadedFile('import.json', b'{"watch_history": []}', content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?data_format=json&source=trakt', {'file': file_obj}, format='multipart')
+        file_obj = SimpleUploadedFile('trakt-export.zip', self._build_arxmedia_zip(), content_type='application/zip')
+        response = self.client.post('/api/tracking/data/import/?data_format=csv&source=trakt', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 400)
 
     def test_data_jobs_list_scoped_and_ordered(self):
         now = timezone.now()
-        old_job = DataTransferJob.objects.create(user=self.user, job_type='import', data_format='json', status='pending')
-        new_job = DataTransferJob.objects.create(user=self.user, job_type='export', data_format='json', status='done')
-        DataTransferJob.objects.create(user=self.user2, job_type='import', data_format='json', status='pending')
+        old_job = DataTransferJob.objects.create(user=self.user, job_type='import', data_format='zip', status='pending')
+        new_job = DataTransferJob.objects.create(user=self.user, job_type='export', data_format='zip', status='done')
+        DataTransferJob.objects.create(user=self.user2, job_type='import', data_format='zip', status='pending')
 
         DataTransferJob.objects.filter(id=old_job.id).update(created_at=now - timedelta(days=2))
         DataTransferJob.objects.filter(id=new_job.id).update(created_at=now)
@@ -4347,11 +4517,11 @@ class DataImportExportTests(BaseTestCase):
                 {'media_type': 'tv', 'tmdb_id': 333},
             ],
             'ratings': [
-                {'media_type': 'movie', 'tmdb_id': 444, 'score': 8},
+                {'media_type': 'movie', 'tmdb_id': 444, 'score': 8, 'created_at': '2025-01-04T03:04:05Z', 'updated_at': '2025-01-04T03:04:05Z'},
             ],
         }
-        file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
+        file_obj = SimpleUploadedFile('arxmedia-export.zip', self._build_arxmedia_zip(payload), content_type='application/zip')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=arxmedia', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import (
@@ -4384,8 +4554,8 @@ class DataImportExportTests(BaseTestCase):
             ],
             'ratings': [],
         }
-        file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
+        file_obj = SimpleUploadedFile('arxmedia-export.zip', self._build_arxmedia_zip(payload), content_type='application/zip')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=arxmedia', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 201)
 
         from tracking.tasks import prepare_import_job
@@ -4429,11 +4599,11 @@ class DataImportExportTests(BaseTestCase):
                 {'media_type': 'movie', 'tmdb_id': 9103},
             ],
             'ratings': [
-                {'media_type': 'movie', 'tmdb_id': 9101, 'score': 7},
+                {'media_type': 'movie', 'tmdb_id': 9101, 'score': 7, 'created_at': '2025-01-05T03:04:05Z', 'updated_at': '2025-01-05T03:04:05Z'},
             ],
         }
-        file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
+        file_obj = SimpleUploadedFile('arxmedia-export.zip', self._build_arxmedia_zip(payload), content_type='application/zip')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=arxmedia', {'file': file_obj}, format='multipart')
         job_id = response.data['id']
 
         from tracking.tasks import prepare_import_job
@@ -4467,8 +4637,8 @@ class DataImportExportTests(BaseTestCase):
     def test_import_pipeline_completes_many_items(self, mock_sync_movie):
         movies = [{'media_type': 'movie', 'tmdb_id': 7000 + index} for index in range(250)]
         payload = {'watch_history': movies, 'watchlist': [], 'ratings': []}
-        file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
+        file_obj = SimpleUploadedFile('arxmedia-export.zip', self._build_arxmedia_zip(payload), content_type='application/zip')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=arxmedia', {'file': file_obj}, format='multipart')
         job_id = response.data['id']
 
         from tracking.tasks import prepare_import_job
@@ -4497,8 +4667,8 @@ class DataImportExportTests(BaseTestCase):
             'watchlist': [{'media_type': 'movie', 'tmdb_id': 603}],
             'ratings': [],
         }
-        file_obj = SimpleUploadedFile('import.json', json.dumps(payload).encode('utf-8'), content_type='application/json')
-        response = self.client.post('/api/tracking/data/import/?format=json&source=arxmedia', {'file': file_obj}, format='multipart')
+        file_obj = SimpleUploadedFile('arxmedia-export.zip', self._build_arxmedia_zip(payload), content_type='application/zip')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=arxmedia', {'file': file_obj}, format='multipart')
         job = DataTransferJob.objects.get(id=response.data['id'])
         job.status = 'processing'
         job.save(update_fields=['status', 'updated_at'])
@@ -4519,7 +4689,7 @@ class DataImportExportTests(BaseTestCase):
         from tracking.tasks import process_media_item
 
         job = DataTransferJob.objects.create(
-            user=self.user, job_type='import', data_format='json', status='processing', source='arxmedia',
+            user=self.user, job_type='import', data_format='zip', status='processing', source='arxmedia',
         )
         process_media_item(job.id, {'media_type': 'tv', 'tmdb_id': 4242, 'records': []}, recompute_status=False)
 

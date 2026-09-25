@@ -4,7 +4,7 @@ This document describes the import architecture used by tracking data imports.
 
 ## Supported providers
 
-- `arxmedia` (`json`)
+- `arxmedia` (`zip`)
 - `trakt` (`zip`)
 - `wetrakr` (`zip`)
 - `yamtrack` (`csv`)
