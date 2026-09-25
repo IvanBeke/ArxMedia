@@ -1492,6 +1492,185 @@ class UpNextTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 0)
 
+    def test_upcoming_returns_every_episode_in_seven_day_window(self):
+        today = timezone.localdate()
+        show = TVShow.objects.create(tmdb_id=3101, name='Weekly Show')
+        season = Season.objects.create(show=show, tmdb_id=31011, season_number=1, name='Season 1')
+        watched = Episode.objects.create(
+            season=season,
+            tmdb_id=310110,
+            episode_number=1,
+            name='Watched Episode',
+            air_date=today - timedelta(days=1),
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=310111,
+            episode_number=2,
+            name='Today Episode',
+            air_date=today,
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=310112,
+            episode_number=3,
+            name='Later This Week',
+            air_date=today + timedelta(days=3),
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=310113,
+            episode_number=4,
+            name='Outside Window',
+            air_date=today + timedelta(days=7),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=show.tmdb_id,
+            season_number=season.season_number,
+            episode_number=watched.episode_number,
+        )
+
+        response = self.client.get('/api/tracking/upcoming/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [(item['season_number'], item['episode_number']) for item in response.data],
+            [(1, 2), (1, 3)],
+        )
+
+    @override_settings(TIME_ZONE='America/New_York')
+    def test_upcoming_date_window_uses_configured_timezone(self):
+        today = timezone.localdate()
+        show = TVShow.objects.create(tmdb_id=3151, name='Timezone Weekly Show')
+        season = Season.objects.create(show=show, tmdb_id=31511, season_number=1, name='Season 1')
+        watched = Episode.objects.create(
+            season=season,
+            tmdb_id=315110,
+            episode_number=1,
+            name='Watched Episode',
+            air_date=today - timedelta(days=1),
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=315111,
+            episode_number=2,
+            name='Today Episode',
+            air_date=today,
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=315112,
+            episode_number=3,
+            name='Outside Window',
+            air_date=today + timedelta(days=7),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=show.tmdb_id,
+            season_number=season.season_number,
+            episode_number=watched.episode_number,
+        )
+
+        response = self.client.get('/api/tracking/upcoming/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item['name'] for item in response.data], ['Today Episode'])
+
+    def test_upcoming_is_not_limited_to_five_shows(self):
+        today = timezone.localdate()
+        for index in range(6):
+            show = TVShow.objects.create(tmdb_id=3200 + index, name=f'Weekly Show {index + 1}')
+            season = Season.objects.create(
+                show=show,
+                tmdb_id=(3200 + index) * 10,
+                season_number=1,
+                name='Season 1',
+            )
+            watched = Episode.objects.create(
+                season=season,
+                tmdb_id=(3200 + index) * 100 + 1,
+                episode_number=1,
+                name='Watched Episode',
+                air_date=today - timedelta(days=1),
+            )
+            Episode.objects.create(
+                season=season,
+                tmdb_id=(3200 + index) * 100 + 2,
+                episode_number=2,
+                name='Upcoming Episode',
+                air_date=today + timedelta(days=index + 1),
+            )
+            WatchEntry.objects.create(
+                user=self.user,
+                media_type='episode',
+                tmdb_id=show.tmdb_id,
+                season_number=season.season_number,
+                episode_number=watched.episode_number,
+            )
+
+        response = self.client.get('/api/tracking/upcoming/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 6)
+        self.assertEqual(
+            [item['tmdb_id'] for item in response.data],
+            [3200, 3201, 3202, 3203, 3204, 3205],
+        )
+
+    def test_upcoming_filters_and_orders_episodes_by_broadcast_timestamp(self):
+        today = timezone.localdate()
+        show = TVShow.objects.create(tmdb_id=3301, name='Broadcast Order Show')
+        season = Season.objects.create(show=show, tmdb_id=33011, season_number=1, name='Season 1')
+        watched = Episode.objects.create(
+            season=season,
+            tmdb_id=330110,
+            episode_number=1,
+            name='Watched Episode',
+            air_date=today - timedelta(days=1),
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=330113,
+            episode_number=4,
+            name='Already Aired Today',
+            air_date=today,
+            broadcast_start=timezone.now() - timedelta(hours=1),
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=330112,
+            episode_number=2,
+            name='Later Broadcast',
+            air_date=today + timedelta(days=1),
+            broadcast_start=timezone.now() + timedelta(days=1, hours=2),
+        )
+        Episode.objects.create(
+            season=season,
+            tmdb_id=330111,
+            episode_number=3,
+            name='Earlier Broadcast',
+            air_date=today + timedelta(days=1),
+            broadcast_start=timezone.now() + timedelta(days=1, hours=1),
+        )
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='episode',
+            tmdb_id=show.tmdb_id,
+            season_number=season.season_number,
+            episode_number=watched.episode_number,
+        )
+
+        response = self.client.get('/api/tracking/upcoming/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item['name'] for item in response.data],
+            ['Earlier Broadcast', 'Later Broadcast'],
+        )
+
     def test_up_next_excludes_season_zero(self):
         from media.models import Episode, Season, TVShow
 
@@ -1700,7 +1879,7 @@ class SeasonPosterCardsTests(BaseTestCase):
             tmdb_id=830111,
             episode_number=2,
             name='Next Week',
-            air_date=today + timedelta(days=7),
+            air_date=today + timedelta(days=6),
         )
         Episode.objects.create(
             season=season1,

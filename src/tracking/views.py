@@ -1809,44 +1809,52 @@ def my_movies_list(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def upcoming(request):
-    """Get next UPCOMING episode for shows user is watching. Only one per show, max 5."""
+    """Get all episodes airing in the next seven calendar days for shows the user is watching."""
     from media.models import Episode
 
     shows_with_episodes = UserMediaStatus.objects.for_user(request.user).shows().progressable().values_list(
         'tmdb_id', flat=True,
     ).distinct()
 
-    # Get all upcoming episodes
-    all_upcoming = Episode.objects.filter(
-        season__show__tmdb_id__in=shows_with_episodes,
-    ).filter(Episode.upcoming_q(include_today=True)).annotate(
-        schedule_at=_episode_schedule_expression()
-    ).order_by('schedule_at')
+    now = timezone.now()
+    current_timezone = timezone.get_current_timezone()
+    today = now.astimezone(current_timezone).date()
+    window_end_date = today + timedelta(days=7)
+    window_end = timezone.make_aware(
+        datetime.combine(window_end_date, dt_time.min),
+        current_timezone,
+    )
+    all_upcoming = (
+        Episode.objects.filter(
+            season__show__tmdb_id__in=shows_with_episodes,
+        )
+        .filter(Episode.regular_q())
+        .filter(
+            Q(broadcast_start__gt=now, broadcast_start__lt=window_end)
+            | Q(
+                broadcast_start__isnull=True,
+                air_date__gte=today,
+                air_date__lt=window_end_date,
+            )
+        )
+        .annotate(schedule_at=_episode_schedule_expression())
+        .select_related('season__show')
+        .order_by('schedule_at', 'season__show__tmdb_id', 'season__season_number', 'episode_number')
+    )
 
-    # Group by show and take only the first (next) episode per show
-    show_first_ep = {}
-    for ep in all_upcoming:
-        show_id = ep.season.show.tmdb_id
-        if show_id not in show_first_ep:
-            show_first_ep[show_id] = ep
-            if len(show_first_ep) >= 5:
-                break
-
-    upcoming_data = []
-    for ep in show_first_ep.values():
-        upcoming_data.append({
-            'tmdb_id': ep.season.show.tmdb_id,
-            'show_name': ep.season.show.name,
-            'poster_path': ep.season.poster_path or ep.season.show.poster_path,
-            'poster_url': ep.season.poster_url or ep.season.show.poster_url,
-            'season_number': ep.season.season_number,
-            'episode_number': ep.episode_number,
-            'name': ep.name,
-            'episode_type': ep.episode_type,
-            'still_path': ep.still_path,
-            'still_url': ep.still_url,
-            'air_date': ep.display_air_date,
-        })
+    upcoming_data = [{
+        'tmdb_id': ep.season.show.tmdb_id,
+        'show_name': ep.season.show.name,
+        'poster_path': ep.season.poster_path or ep.season.show.poster_path,
+        'poster_url': ep.season.poster_url or ep.season.show.poster_url,
+        'season_number': ep.season.season_number,
+        'episode_number': ep.episode_number,
+        'name': ep.name,
+        'episode_type': ep.episode_type,
+        'still_path': ep.still_path,
+        'still_url': ep.still_url,
+        'air_date': ep.display_air_date,
+    } for ep in all_upcoming]
 
     return Response(upcoming_data)
 
