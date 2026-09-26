@@ -137,8 +137,7 @@
          name="reorder-move"
          tag="section"
          data-reorder-grid
-          :class="{ 'reorder-motion': drag }"
-         class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
+         class="reorder-motion grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
        >
         <div
            v-for="(item, index) in reorderDisplayItems"
@@ -148,18 +147,37 @@
            :style="drag?.id === item.id ? { height: `${drag.height}px` } : undefined"
            :class="{ 'drag-placeholder': drag?.id === item.id }"
          >
-           <div
-            class="reorder-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 inline-flex items-center justify-center gap-2 rounded-full bg-surface-900/85 backdrop-blur border border-white/30 px-6 py-3 text-base font-bold text-white shadow-2xl cursor-grab active:cursor-grabbing"
-             role="button"
-             tabindex="0"
-             :aria-label="`Drag ${item.title || 'media item'}, position ${index + 1}`"
-              data-reorder-handle
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
-            </svg>
-            #{{ index + 1 }}
-          </div>
+           <div class="reorder-dnd-controls absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex max-w-full items-center justify-center gap-1.5 px-1">
+             <button
+               type="button"
+               class="reorder-move-btn"
+               data-reorder-move="prev"
+               :disabled="index === 0"
+               :aria-label="`Move ${item.title || 'media item'} earlier`"
+               @click.stop="moveReorderItem(item.id, -1)"
+             >←</button>
+             <div
+              class="reorder-handle inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-full bg-surface-900/85 backdrop-blur border border-white/30 px-4 py-2.5 text-sm font-bold text-white shadow-2xl cursor-grab active:cursor-grabbing touch-none"
+               role="button"
+               tabindex="0"
+               :aria-label="`Drag ${item.title || 'media item'}, position ${index + 1}. Press left or right arrow keys to move.`"
+                data-reorder-handle
+                @keydown="onReorderHandleKeydown($event, item.id)"
+             >
+               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+               </svg>
+               #{{ index + 1 }}
+             </div>
+             <button
+               type="button"
+               class="reorder-move-btn"
+               data-reorder-move="next"
+               :disabled="index === reorderDisplayItems.length - 1"
+               :aria-label="`Move ${item.title || 'media item'} later`"
+               @click.stop="moveReorderItem(item.id, 1)"
+             >→</button>
+           </div>
            <div class="reorder-card-content pointer-events-none">
             <MediaCard
               :item="item"
@@ -415,6 +433,7 @@ import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { autoScrollWindowForElements } from '@atlaskit/pragmatic-drag-and-drop-auto-scroll/element'
 import { attachClosestEdge, extractClosestEdge } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
 import { reorder } from '@atlaskit/pragmatic-drag-and-drop/reorder'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -741,22 +760,173 @@ function cancelReorderMode() {
 }
 
 function cleanupReorderDnD() {
+  endTouchDrag(false)
   dragCleanup.value.splice(0).forEach((cleanup) => cleanup())
   drag.value = null
+}
+
+function moveReorderItem(id: number, direction: -1 | 1) {
+  const from = items.value.findIndex((item) => item.id === id)
+  if (from < 0) return
+  const to = from + direction
+  if (to < 0 || to >= items.value.length) return
+  items.value = reorder({ list: items.value, startIndex: from, finishIndex: to })
+  hasReordered.value = true
+}
+
+function onReorderHandleKeydown(event: KeyboardEvent, id: number) {
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveReorderItem(id, -1)
+  } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    event.preventDefault()
+    moveReorderItem(id, 1)
+  }
+}
+
+type TouchDragState = { id: number; pointerId: number; startX: number; startY: number; live: boolean; lastX: number; lastY: number; raf: number }
+let touchDrag: TouchDragState | null = null
+const TOUCH_DRAG_THRESHOLD = 10
+const TOUCH_SCROLL_EDGE = 96
+const TOUCH_SCROLL_STEP = 14
+
+// Native HTML5 drag and drop never starts from touch, so touch/pen pointers
+// use a custom pointer-events drag that drives the same drag state.
+function beginTouchDrag(event: PointerEvent, id: number) {
+  if (event.pointerType === 'mouse' || event.isPrimary === false) return
+  if (touchDrag) endTouchDrag(false)
+  touchDrag = { id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, live: false, lastX: event.clientX, lastY: event.clientY, raf: 0 }
+  window.addEventListener('pointermove', onTouchPointerMove)
+  window.addEventListener('pointerup', onTouchPointerUp)
+  window.addEventListener('pointercancel', onTouchPointerCancel)
+}
+
+function onTouchPointerMove(event: PointerEvent) {
+  const state = touchDrag
+  if (!state || event.pointerId !== state.pointerId) return
+  state.lastX = event.clientX
+  state.lastY = event.clientY
+  if (!state.live) {
+    if (Math.hypot(event.clientX - state.startX, event.clientY - state.startY) < TOUCH_DRAG_THRESHOLD) return
+    if (!startTouchDrag(state)) {
+      endTouchDrag(false)
+      return
+    }
+  }
+  updateTouchDragTarget(state, event.clientX, event.clientY)
+}
+
+function onTouchPointerUp(event: PointerEvent) {
+  if (!touchDrag || event.pointerId !== touchDrag.pointerId) return
+  endTouchDrag(true)
+}
+
+function onTouchPointerCancel(event: PointerEvent) {
+  if (!touchDrag || event.pointerId !== touchDrag.pointerId) return
+  endTouchDrag(false)
+}
+
+function centerTouchPreview(clientX: number, clientY: number, width: number, height: number) {
+  return { x: clientX - width / 2, y: clientY - height / 2 }
+}
+
+function startTouchDrag(state: TouchDragState): boolean {
+  const grid = document.querySelector<HTMLElement>('[data-reorder-grid]')
+  const item = items.value.find((candidate) => candidate.id === state.id)
+  const card = grid?.querySelector<HTMLElement>(`[data-reorder-id="${state.id}"]`)
+  const rect = card?.getBoundingClientRect()
+  if (!grid || !item || !rect) return false
+  const sourceIndex = items.value.findIndex((candidate) => candidate.id === item.id)
+  drag.value = { id: item.id, item, sourceIndex, targetIndex: sourceIndex, width: rect.width, height: rect.height, position: centerTouchPreview(state.lastX, state.lastY, rect.width, rect.height) }
+  state.live = true
+  startTouchScrollLoop()
+  return true
+}
+
+function updateTouchDragTarget(state: TouchDragState, clientX: number, clientY: number) {
+  const activeDrag = drag.value
+  const grid = document.querySelector<HTMLElement>('[data-reorder-grid]')
+  if (!activeDrag || !grid || activeDrag.id !== state.id) return
+  activeDrag.position = centerTouchPreview(clientX, clientY, activeDrag.width, activeDrag.height)
+  let targetId: number | null = null
+  let edgeBottom = false
+  for (const card of [...grid.querySelectorAll<HTMLElement>('[data-reorder-id]')]) {
+    const id = card.dataset.reorderId ? Number(card.dataset.reorderId) : NaN
+    if (!Number.isFinite(id) || id === activeDrag.id) continue
+    const rect = card.getBoundingClientRect()
+    if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+      targetId = id
+      edgeBottom = clientY > rect.top + rect.height / 2
+      break
+    }
+  }
+  if (targetId === null) return
+  const withoutDragged = items.value.filter((item) => item.id !== activeDrag.id)
+  const targetPosition = withoutDragged.findIndex((item) => item.id === targetId)
+  if (targetPosition < 0) return
+  const insertionIndex = targetPosition + (edgeBottom ? 1 : 0)
+  if (activeDrag.targetIndex !== insertionIndex) {
+    activeDrag.targetIndex = insertionIndex
+    hasReordered.value = true
+  }
+}
+
+function startTouchScrollLoop() {
+  if (typeof requestAnimationFrame !== 'function') return
+  const tick = () => {
+    const state = touchDrag
+    if (!state?.live) return
+    const viewHeight = window.innerHeight || 0
+    if (state.lastY < TOUCH_SCROLL_EDGE) {
+      try { window.scrollBy(0, -TOUCH_SCROLL_STEP) } catch { /* scroll unavailable */ }
+      updateTouchDragTarget(state, state.lastX, state.lastY)
+    } else if (viewHeight > 0 && state.lastY > viewHeight - TOUCH_SCROLL_EDGE) {
+      try { window.scrollBy(0, TOUCH_SCROLL_STEP) } catch { /* scroll unavailable */ }
+      updateTouchDragTarget(state, state.lastX, state.lastY)
+    }
+    state.raf = requestAnimationFrame(tick)
+  }
+  if (touchDrag) touchDrag.raf = requestAnimationFrame(tick)
+}
+
+function endTouchDrag(commit: boolean) {
+  const state = touchDrag
+  touchDrag = null
+  if (state?.raf) {
+    try { cancelAnimationFrame(state.raf) } catch { /* noop */ }
+  }
+  window.removeEventListener('pointermove', onTouchPointerMove)
+  window.removeEventListener('pointerup', onTouchPointerUp)
+  window.removeEventListener('pointercancel', onTouchPointerCancel)
+  if (commit && state?.live) {
+    const activeDrag = drag.value
+    if (activeDrag && activeDrag.id === state.id) {
+      const finishIndex = Math.min(activeDrag.targetIndex, items.value.length - 1)
+      items.value = reorder({ list: items.value, startIndex: activeDrag.sourceIndex, finishIndex })
+    }
+  }
+  if (state?.live) drag.value = null
 }
 
 function setupReorderDnD() {
   cleanupReorderDnD()
   const grid = document.querySelector<HTMLElement>('[data-reorder-grid]')
   if (!grid) return
+  const cleanups: (() => void)[] = [autoScrollWindowForElements()]
   const itemById = new Map(items.value.map((item) => [String(item.id), item]))
-  const cleanups: (() => void)[] = [...grid.querySelectorAll<HTMLElement>('[data-reorder-id]')].flatMap((card) => {
+  cleanups.push(...[...grid.querySelectorAll<HTMLElement>('[data-reorder-id]')].flatMap((card) => {
     const cardId = card.dataset.reorderId
     const item = cardId ? itemById.get(cardId) : undefined
     const handle = card.querySelector<HTMLElement>('[data-reorder-handle]')
     if (!item || !handle) return []
+    const onHandlePointerDown = (event: PointerEvent) => beginTouchDrag(event, item.id)
+    handle.addEventListener('pointerdown', onHandlePointerDown)
     return [
-      draggable({ element: handle, getInitialData: () => ({ id: item.id }) }),
+      draggable({
+        element: card,
+        dragHandle: handle,
+        getInitialData: () => ({ id: item.id }),
+      }),
       dropTargetForElements({
         element: card,
         canDrop: ({ source }) => source.data.id !== item.id,
@@ -765,13 +935,17 @@ function setupReorderDnD() {
           { input, element, allowedEdges: ['top', 'bottom'] },
         ),
       }),
+      () => {
+        handle.removeEventListener('pointerdown', onHandlePointerDown)
+        endTouchDrag(false)
+      },
     ]
-  })
+  }))
   cleanups.push(monitorForElements({
     onDragStart: ({ source }) => {
       const sourceId = dndItemId(source.data)
       if (sourceId === null) return
-      const item = itemById.get(String(sourceId))
+      const item = items.value.find((candidate) => candidate.id === sourceId)
       const card = grid.querySelector<HTMLElement>(`[data-reorder-id="${sourceId}"]`)
       const rect = card?.getBoundingClientRect()
       if (!item || !rect) return
@@ -798,6 +972,9 @@ function setupReorderDnD() {
       }
     },
     onDrop: () => {
+      // Touch drags commit via pointerup; skipping here avoids a double
+      // commit when a native drag fires alongside (e.g. Android long-press).
+      if (touchDrag) return
       const activeDrag = drag.value
       if (activeDrag) {
         const finishIndex = Math.min(activeDrag.targetIndex, items.value.length - 1)
@@ -1036,6 +1213,8 @@ watch(
 }
 .reorder-card {
   transition: opacity 0.15s, box-shadow 0.15s;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 .reorder-motion .reorder-move-move {
   transition: transform 0.18s cubic-bezier(.2,.8,.2,1);
@@ -1043,9 +1222,44 @@ watch(
 .reorder-handle {
   cursor: grab;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 .reorder-handle:active {
   cursor: grabbing;
+}
+.reorder-dnd-controls {
+  pointer-events: none;
+}
+.reorder-dnd-controls .reorder-move-btn,
+.reorder-dnd-controls .reorder-handle {
+  pointer-events: auto;
+  flex-shrink: 0;
+}
+.reorder-move-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: rgb(12 10 24 / 0.85);
+  border: 1px solid rgb(255 255 255 / 0.3);
+  backdrop-filter: blur(8px);
+  touch-action: manipulation;
+}
+.reorder-move-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.reorder-move-btn:not(:disabled):hover {
+  background: rgb(76 29 149 / 0.9);
 }
 .drag-preview {
   position: fixed;
@@ -1074,7 +1288,7 @@ watch(
   border-radius: 0.5rem;
   background: rgb(139 92 246 / 0.08);
 }
-.drag-placeholder .reorder-handle,
+.drag-placeholder .reorder-dnd-controls,
 .drag-placeholder .reorder-card-content {
   visibility: hidden;
 }

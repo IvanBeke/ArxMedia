@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^3.1.0",
+    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^3.2.1",
     "@atlaskit/pragmatic-drag-and-drop-hitbox": "^2.2.0",
     "@js-temporal/polyfill": "^0.5.1",
     "@lucide/vue": "^1.43.0",
@@ -28,8 +29,8 @@
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/test-utils": "^2.5.0",
     "autoprefixer": "^10.5.5",
-    "jsdom": "^30.0.1",
     "jiti": "^2.7.0",
+    "jsdom": "^30.0.1",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.0",

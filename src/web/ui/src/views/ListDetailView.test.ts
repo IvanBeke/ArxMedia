@@ -58,13 +58,22 @@ interface MonitorRegistration {
   onDrop: () => void
 }
 
+interface DraggableRegistration {
+  element: HTMLElement
+  dragHandle?: Element | null
+}
+
 const dnd = vi.hoisted(() => ({
   dropTargets: [] as DropTargetRegistration[],
+  draggables: [] as DraggableRegistration[],
   monitor: null as MonitorRegistration | null,
 }))
 
 vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
-  draggable: () => () => undefined,
+  draggable: (registration: DraggableRegistration) => {
+    dnd.draggables.push(registration)
+    return () => undefined
+  },
   dropTargetForElements: (registration: DropTargetRegistration) => {
     dnd.dropTargets.push(registration)
     return () => undefined
@@ -79,6 +88,14 @@ function requiredMonitor(): MonitorRegistration {
   if (!dnd.monitor) throw new Error('Reorder monitor was not registered')
   return dnd.monitor
 }
+
+const autoScroll = vi.hoisted(() => ({
+  autoScrollWindowForElements: vi.fn(() => () => undefined),
+}))
+
+vi.mock('@atlaskit/pragmatic-drag-and-drop-auto-scroll/element', () => ({
+  autoScrollWindowForElements: autoScroll.autoScrollWindowForElements,
+}))
 
 function targetData(id: string, coordinates: DragCoordinates): DragData {
   const target = dnd.dropTargets.find((registration) => registration.element.dataset.reorderId === id)
@@ -178,6 +195,7 @@ describe('ListDetailView custom_order', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     dnd.dropTargets = []
+    dnd.draggables = []
     dnd.monitor = null
     getList.mockResolvedValue({
       id: 1,
@@ -383,5 +401,155 @@ describe('ListDetailView custom_order', () => {
     await cancelBtn.trigger('click')
     await flushPromises()
     expect(reorderList).not.toHaveBeenCalled()
+  })
+
+  it('binds the whole card as draggable with the handle as drag handle', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = requiredButton(wrapper, 'Reorder')
+    await reorderBtn.trigger('click')
+    await flushPromises()
+
+    expect(dnd.draggables.length).toBeGreaterThan(0)
+    for (const registration of dnd.draggables) {
+      expect(registration.element.hasAttribute('data-reorder-id')).toBe(true)
+      expect(registration.dragHandle).toBeInstanceOf(HTMLElement)
+      expect((registration.dragHandle as HTMLElement).hasAttribute('data-reorder-handle')).toBe(true)
+    }
+  })
+
+  it('enables window auto-scroll while in reorder mode', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = requiredButton(wrapper, 'Reorder')
+    await reorderBtn.trigger('click')
+    await flushPromises()
+
+    expect(autoScroll.autoScrollWindowForElements).toHaveBeenCalled()
+  })
+
+  it('keeps the move transition enabled without an active drag', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = requiredButton(wrapper, 'Reorder')
+    await reorderBtn.trigger('click')
+    await flushPromises()
+
+    const vm = viewModel(wrapper)
+    expect(vm.drag).toBeNull()
+    expect(wrapper.find('[data-reorder-grid]').classes()).toContain('reorder-motion')
+  })
+
+  function touchPointerEvent(type: string, props: Record<string, unknown> = {}) {
+    const event = new window.Event(type, { bubbles: true, cancelable: true })
+    Object.assign(event, { pointerType: 'touch', isPrimary: true, pointerId: 1, clientX: 0, clientY: 0, ...props })
+    return event
+  }
+
+  function touchDownOnHandle(wrapper: VueWrapper, cardId: string, clientX: number, clientY: number) {
+    const card = wrapper.find(`[data-reorder-id="${cardId}"]`)
+    if (!card.exists()) throw new Error(`Reorder card ${cardId} was not rendered`)
+    card.find('[data-reorder-handle]').element.dispatchEvent(touchPointerEvent('pointerdown', { clientX, clientY }))
+  }
+
+  function touchMove(clientX: number, clientY: number) {
+    window.dispatchEvent(touchPointerEvent('pointermove', { clientX, clientY }))
+  }
+
+  function touchUp(clientX: number, clientY: number) {
+    window.dispatchEvent(touchPointerEvent('pointerup', { clientX, clientY }))
+  }
+
+  function layoutTouchGrid(wrapper: VueWrapper) {
+    const rects: Record<string, [number, number, number, number]> = {
+      '10': [0, 0, 100, 160],
+      '11': [120, 0, 100, 160],
+      '12': [0, 180, 100, 160],
+    }
+    wrapper.findAll('[data-reorder-id]').forEach((card) => {
+      const box = rects[card.attributes('data-reorder-id') || '']
+      if (box) setRect(card.element, box[0], box[1], box[2], box[3])
+    })
+  }
+
+  it('drags with touch pointers and commits on release', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = requiredButton(wrapper, 'Reorder')
+    await reorderBtn.trigger('click')
+    await flushPromises()
+    layoutTouchGrid(wrapper)
+
+    touchDownOnHandle(wrapper, '10', 50, 80)
+    const vm = viewModel(wrapper)
+    await vm.$nextTick()
+    expect(vm.drag).toBeNull()
+
+    touchMove(50, 260)
+    await vm.$nextTick()
+    expect(vm.drag).toBeTruthy()
+    expect(wrapper.find('.drag-preview').exists()).toBe(true)
+    // Preview stays centered under the finger like on desktop (no lift, no jump).
+    expect((vm.drag as { position: { x: number; y: number } }).position).toEqual({ x: 0, y: 180 })
+    expect(vm.reorderDisplayItems.map((item) => item.id)).toEqual([11, 10, 12])
+
+    touchUp(50, 260)
+    await vm.$nextTick()
+    expect(wrapper.find('.drag-preview').exists()).toBe(false)
+    expect(vm.items.map((item) => item.id)).toEqual([11, 10, 12])
+    expect(vm.hasReordered).toBe(true)
+  })
+
+  it('ignores touch taps without movement', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = requiredButton(wrapper, 'Reorder')
+    await reorderBtn.trigger('click')
+    await flushPromises()
+    layoutTouchGrid(wrapper)
+
+    touchDownOnHandle(wrapper, '10', 50, 80)
+    touchUp(50, 80)
+    const vm = viewModel(wrapper)
+    await vm.$nextTick()
+    expect(vm.drag).toBeNull()
+    expect(vm.items.map((item) => item.id)).toEqual([10, 11, 12])
+    expect(vm.hasReordered).toBe(false)
+  })
+
+  it('does not double commit when a native drop fires during touch', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = requiredButton(wrapper, 'Reorder')
+    await reorderBtn.trigger('click')
+    await flushPromises()
+    layoutTouchGrid(wrapper)
+
+    touchDownOnHandle(wrapper, '10', 50, 80)
+    drop()
+    const vm = viewModel(wrapper)
+    await vm.$nextTick()
+    expect(vm.items.map((item) => item.id)).toEqual([10, 11, 12])
+
+    touchUp(50, 80)
+    await vm.$nextTick()
+    expect(vm.items.map((item) => item.id)).toEqual([10, 11, 12])
+    expect(vm.hasReordered).toBe(false)
+  })
+
+  it('moves items with fallback buttons without drag and drop', async () => {
+    const wrapper = await mountView()
+    const reorderBtn = requiredButton(wrapper, 'Reorder')
+    await reorderBtn.trigger('click')
+    await flushPromises()
+
+    const vm = viewModel(wrapper)
+    const firstCard = wrapper.findAll('[data-reorder-id]')[0]
+    if (!firstCard) throw new Error('First reorder card was not rendered')
+    const moveLater = firstCard.find('[data-reorder-move="next"]')
+    await moveLater.trigger('click')
+    await vm.$nextTick()
+
+    expect(vm.items.map((item) => item.id)).toEqual([11, 10, 12])
+    expect(vm.hasReordered).toBe(true)
+
+    const doneBtn = requiredButton(wrapper, 'Done', true)
+    await doneBtn.trigger('click')
+    await flushPromises()
+    expect(reorderList).toHaveBeenCalledWith('1', [11, 10, 12])
   })
 })
