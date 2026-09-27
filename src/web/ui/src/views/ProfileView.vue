@@ -97,6 +97,9 @@
         </template>
 
         <template v-else-if="activeTab === 'activity'">
+          <div class="card p-4 md:p-5 mb-6">
+            <ActivityHeatmap :username="profile.username" />
+          </div>
           <div v-if="profile.recent_activity?.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             <div v-for="entry in profile.recent_activity" :key="entry.id" class="group relative">
               <HistoryMediaCard
@@ -134,6 +137,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { authAPI } from '@/api'
+import ActivityHeatmap from '@/components/ActivityHeatmap.vue'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import { useAuthStore } from '@/stores/auth'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'

@@ -1,5 +1,11 @@
+from datetime import date, timedelta
+
 from django.contrib.auth import get_user_model
+from django.db.models import DateTimeField, OuterRef, Subquery
+from django.db.models.functions import Coalesce, TruncDate
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from media.models import Movie, TVShow
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -7,6 +13,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from social.models import Follow
+from tracking.models import WatchEntry, WatchEntryMediaType
 
 from .privacy import can_view_account_content, get_viewer_relationship
 from .serializers import (
@@ -138,3 +145,85 @@ class PasswordChangeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({'detail': 'Password updated successfully.'}, status=status.HTTP_200_OK)
+
+
+class UserActivityHeatmapView(APIView):
+    """Daily watch-activity counts for a profile, GitHub-contribution style."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, username):
+        target = get_object_or_404(User, username=username)
+        relationship = get_viewer_relationship(request.user, target)
+        if not can_view_account_content(target.account_visibility, relationship):
+            return Response({'days': [], 'total': 0})
+
+        today = timezone.localdate()
+        try:
+            start = today.replace(year=today.year - 1)
+        except ValueError:
+            # Today is Feb 29 and last year is not a leap year.
+            start = today.replace(year=today.year - 1, day=28)
+
+        # Single query: flat rows annotated with the movie/show display fields,
+        # grouped per day in Python.
+        rows = (
+            WatchEntry.objects
+            .filter(user=target)
+            .annotate(event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField()))
+            .filter(event_at__date__gte=start, event_at__date__lte=today)
+            .annotate(
+                day=TruncDate('event_at'),
+                movie_title=Subquery(
+                    Movie.objects.filter(tmdb_id=OuterRef('tmdb_id')).values('title')[:1]
+                ),
+                movie_release_date=Subquery(
+                    Movie.objects.filter(tmdb_id=OuterRef('tmdb_id')).values('release_date')[:1]
+                ),
+                show_name=Subquery(
+                    TVShow.objects.filter(tmdb_id=OuterRef('tmdb_id')).values('name')[:1]
+                ),
+            )
+            .values(
+                'day', 'media_type', 'tmdb_id', 'season_number', 'episode_number',
+                'movie_title', 'movie_release_date', 'show_name',
+            )
+            .order_by('day', 'id')
+        )
+
+        items_by_day: dict[date, list[dict]] = {}
+        for row in rows:
+            if row['media_type'] == WatchEntryMediaType.MOVIE:
+                release_date = row['movie_release_date']
+                item = {
+                    'media_type': 'movie',
+                    'tmdb_id': row['tmdb_id'],
+                    'title': row['movie_title'] or f"Movie #{row['tmdb_id']}",
+                    'release_year': release_date.year if release_date else None,
+                }
+            else:
+                season = row['season_number']
+                episode = row['episode_number']
+                item = {
+                    'media_type': 'episode',
+                    'tmdb_id': row['tmdb_id'],
+                    'title': row['show_name'] or f"TV #{row['tmdb_id']}",
+                    'season_number': season,
+                    'episode_number': episode,
+                    'episode_code': f"S{int(season or 0):02d}E{int(episode or 0):02d}",
+                }
+            items_by_day.setdefault(row['day'], []).append(item)
+
+        days = []
+        total = 0
+        for offset in range((today - start).days + 1):
+            day = start + timedelta(days=offset)
+            items = items_by_day.get(day, [])
+            total += len(items)
+            days.append({
+                'date': day.isoformat(),
+                'count': len(items),
+                'items': items,
+            })
+
+        return Response({'days': days, 'total': total})

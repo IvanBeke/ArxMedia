@@ -1,11 +1,14 @@
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+from media.models import Movie, TVShow
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from social.models import Follow
+from tracking.models import WatchEntry
 
 User = get_user_model()
 
@@ -338,3 +341,137 @@ class AccountTests(TestCase):
         usernames = [row['username'] for row in response.data]
         self.assertEqual(usernames, ['alice_runner', 'alice_watcher'])
         self.assertNotIn(self.user.username, usernames)
+
+    def _create_heatmap_media(self):
+        Movie.objects.create(tmdb_id=101, title='Heatmap Movie', release_date=date(2020, 5, 1))
+        TVShow.objects.create(tmdb_id=202, name='Heatmap Show')
+
+    def test_activity_heatmap_returns_daily_counts(self):
+        self._create_heatmap_media()
+        other = User.objects.create_user(username='other', email='other@example.com', password='pass123')
+
+        now = timezone.now()
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=101, watched_at=now - timedelta(days=2))
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=202, season_number=1, episode_number=1, watched_at=now - timedelta(days=2))
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=202, season_number=1, episode_number=2, watched_at=now)
+        WatchEntry.objects.create(user=other, media_type='movie', tmdb_id=101, watched_at=now)
+
+        self.authenticate()
+        response = self.client.get(f'/api/auth/users/{self.user.username}/activity/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['total'], 3)
+        days = {day['date']: day for day in response.data['days']}
+
+        today = timezone.localdate()
+        two_days_ago = today - timedelta(days=2)
+
+        self.assertEqual(days[two_days_ago.isoformat()]['count'], 2)
+        items = days[two_days_ago.isoformat()]['items']
+        self.assertEqual(len(items), 2)
+
+        movie_item = next(item for item in items if item['media_type'] == 'movie')
+        self.assertEqual(movie_item['title'], 'Heatmap Movie')
+        self.assertEqual(movie_item['release_year'], 2020)
+        self.assertEqual(movie_item['tmdb_id'], 101)
+
+        episode_item = next(item for item in items if item['media_type'] == 'episode')
+        self.assertEqual(episode_item['title'], 'Heatmap Show')
+        self.assertEqual(episode_item['episode_code'], 'S01E01')
+        self.assertEqual(episode_item['season_number'], 1)
+        self.assertEqual(episode_item['episode_number'], 1)
+
+        self.assertEqual(days[today.isoformat()]['count'], 1)
+        self.assertEqual(days[today.isoformat()]['items'][0]['episode_code'], 'S01E02')
+
+    def test_activity_heatmap_excludes_entries_outside_one_year_window(self):
+        self._create_heatmap_media()
+        Movie.objects.create(tmdb_id=102, title='Future Movie')
+        Movie.objects.create(tmdb_id=103, title='Window Edge Movie')
+        now = timezone.now()
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=101, watched_at=now - timedelta(days=400))
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=102, watched_at=now + timedelta(days=1))
+
+        self.authenticate()
+        response = self.client.get(f'/api/auth/users/{self.user.username}/activity/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['total'], 0)
+        self.assertTrue(all(day['count'] == 0 for day in response.data['days']))
+
+        today = timezone.localdate()
+        try:
+            start = today.replace(year=today.year - 1)
+        except ValueError:
+            start = today.replace(year=today.year - 1, day=28)
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=103, watched_at=timezone.make_aware(datetime.combine(start, datetime.min.time())))
+
+        response = self.client.get(f'/api/auth/users/{self.user.username}/activity/')
+        self.assertEqual(response.data['total'], 1)
+        self.assertEqual(len(response.data['days']), (today - start).days + 1)
+
+    @patch('django.utils.timezone.localdate')
+    def test_activity_heatmap_leap_year_window_includes_feb_29(self, mock_localdate):
+        mock_localdate.return_value = date(2024, 3, 1)
+        self._create_heatmap_media()
+        WatchEntry.objects.create(
+            user=self.user,
+            media_type='movie',
+            tmdb_id=101,
+            watched_at=timezone.make_aware(datetime.combine(date(2024, 2, 29), datetime.min.time())),
+        )
+
+        self.authenticate()
+        response = self.client.get(f'/api/auth/users/{self.user.username}/activity/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['total'], 1)
+        # Mar 1 2023 through Mar 1 2024 inclusive (leap year).
+        self.assertEqual(len(response.data['days']), 367)
+        days = {day['date']: day for day in response.data['days']}
+        self.assertEqual(days['2024-02-29']['count'], 1)
+
+    def test_activity_heatmap_hidden_from_stranger_on_private_profile(self):
+        target = User.objects.create_user(
+            username='private_heatmap',
+            email='private-heatmap@example.com',
+            password='pass123',
+            account_visibility='private',
+        )
+        self.authenticate()
+
+        response = self.client.get(f'/api/auth/users/{target.username}/activity/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {'days': [], 'total': 0})
+
+    def test_activity_heatmap_visible_to_mutual_friend(self):
+        target = User.objects.create_user(
+            username='friends_heatmap',
+            email='friends-heatmap@example.com',
+            password='pass123',
+            account_visibility='friends_only',
+        )
+        Follow.objects.create(follower=self.user, following=target)
+        Follow.objects.create(follower=target, following=self.user)
+        self._create_heatmap_media()
+        WatchEntry.objects.create(
+            user=target,
+            media_type='episode',
+            tmdb_id=202,
+            season_number=2,
+            episode_number=5,
+            watched_at=timezone.now(),
+        )
+        self.authenticate()
+
+        response = self.client.get(f'/api/auth/users/{target.username}/activity/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['total'], 1)
+        today = timezone.localdate()
+        items = {day['date']: day['items'] for day in response.data['days']}[today.isoformat()]
+        self.assertEqual(items[0]['episode_code'], 'S02E05')
+
+    def test_activity_heatmap_requires_auth(self):
+        self.client.credentials()
+        response = self.client.get(f'/api/auth/users/{self.user.username}/activity/')
+        self.assertEqual(response.status_code, 401)
