@@ -14,6 +14,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { formatRating } from '@/utils/format'
 
 const props = withDefaults(defineProps<{
   value: number | string
@@ -28,7 +29,7 @@ const numericValue = computed(() => Number(props.value))
 const displayValue = computed(() => {
   if (!Number.isFinite(numericValue.value)) return String(props.value)
   if (Number.isInteger(numericValue.value)) return String(numericValue.value)
-  return numericValue.value.toFixed(1)
+  return formatRating(numericValue.value)
 })
 
 const label = computed(() => `${props.titlePrefix}: ${displayValue.value}/10`)

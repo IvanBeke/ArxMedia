@@ -302,6 +302,10 @@
           <MediaHistoryTab :filter="historyFilter" />
         </template>
 
+        <template v-if="activeTab === 'heatmap'">
+          <EpisodeHeatmap :show-id="tmdbId" />
+        </template>
+
         <template v-if="activeTab === 'more'">
           <p v-if="recsError" class="text-sm text-muted mb-3">Recommendations unavailable right now.</p>
           <RecommendationsRow :items="recommendations" :media-type="MEDIA_TYPE.TV" :loading="loadingRecs" @status-changed="handleRecommendationStatusChanged" />
@@ -326,6 +330,7 @@ import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
+import EpisodeHeatmap from '@/components/EpisodeHeatmap.vue'
 import DetailHero from '@/components/DetailHero.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
@@ -387,7 +392,7 @@ const removeHistoryDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const removingHistory = ref(false)
 const unwatchEpisodeDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
 
-const VALID_TABS = ['overview', 'seasons', 'cast', 'history', 'more'] as const
+const VALID_TABS = ['overview', 'seasons', 'cast', 'history', 'heatmap', 'more'] as const
 type ShowTab = (typeof VALID_TABS)[number]
 
 function initialTab(): ShowTab {
@@ -403,6 +408,7 @@ const visibleTabs = computed((): MediaTab[] => {
     { id: 'seasons', label: 'Seasons' },
     { id: 'cast', label: 'Cast', count: aggregateCredits.value?.cast?.length },
     { id: 'history', label: 'History' },
+    { id: 'heatmap', label: 'Heatmap' },
   ]
   if (recommendations.value.length > 0 || loadingRecs.value) {
     tabs.push({ id: 'more', label: 'More like this' })

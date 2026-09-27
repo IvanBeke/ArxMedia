@@ -22,6 +22,7 @@ urlpatterns = [
     path('tv/<int:tmdb_id>/credits/', views.tv_credits, name='tv_credits'),
     path('tv/<int:tmdb_id>/external-ids/', views.tv_external_ids, name='tv_external_ids'),
     path('tv/<int:tmdb_id>/recommendations/', views.tv_recommendations, name='tv_recommendations'),
+    path('tv/<int:tmdb_id>/heatmap/', views.tv_heatmap, name='tv_heatmap'),
     path('tv/<int:tmdb_id>/seasons/<int:season_number>/', views.season_detail, name='season_detail'),
     path('tv/<int:tmdb_id>/seasons/<int:season_number>/credits/', views.season_credits, name='season_credits'),
     path('tv/<int:tmdb_id>/seasons/<int:season_number>/episodes/<int:episode_number>/credits/', views.episode_credits, name='episode_credits'),

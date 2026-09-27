@@ -1002,6 +1002,48 @@ class MediaTests(TestCase):
         self.assertEqual(response.data['guest_stars'][0]['name'], 'DB Guest')
         mock_sync_episode_credits.assert_not_called()
 
+    def test_tv_heatmap_returns_seasons_with_episode_ratings(self):
+        show = TVShow.objects.create(tmdb_id=777, name='Heatmap Show', number_of_seasons=2, number_of_episodes=4)
+        season1 = show.seasons.create(tmdb_id=7771, season_number=1, name='Season 1')
+        season2 = show.seasons.create(tmdb_id=7772, season_number=2, name='Season 2')
+        season1.episodes.create(tmdb_id=77711, episode_number=1, name='Ep 1', vote_average=8.5)
+        season1.episodes.create(tmdb_id=77712, episode_number=2, name='Ep 2', vote_average=7.2)
+        season2.episodes.create(tmdb_id=77721, episode_number=1, name='Ep 1', vote_average=9.0)
+        season2.episodes.create(tmdb_id=77722, episode_number=2, name='Ep 2', vote_average=0)
+
+        response = self.client.get('/api/media/tv/777/heatmap/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 2)
+
+        s1 = response.data[0]
+        self.assertEqual(s1['season'], 1)
+        self.assertEqual(len(s1['episodes']), 2)
+        self.assertEqual(s1['episodes'][0]['episode'], 1)
+        self.assertEqual(s1['episodes'][0]['rating'], 8.5)
+        self.assertEqual(s1['episodes'][1]['episode'], 2)
+        self.assertEqual(s1['episodes'][1]['rating'], 7.2)
+
+        s2 = response.data[1]
+        self.assertEqual(s2['season'], 2)
+        self.assertEqual(s2['episodes'][1]['rating'], 0)
+
+    def test_tv_heatmap_excludes_specials(self):
+        show = TVShow.objects.create(tmdb_id=778, name='Specials Show', number_of_seasons=1, number_of_episodes=1)
+        season0 = show.seasons.create(tmdb_id=7780, season_number=0, name='Specials')
+        season0.episodes.create(tmdb_id=77801, episode_number=1, name='Special 1', vote_average=5.0)
+        season1 = show.seasons.create(tmdb_id=7781, season_number=1, name='Season 1')
+        season1.episodes.create(tmdb_id=77811, episode_number=1, name='Ep 1', vote_average=8.0)
+
+        response = self.client.get('/api/media/tv/778/heatmap/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['season'], 1)
+
+    def test_tv_heatmap_requires_auth(self):
+        anon = APIClient()
+        response = anon.get('/api/media/tv/777/heatmap/')
+        self.assertEqual(response.status_code, 401)
+
     def test_episode_credits_fallback_syncs_and_persists(self):
         show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones', number_of_seasons=1, number_of_episodes=1)
         season = show.seasons.create(tmdb_id=139901, season_number=1, name='Season 1')

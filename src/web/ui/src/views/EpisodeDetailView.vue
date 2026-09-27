@@ -53,7 +53,7 @@
               <span v-if="showData?.name"> · {{ showData.name }} S{{ seasonNum }}</span>
             </div>
             <div v-if="episodeData.vote_average" class="flex items-center gap-1 mb-4">
-              <RatingBadge :value="formatRating(episodeData.vote_average)" :votes="episodeData.vote_count || 0" out-of-ten />
+              <RatingBadge :value="episodeData.vote_average" :votes="episodeData.vote_count || 0" out-of-ten />
             </div>
 
             <div class="flex flex-wrap items-center gap-2 mb-4">
@@ -157,6 +157,7 @@ import { tmdbImageUrl } from '@/utils/images'
 import { episodeExternalLinks } from '@/utils/externalLinks'
 import { watchedTooltipText } from '@/utils/watchOptions'
 import { getEpisodeLink } from '@/utils/watchEntryLinks'
+
 import type { Credits, Episode, Season, TVShow, WatchedEpisode } from '@/types/api'
 import type { WatchedAtOption } from '@/utils/watchOptions'
 
@@ -200,10 +201,6 @@ const externalLinks = computed(() => episodeExternalLinks(tmdbId.value, seasonNu
 const episodeCast = computed(() => episodeData.value?.cast || creditsData.value?.cast || [])
 const episodeCrew = computed(() => episodeData.value?.crew || creditsData.value?.crew || [])
 
-function formatRating(rating: number) {
-  if (!rating) return '0.0'
-  return rating.toFixed(1)
-}
 
 function orderedEpisodes(episodes: Episode[] | undefined): Episode[] {
   return [...(episodes || [])].sort((left, right) => left.episode_number - right.episode_number)

@@ -8,8 +8,14 @@ from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
 from tracking.tasks import sync_show_episode_credits
 
-from .models import EpisodeCredit, Movie, TVShow
-from .serializers import MovieSerializer, SeasonBriefSerializer, SeasonSerializer, TVShowSerializer
+from .models import Episode, EpisodeCredit, Movie, TVShow
+from .serializers import (
+    MovieSerializer,
+    SeasonBriefSerializer,
+    SeasonHeatmapSerializer,
+    SeasonSerializer,
+    TVShowSerializer,
+)
 from .tmdb import tmdb
 
 logger = logging.getLogger(__name__)
@@ -414,6 +420,25 @@ def tv_detail(request, tmdb_id):
         if key in status_map:
             data['user_status'] = status_map[key]
 
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def tv_heatmap(request, tmdb_id):
+    try:
+        show = TVShow.objects.get(tmdb_id=tmdb_id)
+    except TVShow.DoesNotExist:
+        try:
+            show = _sync_tv_for_read(tmdb_id, user_id=request.user.id)
+        except Exception:
+            logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
+            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    seasons = show.seasons.filter(season_number__gte=1).prefetch_related(
+        models.Prefetch('episodes', queryset=Episode.objects.only('episode_number', 'vote_average'))
+    ).order_by('season_number')
+    data = SeasonHeatmapSerializer(seasons, many=True).data
     return Response(data)
 
 

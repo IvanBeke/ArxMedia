@@ -120,3 +120,13 @@ class SeasonSerializer(serializers.ModelSerializer):
     def get_episodes(self, obj):
         qs = obj.episodes.order_by('episode_number')
         return EpisodeSerializer(qs, many=True).data
+
+
+class EpisodeHeatmapSerializer(serializers.Serializer):
+    episode = serializers.IntegerField(source='episode_number')
+    rating = serializers.FloatField(source='vote_average')
+
+
+class SeasonHeatmapSerializer(serializers.Serializer):
+    season = serializers.IntegerField(source='season_number')
+    episodes = EpisodeHeatmapSerializer(many=True)

@@ -65,6 +65,8 @@ export interface ShowProgressItem extends Pick<MediaCard, 'tmdb_id' | 'poster_ur
   last_watched_episode: Pick<ShowProgressEpisode, 'season_number' | 'episode_number'> | null
 }
 export interface Rating { id: number; media_type: MediaType; tmdb_id: number; score: number; created_at: string; updated_at: string }
+export interface HeatmapEpisode { episode: number; rating: number }
+export interface HeatmapSeason { season: number; episodes: HeatmapEpisode[] }
 export interface EpisodeWatchPayload { tmdb_id: number | string; season_number: number | string; episode_number: number | string; watched_at?: string | null }
 export interface SeasonWatchPayload { tmdb_id: number | string; season_number: number | string; watched_at?: string; use_release_date?: boolean }
 export interface CustomList { id: number; username: string; name: string; description: string; privacy: 'public' | 'private'; item_count: number; collaborators: number[]; collaborator_users: UserCard[]; created_at: string; updated_at: string }

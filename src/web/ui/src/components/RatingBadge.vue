@@ -14,6 +14,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from '@/i18n'
+import { formatRating } from '@/utils/format'
 
 const props = withDefaults(defineProps<{
   value: number | string
@@ -41,12 +42,7 @@ const voteLabel = computed(() => {
   return t('rating_vote_plural')
 })
 
-const displayValue = computed(() => {
-  if (typeof props.value === 'number' && Number.isFinite(props.value)) {
-    return props.value.toFixed(props.decimals)
-  }
-  return String(props.value)
-})
+const displayValue = computed(() => formatRating(props.value, props.decimals))
 
 const sizeClass = computed(() => {
   if (props.size === 'xs') return 'gap-1 px-2 py-0.5 text-[11px]'
