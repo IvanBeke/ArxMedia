@@ -54,7 +54,7 @@
             <th
               v-for="season in seasons"
               :key="season.season"
-              class="text-muted text-xs font-normal text-center"
+              class="text-muted text-xs font-normal text-center w-8"
             >
               S{{ season.season }}
             </th>
@@ -66,7 +66,7 @@
             <td
               v-for="season in seasons"
               :key="season.season"
-              class="text-center text-sm font-bold rounded-md h-8"
+              class="text-center text-sm font-bold rounded-md w-8 h-8"
               :class="getCellClass(getRating(season, epNum))"
             >
               {{ getRatingLabel(getRating(season, epNum)) }}
