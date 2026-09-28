@@ -25,6 +25,7 @@ class Movie(models.Model):
     language = models.CharField(max_length=10, blank=True)
     tagline = models.CharField(max_length=500, blank=True)
     status = models.CharField(max_length=50, blank=True)
+    has_postcredits_scene = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -20,7 +20,8 @@ class MovieSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'tmdb_id', 'title', 'overview', 'poster_path', 'backdrop_path',
             'poster_url', 'backdrop_url', 'release_date', 'runtime',
-            'vote_average', 'vote_count', 'genres', 'language', 'tagline', 'status', 'metadata_updated_at'
+            'vote_average', 'vote_count', 'genres', 'language', 'tagline', 'status',
+            'has_postcredits_scene', 'metadata_updated_at'
         ]
 
 

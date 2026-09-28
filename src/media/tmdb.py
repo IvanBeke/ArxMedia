@@ -57,6 +57,7 @@ class TMDBService:
     APPEND_SEASON_LIMIT = 20  # TMDB caps append_to_response sub-requests
     EXTERNAL_ID_APPEND_COUNT = 1
     BUNDLED_SEASON_LIMIT = APPEND_SEASON_LIMIT - EXTERNAL_ID_APPEND_COUNT
+    POSTCREDITS_KEYWORD_IDS = frozenset({179430, 179431})  # after credits stinger, during credits stinger
 
     def __init__(self):
         self._redis = None
@@ -145,6 +146,13 @@ class TMDBService:
 
     def get_movie(self, tmdb_id, *, use_cache=True):
         return self._get(f'/movie/{tmdb_id}', use_cache=use_cache)
+
+    def get_movie_with_keywords(self, tmdb_id, *, use_cache=True):
+        return self._get(
+            f'/movie/{tmdb_id}',
+            {'append_to_response': 'keywords'},
+            use_cache=use_cache,
+        )
 
     def get_movie_credits(self, tmdb_id):
         return self._get(f'/movie/{tmdb_id}/credits')
@@ -302,7 +310,13 @@ class TMDBService:
 
     def sync_movie(self, tmdb_id, *, use_cache=True):
         """Fetch movie from TMDB and save/update locally."""
-        data = self.get_movie(tmdb_id, use_cache=use_cache)
+        try:
+            data = self.get_movie_with_keywords(tmdb_id, use_cache=use_cache)
+        except requests.HTTPError as exc:
+            if exc.response is None or exc.response.status_code != 500:
+                raise
+            logger.warning('Movie keywords append failed for %s, falling back to plain movie fetch', tmdb_id)
+            data = self.get_movie(tmdb_id, use_cache=use_cache)
         movie_defaults = {
             'title': data.get('title', ''),
             'overview': data.get('overview', ''),
@@ -316,6 +330,9 @@ class TMDBService:
             'tagline': data.get('tagline', ''),
             'status': data.get('status', ''),
         }
+        keywords_data = data.get('keywords')
+        if keywords_data is not None:
+            movie_defaults['has_postcredits_scene'] = self._extract_postcredits_scenes(keywords_data)
         movie, _ = Movie.objects.update_or_create(
             tmdb_id=tmdb_id,
             defaults=_non_empty_defaults(movie_defaults),
@@ -325,6 +342,11 @@ class TMDBService:
             genre, _ = Genre.objects.get_or_create(tmdb_id=g['id'], defaults={'name': g['name']})
             movie.genres.add(genre)
         return movie
+
+    @classmethod
+    def _extract_postcredits_scenes(cls, keywords_data):
+        keywords = (keywords_data or {}).get('keywords', [])
+        return any(k.get('id') in cls.POSTCREDITS_KEYWORD_IDS for k in keywords if isinstance(k, dict))
 
     def sync_tv_show(self, tmdb_id, user_id=None, sync_credits: bool = False, *, recompute_user_statuses: bool = True, use_cache: bool = True, only_seasons: list[int] | None = None):
         """Fetch TV show from TMDB and save/update locally, including all seasons and episodes."""

@@ -36,6 +36,11 @@ class MediaTests(TestCase):
                 'overview': 'Mocked movie',
                 'release_date': '1999-10-15',
                 'genres': [],
+                'keywords': {
+                    'keywords': [
+                        {'id': 179430, 'name': 'after credits stinger'},
+                    ],
+                },
             }
         if endpoint == '/movie/550/watch/providers':
             return {'results': {}}
@@ -568,6 +573,111 @@ class MediaTests(TestCase):
         self.assertEqual(movie.poster_path, '/stored.jpg')
         self.assertEqual(movie.tagline, 'Stored tagline')
         self.assertEqual(movie.vote_average, 8.1)
+
+    def test_sync_movie_detects_aftercredits_stinger(self):
+        def payload(endpoint, params=None, **kwargs):
+            if endpoint == '/movie/550':
+                return {
+                    'id': 550,
+                    'title': 'Fight Club',
+                    'overview': 'Mocked movie',
+                    'release_date': '1999-10-15',
+                    'genres': [],
+                    'keywords': {
+                        'keywords': [
+                            {'id': 179430, 'name': 'after credits stinger'},
+                        ],
+                    },
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=payload):
+            movie = tmdb.sync_movie(550)
+
+        self.assertTrue(movie.has_postcredits_scene)
+
+    def test_sync_movie_detects_duringcredits_stinger(self):
+        def payload(endpoint, params=None, **kwargs):
+            if endpoint == '/movie/550':
+                return {
+                    'id': 550,
+                    'title': 'Fight Club',
+                    'overview': 'Mocked movie',
+                    'release_date': '1999-10-15',
+                    'genres': [],
+                    'keywords': {
+                        'keywords': [
+                            {'id': 179431, 'name': 'during credits stinger'},
+                        ],
+                    },
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=payload):
+            movie = tmdb.sync_movie(550)
+
+        self.assertTrue(movie.has_postcredits_scene)
+
+    def test_sync_movie_no_postcredits_scene(self):
+        def payload(endpoint, params=None, **kwargs):
+            if endpoint == '/movie/550':
+                return {
+                    'id': 550,
+                    'title': 'Fight Club',
+                    'overview': 'Mocked movie',
+                    'release_date': '1999-10-15',
+                    'genres': [],
+                    'keywords': {
+                        'keywords': [
+                            {'id': 999999, 'name': 'some other keyword'},
+                        ],
+                    },
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=payload):
+            movie = tmdb.sync_movie(550)
+
+        self.assertFalse(movie.has_postcredits_scene)
+
+    def test_sync_movie_preserves_postcredits_when_keywords_missing(self):
+        Movie.objects.create(
+            tmdb_id=550,
+            title='Fight Club',
+            has_postcredits_scene=True,
+        )
+
+        def sparse_payload(endpoint, params=None, **kwargs):
+            if endpoint == '/movie/550':
+                return {
+                    'id': 550,
+                    'title': 'Fight Club',
+                    'overview': '',
+                    'poster_path': None,
+                    'backdrop_path': None,
+                    'release_date': '1999-10-15',
+                    'genres': [],
+                    'vote_average': 8.1,
+                    'vote_count': 100,
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=sparse_payload):
+            movie = tmdb.sync_movie(550)
+
+        movie.refresh_from_db()
+        self.assertTrue(movie.has_postcredits_scene)
+
+    def test_movie_detail_includes_postcredits_scene(self):
+        Movie.objects.create(
+            tmdb_id=550,
+            title='Fight Club',
+            has_postcredits_scene=True,
+        )
+
+        response = self.client.get('/api/media/movies/550/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['has_postcredits_scene'])
 
     def test_sync_movie_creation_stores_sparse_payload(self):
         def sparse_payload(endpoint, params=None, **kwargs):
@@ -1713,7 +1823,7 @@ class TMDBUseCacheTests(TestCase):
         mock_get_with_seasons.assert_called_once_with(557, [1], use_cache=False, include_credits=False)
         mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=False, use_cache=False, tvmaze_context={})
 
-    @patch('media.tmdb.tmdb.get_movie')
+    @patch('media.tmdb.tmdb.get_movie_with_keywords')
     def test_sync_movie_propagates_use_cache_false(self, mock_get_movie):
         mock_get_movie.return_value = {
             'id': 551,

@@ -169,6 +169,10 @@
                     <dt class="text-muted shrink-0">Language</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.language || '—' }}</dd>
                   </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">Post-credits scene</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.has_postcredits_scene ? 'Yes' : 'No' }}</dd>
+                  </div>
                 </dl>
               </div>
               <div class="card p-4 space-y-2">
@@ -179,7 +183,7 @@
                   :disabled="refreshingMetadata"
                   class="btn-ghost text-xs border border-surface-200 bg-surface-100/70 hover:bg-surface-100 w-full"
                 >
-                  {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB and TVMaze' }}
+                  {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB' }}
                 </button>
                 <p class="text-xs text-muted break-words">
                   Last metadata update: {{ metadataUpdatedAtLabel }}
@@ -558,7 +562,7 @@ async function refreshMetadata() {
     await mediaAPI.refreshMovie(movieId.value)
     movie.value = await mediaAPI.getMovie(movieId.value)
     inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
-    showMetadataSuccess('Metadata updated from TMDB and TVMaze')
+    showMetadataSuccess('Metadata updated from TMDB')
   } catch (error) {
     showMetadataError(getApiErrorMessage(error, 'Could not refresh metadata.'))
   } finally {
