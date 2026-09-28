@@ -124,7 +124,7 @@ class SeasonSerializer(serializers.ModelSerializer):
 
 
 class EpisodeHeatmapSerializer(serializers.Serializer):
-    episode = serializers.IntegerField(source='episode_number')
+    episode = serializers.IntegerField(source='display_number')
     rating = serializers.FloatField(source='vote_average')
 
 

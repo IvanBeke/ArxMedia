@@ -1,6 +1,8 @@
 import logging
 
 from django.db import models, transaction
+from django.db.models import F, Window
+from django.db.models.functions import RowNumber
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -436,7 +438,13 @@ def tv_heatmap(request, tmdb_id):
             return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     seasons = show.seasons.filter(season_number__gte=1).prefetch_related(
-        models.Prefetch('episodes', queryset=Episode.objects.only('episode_number', 'vote_average'))
+        models.Prefetch('episodes', queryset=Episode.objects.annotate(
+            display_number=Window(
+                expression=RowNumber(),
+                partition_by=[F('season_id')],
+                order_by=[F('air_date').asc(), F('episode_number').asc()],
+            )
+        ).only('season_id', 'air_date', 'episode_number', 'vote_average'))
     ).order_by('season_number')
     data = SeasonHeatmapSerializer(seasons, many=True).data
     return Response(data)

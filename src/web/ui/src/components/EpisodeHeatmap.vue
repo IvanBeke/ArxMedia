@@ -108,7 +108,9 @@ const overflowLeft = ref(false)
 const overflowRight = ref(false)
 
 const maxEpisodes = computed(() => {
-  return seasons.value.reduce((max, s) => Math.max(max, s.episodes.length), 0)
+  return seasons.value.reduce((max, s) => {
+    return Math.max(max, ...s.episodes.map(e => e.episode))
+  }, 0)
 })
 
 function getRating(season: HeatmapSeason, episodeNum: number): number {
