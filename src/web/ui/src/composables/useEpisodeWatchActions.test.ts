@@ -1,5 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { Temporal as TemporalPolyfill, toTemporalInstant } from '@js-temporal/polyfill'
+import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/api', () => ({
   trackingAPI: {
@@ -13,15 +12,6 @@ import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { EPOCH_START_ISO } from '@/utils/temporal'
 
 const trackingAPI = vi.mocked(importedTrackingAPI)
-
-beforeAll(() => {
-  if (!globalThis.Temporal) {
-    globalThis.Temporal = TemporalPolyfill
-  }
-  if (!Date.prototype.toTemporalInstant) {
-    Date.prototype.toTemporalInstant = toTemporalInstant
-  }
-})
 
 const TARGET = { tmdbId: 37854, seasonNumber: 2, episodeNumber: 5 }
 

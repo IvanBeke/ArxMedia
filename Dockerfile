@@ -1,3 +1,14 @@
+FROM ghcr.io/pnpm/pnpm:12 AS uibuild
+
+WORKDIR /ui
+
+COPY src/web/ui/package.json src/web/ui/pnpm-lock.yaml src/web/ui/pnpm-workspace.yaml ./
+RUN CI=true pnpm install --frozen-lockfile
+
+COPY src/web/ui/ ./
+RUN pnpm build
+
+
 FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,10 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get update && apt-get install -y --no-install-recommends nodejs && \
-    rm -rf /var/lib/apt/lists/*
-
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     ln -s /root/.local/bin/uv /usr/local/bin/uv
 
@@ -28,10 +35,8 @@ RUN uv export --format requirements.txt --no-dev --frozen -o /tmp/requirements.t
 
 COPY src/ .
 
-RUN npm install -g pnpm@11 && \
-    cd /app/web/ui && \
-    CI=true pnpm install && \
-    CI=true pnpm build
+# Built assets come from the uibuild stage (vite outDir is ../static/web).
+COPY --from=uibuild /static/web ./web/static/web
 
 RUN python manage.py collectstatic --noinput
 

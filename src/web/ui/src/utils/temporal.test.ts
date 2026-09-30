@@ -1,5 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest'
-import { Temporal as TemporalPolyfill, toTemporalInstant } from '@js-temporal/polyfill'
+import { describe, expect, it } from 'vitest'
 import {
   formatIsoAsDDMMYYYY,
   formatIsoTimeHHMM,
@@ -10,15 +9,6 @@ import {
   toLocalDateTimeInput,
   weekBounds,
 } from './temporal'
-
-beforeAll(() => {
-  if (!globalThis.Temporal) {
-    globalThis.Temporal = TemporalPolyfill
-  }
-  if (!Date.prototype.toTemporalInstant) {
-    Date.prototype.toTemporalInstant = toTemporalInstant
-  }
-})
 
 describe('temporal utils', () => {
   it('keeps plain date key stable for date-only values', () => {

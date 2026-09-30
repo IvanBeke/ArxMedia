@@ -120,7 +120,7 @@ services:
     command: sh -c "celery -A arxmedia.celery beat --loglevel=info"
 
   ui:
-    image: node:22-alpine
+    image: ghcr.io/pnpm/pnpm:12
     restart: unless-stopped
     depends_on:
       app:
@@ -135,9 +135,7 @@ services:
     ports:
       - "5173:5173"
     command: >
-      sh -lc "corepack enable &&
-             corepack prepare pnpm@latest --activate &&
-             pnpm install &&
+      sh -lc "pnpm install &&
              pnpm dev --host 0.0.0.0 --port 5173"
 
 volumes:

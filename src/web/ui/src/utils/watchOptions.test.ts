@@ -1,16 +1,6 @@
-import { beforeAll, describe, expect, it } from 'vitest'
-import { Temporal as TemporalPolyfill, toTemporalInstant } from '@js-temporal/polyfill'
+import { describe, expect, it } from 'vitest'
 import { EPOCH_START_ISO } from '@/utils/temporal'
 import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
-
-beforeAll(() => {
-  if (!globalThis.Temporal) {
-    globalThis.Temporal = TemporalPolyfill
-  }
-  if (!Date.prototype.toTemporalInstant) {
-    Date.prototype.toTemporalInstant = toTemporalInstant
-  }
-})
 
 describe('resolveWatchedAtFromOption', () => {
   it('marks now with no timestamp and no release flag', async () => {

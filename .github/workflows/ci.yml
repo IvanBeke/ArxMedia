@@ -94,14 +94,14 @@ jobs:
       - name: UI typecheck
         run: >-
           docker compose run --rm --no-deps --entrypoint sh ui -lc
-          "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm typecheck"
+          "pnpm install && pnpm typecheck"
 
       - name: UI tests
         run: >-
           docker compose run --rm --no-deps --entrypoint sh ui -lc
-          "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm test"
+          "pnpm install && pnpm test"
 
       - name: UI production build
         run: >-
           docker compose run --rm --no-deps --entrypoint sh ui -lc
-          "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm build"
+          "pnpm install && pnpm build"

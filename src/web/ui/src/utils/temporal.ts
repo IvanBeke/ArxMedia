@@ -1,5 +1,3 @@
-import type { Temporal as TemporalPolyfill } from '@js-temporal/polyfill'
-
 const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
 
 export const EPOCH_START_ISO = '1970-01-01T00:00:00Z'
@@ -8,7 +6,7 @@ function hasTemporal() {
   return typeof globalThis.Temporal !== 'undefined'
 }
 
-function temporal(): typeof TemporalPolyfill {
+function temporal(): typeof Temporal {
   if (!globalThis.Temporal) {
     throw new Error('Temporal is unavailable. Call ensureTemporal() before using temporal utilities.')
   }
@@ -28,13 +26,18 @@ export async function ensureTemporal() {
     return
   }
   const temporalModule = await import('@js-temporal/polyfill')
-  globalThis.Temporal = temporalModule.Temporal
+  // `@js-temporal/polyfill` ships its own `Temporal` declarations, which TypeScript
+  // treats as distinct from the ambient ones in `lib.esnext.temporal.d.ts` even though
+  // both describe the same TC-39 API. This is the one place the polyfill implementation
+  // crosses into the global type.
+  globalThis.Temporal = temporalModule.Temporal as unknown as typeof Temporal
   if (!Date.prototype.toTemporalInstant && temporalModule.toTemporalInstant) {
-    Date.prototype.toTemporalInstant = temporalModule.toTemporalInstant
+    Date.prototype.toTemporalInstant =
+      temporalModule.toTemporalInstant as Date['toTemporalInstant']
   }
 }
 
-export function parsePlainDate(value: unknown): TemporalPolyfill.PlainDate | null {
+export function parsePlainDate(value: unknown): Temporal.PlainDate | null {
   if (!value) {
     return null
   }
@@ -45,7 +48,7 @@ export function parsePlainDate(value: unknown): TemporalPolyfill.PlainDate | nul
   }
 }
 
-export function parseInstant(value: unknown): TemporalPolyfill.Instant | null {
+export function parseInstant(value: unknown): Temporal.Instant | null {
   if (!value) {
     return null
   }
@@ -62,7 +65,7 @@ export function parseInstant(value: unknown): TemporalPolyfill.Instant | null {
 export function toZonedDateTime(
   value: unknown,
   timeZone = getUserTimeZone(),
-): TemporalPolyfill.ZonedDateTime | null {
+): Temporal.ZonedDateTime | null {
   const instant = parseInstant(value)
   if (instant) {
     return instant.toZonedDateTimeISO(timeZone)
@@ -201,7 +204,7 @@ export function plainDateToUserInstantIso(value: unknown, timeZone = getUserTime
   }
 }
 
-export function shiftIsoMonthStart(value: unknown, amount: number): TemporalPolyfill.PlainDate | null {
+export function shiftIsoMonthStart(value: unknown, amount: number): Temporal.PlainDate | null {
   const plainDate = parsePlainDate(value)
   if (!plainDate) {
     return null
@@ -211,7 +214,7 @@ export function shiftIsoMonthStart(value: unknown, amount: number): TemporalPoly
 
 export function monthBounds(
   value: unknown,
-): { start: TemporalPolyfill.PlainDate; end: TemporalPolyfill.PlainDate } | null {
+): { start: Temporal.PlainDate; end: Temporal.PlainDate } | null {
   const plainDate = parsePlainDate(value)
   if (!plainDate) {
     return null
@@ -223,7 +226,7 @@ export function monthBounds(
 
 export function weekBounds(
   value: unknown,
-): { start: TemporalPolyfill.PlainDate; end: TemporalPolyfill.PlainDate } | null {
+): { start: Temporal.PlainDate; end: Temporal.PlainDate } | null {
   const plainDate = parsePlainDate(value)
   if (!plainDate) {
     return null

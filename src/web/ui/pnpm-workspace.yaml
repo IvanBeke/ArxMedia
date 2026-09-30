@@ -1,3 +1,9 @@
-allowBuilds:
-  esbuild: true
-  vue-demi: true
+# Supply-chain policy: only install package versions published at least 24h ago.
+# Setting `minimumReleaseAge` explicitly is what enables strict mode -- pnpm's
+# *built-in* default of 1440 is deliberately non-strict for backward compatibility,
+# which makes pnpm silently fall back to a too-fresh version and auto-append it to
+# `minimumReleaseAgeExclude`.
+minimumReleaseAge: 1440
+# Fail resolution instead of writing a `minimumReleaseAgeExclude` exception.
+# Nothing in this repo may bypass the maturity window.
+minimumReleaseAgeStrict: true

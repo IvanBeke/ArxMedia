@@ -1,22 +1,12 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-pwa/client" />
 
-import type { Temporal as TemporalPolyfill, toTemporalInstant } from '@js-temporal/polyfill'
-
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string
 }
 
 interface ImportMeta {
   readonly env: ImportMetaEnv
-}
-
-declare global {
-  var Temporal: typeof TemporalPolyfill | undefined
-
-  interface Date {
-    toTemporalInstant?: typeof toTemporalInstant
-  }
 }
 
 declare module 'vue-router' {

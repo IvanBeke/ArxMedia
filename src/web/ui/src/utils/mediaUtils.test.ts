@@ -1,15 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { Temporal as TemporalPolyfill, toTemporalInstant } from '@js-temporal/polyfill'
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  if (!globalThis.Temporal) {
-    globalThis.Temporal = TemporalPolyfill
-  }
-  if (!Date.prototype.toTemporalInstant) {
-    Date.prototype.toTemporalInstant = toTemporalInstant
-  }
 })
 
 describe('tmdbImageUrl', () => {

@@ -148,7 +148,6 @@ import { MEDIA_TYPE } from '@/constants/tracking'
 import { isoDateKey, monthBounds, nowInstantIso, parsePlainDate, weekBounds } from '@/utils/temporal'
 import { getEpisodeLink, getMovieLink } from '@/utils/watchEntryLinks'
 import type { CalendarItem } from '@/types/api'
-import type { Temporal as TemporalPolyfill } from '@js-temporal/polyfill'
 
 type ViewMode = 'day' | 'month' | 'week'
 type CalendarDisplayItem = {
@@ -276,9 +275,9 @@ const calendarDays = computed(() => {
   return buildDays(startGrid, 42, first)
 })
 
-function buildDays(startGrid: TemporalPolyfill.PlainDate, count: number, currentMonthStart: TemporalPolyfill.PlainDate | null = null) {
+function buildDays(startGrid: Temporal.PlainDate, count: number, currentMonthStart: Temporal.PlainDate | null = null) {
   const todayIsoValue = todayIso()
-  const days: { iso: string; date: TemporalPolyfill.PlainDate; inCurrentMonth: boolean; isToday: boolean; items: CalendarDisplayItem[] }[] = []
+  const days: { iso: string; date: Temporal.PlainDate; inCurrentMonth: boolean; isToday: boolean; items: CalendarDisplayItem[] }[] = []
 
   for (let i = 0; i < count; i += 1) {
     const d = startGrid.add({ days: i })
