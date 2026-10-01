@@ -1,14 +1,14 @@
 <template>
-  <div>
-    <div v-if="!bare" class="relative h-72 md:h-[28rem]">
-      <img v-if="backdropUrl" :src="backdropUrl" :alt="backdropAlt" class="w-full h-full object-cover" />
+  <div :class="{ grid: !bare }">
+    <div v-if="!bare" class="relative row-start-1 col-start-1">
+      <img v-if="backdropUrl" :src="backdropUrl" :alt="backdropAlt" class="absolute inset-0 w-full h-full object-cover" />
       <div class="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
       <div class="absolute inset-0 bg-gradient-to-r from-surface/80 to-transparent"></div>
     </div>
 
     <div
-      class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10"
-      :class="bare ? 'py-8' : '-mt-60 md:-mt-96 pb-8'"
+      class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10"
+      :class="bare ? 'py-8' : 'row-start-1 col-start-1 pt-12 md:pt-16 pb-8'"
     >
       <div class="flex flex-col items-center text-center sm:text-left md:flex-row md:items-start md:text-left gap-6 md:gap-8">
         <div class="flex-shrink-0">
