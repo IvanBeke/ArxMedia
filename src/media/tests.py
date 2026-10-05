@@ -1501,6 +1501,24 @@ class MediaTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['tvmaze_id'], 123)
 
+    def test_episode_external_ids_merges_stored_and_live(self):
+        show = TVShow.objects.create(tmdb_id=7778, name='Episode IDs')
+        season = Season.objects.create(show=show, season_number=1, tmdb_id=1)
+        Episode.objects.create(season=season, episode_number=2, tmdb_id=2, name='E2', external_ids={'tvmaze_id': 4953})
+
+        with patch('media.views.tmdb.get_episode_external_ids', return_value={'imdb_id': 'tt1480055', 'tvdb_id': None}):
+            response = self.client.get('/api/media/tv/7778/seasons/1/episodes/2/external-ids/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {'tvmaze_id': 4953, 'imdb_id': 'tt1480055'})
+
+        with patch('media.views.tmdb.get_episode_external_ids', side_effect=Exception('offline')):
+            response = self.client.get('/api/media/tv/7778/seasons/1/episodes/2/external-ids/')
+        self.assertEqual(response.data, {'tvmaze_id': 4953})
+
+        with patch('media.views.tmdb.get_episode_external_ids', side_effect=Exception('offline')):
+            response = self.client.get('/api/media/tv/7778/seasons/1/episodes/9/external-ids/')
+        self.assertEqual(response.status_code, 404)
+
     @patch('media.views.tmdb.get_movie_details')
     def test_movie_detail_includes_collection_and_external_ids(self, mock_details):
         from media.models import Movie
@@ -1521,9 +1539,9 @@ class MediaTests(TestCase):
 
     @patch('media.views.tmdb.get_season')
     def test_season_detail_includes_overview_credits_and_cast(self, mock_season):
-        show = TVShow.objects.create(tmdb_id=707, name='Season Extras', number_of_seasons=1, number_of_episodes=1)
+        show = TVShow.objects.create(tmdb_id=707, name='Season Extras', number_of_seasons=1, number_of_episodes=1, external_ids={'imdb_id': 'tt0000707'})
         season = show.seasons.create(tmdb_id=7070, season_number=1, name='Season 1', overview='Season overview')
-        episode = season.episodes.create(tmdb_id=70701, episode_number=1, name='Ep 1')
+        episode = season.episodes.create(tmdb_id=70701, episode_number=1, name='Ep 1', external_ids={'tvmaze_id': 55})
         EpisodeCredit.objects.create(episode=episode, cast=[{'name': 'Ep Cast'}], crew=[], guest_stars=[])
         mock_season.return_value = {
             'vote_average': 8.4,
@@ -1541,6 +1559,8 @@ class MediaTests(TestCase):
         self.assertEqual(response.data['overview'], 'Season overview')
         self.assertEqual(response.data['credits']['cast'][0]['name'], 'Season Cast')
         self.assertEqual(response.data['episodes'][0]['cast'][0]['name'], 'Ep Cast')
+        self.assertEqual(response.data['episodes'][0]['external_ids'], {'tvmaze_id': 55})
+        self.assertEqual(response.data['show_external_ids'], {'imdb_id': 'tt0000707'})
 
     def test_tv_brief_includes_season_overview(self):
         show = TVShow.objects.create(tmdb_id=708, name='Brief Overview', number_of_seasons=1, number_of_episodes=1)

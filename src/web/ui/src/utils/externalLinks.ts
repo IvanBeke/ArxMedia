@@ -45,11 +45,15 @@ export function showExternalLinks(tmdbId: string | number, ids?: ExternalIds | n
 export function seasonExternalLinks(
   tmdbId: string | number,
   seasonNumber: string | number,
+  seasonIds?: ExternalIds | null,
+  showIds?: ExternalIds | null,
 ): DetailExternalLinks {
+  const tvmazeShow = tvmazeUrlFor(seasonIds ?? null) ?? tvmazeUrlFor(showIds ?? null)
+  const showImdb = imdbUrlFor(showIds ?? null)
   return {
     tmdbUrl: `https://www.themoviedb.org/tv/${tmdbId}/season/${seasonNumber}`,
-    tvmazeUrl: null,
-    imdbUrl: null,
+    tvmazeUrl: tvmazeShow ? `${tvmazeShow}/episodes` : null,
+    imdbUrl: showImdb?.includes('/title/') ? `${showImdb}episodes/?season=${seasonNumber}` : null,
   }
 }
 
@@ -57,11 +61,17 @@ export function episodeExternalLinks(
   tmdbId: string | number,
   seasonNumber: string | number,
   episodeNumber: string | number,
+  ids?: ExternalIds | null,
 ): DetailExternalLinks {
+  const raw = ids?.tvmaze_id
+  const tvmazeId = typeof raw === 'string' ? Number.parseInt(raw, 10) : raw
+  const imdb = imdbUrlFor(ids ?? null)
   return {
     tmdbUrl: `https://www.themoviedb.org/tv/${tmdbId}/season/${seasonNumber}/episode/${episodeNumber}`,
-    tvmazeUrl: null,
-    imdbUrl: null,
+    tvmazeUrl: typeof tvmazeId === 'number' && Number.isFinite(tvmazeId) && tvmazeId > 0
+      ? `https://www.tvmaze.com/episodes/${tvmazeId}`
+      : null,
+    imdbUrl: imdb?.includes('/title/') ? imdb : null,
   }
 }
 

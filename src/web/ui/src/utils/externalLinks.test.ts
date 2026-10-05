@@ -28,6 +28,25 @@ describe('externalLinks', () => {
     )
   })
 
+  it('builds season tvmaze and imdb links with show fallback', () => {
+    const own = seasonExternalLinks(1399, 2, { tvmaze_id: 500 }, { tvmaze_id: 82, imdb_id: 'tt0944947' })
+    expect(own.tvmazeUrl).toBe('https://www.tvmaze.com/shows/500/-/episodes')
+    expect(own.imdbUrl).toBe('https://www.imdb.com/title/tt0944947/episodes/?season=2')
+    expect(seasonExternalLinks(1399, 2, {}, { tvmaze_id: 82 }).tvmazeUrl).toBe('https://www.tvmaze.com/shows/82/-/episodes')
+    const none = seasonExternalLinks(1399, 2, null, { imdb_id: 'invalid' })
+    expect(none.tvmazeUrl).toBeNull()
+    expect(none.imdbUrl).toBeNull()
+  })
+
+  it('builds episode tvmaze and imdb links', () => {
+    const links = episodeExternalLinks(1399, 1, 2, { tvmaze_id: 4953, imdb_id: 'tt1480055' })
+    expect(links.tvmazeUrl).toBe('https://www.tvmaze.com/episodes/4953')
+    expect(links.imdbUrl).toBe('https://www.imdb.com/title/tt1480055/')
+    const none = episodeExternalLinks(1399, 1, 2, { tvmaze_id: 0, imdb_id: 'nm123' })
+    expect(none.tvmazeUrl).toBeNull()
+    expect(none.imdbUrl).toBeNull()
+  })
+
   it('builds person links with imdb name url', () => {
     const links = personExternalLinks(123, { imdb_id: 'nm1234567' })
     expect(links.tmdbUrl).toBe('https://www.themoviedb.org/person/123')

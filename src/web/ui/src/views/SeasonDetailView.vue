@@ -247,7 +247,12 @@ watch(activeTab, (tab) => {
   router.replace({ query: { ...route.query, tab } })
 })
 
-const externalLinks = computed(() => seasonExternalLinks(tmdbId.value, seasonNumber.value))
+const externalLinks = computed(() => seasonExternalLinks(
+  tmdbId.value,
+  seasonNumber.value,
+  season.value?.external_ids,
+  season.value?.show_external_ids,
+))
 
 const seasonAirYear = computed(() => {
   const airDate = season.value?.air_date

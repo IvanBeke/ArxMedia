@@ -56,7 +56,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
             'id', 'tmdb_id', 'episode_number', 'name', 'overview',
             'still_path', 'still_url', 'air_date', 'air_time',
             'broadcast_start', 'runtime', 'vote_average', 'vote_count',
-            'episode_type', 'cast', 'guest_stars', 'crew'
+            'episode_type', 'external_ids', 'cast', 'guest_stars', 'crew'
         ]
 
     def get_cast(self, obj):

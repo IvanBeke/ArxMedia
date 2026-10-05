@@ -26,4 +26,5 @@ urlpatterns = [
     path('tv/<int:tmdb_id>/seasons/<int:season_number>/', views.season_detail, name='season_detail'),
     path('tv/<int:tmdb_id>/seasons/<int:season_number>/credits/', views.season_credits, name='season_credits'),
     path('tv/<int:tmdb_id>/seasons/<int:season_number>/episodes/<int:episode_number>/credits/', views.episode_credits, name='episode_credits'),
+    path('tv/<int:tmdb_id>/seasons/<int:season_number>/episodes/<int:episode_number>/external-ids/', views.episode_external_ids, name='episode_external_ids'),
 ]

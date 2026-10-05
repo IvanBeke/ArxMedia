@@ -4,15 +4,16 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia } from 'pinia'
 import EpisodeDetailView from '@/views/EpisodeDetailView.vue'
 
-const { getTV, getSeason, getEpisodeCredits, getWatchedEpisodes } = vi.hoisted(() => ({
+const { getTV, getSeason, getEpisodeCredits, getEpisodeExternalIds, getWatchedEpisodes } = vi.hoisted(() => ({
   getTV: vi.fn(),
   getSeason: vi.fn(),
   getEpisodeCredits: vi.fn(),
+  getEpisodeExternalIds: vi.fn().mockResolvedValue({}),
   getWatchedEpisodes: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
-  mediaAPI: { getTV, getSeason, getEpisodeCredits },
+  mediaAPI: { getTV, getSeason, getEpisodeCredits, getEpisodeExternalIds },
   trackingAPI: {
     getWatchedEpisodes,
     markEpisodeWatched: vi.fn().mockResolvedValue({}),

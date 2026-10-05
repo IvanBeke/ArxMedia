@@ -495,6 +495,7 @@ def season_detail(request, tmdb_id, season_number):
 
     season_data = SeasonSerializer(season).data
     season_data['show_name'] = show.name
+    season_data['show_external_ids'] = show.external_ids or {}
 
     try:
         live = tmdb.get_season(tmdb_id, season_number)
@@ -663,6 +664,24 @@ def tv_external_ids(request, tmdb_id):
             stored.update({k: v for k, v in live.items() if v})
     except Exception as exc:
         logger.warning('Failed to fetch TV external ids for %s: %s', tmdb_id, exc)
+        if not stored:
+            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(stored)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def episode_external_ids(request, tmdb_id, season_number, episode_number):
+    episode = Episode.objects.filter(
+        season__show__tmdb_id=tmdb_id, season__season_number=season_number, episode_number=episode_number,
+    ).first()
+    stored = dict(episode.external_ids) if episode and episode.external_ids else {}
+    try:
+        live = tmdb.get_episode_external_ids(tmdb_id, season_number, episode_number)
+        if isinstance(live, dict):
+            stored.update({k: v for k, v in live.items() if v})
+    except Exception as exc:
+        logger.warning('Failed to fetch episode external ids for %s S%sE%s: %s', tmdb_id, season_number, episode_number, exc)
         if not stored:
             return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
     return Response(stored)

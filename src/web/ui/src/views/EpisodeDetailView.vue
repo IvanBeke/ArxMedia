@@ -158,7 +158,7 @@ import { episodeExternalLinks } from '@/utils/externalLinks'
 import { watchedTooltipText } from '@/utils/watchOptions'
 import { getEpisodeLink } from '@/utils/watchEntryLinks'
 
-import type { Credits, Episode, Season, TVShow, WatchedEpisode } from '@/types/api'
+import type { Credits, Episode, ExternalIds, Season, TVShow, WatchedEpisode } from '@/types/api'
 import type { WatchedAtOption } from '@/utils/watchOptions'
 
 type EpisodeNavigationTarget = {
@@ -179,6 +179,7 @@ const loading = ref(true)
 const showData = ref<TVShow | null>(null)
 const episodeData = ref<Episode | null>(null)
 const creditsData = ref<Credits | null>(null)
+const episodeIds = ref<ExternalIds | null>(null)
 const previousEpisode = ref<EpisodeNavigationTarget | null>(null)
 const nextEpisode = ref<EpisodeNavigationTarget | null>(null)
 const isWatched = ref(false)
@@ -196,7 +197,12 @@ const { t } = useI18n()
 
 const watchButtonTooltip = computed(() => watchedTooltipText(isWatched.value, watchedAt.value, t))
 
-const externalLinks = computed(() => episodeExternalLinks(tmdbId.value, seasonNum.value, episodeNum.value))
+const externalLinks = computed(() => episodeExternalLinks(
+  tmdbId.value,
+  seasonNum.value,
+  episodeNum.value,
+  { ...episodeData.value?.external_ids, ...episodeIds.value },
+))
 
 const episodeCast = computed(() => episodeData.value?.cast || creditsData.value?.cast || [])
 const episodeCrew = computed(() => episodeData.value?.crew || creditsData.value?.crew || [])
@@ -286,12 +292,18 @@ async function load(moveFocus = false) {
   showData.value = null
   episodeData.value = null
   creditsData.value = null
+  episodeIds.value = null
   previousEpisode.value = null
   nextEpisode.value = null
   isWatched.value = false
   watchedAt.value = ''
 
   try {
+    void mediaAPI.getEpisodeExternalIds(showId, seasonNumber, episodeNumber)
+      .then((ids) => {
+        if (active && loadId === latestLoadId) episodeIds.value = ids
+      })
+      .catch(() => {})
     const [showRes, seasonRes, creditsRes, watchedRes] = await Promise.all([
       mediaAPI.getTV(showId),
       mediaAPI.getSeason(showId, seasonNumber),

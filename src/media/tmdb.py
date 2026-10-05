@@ -227,6 +227,9 @@ class TMDBService:
     def get_season_external_ids(self, show_id, season_number, *, use_cache=True):
         return self._get(f'/tv/{show_id}/season/{season_number}/external_ids', use_cache=use_cache)
 
+    def get_episode_external_ids(self, show_id, season_number, episode_number):
+        return self._get(f'/tv/{show_id}/season/{season_number}/episode/{episode_number}/external_ids')
+
     def get_episode_credits(self, show_id, season_number, episode_number, *, use_cache=True):
         return self._get(
             f'/tv/{show_id}/season/{season_number}/episode/{episode_number}/credits',
