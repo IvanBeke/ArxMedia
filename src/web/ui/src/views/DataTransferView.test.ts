@@ -245,14 +245,15 @@ describe('DataTransferView', () => {
     const ready = pendingJob({
       job_type: 'export',
       status: DATA_TRANSFER_STATUS.DONE,
-      output_url: 'http://localhost:8000/media/exports/arxmedia_export_admin_2026_09_25_23_05.zip',
+      output_url: 'http://localhost:8000/api/tracking/data/jobs/9/file/',
+      output_filename: 'arxmedia_export_admin_2026_09_25_23_05.zip',
     })
     const wrapper = mountView([ready])
     await flushPromises()
 
     expect(wrapper.text()).toContain('Recent exports')
     expect(wrapper.text()).toContain('arxmedia_export_admin_2026_09_25_23_05.zip')
-    deleteExportFile.mockResolvedValue({ ...ready, output_url: null })
+    deleteExportFile.mockResolvedValue({ ...ready, output_url: null, output_filename: null })
     const deleteButton = wrapper.findAll('button').find((button) => button.text() === 'Delete file')
     await deleteButton?.trigger('click')
     await flushPromises()
@@ -272,13 +273,13 @@ describe('DataTransferView', () => {
     const wrapper = mountView([pendingJob({
       job_type: 'export',
       status: DATA_TRANSFER_STATUS.DONE,
-      output_url: '/media/exports/arxmedia_export_admin_2026_09_25_23_05.zip',
+      output_url: '/api/tracking/data/jobs/9/file/',
     })])
     await flushPromises()
 
     const download = wrapper.find('a.btn-primary')
     expect(download.text()).toBe('Download export')
-    expect(download.attributes('href')).toBe('/media/exports/arxmedia_export_admin_2026_09_25_23_05.zip')
+    expect(download.attributes('href')).toBe('/api/tracking/data/jobs/9/file/')
     wrapper.unmount()
   })
 

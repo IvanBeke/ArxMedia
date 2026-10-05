@@ -1,5 +1,8 @@
+import os
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.urls import reverse
 from rest_framework import serializers
 
 from .choices import MediaType, WatchEntryMediaType
@@ -291,18 +294,21 @@ class ListItemSerializer(MediaCardSerializer):
 
 class DataTransferJobSerializer(serializers.ModelSerializer):
     output_url = serializers.SerializerMethodField()
+    output_filename = serializers.SerializerMethodField()
 
     class Meta:
         model = DataTransferJob
         fields = [
             'id', 'job_type', 'data_format', 'source', 'import_mode', 'overwrite_existing', 'status', 'total_items',
-            'processed_items', 'error_message', 'output_url', 'metadata', 'created_at', 'updated_at'
+            'processed_items', 'error_message', 'output_url', 'output_filename', 'metadata', 'created_at', 'updated_at'
         ]
 
+    def get_output_filename(self, obj):
+        return os.path.basename(obj.output_file.name) if obj.output_file else None
+
     def get_output_url(self, obj):
-        if obj.output_file:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.output_file.url)
-            return obj.output_file.url
-        return None
+        if not obj.output_file:
+            return None
+        url = reverse('data_job_file', kwargs={'pk': obj.pk})
+        request = self.context.get('request')
+        return request.build_absolute_uri(url) if request else url

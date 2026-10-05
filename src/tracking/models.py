@@ -1,3 +1,6 @@
+import os
+import uuid
+
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
@@ -334,13 +337,26 @@ class UserMediaStatus(models.Model):
         return f'{self.user.username} {self.media_type} {self.tmdb_id}: {self.status}'
 
 
+def _private_upload_path(prefix, filename):
+    # A random directory keeps stored files unguessable while preserving the original name.
+    return f'{prefix}/{uuid.uuid4().hex}/{os.path.basename(filename)}'
+
+
+def import_upload_path(instance, filename):
+    return _private_upload_path('imports', filename)
+
+
+def export_upload_path(instance, filename):
+    return _private_upload_path('exports', filename)
+
+
 class DataTransferJob(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='data_jobs')
     job_type = models.CharField(max_length=10, choices=DataTransferJobType.choices)
     data_format = models.CharField(max_length=10, choices=DataTransferFormat.choices)
     status = models.CharField(max_length=32, choices=DataTransferStatus.choices, default=DataTransferStatus.PENDING)
-    input_file = models.FileField(upload_to='imports/', null=True, blank=True)
-    output_file = models.FileField(upload_to='exports/', null=True, blank=True)
+    input_file = models.FileField(upload_to=import_upload_path, null=True, blank=True)
+    output_file = models.FileField(upload_to=export_upload_path, null=True, blank=True)
     total_items = models.IntegerField(default=0)
     processed_items = models.IntegerField(default=0)
     error_message = models.TextField(blank=True)

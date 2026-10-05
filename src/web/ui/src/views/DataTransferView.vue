@@ -172,7 +172,7 @@
               <p class="text-sm text-secondary">Created: <span class="text-primary">{{ formatDateTimeByLocale(exportJob.created_at) }}</span></p>
               <p class="text-xs text-muted mt-0.5">
                 <span class="font-semibold uppercase tracking-wide" :class="exportStatusById[exportJob.id]?.className">{{ exportStatusById[exportJob.id]?.text }}</span>
-                <span v-if="exportJob.output_url"> · <a :href="exportJob.output_url" download class="text-brand-400 hover:text-brand-300">{{ exportFileName(exportJob.output_url) }}</a></span>
+                <span v-if="exportJob.output_url"> · <a :href="exportJob.output_url" download class="text-brand-400 hover:text-brand-300">{{ exportJob.output_filename }}</a></span>
               </p>
             </div>
             <button
@@ -784,12 +784,6 @@ async function startArxmediaImport() {
   } catch (error) {
     arxmediaError.value = getApiErrorMessage(error, 'The ArxMedia backup import could not be started.')
   }
-}
-
-function exportFileName(outputUrl: string | null | undefined): string {
-  if (!outputUrl) return ''
-  const segments = String(outputUrl).split('?')[0]?.split('/') || []
-  return decodeURIComponent(segments[segments.length - 1] || outputUrl)
 }
 
 function askDeleteExport(jobId: number) {

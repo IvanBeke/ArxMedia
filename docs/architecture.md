@@ -14,13 +14,14 @@ What "good work" means for this project.
 - Models are synced from TMDB and enriched with TVMaze — TMDB owns the media catalog; TVMaze supplies TV scheduling and runtime data. The app does not own the external media catalog.
 - Django session auth: `POST /api/auth/login/`, `/logout/` and `/register/` manage an HttpOnly session cookie (`SESSION_COOKIE_AGE`, default 14 days); the SPA sends the `csrftoken` cookie back as `X-CSRFToken` on unsafe requests. Unauthenticated API requests return 401.
 - Redis cache is optional — TMDB and TVMaze services fall back gracefully
+- Import uploads and export archives are private: `MEDIA_ROOT` is not served over HTTP, files are stored under random directories, and exports download only through the owner-scoped `GET /api/tracking/data/jobs/<id>/file/`
 - DRF with `IsAuthenticated` by default and `PageNumberPagination` (PAGE_SIZE=20)
 - All Django code lives under `src/`
 
 ## Deployment note: trusted proxy / HTTPS behind Traefik
 
 - When the app is served behind Traefik or another TLS-terminating reverse proxy, Django must trust forwarded headers from the proxy.
-- This is required for media downloads and other routes that should be served over HTTPS without redirecting to a localhost-style URL.
+- This is required for export downloads and other routes that should be served over HTTPS without redirecting to a localhost-style URL.
 - The app reads these from environment variables so production deployments can set the real public host without hardcoding values.
 - Required env vars for a proxied HTTPS deployment:
   - `ALLOWED_HOSTS`: comma-separated public hosts, e.g. `arxmedia.example.com`

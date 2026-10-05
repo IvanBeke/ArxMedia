@@ -106,7 +106,7 @@ export interface DataTransferReport {
 }
 export interface DataTransferJob {
   id: number; job_type: DataTransferJobType; status: DataTransferStatus; created_at: string; updated_at: string; processed_items: number; total_items: number; error_message?: string | null
-  source?: DataTransferSource; data_format?: DataTransferFormat; import_mode?: DataImportMode; overwrite_existing?: boolean; output_url?: string | null
+  source?: DataTransferSource; data_format?: DataTransferFormat; import_mode?: DataImportMode; overwrite_existing?: boolean; output_url?: string | null; output_filename?: string | null
   metadata?: { summary?: DataTransferReport['summary']; pipeline?: { stage?: string }; report?: DataTransferReport } & DataTransferReport
 }
 export interface CalendarMovie { kind: 'movie'; date: string; tmdb_id: number; title: string; poster_url: string | null }

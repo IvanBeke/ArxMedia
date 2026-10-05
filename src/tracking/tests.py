@@ -3141,7 +3141,7 @@ class DataImportExportTests(BaseTestCase):
         self.assertTrue(job.output_file.name.endswith('.zip'))
         self.assertRegex(
             job.output_file.name,
-            r'arxmedia_export_testuser_\d{4}(_\d{2}){4}(_\w+)?\.zip$',
+            r'^exports/[0-9a-f]{32}/arxmedia_export_testuser_\d{4}(_\d{2}){4}(_\w+)?\.zip$',
         )
         with job.output_file.open('rb') as export_file, zipfile.ZipFile(export_file) as archive:
             self.assertEqual(
@@ -3345,6 +3345,36 @@ class DataImportExportTests(BaseTestCase):
         job.refresh_from_db()
         self.assertFalse(job.output_file)
         self.assertFalse(os.path.exists(stored_path))
+
+    def test_export_file_download_is_scoped_to_owner(self):
+        from django.core.files.base import ContentFile
+
+        job = DataTransferJob.objects.create(user=self.user, job_type='export', data_format='zip', status='done')
+        job.output_file.save('arxmedia_export_testuser_2026_09_25_23_05.zip', ContentFile(b'zip-bytes'), save=True)
+        self.addCleanup(job.output_file.delete, save=False)
+
+        listed = self.client.get(f'/api/tracking/data/jobs/{job.id}/')
+        self.assertTrue(listed.data['output_url'].endswith(f'/api/tracking/data/jobs/{job.id}/file/'))
+        self.assertEqual(listed.data['output_filename'], 'arxmedia_export_testuser_2026_09_25_23_05.zip')
+
+        self.assertEqual(self.client.get(f'/media/{job.output_file.name}').status_code, 404)
+
+        self.authenticate(self.user2)
+        self.assertEqual(self.client.get(f'/api/tracking/data/jobs/{job.id}/file/').status_code, 400)
+
+        self.client.force_authenticate(user=None)
+        self.assertEqual(self.client.get(f'/api/tracking/data/jobs/{job.id}/file/').status_code, 401)
+
+        self.authenticate(self.user)
+        response = self.client.get(f'/api/tracking/data/jobs/{job.id}/file/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b''.join(response.streaming_content), b'zip-bytes')
+        self.assertIn('attachment; filename="arxmedia_export_testuser_2026_09_25_23_05.zip"', response['Content-Disposition'])
+        self.assertEqual(response['Cache-Control'], 'private, no-store')
+
+    def test_export_file_download_missing_file_returns_404(self):
+        job = DataTransferJob.objects.create(user=self.user, job_type='export', data_format='zip', status='done')
+        self.assertEqual(self.client.get(f'/api/tracking/data/jobs/{job.id}/file/').status_code, 404)
 
     def test_export_file_delete_rejects_import_jobs(self):
         job = DataTransferJob.objects.create(user=self.user, job_type='import', data_format='zip', status='done', source='trakt')

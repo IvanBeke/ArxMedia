@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import date, datetime, timedelta
 from datetime import time as dt_time
 from typing import TYPE_CHECKING
@@ -23,11 +24,12 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Cast, Coalesce, Greatest, Lower
+from django.http import FileResponse
 from django.utils import timezone
 from media.tmdb import tmdb
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
@@ -2257,17 +2259,33 @@ class DataJobCancelView(generics.GenericAPIView):
         return Response(self.get_serializer(job, context={'request': request}).data, status=status.HTTP_200_OK)
 
 
-class DataJobDeleteFileView(generics.GenericAPIView):
+class DataJobFileView(generics.GenericAPIView):
     serializer_class = DataTransferJobSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def delete(self, request, *args, **kwargs):
-        # Scoped to the requesting user: nobody can delete another user's file.
-        job = DataTransferJob.objects.filter(user=request.user, id=kwargs.get('pk')).first()
+    def _get_export_job(self, request, pk):
+        # Scoped to the requesting user: nobody can access another user's file.
+        job = DataTransferJob.objects.filter(user=request.user, id=pk).first()
         if not job:
             _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
         if job.job_type != DataTransferJobType.EXPORT:
             raise ValidationError({'job': 'Only export jobs have a downloadable file.'})
+        return job
+
+    def get(self, request, *args, **kwargs):
+        job = self._get_export_job(request, kwargs.get('pk'))
+        if not job.output_file:
+            raise NotFound('Export file not found.')
+        try:
+            handle = job.output_file.open('rb')
+        except FileNotFoundError as exc:
+            raise NotFound('Export file not found.') from exc
+        response = FileResponse(handle, as_attachment=True, filename=os.path.basename(job.output_file.name))
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
+    def delete(self, request, *args, **kwargs):
+        job = self._get_export_job(request, kwargs.get('pk'))
         if job.output_file:
             job.output_file.delete(save=False)
             job.output_file = None
