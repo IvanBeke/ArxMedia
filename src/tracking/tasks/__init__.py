@@ -9,6 +9,7 @@ from .import_pipeline import (
 )
 from .system import (
     cleanup_data_transfer_jobs,
+    cleanup_removed_episodes,
     heartbeat,
     refresh_show_status_for_user,
     sync_show_episode_credits,
@@ -17,6 +18,7 @@ from .system import (
 
 __all__ = [
     'cleanup_data_transfer_jobs',
+    'cleanup_removed_episodes',
     'export_user_data',
     'heartbeat',
     'prepare_import_job',

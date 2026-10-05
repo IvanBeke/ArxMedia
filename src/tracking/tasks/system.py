@@ -4,12 +4,13 @@ from datetime import date, timedelta
 from celery import shared_task
 from django.db.models import Q
 from django.utils import timezone
-from media.models import Movie, TVShow
+from media.models import Episode, Movie, TVShow
+from media.signals import suppress_episode_signals
 from media.tmdb import TMDBNotFoundError, tmdb
 
 from ..choices import DataTransferJobType, DataTransferStatus, MediaType, WatchEntryMediaType
-from ..models import DataTransferJob
-from ..status_sync import refresh_show_status
+from ..models import DataTransferJob, WatchEntry
+from ..status_sync import rebuild_episode_chain, refresh_all_statuses_for_show, refresh_show_status
 
 logger = logging.getLogger(__name__)
 
@@ -91,22 +92,46 @@ def sync_show_episode_credits(tmdb_id: int) -> dict[str, int | str]:
         logger.info('Skipping episode credits sync; tv %s not found locally.', tmdb_id)
         return {'status': 'missing', 'tmdb_id': int(tmdb_id)}
 
-    synced = 0
-    failures = 0
-    for season in show.seasons.all():
-        season_number = int(season.season_number)
-        for episode_number in season.episodes.values_list('episode_number', flat=True):
-            try:
-                tmdb.sync_episode_credits(int(tmdb_id), season_number, int(episode_number), show=show, use_cache=False)
-                synced += 1
-            except Exception:
-                failures += 1
+    synced, failures = tmdb.sync_show_episode_credits(show, use_cache=False)
 
     return {
         'status': 'ok',
         'tmdb_id': int(tmdb_id),
         'episode_credits_synced': synced,
         'episode_credit_failures': failures,
+    }
+
+
+@shared_task(name='tracking.cleanup_removed_episodes')
+def cleanup_removed_episodes(tmdb_id: int, season_number: int, episode_numbers: list[int]) -> dict[str, int | list[int]]:
+    """Delete episodes TMDB no longer returns, keeping any that a user has watched."""
+    watched = set(
+        WatchEntry.objects.for_show(tmdb_id)
+        .filter(season_number=season_number, episode_number__in=episode_numbers)
+        .values_list('episode_number', flat=True)
+    )
+    if watched:
+        logger.info('Keeping removed episodes %s of tv %s season %s: they have watch entries.', sorted(watched), tmdb_id, season_number)
+
+    deleted = 0
+    removable = [number for number in episode_numbers if number not in watched]
+    if removable:
+        with suppress_episode_signals():
+            _, per_model = Episode.objects.filter(
+                season__show__tmdb_id=tmdb_id,
+                season__season_number=season_number,
+                episode_number__in=removable,
+            ).delete()
+        deleted = per_model.get(Episode._meta.label, 0)
+    if deleted:
+        rebuild_episode_chain(tmdb_id)
+        refresh_all_statuses_for_show(tmdb_id)
+
+    return {
+        'tmdb_id': tmdb_id,
+        'season_number': season_number,
+        'deleted': deleted,
+        'kept': sorted(watched),
     }
 
 
@@ -176,14 +201,9 @@ def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict
             tv_failures += 1
             continue
 
-        for season in show.seasons.all():
-            season_number = int(season.season_number)
-            for episode_number in season.episodes.values_list('episode_number', flat=True):
-                try:
-                    tmdb.sync_episode_credits(tmdb_id, season_number, int(episode_number), show=show, use_cache=False)
-                    episode_credits_synced += 1
-                except Exception:
-                    episode_credit_failures += 1
+        synced, failures = tmdb.sync_show_episode_credits(show, use_cache=False)
+        episode_credits_synced += synced
+        episode_credit_failures += failures
 
     return {
         'window_start': start_date_str,

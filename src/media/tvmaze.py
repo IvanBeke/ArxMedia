@@ -7,6 +7,8 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
+from .http import build_session
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,7 +17,7 @@ class TVMazeService:
     CACHE_TTL = 86400
 
     def __init__(self):
-        self._session = requests.Session()
+        self._session = build_session()
         self._redis = None
 
     def _get_redis(self):

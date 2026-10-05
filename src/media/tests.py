@@ -204,58 +204,8 @@ class MediaTests(TestCase):
         self.assertEqual(result['id'], 505)
         self.assertEqual(mock_request.call_args_list[-1].args, ('/search/shows', {'q': 'Fallback Show'}))
 
-    def test_tv_show_request_appends_external_ids(self):
-        with patch.object(tmdb, '_get', return_value={}) as mock_get:
-            tmdb.get_tv_show_with_seasons(1399, [1, 2])
-
-        mock_get.assert_called_once_with(
-            '/tv/1399',
-            {'append_to_response': 'external_ids,season/1,season/2'},
-            use_cache=True,
-        )
-
-    def test_tv_show_request_reserves_append_slot_for_external_ids(self):
-        with patch.object(tmdb, '_get', return_value={}) as mock_get:
-            tmdb.get_tv_show_with_seasons(1399, list(range(1, 25)))
-
-        append_value = mock_get.call_args.args[1]['append_to_response']
-        self.assertEqual(append_value.count('season/'), 19)
-        self.assertTrue(append_value.startswith('external_ids,'))
-
-    def test_tv_show_request_merges_season_summary_ids_into_appended_payloads(self):
-        response = {
-            'seasons': [
-                {'id': 180379, 'season_number': 1, 'episode_count': 10},
-            ],
-            'season/1': {
-                'season_number': 1,
-                'name': 'Season 1',
-                'episodes': [],
-            },
-        }
-        with patch.object(tmdb, '_get', return_value=response):
-            data = tmdb.get_tv_show_with_seasons(118357, [1])
-
-        self.assertEqual(data['season/1']['id'], 180379)
-        self.assertEqual(data['season/1']['episode_count'], 10)
-        self.assertEqual(data['season/1']['name'], 'Season 1')
-
     def test_tvmaze_external_ids_are_persisted_with_tvmaze_id(self):
-        with patch.object(tmdb, 'get_tv_show', return_value={
-            'id': 888,
-            'name': 'External ID Show',
-            'first_air_date': '2020-01-01',
-            'number_of_seasons': 0,
-            'number_of_episodes': 0,
-            'external_ids': {
-                'tvdb_id': 123,
-                'imdb_id': 'tt456',
-                'tvrage_id': 789,
-                'wikidata_id': 'Q123',
-            },
-            'genres': [],
-            'networks': [],
-        }), patch.object(tmdb, 'get_tv_show_with_seasons', return_value={
+        with patch.object(tmdb, 'get_tv_details', return_value={
             'id': 888,
             'name': 'External ID Show',
             'first_air_date': '2020-01-01',
@@ -293,7 +243,6 @@ class MediaTests(TestCase):
                 show,
                 1,
                 season_data,
-                sync_episode_credits=False,
                 tvmaze_show={'network': {'country': {'timezone': 'UTC'}}},
                 tvmaze_episodes=[{'season': 1, 'number': 1, 'airdate': '2026-01-01', 'airtime': '20:00', 'runtime': 47}],
             )
@@ -314,7 +263,6 @@ class MediaTests(TestCase):
                 show,
                 1,
                 season_data,
-                sync_episode_credits=False,
                 tvmaze_show={'network': {'country': {'timezone': 'UTC'}}},
                 tvmaze_episodes=[{'season': 1, 'number': 1, 'airdate': '2026-01-01', 'airtime': '20:00', 'runtime': 47}],
             )
@@ -333,8 +281,7 @@ class MediaTests(TestCase):
             'networks': [],
         }
         with (
-            patch.object(tmdb, 'get_tv_show', return_value=show_data),
-            patch.object(tmdb, 'get_tv_show_with_seasons', return_value=show_data),
+            patch.object(tmdb, 'get_tv_details', return_value=show_data),
             patch.object(tmdb, '_resolve_tvmaze', return_value=({'id': 9941, 'runtime': 52}, [])),
         ):
             show = tmdb.sync_tv_show(994, recompute_user_statuses=False)
@@ -359,7 +306,6 @@ class MediaTests(TestCase):
                     'external_ids': {'imdb_id': 'tt14986406'},
                     'episodes': [{'id': 7470579, 'episode_number': 48, 'name': 'THE END TWO WORLD', 'air_date': '2026-09-12'}],
                 },
-                sync_episode_credits=False,
                 tvmaze_context={},
             )
 
@@ -386,7 +332,6 @@ class MediaTests(TestCase):
                     'air_date': '2026-09-09',
                 }],
             },
-            sync_episode_credits=False,
             tvmaze_show={
                 'id': 14459,
                 'schedule': {'time': '22:30'},
@@ -411,7 +356,6 @@ class MediaTests(TestCase):
                 'air_date': '2016-04-04',
                 'episodes': [{'id': 659420101, 'episode_number': 1, 'name': 'Episode 1', 'air_date': '2016-04-04'}],
             },
-            sync_episode_credits=False,
             tvmaze_show={
                 'id': 14459,
                 'schedule': {'time': '22:30'},
@@ -459,7 +403,6 @@ class MediaTests(TestCase):
                 'name': 'Season 1',
                 'episodes': [{'id': 659420101, 'episode_number': 1, 'name': 'Episode 1', 'air_date': '2016-04-04'}],
             },
-            sync_episode_credits=False,
             tvmaze_show={'id': 14459, 'schedule': {'time': '22:30'}, 'network': {'country': {'timezone': 'Asia/Tokyo'}}},
             tvmaze_episodes=[],
         )
@@ -793,42 +736,24 @@ class MediaTests(TestCase):
         credit.refresh_from_db()
         self.assertEqual(credit.cast, [{'name': 'Emilia Clarke'}])
 
-    def _sync_season_and_capture_appends(self, **sync_kwargs):
+    def test_sync_season_fetches_season_and_external_ids_in_one_request(self):
         show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones')
         requested = []
 
         def capture(endpoint, params=None, **kwargs):
-            requested.append((endpoint, params))
+            requested.append((endpoint, (params or {}).get('append_to_response')))
             if endpoint == '/tv/1399/season/1':
-                return {'id': 139901, 'season_number': 1, 'name': 'Season 1', 'episodes': []}
+                return {'id': 139901, 'season_number': 1, 'name': 'Season 1', 'external_ids': {'tvdb_id': 5}, 'episodes': []}
             return {}
 
         with patch('media.tmdb.TMDBService._get', side_effect=capture):
-            tmdb.sync_season(show, 1, **sync_kwargs)
+            season = tmdb.sync_season(show, 1)
 
-        return [
-            (params or {}).get('append_to_response', '')
-            for endpoint, params in requested
-            if endpoint == '/tv/1399/season/1'
-        ]
-
-    def test_sync_season_skips_credits_append_when_episode_credits_disabled(self):
-        appends = self._sync_season_and_capture_appends(sync_episode_credits=False)
-
-        self.assertTrue(appends)
-        for append_value in appends:
-            self.assertNotIn('credits', append_value)
-            self.assertIn('external_ids', append_value)
-
-    def test_sync_season_includes_credits_append_when_episode_credits_enabled(self):
-        appends = self._sync_season_and_capture_appends(sync_episode_credits=True)
-
-        self.assertTrue(appends)
-        for append_value in appends:
-            self.assertIn('credits', append_value)
+        self.assertEqual(requested, [('/tv/1399/season/1', 'external_ids')])
+        self.assertEqual(season.external_ids, {'tvdb_id': 5})
 
     @patch('media.views.tmdb.sync_season')
-    @patch('media.views.tmdb.get_tv_watch_providers')
+    @patch('media.views.tmdb.get_tv_details')
     def test_tv_detail_uses_user_preferred_region_when_region_missing(self, mock_providers, mock_sync_season):
         self.user.preferred_region = 'ES'
         self.user.save(update_fields=['preferred_region'])
@@ -840,14 +765,14 @@ class MediaTests(TestCase):
             number_of_episodes=0,
         )
 
-        mock_providers.return_value = {
+        mock_providers.return_value = {'watch/providers': {
             'results': {
                 'ES': {
                     'link': 'https://example.com/es',
                     'flatrate': [{'provider_id': 1, 'provider_name': 'Demo ES'}],
                 }
             }
-        }
+        }}
 
         response = self.client.get('/api/media/tv/99999/')
         self.assertEqual(response.status_code, 200)
@@ -1200,7 +1125,7 @@ class MediaTests(TestCase):
         self.assertEqual(anon.get('/api/media/tv/1399/seasons/1/credits/').status_code, 401)
 
     @patch('media.views.tmdb.sync_movie')
-    @patch('media.views.tmdb.get_movie_watch_providers')
+    @patch('media.views.tmdb.get_movie_details')
     def test_movie_detail_includes_user_status(self, mock_providers, mock_sync_movie):
         from media.models import Movie
         Movie.objects.create(tmdb_id=777, title='Movie Detail')
@@ -1214,7 +1139,7 @@ class MediaTests(TestCase):
         self.assertEqual(response.data['user_status']['rating'], 7)
 
     @patch('media.views.tmdb.sync_tv_show')
-    @patch('media.views.tmdb.get_tv_watch_providers')
+    @patch('media.views.tmdb.get_tv_details')
     def test_tv_detail_status_watching_and_dropped(self, mock_providers, mock_sync_tv_show):
         show = TVShow.objects.create(tmdb_id=888, name='Show Detail', number_of_seasons=1, number_of_episodes=2)
         season = show.seasons.create(tmdb_id=8881, season_number=1, name='Season 1')
@@ -1280,10 +1205,10 @@ class MediaTests(TestCase):
         mock_sync_tv_show.assert_called_once_with(
             1399,
             user_id=self.user.id,
-            sync_credits=True,
             use_cache=False,
+            only_seasons=None,
         )
-        mock_sync_credits_task.delay.assert_not_called()
+        mock_sync_credits_task.delay.assert_called_once_with(1399)
 
     @patch('media.views.sync_show_episode_credits')
     def test_tv_detail_cold_load_defers_episode_credits(self, mock_credits_task):
@@ -1304,7 +1229,7 @@ class MediaTests(TestCase):
 
     @patch('media.views.sync_show_episode_credits')
     @patch('media.views.tmdb.sync_tv_show')
-    @patch('media.views.tmdb.get_tv_watch_providers')
+    @patch('media.views.tmdb.get_tv_details')
     def test_tv_detail_resyncs_only_missing_seasons(self, mock_providers, mock_sync, mock_credits_task):
         mock_providers.return_value = {}
         show = TVShow.objects.create(tmdb_id=701, name='Partial Show', number_of_seasons=2, number_of_episodes=2)
@@ -1323,7 +1248,7 @@ class MediaTests(TestCase):
 
     @patch('media.views.sync_show_episode_credits')
     @patch('media.views.tmdb.sync_tv_show')
-    @patch('media.views.tmdb.get_tv_watch_providers')
+    @patch('media.views.tmdb.get_tv_details')
     def test_tv_detail_skips_sync_when_complete(self, mock_providers, mock_sync, mock_credits_task):
         mock_providers.return_value = {}
         show = TVShow.objects.create(tmdb_id=702, name='Complete Show', number_of_seasons=1, number_of_episodes=1)
@@ -1406,67 +1331,57 @@ class MediaTests(TestCase):
         self.assertIn('metadata_updated_at', movie_response.data)
         self.assertIn('metadata_updated_at', tv_response.data)
 
-    @patch('media.tmdb.tmdb.sync_season')
-    @patch('media.tmdb.tmdb.get_tv_show')
-    def test_sync_tv_show_always_syncs_all_returned_seasons(self, mock_get_tv_show, mock_sync_season):
-        mock_get_tv_show.return_value = {
-            'id': 555,
-            'name': 'Complete Sync Show',
-            'overview': 'Complete metadata sync test',
+    @staticmethod
+    def _show_payload(tmdb_id, season_numbers):
+        return {
+            'id': tmdb_id,
+            'name': f'Show {tmdb_id}',
             'first_air_date': '2020-01-01',
-            'number_of_seasons': 2,
-            'number_of_episodes': 16,
-            'vote_average': 8.2,
-            'vote_count': 100,
-            'original_language': 'en',
-            'status': 'Returning Series',
-            'networks': [],
-            'episode_run_time': [50],
+            'number_of_seasons': len(season_numbers),
             'genres': [],
-            'seasons': [
-                {'season_number': 0},
-                {'season_number': 1},
-                {'season_number': 2},
-            ],
+            'networks': [],
+            'seasons': [{'season_number': number} for number in season_numbers],
         }
 
-        show = tmdb.sync_tv_show(555)
+    @staticmethod
+    def _season_batch(tmdb_id, numbers, use_cache):
+        return {
+            number: {
+                'id': tmdb_id * 100 + number,
+                'name': f'Season {number}',
+                'episodes': [{'id': tmdb_id * 1000 + number, 'episode_number': 1, 'name': 'Episode 1'}],
+            }
+            for number in numbers
+        }
 
-        self.assertEqual(show.tmdb_id, 555)
-        self.assertEqual(mock_sync_season.call_count, 3)
-        synced_seasons = sorted(call.args[1] for call in mock_sync_season.call_args_list)
-        self.assertEqual(synced_seasons, [0, 1, 2])
+    def test_sync_tv_show_always_syncs_all_returned_seasons(self):
+        with (
+            patch.object(tmdb, 'get_tv_details', return_value=self._show_payload(555, [0, 1, 2])),
+            patch.object(tmdb, '_fetch_season_batch', side_effect=self._season_batch) as mock_batch,
+            patch.object(tmdb, 'get_season_external_ids', return_value={}),
+            patch.object(tmdb, '_resolve_tvmaze', return_value=(None, [])),
+        ):
+            show = tmdb.sync_tv_show(555)
+
+        mock_batch.assert_called_once_with(555, [0, 1, 2], True)
+        self.assertEqual(sorted(show.seasons.values_list('season_number', flat=True)), [0, 1, 2])
+        self.assertEqual(Episode.objects.filter(season__show=show).count(), 3)
 
     @patch('tracking.status_sync.refresh_all_statuses_for_show')
-    @patch('media.tmdb.tmdb.sync_season')
-    @patch('media.tmdb.tmdb.get_tv_show')
-    def test_sync_tv_show_refreshes_all_statuses_with_user(self, mock_get_tv_show, mock_sync_season, mock_refresh_statuses):
-        mock_get_tv_show.return_value = {
-            'id': 556,
-            'name': 'Status Sync Show',
-            'overview': 'status refresh test',
-            'first_air_date': '2020-01-01',
-            'number_of_seasons': 1,
-            'number_of_episodes': 8,
-            'vote_average': 7.2,
-            'vote_count': 50,
-            'original_language': 'en',
-            'status': 'Returning Series',
-            'networks': [],
-            'episode_run_time': [45],
-            'genres': [],
-            'seasons': [{'season_number': 1}],
-        }
+    def test_sync_tv_show_refreshes_all_statuses_with_user(self, mock_refresh_statuses):
+        with (
+            patch.object(tmdb, 'get_tv_details', return_value=self._show_payload(556, [1])),
+            patch.object(tmdb, '_fetch_season_batch', side_effect=self._season_batch),
+            patch.object(tmdb, 'get_season_external_ids', return_value={}),
+            patch.object(tmdb, '_resolve_tvmaze', return_value=(None, [])),
+        ):
+            tmdb.sync_tv_show(556, user_id=self.user.id)
 
-        show = tmdb.sync_tv_show(556, user_id=self.user.id)
-
-        self.assertEqual(show.tmdb_id, 556)
-        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=False, use_cache=True, tvmaze_context={})
         mock_refresh_statuses.assert_called_once_with(556, current_user_id=self.user.id)
 
-    @patch('media.tmdb.tmdb.sync_episode_credits')
+    @patch('media.tmdb.tmdb.get_episode_credits')
     @patch('media.tmdb.tmdb.get_season')
-    def test_sync_season_refreshes_episode_credits_after_upsert(self, mock_get_season, mock_sync_episode_credits):
+    def test_sync_season_refreshes_episode_credits_after_upsert(self, mock_get_season, mock_get_episode_credits):
         show = TVShow.objects.create(tmdb_id=4242, name='Credits Show', number_of_seasons=1, number_of_episodes=1)
         mock_get_season.return_value = {
             'id': 424201,
@@ -1484,10 +1399,13 @@ class MediaTests(TestCase):
                 }
             ],
         }
+        mock_get_episode_credits.return_value = {'cast': [{'name': 'Lead'}], 'crew': []}
 
         tmdb.sync_season(show, 1, sync_episode_credits=True)
 
-        mock_sync_episode_credits.assert_called_once_with(4242, 1, 1, show=show, use_cache=True)
+        mock_get_episode_credits.assert_called_once_with(4242, 1, 1, use_cache=True)
+        credit = EpisodeCredit.objects.get(episode__season__show=show)
+        self.assertEqual(credit.cast, [{'name': 'Lead'}])
 
     @patch('media.tmdb.tmdb.get_season')
     def test_sync_season_persists_votes(self, mock_get_season):
@@ -1565,9 +1483,9 @@ class MediaTests(TestCase):
         self.assertEqual(response.data['name'], 'Test Collection')
         self.assertEqual(response.data['parts'][0]['media_type'], 'movie')
 
-    @patch('media.views.tmdb.get_movie_external_ids')
-    def test_movie_external_ids_passthrough(self, mock_ids):
-        mock_ids.return_value = {'imdb_id': 'tt0137523', 'wikidata_id': 'Q42'}
+    @patch('media.views.tmdb.get_movie_details')
+    def test_movie_external_ids_passthrough(self, mock_details):
+        mock_details.return_value = {'external_ids': {'imdb_id': 'tt0137523', 'wikidata_id': 'Q42'}}
 
         response = self.client.get('/api/media/movies/550/external-ids/')
 
@@ -1577,26 +1495,25 @@ class MediaTests(TestCase):
     def test_tv_external_ids_returns_stored_ids(self):
         TVShow.objects.create(tmdb_id=7777, name='Stored IDs', external_ids={'tvmaze_id': 123, 'imdb_id': 'tt1234567'})
 
-        with patch('media.views.tmdb.get_tv_external_ids', side_effect=Exception('offline')):
+        with patch('media.views.tmdb.get_tv_details', side_effect=Exception('offline')):
             response = self.client.get('/api/media/tv/7777/external-ids/')
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['tvmaze_id'], 123)
 
-    @patch('media.views.tmdb.get_movie_watch_providers')
-    @patch('media.views.tmdb.get_movie')
-    @patch('media.views.tmdb.get_movie_external_ids')
-    def test_movie_detail_includes_collection_and_external_ids(self, mock_ids, mock_movie, mock_providers):
+    @patch('media.views.tmdb.get_movie_details')
+    def test_movie_detail_includes_collection_and_external_ids(self, mock_details):
         from media.models import Movie
         Movie.objects.create(tmdb_id=999, title='Collection Movie')
-        mock_providers.return_value = {}
-        mock_movie.return_value = {
+        mock_details.return_value = {
             'id': 999,
             'belongs_to_collection': {'id': 10, 'name': 'Test Collection', 'poster_path': '/p.jpg', 'backdrop_path': '/b.jpg'},
+            'external_ids': {'imdb_id': 'tt9999999'},
         }
-        mock_ids.return_value = {'imdb_id': 'tt9999999'}
 
         response = self.client.get('/api/media/movies/999/')
+
+        mock_details.assert_called_once_with(999)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['collection']['id'], 10)
@@ -1632,7 +1549,7 @@ class MediaTests(TestCase):
         season.vote_count = 15
         season.save(update_fields=['vote_average', 'vote_count'])
 
-        with patch('media.views.tmdb.get_tv_watch_providers', return_value={}):
+        with patch('media.views.tmdb.get_tv_details', return_value={}):
             response = self.client.get('/api/media/tv/708/')
 
         self.assertEqual(response.status_code, 200)
@@ -1742,6 +1659,18 @@ class MediaTests(TestCase):
 
 
 class TMDBUseCacheTests(TestCase):
+    def test_get_does_not_retry_after_request_timeout(self):
+        with (
+            patch.object(tmdb._session, 'get', side_effect=requests.Timeout('TMDB timed out')) as mock_requests_get,
+            patch.object(tmdb, '_get_redis', return_value=None),
+            patch('media.tmdb.time.sleep') as mock_sleep,
+            self.assertRaises(requests.Timeout),
+        ):
+            tmdb._get('/movie/550', use_cache=False)
+
+        mock_requests_get.assert_called_once()
+        mock_sleep.assert_not_called()
+
     def test_get_without_cache_skips_read_and_overwrites_cached_entry(self):
         payload = {'id': 550, 'title': 'Fresh Movie'}
         mock_response = MagicMock()
@@ -1751,12 +1680,13 @@ class TMDBUseCacheTests(TestCase):
         redis_mock.get.return_value = json.dumps({'title': 'Stale Movie'})
 
         with (
-            patch('media.tmdb.requests.get', return_value=mock_response),
+            patch.object(tmdb._session, 'get', return_value=mock_response) as mock_requests_get,
             patch.object(tmdb, '_get_redis', return_value=redis_mock),
         ):
             result = tmdb._get('/movie/550', {'append_to_response': 'credits,videos'}, use_cache=False)
 
         self.assertEqual(result, payload)
+        self.assertEqual(mock_requests_get.call_args.kwargs['timeout'], tmdb.REQUEST_TIMEOUT)
         redis_mock.get.assert_not_called()
 
         expected_key = 'tmdb:/movie/550:' + json.dumps({'append_to_response': 'credits,videos'}, sort_keys=True)
@@ -1769,7 +1699,7 @@ class TMDBUseCacheTests(TestCase):
         redis_mock.get.return_value = json.dumps(cached_payload)
 
         with (
-            patch('media.tmdb.requests.get') as mock_requests_get,
+            patch.object(tmdb._session, 'get') as mock_requests_get,
             patch.object(tmdb, '_get_redis', return_value=redis_mock),
         ):
             result = tmdb._get('/movie/550', {'append_to_response': 'credits,videos'}, use_cache=True)
@@ -1779,51 +1709,29 @@ class TMDBUseCacheTests(TestCase):
         redis_mock.set.assert_not_called()
 
     @patch('tracking.status_sync.refresh_all_statuses_for_show')
-    @patch('media.tmdb.tmdb.sync_season')
-    @patch('media.tmdb.tmdb.get_tv_show_with_seasons')
-    @patch('media.tmdb.tmdb.get_tv_show')
-    def test_sync_tv_show_propagates_use_cache_false(self, mock_get_tv_show, mock_get_with_seasons, mock_sync_season, mock_refresh_statuses):
-        mock_get_tv_show.return_value = {
+    def test_sync_tv_show_propagates_use_cache_false(self, mock_refresh_statuses):
+        show_payload = {
             'id': 557,
             'name': 'No Cache Show',
-            'overview': 'cache bypass test',
             'first_air_date': '2020-01-01',
             'number_of_seasons': 1,
-            'number_of_episodes': 4,
-            'vote_average': 6.5,
-            'vote_count': 20,
-            'original_language': 'en',
-            'status': 'Returning Series',
-            'networks': [],
-            'episode_run_time': [40],
             'genres': [],
+            'networks': [],
             'seasons': [{'season_number': 1}],
         }
-        mock_get_with_seasons.return_value = {
-            'id': 557,
-            'name': 'No Cache Show',
-            'overview': 'cache bypass test',
-            'first_air_date': '2020-01-01',
-            'number_of_seasons': 1,
-            'number_of_episodes': 4,
-            'vote_average': 6.5,
-            'vote_count': 20,
-            'original_language': 'en',
-            'status': 'Returning Series',
-            'networks': [],
-            'episode_run_time': [40],
-            'genres': [],
-            'seasons': [{'season_number': 1}],
-        }
-
-        show = tmdb.sync_tv_show(557, use_cache=False)
+        with (
+            patch.object(tmdb, 'get_tv_details', return_value=show_payload) as mock_details,
+            patch.object(tmdb, '_fetch_season_batch', return_value={1: {'id': 5571, 'episodes': []}}) as mock_batch,
+            patch.object(tmdb, 'get_season_external_ids', return_value={}),
+            patch.object(tmdb, '_resolve_tvmaze', return_value=(None, [])),
+        ):
+            show = tmdb.sync_tv_show(557, use_cache=False)
 
         self.assertEqual(show.tmdb_id, 557)
-        mock_get_tv_show.assert_called_once_with(557, use_cache=False)
-        mock_get_with_seasons.assert_called_once_with(557, [1], use_cache=False, include_credits=False)
-        mock_sync_season.assert_called_once_with(show, 1, sync_episode_credits=False, use_cache=False, tvmaze_context={})
+        mock_details.assert_called_once_with(557, use_cache=False)
+        mock_batch.assert_called_once_with(557, [1], False)
 
-    @patch('media.tmdb.tmdb.get_movie_with_keywords')
+    @patch('media.tmdb.tmdb.get_movie_details')
     def test_sync_movie_propagates_use_cache_false(self, mock_get_movie):
         mock_get_movie.return_value = {
             'id': 551,
@@ -1837,3 +1745,244 @@ class TMDBUseCacheTests(TestCase):
 
         self.assertEqual(movie.tmdb_id, 551)
         mock_get_movie.assert_called_once_with(551, use_cache=False)
+
+
+class TMDBFetchTests(TestCase):
+    @staticmethod
+    def _server_error():
+        response = requests.Response()
+        response.status_code = 500
+        return requests.HTTPError('500 Server Error', response=response)
+
+    def test_movie_detail_cold_load_uses_one_tmdb_resource(self):
+        user = User.objects.create_user(username='fetcher', password='testpass123')
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {RefreshToken.for_user(user).access_token}')
+        requested = []
+
+        def fake_get(endpoint, params=None, **kwargs):
+            requested.append((endpoint, json.dumps(params, sort_keys=True)))
+            return {
+                'id': 560,
+                'title': 'Bundled Movie',
+                'belongs_to_collection': {'id': 7, 'name': 'Saga'},
+                'external_ids': {'imdb_id': 'tt0000560'},
+                'watch/providers': {'results': {'US': {'link': 'https://example.com'}}},
+                'keywords': {'keywords': []},
+            }
+
+        with patch.object(tmdb, '_get', side_effect=fake_get):
+            response = client.get('/api/media/movies/560/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['collection']['id'], 7)
+        self.assertEqual(response.data['external_ids'], {'imdb_id': 'tt0000560'})
+        self.assertEqual(response.data['watch_providers']['region'], 'US')
+        # sync and view share one cache key, so Redis answers the second read.
+        self.assertEqual(set(requested), {(
+            '/movie/560',
+            json.dumps({'append_to_response': 'keywords,external_ids,watch/providers'}, sort_keys=True),
+        )})
+
+    def test_tv_details_bundles_external_ids_and_providers(self):
+        with patch.object(tmdb, '_get', return_value={}) as mock_get:
+            tmdb.get_tv_details(1399)
+
+        mock_get.assert_called_once_with(
+            '/tv/1399', {'append_to_response': 'external_ids,watch/providers'}, use_cache=True
+        )
+
+    def test_fetch_seasons_bundles_twenty_seasons_per_request(self):
+        requested = []
+
+        def fake_get(endpoint, params=None, **kwargs):
+            appends = params['append_to_response'].split(',')
+            requested.append(appends)
+            return {append: {'name': append, 'episodes': []} for append in appends}
+
+        with patch.object(tmdb, '_get', side_effect=fake_get):
+            seasons = tmdb.fetch_seasons(1399, list(range(1, 46)))
+
+        self.assertEqual(sorted(len(appends) for appends in requested), [5, 20, 20])
+        self.assertEqual(sorted(seasons), list(range(1, 46)))
+
+    def test_fetch_seasons_merges_season_summary_into_payload(self):
+        response = {
+            'seasons': [{'id': 180379, 'season_number': 1, 'episode_count': 10}],
+            'season/1': {'season_number': 1, 'name': 'Season 1', 'episodes': []},
+        }
+        with patch.object(tmdb, '_get', return_value=response):
+            seasons = tmdb.fetch_seasons(118357, [1])
+
+        self.assertEqual(seasons[1]['id'], 180379)
+        self.assertEqual(seasons[1]['episode_count'], 10)
+        self.assertEqual(seasons[1]['name'], 'Season 1')
+
+    def test_poisoned_append_is_isolated_and_the_rest_still_fetched(self):
+        def fake_get(endpoint, params=None, **kwargs):
+            appends = (params or {}).get('append_to_response', '').split(',')
+            if 'season/3' in appends:
+                raise self._server_error()
+            return {append: {'name': append, 'episodes': []} for append in appends if append}
+
+        with patch.object(tmdb, '_get', side_effect=fake_get):
+            data = tmdb._get_appended('/tv/1', [f'season/{n}' for n in range(1, 5)])
+
+        self.assertEqual(sorted(data), ['season/1', 'season/2', 'season/4'])
+
+    def test_seasons_missing_from_batches_fall_back_to_single_requests(self):
+        def fake_get(endpoint, params=None, **kwargs):
+            if endpoint == '/tv/1/season/2':
+                return {'name': 'Season 2', 'episodes': []}
+            return {'season/1': {'name': 'Season 1', 'episodes': []}}
+
+        with patch.object(tmdb, '_get', side_effect=fake_get) as mock_get:
+            seasons = tmdb.fetch_seasons(1, [1, 2])
+
+        self.assertEqual(sorted(seasons), [1, 2])
+        self.assertEqual(mock_get.call_count, 2)
+
+    def test_parallel_requests_are_capped_at_eight_and_failures_are_isolated(self):
+        import threading
+        import time as time_module
+
+        from media.http import MAX_WORKERS, run_parallel
+
+        lock = threading.Lock()
+        state = {'active': 0, 'peak': 0}
+
+        def call(index):
+            with lock:
+                state['active'] += 1
+                state['peak'] = max(state['peak'], state['active'])
+            time_module.sleep(0.02)
+            with lock:
+                state['active'] -= 1
+            if index == 3:
+                raise ValueError('boom')
+            return index
+
+        results = run_parallel([lambda index=index: call(index) for index in range(20)])
+
+        self.assertEqual(MAX_WORKERS, 8)
+        self.assertEqual(state['peak'], 8)
+        self.assertIsInstance(results[3], ValueError)
+        self.assertEqual([r for r in results if not isinstance(r, Exception)], [i for i in range(20) if i != 3])
+
+    def test_season_upsert_query_count_does_not_scale_with_episodes(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        show = TVShow.objects.create(tmdb_id=880, name='Bulk Show')
+
+        def payload(count):
+            return {
+                'id': 8801,
+                'name': 'Season 1',
+                'episodes': [{'id': 88000 + n, 'episode_number': n, 'name': f'E{n}'} for n in range(1, count + 1)],
+            }
+
+        tmdb._upsert_season(show, 1, payload(40), tvmaze_show=None, tvmaze_episodes=[])
+        with CaptureQueriesContext(connection) as queries:
+            tmdb._upsert_season(show, 1, payload(60), tvmaze_show=None, tvmaze_episodes=[])
+
+        self.assertEqual(Episode.objects.filter(season__show=show).count(), 60)
+        self.assertLess(len(queries), 12)
+
+    def test_sync_show_episode_credits_fetches_in_parallel_and_saves_in_bulk(self):
+        show = TVShow.objects.create(tmdb_id=881, name='Credits Bulk Show')
+        season = show.seasons.create(tmdb_id=8811, season_number=1, name='Season 1')
+        for number in range(1, 6):
+            season.episodes.create(tmdb_id=88110 + number, episode_number=number, name=f'E{number}')
+        existing = season.episodes.get(episode_number=1)
+        EpisodeCredit.objects.create(episode=existing, cast=[{'name': 'Kept'}], crew=[], guest_stars=[])
+
+        def fake_credits(show_id, season_number, episode_number, *, use_cache=True):
+            if episode_number == 5:
+                raise self._server_error()
+            return {'cast': [] if episode_number == 1 else [{'name': f'Cast {episode_number}'}], 'crew': []}
+
+        with patch.object(tmdb, 'get_episode_credits', side_effect=fake_credits):
+            synced, failures = tmdb.sync_show_episode_credits(show)
+
+        self.assertEqual((synced, failures), (4, 1))
+        self.assertEqual(EpisodeCredit.objects.filter(episode__season=season).count(), 4)
+        self.assertEqual(EpisodeCredit.objects.get(episode=existing).cast, [{'name': 'Kept'}])
+
+
+class RemovedEpisodeCleanupTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='cleaner', password='testpass123')
+        self.show = TVShow.objects.create(tmdb_id=950, name='Shrinking Show')
+        self.season = self.show.seasons.create(tmdb_id=9501, season_number=1, name='Season 1')
+        for number in (1, 2, 3):
+            self.season.episodes.create(tmdb_id=95000 + number, episode_number=number, name=f'E{number}')
+
+    def _upsert(self, numbers):
+        payload = {
+            'id': 9501,
+            'name': 'Season 1',
+            'episodes': [{'id': 95000 + n, 'episode_number': n, 'name': f'E{n}'} for n in numbers],
+        }
+        with patch('tracking.tasks.system.cleanup_removed_episodes.delay') as mock_delay, \
+                self.captureOnCommitCallbacks(execute=True):
+            tmdb._upsert_season(self.show, 1, payload, tvmaze_show=None, tvmaze_episodes=[])
+        return mock_delay
+
+    def test_removed_episode_queues_cleanup(self):
+        mock_delay = self._upsert([1, 2])
+
+        mock_delay.assert_called_once_with(950, 1, [3])
+
+    def test_swapped_episode_is_detected_even_when_count_is_unchanged(self):
+        mock_delay = self._upsert([1, 2, 4])
+
+        mock_delay.assert_called_once_with(950, 1, [3])
+
+    def test_empty_season_payload_never_queues_cleanup(self):
+        mock_delay = self._upsert([])
+
+        mock_delay.assert_not_called()
+        self.assertEqual(self.season.episodes.count(), 3)
+
+    def test_failed_season_fetch_never_queues_cleanup(self):
+        with (
+            patch.object(tmdb, 'get_tv_details', return_value={'id': 950, 'name': 'Shrinking Show', 'seasons': [{'season_number': 1}]}),
+            patch.object(tmdb, '_fetch_season_batch', side_effect=RuntimeError('down')),
+            patch.object(tmdb, 'get_season', side_effect=RuntimeError('down')),
+            patch.object(tmdb, '_resolve_tvmaze', return_value=(None, [])),
+            patch('tracking.tasks.system.cleanup_removed_episodes.delay') as mock_delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            tmdb.sync_tv_show(950, recompute_user_statuses=False)
+
+        mock_delay.assert_not_called()
+        self.assertEqual(self.season.episodes.count(), 3)
+
+    @patch('tracking.tasks.system.refresh_all_statuses_for_show')
+    def test_cleanup_deletes_unwatched_and_keeps_watched_episodes(self, mock_refresh):
+        from tracking.tasks.system import cleanup_removed_episodes
+
+        WatchEntry.objects.create(
+            user=self.user, media_type='episode', tmdb_id=950, season_number=1, episode_number=2,
+        )
+        EpisodeCredit.objects.create(episode=self.season.episodes.get(episode_number=3), cast=[], crew=[], guest_stars=[])
+
+        result = cleanup_removed_episodes(950, 1, [2, 3])
+
+        self.assertEqual(result['deleted'], 1)
+        self.assertEqual(result['kept'], [2])
+        self.assertEqual(sorted(self.season.episodes.values_list('episode_number', flat=True)), [1, 2])
+        self.assertFalse(EpisodeCredit.objects.filter(episode__season=self.season).exists())
+        mock_refresh.assert_called_once_with(950)
+
+    @patch('tracking.tasks.system.refresh_all_statuses_for_show')
+    def test_cleanup_is_idempotent(self, mock_refresh):
+        from tracking.tasks.system import cleanup_removed_episodes
+
+        cleanup_removed_episodes(950, 1, [3])
+        result = cleanup_removed_episodes(950, 1, [3])
+
+        self.assertEqual(result['deleted'], 0)
+        self.assertEqual(self.season.episodes.count(), 2)
+        mock_refresh.assert_called_once_with(950)

@@ -20,7 +20,7 @@ python manage.py migrate --noinput
 exec gunicorn arxmedia.wsgi:application \
     --bind 0.0.0.0:8000 \
     --workers 3 \
-    --timeout 120 \
+    --timeout 240 \
     --log-level "${GUNICORN_LOG_LEVEL:-info}" \
     --access-logfile - \
     --error-logfile - \

@@ -328,40 +328,27 @@ def movie_detail(request, tmdb_id):
             return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
     data = MovieSerializer(movie).data
     try:
-        providers = tmdb.get_movie_watch_providers(tmdb_id)
-        data['watch_providers'] = _providers_for_region(providers, region)
+        details = tmdb.get_movie_details(tmdb_id)
     except Exception as exc:
-        logger.warning('Failed to fetch movie providers for %s: %s', tmdb_id, exc)
-        data['watch_providers'] = _providers_for_region({}, region)
-    try:
-        raw = tmdb.get_movie(tmdb_id)
-        collection = raw.get('belongs_to_collection')
-        if isinstance(collection, dict) and collection.get('id'):
-            data['collection'] = {
-                'id': collection.get('id'),
-                'name': collection.get('name', ''),
-                'poster_path': collection.get('poster_path'),
-                'backdrop_path': collection.get('backdrop_path'),
-            }
-        else:
-            data['collection'] = None
-        external_ids = {
-            key: raw.get('external_ids', {}).get(key) if isinstance(raw.get('external_ids'), dict) else None
-            for key in ('imdb_id', 'facebook_id', 'instagram_id', 'twitter_id')
+        logger.warning('Failed to fetch movie details for %s: %s', tmdb_id, exc)
+        details = {}
+    data['watch_providers'] = _providers_for_region(details.get('watch/providers') or {}, region)
+    collection = details.get('belongs_to_collection')
+    if isinstance(collection, dict) and collection.get('id'):
+        data['collection'] = {
+            'id': collection.get('id'),
+            'name': collection.get('name', ''),
+            'poster_path': collection.get('poster_path'),
+            'backdrop_path': collection.get('backdrop_path'),
         }
-        try:
-            ids_payload = tmdb.get_movie_external_ids(tmdb_id)
-            if isinstance(ids_payload, dict):
-                for key in ('imdb_id', 'facebook_id', 'instagram_id', 'twitter_id', 'wikidata_id', 'youtube_id'):
-                    if ids_payload.get(key):
-                        external_ids[key] = ids_payload.get(key)
-        except Exception as exc:
-            logger.warning('Failed to fetch movie external ids for %s: %s', tmdb_id, exc)
-        data['external_ids'] = {k: v for k, v in external_ids.items() if v}
-    except Exception as exc:
-        logger.warning('Failed to fetch movie extras for %s: %s', tmdb_id, exc)
-        data.setdefault('collection', None)
-        data.setdefault('external_ids', {})
+    else:
+        data['collection'] = None
+    ids_payload = details.get('external_ids') or {}
+    data['external_ids'] = {
+        key: ids_payload[key]
+        for key in ('imdb_id', 'facebook_id', 'instagram_id', 'twitter_id', 'wikidata_id', 'youtube_id')
+        if ids_payload.get(key)
+    }
 
     if request.user.is_authenticated:
         status_map = annotate_media_user_status(
@@ -407,11 +394,11 @@ def tv_detail(request, tmdb_id):
 
     data = _serialize_tv_show_detail(show)
     try:
-        providers = tmdb.get_tv_watch_providers(tmdb_id)
-        data['watch_providers'] = _providers_for_region(providers, region)
+        providers = tmdb.get_tv_details(tmdb_id).get('watch/providers') or {}
     except Exception as exc:
         logger.warning('Failed to fetch TV providers for %s: %s', tmdb_id, exc)
-        data['watch_providers'] = _providers_for_region({}, region)
+        providers = {}
+    data['watch_providers'] = _providers_for_region(providers, region)
 
     if request.user.is_authenticated:
         status_map = annotate_media_user_status(
@@ -466,10 +453,9 @@ def refresh_movie_metadata(request, tmdb_id):
 @permission_classes([permissions.IsAuthenticated])
 def refresh_tv_metadata(request, tmdb_id):
     try:
-        show = tmdb.sync_tv_show(
+        show = _sync_tv_for_read(
             tmdb_id,
             user_id=request.user.id,
-            sync_credits=True,
             use_cache=False,
         )
     except Exception:
@@ -656,7 +642,7 @@ def _annotate_recommendation_results(user, results, media_type):
 @permission_classes([permissions.IsAuthenticated])
 def movie_external_ids(request, tmdb_id):
     try:
-        data = tmdb.get_movie_external_ids(tmdb_id)
+        data = tmdb.get_movie_details(tmdb_id).get('external_ids')
     except Exception:
         logger.warning('Failed to fetch movie external ids for %s from TMDB', tmdb_id, exc_info=True)
         return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -672,7 +658,7 @@ def tv_external_ids(request, tmdb_id):
     except Exception:
         stored = {}
     try:
-        live = tmdb.get_tv_external_ids(tmdb_id)
+        live = tmdb.get_tv_details(tmdb_id).get('external_ids')
         if isinstance(live, dict):
             stored.update({k: v for k, v in live.items() if v})
     except Exception as exc:
