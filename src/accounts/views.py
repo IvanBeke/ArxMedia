@@ -1,17 +1,18 @@
 from datetime import date, timedelta
 
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login, logout, update_session_auth_hash
 from django.db.models import DateTimeField, OuterRef, Subquery
 from django.db.models.functions import Coalesce, TruncDate
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_protect
 from media.models import Movie, TVShow
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from social.models import Follow
 from tracking.models import WatchEntry, WatchEntryMediaType
 
@@ -28,22 +29,44 @@ from .serializers import (
 User = get_user_model()
 
 
+# DRF only enforces CSRF for authenticated sessions; these views also need it
+# for anonymous requests to prevent login CSRF.
+@method_decorator(csrf_protect, name='dispatch')
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'auth_register'
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        login(request, user)
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
-class LoginView(TokenObtainPairView):
-    serializer_class = LoginSerializer
+
+@method_decorator(csrf_protect, name='dispatch')
+class LoginView(APIView):
+    permission_classes = [permissions.AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'auth_login'
 
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+        login(request, user)
+        return Response(UserSerializer(user).data)
 
-class RefreshTokenView(TokenRefreshView):
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'auth_refresh'
+
+@method_decorator(csrf_protect, name='dispatch')
+class LogoutView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        logout(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MeView(generics.RetrieveUpdateAPIView):
@@ -143,7 +166,8 @@ class PasswordChangeView(APIView):
     def post(self, request):
         serializer = PasswordChangeSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        user = serializer.save()
+        update_session_auth_hash(request, user)
         return Response({'detail': 'Password updated successfully.'}, status=status.HTTP_200_OK)
 
 

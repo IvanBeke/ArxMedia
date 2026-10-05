@@ -7,7 +7,6 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 from tracking.models import Rating, UserMediaStatus, WatchEntry
 
 from media.models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
@@ -87,8 +86,7 @@ class MediaTests(TestCase):
             password='testpass123'
         )
         self.client = APIClient()
-        refresh = RefreshToken.for_user(self.user)
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
+        self.client.force_authenticate(user=self.user)
         self.tmdb_patcher = patch('media.tmdb.TMDBService._get', side_effect=self._fake_tmdb_get)
         self.tmdb_patcher.start()
 
@@ -1777,7 +1775,7 @@ class TMDBFetchTests(TestCase):
     def test_movie_detail_cold_load_uses_one_tmdb_resource(self):
         user = User.objects.create_user(username='fetcher', password='testpass123')
         client = APIClient()
-        client.credentials(HTTP_AUTHORIZATION=f'Bearer {RefreshToken.for_user(user).access_token}')
+        client.force_authenticate(user=user)
         requested = []
 
         def fake_get(endpoint, params=None, **kwargs):

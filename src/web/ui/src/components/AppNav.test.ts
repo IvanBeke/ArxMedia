@@ -1,5 +1,6 @@
-import { describe, expect, it, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { authAPI } from '@/api'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
@@ -67,14 +68,17 @@ describe('AppNav', () => {
   })
 
   it('logs out and returns to the home view', async () => {
+    const logout = vi.spyOn(authAPI, 'logout').mockResolvedValue()
     const auth = useAuthStore()
     auth.user = user
     const wrapper = mountAppNav()
 
     await wrapper.find('button[aria-label="Open navigation menu"]').trigger('click')
     await required(wrapper.findAll('.mobile-nav-link').at(-1), 'Sign out link').trigger('click')
+    await flushPromises()
     await wrapper.vm.$router.isReady()
 
+    expect(logout).toHaveBeenCalledOnce()
     expect(auth.user).toBe(null)
     expect(wrapper.vm.$router.currentRoute.value.path).toBe('/')
   })

@@ -40,7 +40,6 @@ export default defineConfig({
         navigateFallback: '/',
         navigateFallbackDenylist: [
           /^\/api\//,
-          /^\/oauth\//,
           /^\/admin\//,
           /^\/static\//,
           /^\/media\//,
@@ -108,10 +107,6 @@ export default defineConfig({
     watch: process.env.VITEST ? { usePolling: false } : { usePolling: true, interval: 300 },
     proxy: {
       '/api': {
-        target: 'http://app:8000',
-        changeOrigin: true,
-      },
-      '/oauth': {
         target: 'http://app:8000',
         changeOrigin: true,
       },

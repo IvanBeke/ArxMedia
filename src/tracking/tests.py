@@ -15,7 +15,6 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from media.models import Episode, Genre, Movie, Season, TVShow
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 from social.models import Follow
 
 from tracking.cache import cache
@@ -85,8 +84,7 @@ class BaseTestCase(TestCase):
     def authenticate(self, user=None):
         if user is None:
             user = self.user
-        refresh = RefreshToken.for_user(user)
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
+        self.client.force_authenticate(user=user)
 
 
 class WatchEntryTests(BaseTestCase):
@@ -2429,7 +2427,7 @@ class MyMoviesTests(BaseTestCase):
         Rating.objects.create(user=self.user, media_type='movie', tmdb_id=5002, score=9)
 
     def test_requires_authentication(self):
-        self.client.credentials(HTTP_AUTHORIZATION='')
+        self.client.force_authenticate(user=None)
         response = self.client.get('/api/tracking/my-movies/')
         self.assertEqual(response.status_code, 401)
 

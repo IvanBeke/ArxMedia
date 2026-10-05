@@ -6,7 +6,6 @@ from django.test import TestCase
 from django.utils import timezone
 from media.models import Movie, TVShow
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 from social.models import Follow
 from tracking.models import WatchEntry
 
@@ -25,48 +24,86 @@ class AccountTests(TestCase):
     def authenticate(self, user=None):
         if user is None:
             user = self.user
-        refresh = RefreshToken.for_user(user)
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
+        self.client.force_authenticate(user=user)
 
-    def test_register_user(self):
+    def test_register_user_logs_in(self):
         data = {
             'username': 'newuser',
             'email': 'new@example.com',
-            'password': 'newpass123',
-            'password2': 'newpass123'
+            'password': 'Newpass-123',
+            'password2': 'Newpass-123'
         }
         response = self.client.post('/api/auth/register/', data)
         self.assertEqual(response.status_code, 201)
         self.assertEqual(User.objects.count(), 2)
+        self.assertEqual(response.data['username'], 'newuser')
+        self.assertNotIn('password', response.data)
+        self.assertEqual(self.client.get('/api/auth/me/').data['username'], 'newuser')
 
-    def test_login_user(self):
-        data = {
-            'username': 'testuser',
-            'password': 'testpass123'
-        }
-        response = self.client.post('/api/auth/login/', data)
+    def test_register_rejects_weak_password(self):
+        response = self.client.post('/api/auth/register/', {
+            'username': 'weakuser',
+            'email': 'weak@example.com',
+            'password': '12345678',
+            'password2': '12345678',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('password', response.data)
+        self.assertFalse(User.objects.filter(username='weakuser').exists())
+
+    def test_login_starts_session(self):
+        self.assertEqual(self.client.get('/api/auth/me/').status_code, 401)
+        response = self.client.post('/api/auth/login/', {'username': 'testuser', 'password': 'testpass123'})
         self.assertEqual(response.status_code, 200)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        self.assertEqual(response.data['username'], 'testuser')
+        self.assertIn('sessionid', response.cookies)
+        self.assertEqual(self.client.get('/api/auth/me/').status_code, 200)
 
-    def test_refresh_user_rotates_refresh_token_and_extends_expiration(self):
-        old_issued_at = timezone.now() - timedelta(days=6, hours=23)
-        refresh = RefreshToken.for_user(self.user)
-        refresh.set_iat(at_time=old_issued_at)
-        refresh.set_exp(from_time=old_issued_at)
+    def test_login_rotates_session_key(self):
+        self.client.get('/api/auth/me/')
+        self.client.session.save()
+        before = self.client.session.session_key
+        self.client.post('/api/auth/login/', {'username': 'testuser', 'password': 'testpass123'})
+        self.assertNotEqual(self.client.session.session_key, before)
 
-        response = self.client.post(
-            '/api/auth/token/refresh/',
-            {'refresh': str(refresh)},
-            format='json',
+    def test_logout_ends_session(self):
+        self.client.post('/api/auth/login/', {'username': 'testuser', 'password': 'testpass123'})
+        response = self.client.post('/api/auth/logout/')
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.client.get('/api/auth/me/').status_code, 401)
+
+    def test_login_requires_csrf_token(self):
+        client = APIClient(enforce_csrf_checks=True)
+        response = client.post('/api/auth/login/', {'username': 'testuser', 'password': 'testpass123'})
+        self.assertEqual(response.status_code, 403)
+
+        client.get('/')
+        token = client.cookies['csrftoken'].value
+        response = client.post(
+            '/api/auth/login/',
+            {'username': 'testuser', 'password': 'testpass123'},
+            HTTP_X_CSRFTOKEN=token,
         )
-
         self.assertEqual(response.status_code, 200)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
-        rotated_refresh = RefreshToken(response.data['refresh'])
-        self.assertNotEqual(rotated_refresh['jti'], refresh['jti'])
-        self.assertGreater(rotated_refresh['exp'], refresh['exp'])
+
+    def test_session_writes_require_csrf_token(self):
+        client = APIClient(enforce_csrf_checks=True)
+        client.login(username='testuser', password='testpass123')
+        response = client.patch('/api/auth/me/', {'bio': 'hi'}, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(client.get('/api/auth/me/').status_code, 200)
+
+    def test_password_change_keeps_current_session(self):
+        self.client.post('/api/auth/login/', {'username': 'testuser', 'password': 'testpass123'})
+        response = self.client.post('/api/auth/password/change/', {
+            'current_password': 'testpass123',
+            'new_password': 'Fresh-pass-456',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get('/api/auth/me/').status_code, 200)
+
+        other = APIClient()
+        self.assertFalse(other.login(username='testuser', password='testpass123'))
 
     def test_login_unknown_user(self):
         response = self.client.post('/api/auth/login/', {
@@ -313,13 +350,13 @@ class AccountTests(TestCase):
             account_visibility='public',
         )
 
-        self.client.credentials()
+        self.client.force_authenticate(user=None)
         self.assertEqual(self.client.get(f'/api/auth/users/{target.username}/').status_code, 401)
         self.assertEqual(self.client.get(f'/api/auth/users/{target.username}/followers/').status_code, 401)
         self.assertEqual(self.client.get(f'/api/auth/users/{target.username}/following/').status_code, 401)
 
     def test_user_search_requires_auth(self):
-        self.client.credentials()
+        self.client.force_authenticate(user=None)
         response = self.client.get('/api/auth/users/search/?q=test')
         self.assertEqual(response.status_code, 401)
 
@@ -472,6 +509,6 @@ class AccountTests(TestCase):
         self.assertEqual(items[0]['episode_code'], 'S02E05')
 
     def test_activity_heatmap_requires_auth(self):
-        self.client.credentials()
+        self.client.force_authenticate(user=None)
         response = self.client.get(f'/api/auth/users/{self.user.username}/activity/')
         self.assertEqual(response.status_code, 401)

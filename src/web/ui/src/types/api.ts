@@ -7,7 +7,6 @@ export type QueryValue = string | number | boolean | readonly (string | number |
 export type QueryParams = Record<string, QueryValue>
 export type ApiError = Record<string, unknown> & { detail?: string; non_field_errors?: string[]; status?: number }
 
-export interface Tokens { access: string; refresh: string }
 export interface User {
   id: number; username: string; email: string; bio: string; avatar: string | null; location: string
   website: string; preferred_region: string; account_visibility: 'public' | 'private' | 'friends_only'

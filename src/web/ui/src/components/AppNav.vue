@@ -215,8 +215,8 @@ function goToPreviewItem(item: SearchPreviewItem) {
   router.push(`/movies/${item.id}`)
 }
 
-function logout() {
-  auth.logout()
+async function logout() {
+  await auth.logout().catch(() => {})
   showUserMenu.value = false
   showMobileMenu.value = false
   router.push('/')

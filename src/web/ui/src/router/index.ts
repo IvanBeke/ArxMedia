@@ -40,5 +40,5 @@ export function resolveScrollPosition(
   return { top: 0 }
 }
 const router = createRouter({ history: createWebHistory(), routes, scrollBehavior: (to, from, savedPosition) => resolveScrollPosition(to, from, savedPosition) })
-router.beforeEach(async (to) => { const auth = useAuthStore(); if (to.meta.requiresAuth && !auth.isAuthenticated) { if (localStorage.getItem('access_token') && !auth.user) await auth.init(); if (!auth.isAuthenticated) return { name: 'login', query: { redirect: to.fullPath } } } if (to.meta.guest && auth.isAuthenticated) return { name: 'dashboard' } })
+router.beforeEach(async (to) => { const auth = useAuthStore(); if (to.meta.requiresAuth && !auth.isAuthenticated) { await auth.init(); if (!auth.isAuthenticated) return { name: 'login', query: { redirect: to.fullPath } } } if (to.meta.guest && auth.isAuthenticated) return { name: 'dashboard' } })
 export default router

@@ -12,7 +12,7 @@ ArxMedia is a self-hosted media tracking app built with Django REST Framework an
 
 ## Stack
 
-- Backend: Django 6, Django REST Framework, SimpleJWT
+- Backend: Django 6, Django REST Framework, session auth
 - Frontend: Vue 3, Pinia, Vue Router, Tailwind CSS
 - Runtime: Python 3.14, Node 22
 - Data: SQLite (local default), PostgreSQL 17 (containerized)

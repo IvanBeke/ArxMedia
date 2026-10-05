@@ -38,5 +38,5 @@ curl -s http://localhost:8000/api/media/trending/?type=movie | jq -e '.results'
 
 - Never drop database tables
 - Never remove existing API endpoints without migration path
-- Never break JWT auth flow
+- Never break session auth flow (session cookie + CSRF)
 - Never remove Redis cache gracefully (it should still work without it)

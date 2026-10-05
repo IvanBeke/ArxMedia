@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { authAPI } from '@/api'
+import { authAPI, trackingAPI } from '@/api'
 
 function response(payload: unknown, status = 200): Response {
   return {
@@ -9,37 +9,55 @@ function response(payload: unknown, status = 200): Response {
   } as unknown as Response
 }
 
-describe('API token refresh', () => {
+describe('API session requests', () => {
   beforeEach(() => {
-    localStorage.clear()
+    document.cookie = 'csrftoken=test-csrf-token; path=/'
   })
 
   afterEach(() => {
-    localStorage.clear()
+    document.cookie = 'csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
     vi.unstubAllGlobals()
   })
 
-  it('stores the rotated refresh token before retrying the request', async () => {
-    localStorage.setItem('access_token', 'expired-access-token')
-    localStorage.setItem('refresh_token', 'current-refresh-token')
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(response({ detail: 'Token is invalid or expired.' }, 401))
-      .mockResolvedValueOnce(response({ access: 'new-access-token', refresh: 'rotated-refresh-token' }))
-      .mockResolvedValueOnce(response({ id: 1, username: 'testuser' }))
+  it('sends the CSRF token on unsafe requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 1, username: 'testuser' }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(authAPI.me()).resolves.toEqual({ id: 1, username: 'testuser' })
+    await authAPI.login({ username: 'testuser', password: 'secret' })
 
-    expect(fetchMock).toHaveBeenCalledTimes(3)
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/api/auth/token/refresh/')
-    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       method: 'POST',
-      body: JSON.stringify({ refresh: 'current-refresh-token' }),
+      credentials: 'same-origin',
+      headers: { 'X-CSRFToken': 'test-csrf-token', 'Content-Type': 'application/json' },
     })
-    expect(localStorage.getItem('access_token')).toBe('new-access-token')
-    expect(localStorage.getItem('refresh_token')).toBe('rotated-refresh-token')
-    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
-      headers: { Authorization: 'Bearer new-access-token' },
-    })
+  })
+
+  it('does not send the CSRF token on safe requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 1, username: 'testuser' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await authAPI.me()
+
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'GET', headers: {} })
+  })
+
+  it('uploads imports as multipart form data through the shared client', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 7 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await trackingAPI.importData(new File(['{}'], 'export.zip'), 'zip', 'arxmedia')
+
+    const [url, options] = fetchMock.mock.calls[0] ?? []
+    expect(String(url)).toContain('/api/tracking/data/import/?data_format=zip&source=arxmedia')
+    expect(options.body).toBeInstanceOf(FormData)
+    expect(options.headers).toEqual({ 'X-CSRFToken': 'test-csrf-token' })
+  })
+
+  it('surfaces auth endpoint 401s without redirecting', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ detail: 'Incorrect username or password.' }, 401)))
+    const before = window.location.href
+
+    await expect(authAPI.login({ username: 'x', password: 'y' })).rejects.toMatchObject({ status: 401 })
+    expect(window.location.href).toBe(before)
   })
 })

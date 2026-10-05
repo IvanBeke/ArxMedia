@@ -12,9 +12,9 @@ What "good work" means for this project.
 ## App principles (Django)
 
 - Models are synced from TMDB and enriched with TVMaze — TMDB owns the media catalog; TVMaze supplies TV scheduling and runtime data. The app does not own the external media catalog.
-- JWT auth with 1h access, 7d refresh, rotate tokens
+- Django session auth: `POST /api/auth/login/`, `/logout/` and `/register/` manage an HttpOnly session cookie (`SESSION_COOKIE_AGE`, default 14 days); the SPA sends the `csrftoken` cookie back as `X-CSRFToken` on unsafe requests. Unauthenticated API requests return 401.
 - Redis cache is optional — TMDB and TVMaze services fall back gracefully
-- DRF with `IsAuthenticatedOrReadOnly` and `PageNumberPagination` (PAGE_SIZE=20)
+- DRF with `IsAuthenticated` by default and `PageNumberPagination` (PAGE_SIZE=20)
 - All Django code lives under `src/`
 
 ## Deployment note: trusted proxy / HTTPS behind Traefik
@@ -27,7 +27,6 @@ What "good work" means for this project.
   - `SECURE_SSL_REDIRECT`: `True`
   - `SECURE_PROXY_SSL_HEADER_VALUE`: `https`
   - `USE_X_FORWARDED_HOST`: `True`
-  - `CORS_ALLOWED_ORIGINS`: comma-separated public HTTPS origins
   - `CSRF_TRUSTED_ORIGINS`: comma-separated public HTTPS origins
 - Traefik should terminate TLS on `websecure` and forward `X-Forwarded-Proto`, `X-Forwarded-Host`, and `X-Forwarded-For` to Django.
 - The app router should be configured for `websecure` only when a separate internal redirect middleware already handles `http -> https`.
@@ -42,7 +41,7 @@ What "good work" means for this project.
 - `src/arxmedia/settings/django_core.py` contains installed apps, middleware, templates, root urls, and WSGI entry
 - `src/arxmedia/settings/database.py` contains `DATABASES` and `dj-database-url` fallback logic
 - `src/arxmedia/settings/static_media.py` contains static/media paths and storages
-- `src/arxmedia/settings/api.py` contains password validators, DRF, JWT, and CORS/CSRF trusted origins
+- `src/arxmedia/settings/api.py` contains password validators, DRF, and CSRF trusted origins
 - `src/arxmedia/settings/integrations.py` contains TMDB, TVMaze, and Django Vite integration settings
 - `src/arxmedia/settings/celery.py` contains Redis-derived Celery broker/backend and beat schedules
 - `src/arxmedia/settings/logging_conf.py` contains `LOG_LEVEL` and Django logging configuration

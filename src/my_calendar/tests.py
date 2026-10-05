@@ -5,7 +5,6 @@ from django.test import TestCase
 from django.utils import timezone
 from media.models import Episode, Movie, Season, TVShow
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 from tracking.models import UserMediaStatus, WatchEntry
 
 User = get_user_model()
@@ -15,8 +14,7 @@ class CalendarTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='caluser', email='cal@example.com', password='testpass123')
         self.client = APIClient()
-        token = RefreshToken.for_user(self.user)
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        self.client.force_authenticate(user=self.user)
 
     def test_calendar_requires_auth(self):
         anon = APIClient()

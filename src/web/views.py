@@ -3,7 +3,9 @@ from pathlib import Path
 
 from django.contrib.staticfiles import finders
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.generic import TemplateView
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,7 @@ PWA_MANIFEST = {
 }
 
 
+@method_decorator(ensure_csrf_cookie, name='dispatch')
 class SPAView(TemplateView):
     template_name = 'web/index.html'
 

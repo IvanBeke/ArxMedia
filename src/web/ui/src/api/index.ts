@@ -1,5 +1,5 @@
 import { DATA_TRANSFER_FORMAT, MEDIA_TYPE } from '@/constants/tracking'
-import type { ApiError, CalendarItem, CollectionDetail, Credits, CustomList, DataImportMode, DataTransferFormat, DataTransferJob, DataTransferSource, EpisodeWatchPayload, ExternalIds, Genre, HeatmapSeason, ListItem, ListItemsResponse, LoginPayload, MediaCard, MediaSearchResponse, MediaType, Movie, PaginatedResponse, PersonCombinedCredits, PersonDetail, PersonSearchResponse, ProfileUpdatePayload, QueryParams, RegisterPayload, Rating, Season, SeasonWatchPayload, ShowProgressItem, Tokens, TVShow, User, UserActivityHeatmap, UserCard, UserProfile, WatchedEpisode, WatchEntry } from '@/types/api'
+import type { ApiError, CalendarItem, CollectionDetail, Credits, CustomList, DataImportMode, DataTransferFormat, DataTransferJob, DataTransferSource, EpisodeWatchPayload, ExternalIds, Genre, HeatmapSeason, ListItem, ListItemsResponse, LoginPayload, MediaCard, MediaSearchResponse, MediaType, Movie, PaginatedResponse, PersonCombinedCredits, PersonDetail, PersonSearchResponse, ProfileUpdatePayload, QueryParams, RegisterPayload, Rating, Season, SeasonWatchPayload, ShowProgressItem, TVShow, User, UserActivityHeatmap, UserCard, UserProfile, WatchedEpisode, WatchEntry } from '@/types/api'
 
 export interface DashboardStats {
   movies_watched: number; episodes_watched: number; shows_watching: number
@@ -17,11 +17,9 @@ export interface UpcomingItem {
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
 type RequestMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'HEAD'
-type RequestData = object | readonly unknown[] | null
-type RefreshSubscriber = { resolve: (token: string) => void; reject: (reason?: unknown) => void }
+type RequestData = object | readonly unknown[] | FormData | null
 
-let isRefreshing = false
-let refreshSubscribers: RefreshSubscriber[] = []
+const SAFE_METHODS = new Set<RequestMethod>(['GET', 'HEAD'])
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload: unknown = await response.json().catch(() => null)
@@ -32,45 +30,29 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload as T
 }
 
-async function refreshAccessToken(origin: string): Promise<string> {
-  const refresh = localStorage.getItem('refresh_token')
-  if (!refresh) throw new Error('Missing refresh token')
-  if (isRefreshing) return new Promise<string>((resolve, reject) => refreshSubscribers.push({ resolve, reject }))
-  isRefreshing = true
-  try {
-    const refreshData = await parseResponse<Tokens>(await fetch(origin + '/api/auth/token/refresh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh }) }))
-    if (!refreshData.access) throw new Error('Refresh token response missing access token')
-    if (!refreshData.refresh) throw new Error('Refresh token response missing refresh token')
-    localStorage.setItem('access_token', refreshData.access)
-    localStorage.setItem('refresh_token', refreshData.refresh)
-    refreshSubscribers.forEach(({ resolve }) => resolve(refreshData.access as string))
-    refreshSubscribers = []
-    return refreshData.access
-  } catch (error: unknown) {
-    refreshSubscribers.forEach(({ reject }) => reject(error))
-    refreshSubscribers = []
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    const redirect = `${window.location.pathname}${window.location.search}`
-    window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`
-    throw error
-  } finally { isRefreshing = false }
+function csrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : null
 }
 
 async function request<T>(method: RequestMethod, url: string, data: RequestData = null, params: QueryParams | null = null): Promise<T> {
   const fullUrl = new URL(baseURL + url, window.location.origin)
   if (params) for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== null) fullUrl.searchParams.append(key, String(value))
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const token = localStorage.getItem('access_token')
-  if (token) headers.Authorization = `Bearer ${token}`
-  const options: RequestInit = { method, headers }
-  if (data && method !== 'GET' && method !== 'HEAD') options.body = JSON.stringify(data)
-  let response = await fetch(fullUrl.toString(), options)
-  if (response.status === 401 && !url.includes('/token/refresh/')) {
-    if (localStorage.getItem('refresh_token')) {
-      headers.Authorization = `Bearer ${await refreshAccessToken(fullUrl.origin)}`
-      response = await fetch(fullUrl.toString(), options)
+  const headers: Record<string, string> = {}
+  const options: RequestInit = { method, headers, credentials: 'same-origin' }
+  if (!SAFE_METHODS.has(method)) {
+    const token = csrfToken()
+    if (token) headers['X-CSRFToken'] = token
+    if (data instanceof FormData) options.body = data
+    else if (data) {
+      headers['Content-Type'] = 'application/json'
+      options.body = JSON.stringify(data)
     }
+  }
+  const response = await fetch(fullUrl.toString(), options)
+  if (response.status === 401 && !url.startsWith('/auth/')) {
+    const redirect = `${window.location.pathname}${window.location.search}`
+    window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`
   }
   return parseResponse<T>(response)
 }
@@ -83,7 +65,7 @@ const api = {
 }
 
 export const authAPI = {
-  register: (data: RegisterPayload) => api.post<User>('/auth/register/', data), login: (data: LoginPayload) => api.post<Tokens>('/auth/login/', data), me: () => api.get<User>('/auth/me/'), updateProfile: (data: ProfileUpdatePayload) => api.patch<User>('/auth/me/', data),
+  register: (data: RegisterPayload) => api.post<User>('/auth/register/', data), login: (data: LoginPayload) => api.post<User>('/auth/login/', data), logout: () => api.post<void>('/auth/logout/'), me: () => api.get<User>('/auth/me/'), updateProfile: (data: ProfileUpdatePayload) => api.patch<User>('/auth/me/', data),
   searchUsers: (q: string) => api.get<UserCard[]>('/auth/users/search/', { params: { q } }), getUser: (username: string) => api.get<UserProfile>('/auth/users/' + username + '/'), getUserActivity: (username: string) => api.get<UserActivityHeatmap>('/auth/users/' + username + '/activity/'), getFollowers: (username: string, params?: QueryParams) => api.get<PaginatedResponse<UserCard>>('/auth/users/' + username + '/followers/', { params }), getFollowing: (username: string, params?: QueryParams) => api.get<PaginatedResponse<UserCard>>('/auth/users/' + username + '/following/', { params }), follow: (username: string) => api.post<{ following: boolean; is_friend: boolean; followers_count: number; following_count: number }>('/auth/users/' + username + '/follow/'), changePassword: (data: { current_password: string; new_password: string }) => api.post<{ detail: string }>('/auth/password/change/', data),
 }
 
@@ -101,7 +83,7 @@ export const trackingAPI = {
   getWatchlist: (params?: QueryParams) => api.get<PaginatedResponse<MediaCard>>('/tracking/watchlist/', { params }), addToWatchlist: (data: MediaPayload) => api.post<MediaCard>('/tracking/watchlist/', data), removeFromWatchlist: (id: string | number) => api.delete<void>('/tracking/watchlist/' + id + '/'), getRatings: (params?: QueryParams) => api.get<PaginatedResponse<Rating> | Rating[]>('/tracking/ratings/', { params }), rate: (data: MediaPayload & { score: number }) => api.post<Rating>('/tracking/ratings/', data),
   getStats: () => api.get<DashboardStats>('/tracking/stats/'), getUpNext: () => api.get<UpNextItem[]>('/tracking/up-next/'), getMyShows: (params?: QueryParams) => api.get<PaginatedResponse<ShowProgressItem>>('/tracking/my-shows/', { params }), getMyMovies: (params?: QueryParams) => api.get<PaginatedResponse<MediaCard>>('/tracking/my-movies/', { params }), getUpcoming: () => api.get<UpcomingItem[]>('/tracking/upcoming/'), dropMedia: (data: MediaPayload) => api.post<Record<string, unknown>>('/tracking/media/drop/', data),
   getLists: () => api.get<PaginatedResponse<CustomList> | CustomList[]>('/tracking/lists/'), createList: (data: { name: string; description?: string; privacy?: CustomList['privacy']; collaborator_ids?: number[] }) => api.post<CustomList>('/tracking/lists/', data), getList: (id: string | number) => api.get<CustomList>('/tracking/lists/' + id + '/'), getListItems: (listId: string | number, params?: QueryParams) => api.get<ListItemsResponse>('/tracking/lists/' + listId + '/items/', { params }), updateList: (id: string | number, data: Partial<{ name: string; description: string; privacy: CustomList['privacy']; collaborator_ids: number[] }>) => api.patch<CustomList>('/tracking/lists/' + id + '/', data), deleteList: (id: string | number) => api.delete<void>('/tracking/lists/' + id + '/'), addToList: (listId: string | number, data: MediaPayload) => api.post<ListItem>('/tracking/lists/' + listId + '/items/', data), removeFromList: (listId: string | number, itemId: string | number) => api.delete<void>('/tracking/lists/' + listId + '/items/' + itemId + '/'), reorderList: (listId: string | number, orderedIds: number[]) => api.post<ListItem[]>('/tracking/lists/' + listId + '/items/reorder/', { custom_order: orderedIds }), getRecommendations: () => api.get<MediaCard[]>('/tracking/recommendations/'),
-  importData: (file: File, format: DataTransferFormat = 'zip', source: DataTransferSource = 'arxmedia') => { const form = new FormData(); form.append('file', file); const fullUrl = new URL(baseURL + '/tracking/data/import/', window.location.origin); fullUrl.searchParams.set('data_format', format); fullUrl.searchParams.set('source', source); const token = localStorage.getItem('access_token'); return fetch(fullUrl.toString(), { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form }).then((response) => parseResponse<DataTransferJob>(response)) }, exportData: (format: DataTransferFormat = 'zip') => api.post<DataTransferJob>('/tracking/data/export/?data_format=' + format, {}), listJobs: () => api.get<PaginatedResponse<DataTransferJob> | DataTransferJob[]>('/tracking/data/jobs/'), getJobStatus: (jobId: string | number) => api.get<DataTransferJob>('/tracking/data/jobs/' + jobId + '/'), confirmJobImport: (jobId: string | number, importMode: DataImportMode) => api.post<DataTransferJob>('/tracking/data/jobs/' + jobId + '/confirm/', { import_mode: importMode }), cancelJobImport: (jobId: string | number) => api.post<DataTransferJob>('/tracking/data/jobs/' + jobId + '/cancel/', {}), deleteExportFile: (jobId: string | number) => api.delete<DataTransferJob>('/tracking/data/jobs/' + jobId + '/file/'),
+  importData: (file: File, format: DataTransferFormat = 'zip', source: DataTransferSource = 'arxmedia') => { const form = new FormData(); form.append('file', file); return request<DataTransferJob>('POST', '/tracking/data/import/', form, { data_format: format, source }) }, exportData: (format: DataTransferFormat = 'zip') => api.post<DataTransferJob>('/tracking/data/export/?data_format=' + format, {}), listJobs: () => api.get<PaginatedResponse<DataTransferJob> | DataTransferJob[]>('/tracking/data/jobs/'), getJobStatus: (jobId: string | number) => api.get<DataTransferJob>('/tracking/data/jobs/' + jobId + '/'), confirmJobImport: (jobId: string | number, importMode: DataImportMode) => api.post<DataTransferJob>('/tracking/data/jobs/' + jobId + '/confirm/', { import_mode: importMode }), cancelJobImport: (jobId: string | number) => api.post<DataTransferJob>('/tracking/data/jobs/' + jobId + '/cancel/', {}), deleteExportFile: (jobId: string | number) => api.delete<DataTransferJob>('/tracking/data/jobs/' + jobId + '/file/'),
 }
 
 export const calendarAPI = { get: (params?: QueryParams) => api.get<{ results: CalendarItem[] }>('/calendar/', { params }) }
