@@ -1,3 +1,4 @@
+from accounts.privacy import visible_owner_q
 from django.contrib.auth import get_user_model
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
@@ -19,6 +20,7 @@ def activity_feed(request):
     ).values_list('following_id', flat=True)
 
     entries = WatchEntry.objects.filter(
+        visible_owner_q(request.user),
         user_id__in=following_ids,
     ).select_related('user').order_by('-watched_at')[:50]
 

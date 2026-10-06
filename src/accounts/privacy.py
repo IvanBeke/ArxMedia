@@ -1,4 +1,6 @@
 from django.contrib.auth.models import AnonymousUser
+from django.db.models import Q
+from social.models import Follow
 
 from .models import AccountVisibility
 
@@ -41,3 +43,19 @@ def can_view_account_content(visibility: str, relationship: dict[str, bool]) -> 
     if visibility == AccountVisibility.FRIENDS_ONLY:
         return relationship['is_friend']
     return False
+
+
+def visible_owner_q(viewer, field: str = 'user') -> Q:
+    """Filter for rows owned by accounts whose content `viewer` may see (queryset form of can_view_account_content)."""
+    following = Follow.objects.filter(follower=viewer).values('following_id')
+    followers = Follow.objects.filter(following=viewer).values('follower_id')
+    return (
+        Q(**{f'{field}_id': viewer.id})
+        | Q(**{f'{field}__account_visibility': AccountVisibility.PUBLIC})
+        | Q(
+            **{
+                f'{field}__account_visibility': AccountVisibility.FRIENDS_ONLY,
+                f'{field}_id__in': following,
+            }
+        ) & Q(**{f'{field}_id__in': followers})
+    )

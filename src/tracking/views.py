@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from datetime import time as dt_time
 from typing import TYPE_CHECKING
 
-from accounts.privacy import can_view_account_content, get_viewer_relationship
+from accounts.privacy import can_view_account_content, get_viewer_relationship, visible_owner_q
 from django.db import IntegrityError, transaction
 from django.db.models import (
     Avg,
@@ -823,16 +823,18 @@ class WatchlistDetailView(generics.RetrieveDestroyAPIView):
 
 class ReviewListCreateView(generics.ListCreateAPIView):
     serializer_class = ReviewSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         media_type = self.request.query_params.get('media_type')
         tmdb_id = self.request.query_params.get('tmdb_id')
-        qs = Review.objects.all()
+        qs = Review.objects.filter(visible_owner_q(self.request.user)).select_related('user')
         if media_type:
+            if media_type not in MediaType.values:
+                raise ValidationError({'media_type': f'Must be one of: {", ".join(MediaType.values)}.'})
             qs = qs.filter(media_type=media_type)
         if tmdb_id:
-            qs = qs.filter(tmdb_id=tmdb_id)
+            qs = qs.filter(tmdb_id=_coerce_int(tmdb_id, 'tmdb_id'))
         return qs.order_by('-created_at')
 
     def perform_create(self, serializer):
