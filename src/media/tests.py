@@ -887,6 +887,25 @@ class MediaTests(TestCase):
         self.assertEqual(movie_550['user_status']['status'], 'plan_to_watch')
         self.assertEqual(tv_550['user_status']['status'], 'plan_to_watch')
 
+    @patch('media.views.tmdb.get_tv_show')
+    @patch('media.views.tmdb.get_movie')
+    @patch('media.views.tmdb.find_by_external_id')
+    def test_search_prefixed_id_rejects_path_characters(self, mock_find, mock_get_movie, mock_get_tv):
+        for raw in ('../movie/550', 'tt1?x=1', 'tt1#frag', '..', 'a' * 65):
+            with self.subTest(raw=raw):
+                response = self.client.get('/api/media/search/', {'q': f'#{raw}'})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.data['results'], [])
+        mock_find.assert_not_called()
+        mock_get_movie.assert_not_called()
+        mock_get_tv.assert_not_called()
+
+    @patch('media.views.tmdb.get_trending')
+    def test_trending_rejects_unknown_type_and_window(self, mock_get_trending):
+        self.assertEqual(self.client.get('/api/media/trending/', {'type': '../movie/550'}).status_code, 400)
+        self.assertEqual(self.client.get('/api/media/trending/', {'window': 'month'}).status_code, 400)
+        mock_get_trending.assert_not_called()
+
     @patch('media.views.tmdb.find_by_external_id')
     def test_search_prefixed_id_applies_scope_filter(self, mock_find_by_external_id):
         mock_find_by_external_id.return_value = {

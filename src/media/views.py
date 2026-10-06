@@ -1,4 +1,5 @@
 import logging
+import re
 
 from django.db import models, transaction
 from django.db.models import F, Window
@@ -22,6 +23,11 @@ from .serializers import (
 from .tmdb import tmdb
 
 logger = logging.getLogger(__name__)
+
+TRENDING_MEDIA_TYPES = ('all', 'movie', 'tv', 'person')
+TRENDING_TIME_WINDOWS = ('day', 'week')
+# External ids are interpolated into the TMDB URL path, so only allow plain identifier characters.
+EXTERNAL_ID_RE = re.compile(r'^(?=.*[A-Za-z0-9])[A-Za-z0-9._-]{1,64}$')
 
 TMDB_FIND_EXTERNAL_SOURCES = (
     'imdb_id',
@@ -167,7 +173,7 @@ def _normalize_media_release_date(results):
 
 def _search_by_prefixed_id(query, scope):
     raw_external_id = query[1:].strip()
-    if not raw_external_id:
+    if not EXTERNAL_ID_RE.match(raw_external_id):
         return {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
 
     merged_results = []
@@ -247,6 +253,10 @@ def search(request):
 def trending(request):
     media_type = request.query_params.get('type', 'all')
     time_window = request.query_params.get('window', 'week')
+    if media_type not in TRENDING_MEDIA_TYPES:
+        return Response({'type': f'Must be one of: {", ".join(TRENDING_MEDIA_TYPES)}.'}, status=status.HTTP_400_BAD_REQUEST)
+    if time_window not in TRENDING_TIME_WINDOWS:
+        return Response({'window': f'Must be one of: {", ".join(TRENDING_TIME_WINDOWS)}.'}, status=status.HTTP_400_BAD_REQUEST)
     try:
         data = tmdb.get_trending(media_type, time_window)
         if media_type in (MediaType.MOVIE, MediaType.TV):
