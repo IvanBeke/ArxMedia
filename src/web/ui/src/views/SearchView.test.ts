@@ -54,6 +54,48 @@ describe('SearchView', () => {
     expect(search).not.toHaveBeenCalled()
   })
 
+  it('loads weekly trending by default and switches to today', async () => {
+    const { wrapper } = await mountView()
+
+    expect(trending).toHaveBeenCalledWith('movie', 'week')
+    expect(trending).toHaveBeenCalledWith('tv', 'week')
+    const today = wrapper.findAll('button').find((button) => button.text() === 'Today')
+    expect(today?.attributes('aria-pressed')).toBe('false')
+
+    trending.mockClear()
+    await today?.trigger('click')
+    await flushPromises()
+
+    expect(trending).toHaveBeenCalledWith('movie', 'day')
+    expect(trending).toHaveBeenCalledWith('tv', 'day')
+    expect(today?.attributes('aria-pressed')).toBe('true')
+  })
+
+  it('disables the trending toggle while loading', async () => {
+    const pending: ((value: unknown) => void)[] = []
+    const { wrapper } = await mountView()
+    trending.mockReset().mockImplementation(() => new Promise((resolve) => { pending.push(resolve) }))
+
+    const buttons = () => wrapper.findAll('button').filter((button) => ['Today', 'This week'].includes(button.text()))
+    await buttons()[0]?.trigger('click')
+
+    expect(buttons().every((button) => button.attributes('disabled') !== undefined)).toBe(true)
+    await buttons()[1]?.trigger('click')
+    expect(trending).toHaveBeenCalledTimes(2)
+
+    pending.forEach((resolve) => resolve({ results: [{ id: 1 }] }))
+    await flushPromises()
+    expect(buttons().every((button) => button.attributes('disabled') === undefined)).toBe(true)
+  })
+
+  it('shows an error state when trending fails to load', async () => {
+    trending.mockReset().mockRejectedValue({ detail: 'boom' })
+    const { wrapper } = await mountView()
+
+    expect(wrapper.text()).toContain('Trending is unavailable right now.')
+    expect(wrapper.findAll('.media-card')).toHaveLength(0)
+  })
+
   it('searches only after submitting the draft query', async () => {
     const { wrapper, router } = await mountView()
     const input = wrapper.find('input')

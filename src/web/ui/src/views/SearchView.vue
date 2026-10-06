@@ -67,10 +67,31 @@
 
     <!-- Default state -->
     <div v-else-if="!query && !isUserScope && !isPeopleScope">
-      <h2 class="section-title mb-4">Trending Right Now</h2>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h2 class="section-title">Trending Right Now</h2>
+        <div
+          class="flex items-center rounded-lg border border-surface-300 bg-surface-100/60 p-0.5"
+          role="group"
+          aria-label="Trending time window"
+        >
+          <button
+            v-for="option in trendingWindowOptions"
+            :key="option.value"
+            type="button"
+            class="px-3 py-1 text-sm rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
+            :class="trendingWindow === option.value ? 'bg-brand-500 text-white shadow-sm' : 'text-muted hover:text-primary'"
+            :aria-pressed="trendingWindow === option.value"
+            :disabled="loadingDefault"
+            @click="setTrendingWindow(option.value)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </div>
       <div v-if="loadingDefault" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
         <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
       </div>
+      <p v-else-if="trendingError" class="card p-6 text-sm text-muted">Trending is unavailable right now.</p>
       <div v-else class="space-y-8">
         <div v-if="(activeFilter === 'multi' || activeFilter === MEDIA_TYPE.MOVIE) && trendingMovies.length">
           <h3 class="section-title mb-4">Movies</h3>
@@ -136,6 +157,7 @@ const SCOPE_VALUE = {
 type SearchScope = (typeof SCOPE_VALUE)[keyof typeof SCOPE_VALUE]
 type SearchFilter = MediaType | 'multi'
 type SearchSubmit = { query: string; scope: SearchScope }
+type TrendingWindow = 'day' | 'week'
 
 const route = useRoute()
 const router = useRouter()
@@ -147,6 +169,12 @@ const trendingMovies = ref<MediaResult[]>([])
 const trendingTvShows = ref<MediaResult[]>([])
 const loading = ref(false)
 const loadingDefault = ref(true)
+const trendingError = ref(false)
+const trendingWindow = ref<TrendingWindow>('week')
+const trendingWindowOptions: { value: TrendingWindow; label: string }[] = [
+  { value: 'day', label: 'Today' },
+  { value: 'week', label: 'This week' },
+]
 const activeFilter = ref<SearchFilter>('multi')
 const currentPage = ref(1)
 const totalPages = ref(1)
@@ -374,15 +402,31 @@ onMounted(async () => {
     await doSearch({ page: currentPage.value })
   }
 
+  await loadTrending()
+})
+
+async function loadTrending() {
+  loadingDefault.value = true
+  trendingError.value = false
   try {
     const [moviesData, tvData] = await Promise.all([
-      mediaAPI.trending(MEDIA_TYPE.MOVIE),
-      mediaAPI.trending(MEDIA_TYPE.TV),
+      mediaAPI.trending(MEDIA_TYPE.MOVIE, trendingWindow.value),
+      mediaAPI.trending(MEDIA_TYPE.TV, trendingWindow.value),
     ])
     trendingMovies.value = moviesData?.results?.slice(0, 10) || []
     trendingTvShows.value = tvData?.results?.slice(0, 10) || []
+  } catch {
+    trendingMovies.value = []
+    trendingTvShows.value = []
+    trendingError.value = true
   } finally {
     loadingDefault.value = false
   }
-})
+}
+
+function setTrendingWindow(value: TrendingWindow) {
+  if (loadingDefault.value || value === trendingWindow.value) return
+  trendingWindow.value = value
+  void loadTrending()
+}
 </script>
