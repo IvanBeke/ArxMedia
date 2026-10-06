@@ -69,10 +69,17 @@ API responses include `error_code` and a field-specific message.
 
 The provider-neutral Celery tasks in `src/tracking/tasks/import_pipeline.py` are:
 
-- `tracking.prepare_import_job`
-- `tracking.run_import_job`
-- `tracking.process_media_item`
-- `tracking.sync_import_show_metadata`
+- `tracking.prepare_import_job`: parse and analyze the upload
+- `tracking.run_import_job`: start the confirmed import
+- `tracking.sync_import_show_metadata`: sync one candidate show for episode resolution
+- `tracking.dispatch_import_items`: resolve episodes and fan out one task per media item
+- `tracking.process_media_item`: sync metadata for one item and apply its records
+- `tracking.finish_import_job`: mirror deletions, reconcile statuses, write the report
+
+No task waits on another. Each fan-out stage stores a `pending` counter in the job's
+`metadata.pipeline`. Subtasks decrement it under a row lock, and the one that reaches
+zero queues the next stage. A failed item still counts as finished, so the job always
+completes.
 
 Provider selection happens through `provider_registry.py`; the job's `source` and
 `data_format` fields are validated before parsing. When a provider supplies

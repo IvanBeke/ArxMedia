@@ -2,6 +2,8 @@ from media.tmdb import tmdb
 
 from .export import export_user_data
 from .import_pipeline import (
+    dispatch_import_items,
+    finish_import_job,
     prepare_import_job,
     process_media_item,
     run_import_job,
@@ -19,7 +21,9 @@ from .system import (
 __all__ = [
     'cleanup_data_transfer_jobs',
     'cleanup_removed_episodes',
+    'dispatch_import_items',
     'export_user_data',
+    'finish_import_job',
     'heartbeat',
     'prepare_import_job',
     'process_media_item',

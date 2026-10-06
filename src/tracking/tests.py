@@ -3880,23 +3880,18 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(results[1]['id'], old_job.id)
 
     def _run_import_pipeline(self, job_id):
-        """Run the whole import locally without sending tasks to Celery."""
-        from unittest.mock import patch
+        """Run the whole import locally: every queued stage executes inline."""
+        from arxmedia.celery import app
 
-        from tracking.tasks import process_media_item, run_import_job
+        from tracking.tasks import run_import_job
 
-        class LocalResult:
-            def __init__(self, value):
-                self.value = value
-
-            def get(self, **kwargs):
-                return self.value
-
-        def apply_item(job_id, item):
-            return LocalResult(process_media_item.run(job_id, item))
-
-        with patch('tracking.tasks.process_media_item.delay', side_effect=apply_item):
+        eager = {'CELERY_TASK_ALWAYS_EAGER': True, 'CELERY_TASK_EAGER_PROPAGATES': True}
+        previous = {key: app.conf.get(key) for key in eager}
+        app.conf.update(eager)
+        try:
             run_import_job(job_id)
+        finally:
+            app.conf.update(previous)
 
     def test_wetrakr_parser_maps_supported_csv_files(self):
         from tracking.tasks.providers.wetrakr import parse_wetrakr_zip
@@ -3980,46 +3975,73 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(resolved.report['unresolved_episode_records'], 0)
 
     def test_wetrakr_pre_resolution_syncs_candidates_then_uses_episode_id(self):
-        from tracking.tasks.import_pipeline import _resolve_episode_records
-        from tracking.tasks.providers.wetrakr import parse_wetrakr_zip
+        from django.core.files.base import ContentFile
 
-        class Result:
-            def __init__(self, value):
-                self.value = value
-
-            def get(self, **kwargs):
-                return self.value
-
-        parsed = parse_wetrakr_zip(self._build_wetrakr_zip(
-            tracklog=[
-                {'type': 'show', 'title': 'Candidate Show', 'tmdb_id': 900, 'status': 'watched'},
-                {'type': 'episode', 'show_title': 'Deliberately Wrong Title', 'tmdb_id': 90001, 'season_number': '1', 'episode_number': '1', 'status': 'watched'},
-            ],
-        ))
         job = DataTransferJob.objects.create(
             user=self.user,
             job_type='import',
             data_format='zip',
             source='wetrakr',
             status='processing',
+            import_mode='new_items',
         )
+        job.input_file.save('wetrakr.zip', ContentFile(self._build_wetrakr_zip(
+            tracklog=[
+                {'type': 'show', 'title': 'Candidate Show', 'tmdb_id': 900, 'status': 'watched'},
+                {'type': 'episode', 'show_title': 'Deliberately Wrong Title', 'tmdb_id': 90001, 'season_number': '1', 'episode_number': '1', 'status': 'watched'},
+            ],
+        )), save=True)
+        self.addCleanup(job.input_file.delete, save=False)
 
-        def fake_sync(job_id, show_id):
-            show = TVShow.objects.create(tmdb_id=show_id, name='Candidate Show')
-            season = Season.objects.create(show=show, tmdb_id=9000, season_number=1, name='Season 1')
-            Episode.objects.create(season=season, tmdb_id=90001, episode_number=1, name='Episode 1')
-            return Result({'status': 'ok', 'cached': False})
+        def fake_sync(show_id, **kwargs):
+            show, _ = TVShow.objects.get_or_create(tmdb_id=show_id, defaults={'name': 'Candidate Show'})
+            season, _ = Season.objects.get_or_create(show=show, season_number=1, defaults={'tmdb_id': 9000, 'name': 'Season 1'})
+            Episode.objects.get_or_create(season=season, episode_number=1, defaults={'tmdb_id': 90001, 'name': 'Episode 1'})
+            return show
 
-        with patch(
-            'tracking.tasks.import_pipeline.sync_import_show_metadata.delay',
-            side_effect=fake_sync,
-        ) as delay:
-            resolved, counters = _resolve_episode_records(job, parsed)
+        with patch('media.tmdb.tmdb.sync_tv_show', side_effect=fake_sync) as sync:
+            self._run_import_pipeline(job.id)
 
-        delay.assert_called_once_with(job.id, 900)
-        self.assertEqual([(record.tmdb_id, record.episode_number) for record in resolved.watch_entries()], [(900, 1)])
-        self.assertEqual(counters['metadata_fetches'], 1)
-        self.assertEqual(resolved.report['unresolved_episode_records'], 0)
+        job.refresh_from_db()
+        self.assertEqual(job.status, 'done')
+        self.assertEqual(sync.call_args_list[0].args, (900,))
+        self.assertTrue(
+            WatchEntry.objects.filter(user=self.user, media_type='episode', tmdb_id=900, season_number=1, episode_number=1).exists()
+        )
+        self.assertNotIn('pipeline', job.metadata)
+
+    def test_import_finishes_when_an_item_fails(self):
+        payload = {
+            'watch_history': [
+                {'media_type': 'movie', 'tmdb_id': 701},
+                {'media_type': 'movie', 'tmdb_id': 702},
+            ],
+            'watchlist': [],
+            'ratings': [],
+        }
+        file_obj = SimpleUploadedFile('arxmedia-export.zip', self._build_arxmedia_zip(payload), content_type='application/zip')
+        response = self.client.post('/api/tracking/data/import/?data_format=zip&source=arxmedia', {'file': file_obj}, format='multipart')
+        job = DataTransferJob.objects.get(id=response.data['id'])
+        job.status = 'processing'
+        job.import_mode = 'new_items'
+        job.save(update_fields=['status', 'import_mode', 'updated_at'])
+
+        from tracking import import_engine
+
+        real_apply = import_engine.apply_item_records
+
+        def flaky_apply(user, media_type, tmdb_id, records, mode):
+            if tmdb_id == 701:
+                raise RuntimeError('boom')
+            return real_apply(user, media_type, tmdb_id, records, mode)
+
+        with patch('tracking.tasks.import_pipeline.apply_item_records', side_effect=flaky_apply):
+            self._run_import_pipeline(job.id)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, 'done')
+        self.assertTrue(WatchEntry.objects.filter(user=self.user, media_type='movie', tmdb_id=702).exists())
+        self.assertFalse(WatchEntry.objects.filter(user=self.user, media_type='movie', tmdb_id=701).exists())
 
     def test_wetrakr_does_not_guess_an_unresolved_episode_parent(self):
         from tracking.import_resolution import episode_parent_map, resolve_episode_records
