@@ -70,8 +70,8 @@ class BaseTestCase(TestCase):
         )
         self.client = APIClient()
         self._tmdb_patchers = [
-            patch('tracking.views.tmdb.sync_movie', return_value=None),
-            patch('tracking.views.tmdb.sync_tv_show', return_value=None),
+            patch('media.tmdb.tmdb.sync_movie', return_value=None),
+            patch('media.tmdb.tmdb.sync_tv_show', return_value=None),
             patch('tracking.tasks.tmdb.sync_movie', return_value=None),
             patch('tracking.tasks.tmdb.sync_tv_show', return_value=None),
             patch('tracking.tasks.tmdb.sync_season', return_value=None),
@@ -585,7 +585,7 @@ class WatchlistTests(BaseTestCase):
         response = self.client.post('/api/tracking/watchlist/', data)
         self.assertEqual(response.status_code, 201)
 
-    @patch('tracking.views.tmdb.sync_movie')
+    @patch('media.tmdb.tmdb.sync_movie')
     def test_add_to_watchlist_syncs_movie_metadata(self, mock_sync_movie):
         mock_sync_movie.return_value = None
         data = {'media_type': 'movie', 'tmdb_id': 124}
@@ -595,7 +595,7 @@ class WatchlistTests(BaseTestCase):
         self.assertEqual(response.status_code, 201)
         mock_sync_movie.assert_called_once_with(124)
 
-    @patch('tracking.views.tmdb.sync_tv_show')
+    @patch('media.tmdb.tmdb.sync_tv_show')
     def test_add_to_watchlist_syncs_tv_metadata(self, mock_sync_tv_show):
         mock_sync_tv_show.return_value = None
         data = {'media_type': 'tv', 'tmdb_id': 457}
@@ -2724,7 +2724,7 @@ class ListItemTests(BaseTestCase):
         def _create_movie(tmdb_id):
             return Movie.objects.create(tmdb_id=tmdb_id, title='Synced Movie')
 
-        with patch('tracking.views.tmdb.sync_movie', side_effect=_create_movie) as mock_sync:
+        with patch('media.tmdb.tmdb.sync_movie', side_effect=_create_movie) as mock_sync:
             response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': 124})
         self.assertEqual(response.status_code, 201)
         mock_sync.assert_called_once_with(124)
@@ -2734,21 +2734,21 @@ class ListItemTests(BaseTestCase):
     def test_add_movie_to_list_skips_sync_when_present(self):
         lst = CustomList.objects.create(user=self.user, name='Test List')
         Movie.objects.create(tmdb_id=125, title='Existing Movie')
-        with patch('tracking.views.tmdb.sync_movie') as mock_sync:
+        with patch('media.tmdb.tmdb.sync_movie') as mock_sync:
             response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': 125})
         self.assertEqual(response.status_code, 201)
         mock_sync.assert_not_called()
 
     def test_add_tv_to_list_syncs_missing_metadata_without_credits(self):
         lst = CustomList.objects.create(user=self.user, name='Test List')
-        with patch('tracking.views.tmdb.sync_tv_show') as mock_sync:
+        with patch('media.tmdb.tmdb.sync_tv_show') as mock_sync:
             response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'tv', 'tmdb_id': 457})
         self.assertEqual(response.status_code, 201)
         mock_sync.assert_called_once_with(457)
 
     def test_add_to_list_creates_item_when_sync_fails(self):
         lst = CustomList.objects.create(user=self.user, name='Test List')
-        with patch('tracking.views.tmdb.sync_movie', side_effect=Exception('boom')):
+        with patch('media.tmdb.tmdb.sync_movie', side_effect=Exception('boom')):
             response = self.client.post(f'/api/tracking/lists/{lst.id}/items/', {'media_type': 'movie', 'tmdb_id': 126})
         self.assertEqual(response.status_code, 201)
         self.assertTrue(ListItem.objects.filter(custom_list=lst, media_type='movie', tmdb_id=126).exists())
@@ -3089,8 +3089,8 @@ class UserStatsTests(BaseTestCase):
 
 
 class RecommendationsTests(BaseTestCase):
-    @patch('tracking.views.tmdb.get_popular_movies')
-    @patch('tracking.views.tmdb.get_popular_tv')
+    @patch('media.tmdb.tmdb.get_popular_movies')
+    @patch('media.tmdb.tmdb.get_popular_tv')
     def test_recommendations_exclude_watched_and_watchlist(self, mock_tv, mock_movies):
         WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=10)
         UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=20, status='plan_to_watch', status_changed_at=timezone.now())
@@ -3648,7 +3648,7 @@ class DataImportExportTests(BaseTestCase):
 
     def test_import_rejects_oversized_upload(self):
         file_obj = SimpleUploadedFile('big.zip', b'zip-bytes', content_type='application/zip')
-        with patch('tracking.views.MAX_IMPORT_UPLOAD_BYTES', 4):
+        with patch('tracking.views.transfer.MAX_IMPORT_UPLOAD_BYTES', 4):
             response = self.client.post('/api/tracking/data/import/?source=arxmedia', {'file': file_obj}, format='multipart')
         self.assertEqual(response.status_code, 400)
         self.assertIn('file', response.data)
