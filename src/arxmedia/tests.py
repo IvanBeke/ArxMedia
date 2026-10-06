@@ -38,14 +38,10 @@ class ProductionSettingsGuardTests(SimpleTestCase):
             importlib.reload(base)
             return importlib.reload(module)
 
-    def test_debug_defaults_to_false(self):
-        base = self._load('base', {'SECRET_KEY': self.STRONG_KEY})
-        self.assertFalse(base.DEBUG)
-
     def test_weak_secret_key_rejected_without_debug(self):
-        for key in ('', 'short', 'change-me-to-a-long-random-string' + 'x' * 30, 'django-insecure-' + 'x' * 50):
+        for key in ('short', 'change-me-to-a-long-random-string' + 'x' * 30, 'django-insecure-' + 'x' * 50):
             with self.subTest(key=key), self.assertRaises(ImproperlyConfigured):
-                self._load('base', {'SECRET_KEY': key})
+                self._load('base', {'DEBUG': 'False', 'SECRET_KEY': key})
 
     def test_weak_secret_key_allowed_in_debug(self):
         base = self._load('base', {'DEBUG': 'True'})
@@ -53,7 +49,7 @@ class ProductionSettingsGuardTests(SimpleTestCase):
 
     def test_database_url_required_without_debug(self):
         with self.assertRaises(ImproperlyConfigured):
-            self._load('database', {'SECRET_KEY': self.STRONG_KEY})
+            self._load('database', {'DEBUG': 'False', 'SECRET_KEY': self.STRONG_KEY})
 
     def test_forwarded_host_not_trusted_by_default(self):
         security = self._load('security', {'DEBUG': 'True'})

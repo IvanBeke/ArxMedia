@@ -5,6 +5,7 @@ set -e
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
+# Adjust ids and volume ownership as root, then re-exec as the unprivileged app user.
 if [ "$(id -u)" -eq 0 ]; then
     if [ "$(id -g app)" != "$PGID" ]; then
         groupmod -o -g "$PGID" app
@@ -13,6 +14,11 @@ if [ "$(id -u)" -eq 0 ]; then
         usermod -o -u "$PUID" app
     fi
     chown -R app:app /app/media_uploads /app/staticfiles
+    exec setpriv --reuid=app --regid=app --init-groups "$0" "$@"
+fi
+
+if [ "$#" -gt 0 ]; then
+    exec "$@"
 fi
 
 python manage.py migrate --noinput

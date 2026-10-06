@@ -105,7 +105,7 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
     volumes:
       - media_files:/app/media_uploads
-    command: celery -A arxmedia.celery beat --loglevel=info
+    command: celery -A arxmedia.celery beat --loglevel=info -s /tmp/celerybeat-schedule
 
 volumes:
   postgres_data:

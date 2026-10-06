@@ -41,7 +41,7 @@ COPY --from=uibuild /static/web ./web/static/web
 RUN python manage.py collectstatic --noinput
 
 RUN mkdir -p /app/media_uploads /app/staticfiles && \
-    groupadd -r app && useradd -r -g app -d /app -s /usr/sbin/nologin app && \
+    groupadd -g 1000 app && useradd -u 1000 -g app -M -d /nonexistent -s /usr/sbin/nologin app && \
     chown -R app:app /app /app/media_uploads /app/staticfiles
 
 COPY entrypoint.sh /entrypoint.sh
@@ -49,4 +49,4 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh"]

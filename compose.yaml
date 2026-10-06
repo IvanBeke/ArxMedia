@@ -114,7 +114,7 @@ services:
       - ./src:/app
       - media_files:/app/media_uploads
       - static_files:/app/staticfiles
-    command: sh -c "celery -A arxmedia.celery beat --loglevel=info"
+    command: sh -c "celery -A arxmedia.celery beat --loglevel=info -s /tmp/celerybeat-schedule"
 
   ui:
     image: ghcr.io/pnpm/pnpm:12
