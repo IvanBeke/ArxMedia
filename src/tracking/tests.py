@@ -11,7 +11,9 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase, override_settings
+from django.db import IntegrityError, connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from media.models import Episode, Genre, Movie, Season, TVShow
 from rest_framework.test import APIClient
@@ -519,6 +521,74 @@ class WatchEntryTests(BaseTestCase):
         self.assertEqual(data[0]['rating'], 8)
 
 
+class HistoryCreateIdempotencyTests(BaseTestCase):
+    def test_reposting_a_watched_movie_or_episode_returns_existing_entry(self):
+        payloads = [
+            {'media_type': 'movie', 'tmdb_id': 77},
+            {'media_type': 'episode', 'tmdb_id': 78, 'season_number': 1, 'episode_number': 2},
+        ]
+        for payload in payloads:
+            with self.subTest(media_type=payload['media_type']):
+                first = self.client.post('/api/tracking/history/', payload, format='json')
+                second = self.client.post('/api/tracking/history/', payload, format='json')
+
+                self.assertEqual(first.status_code, 201)
+                self.assertEqual(second.status_code, 200)
+                self.assertEqual(second.data['id'], first.data['id'])
+                self.assertEqual(
+                    WatchEntry.objects.filter(user=self.user, media_type=payload['media_type'], tmdb_id=payload['tmdb_id']).count(),
+                    1,
+                )
+
+
+class UniqueEpisodeWatchMigrationTests(TransactionTestCase):
+    def _targets(self, tracking_migration):
+        executor = MigrationExecutor(connection)
+        others = [node for node in executor.loader.graph.leaf_nodes() if node[0] != 'tracking']
+        return [('tracking', tracking_migration), *others]
+
+    def setUp(self):
+        self.before = self._targets('0029_private_data_transfer_paths')
+        self.after = self._targets('0030_unique_episode_watch_entries')
+
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+    def test_migration_keeps_earliest_episode_watch_and_adds_constraint(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.before)
+        old_apps = executor.loader.project_state(self.before).apps
+        OldUser = old_apps.get_model('accounts', 'User')
+        OldWatchEntry = old_apps.get_model('tracking', 'WatchEntry')
+        user = OldUser.objects.create(username='dup-user')
+        first = timezone.now() - timedelta(days=3)
+        kept = OldWatchEntry.objects.create(
+            user=user, media_type='episode', tmdb_id=1, season_number=1, episode_number=1, watched_at=first,
+        )
+        for watched_at in (first + timedelta(days=1), None):
+            OldWatchEntry.objects.create(
+                user=user, media_type='episode', tmdb_id=1, season_number=1, episode_number=1, watched_at=watched_at,
+            )
+        other = OldWatchEntry.objects.create(
+            user=user, media_type='episode', tmdb_id=1, season_number=1, episode_number=2, watched_at=first,
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.after)
+
+        self.assertEqual(
+            set(WatchEntry.objects.filter(user_id=user.id).values_list('id', flat=True)),
+            {kept.id, other.id},
+        )
+        with self.assertRaises(IntegrityError):
+            WatchEntry.objects.create(
+                user_id=user.id, media_type='episode', tmdb_id=1, season_number=1, episode_number=1,
+            )
+
+
 class RatingTests(BaseTestCase):
     def test_create_rating(self):
         WatchEntry.objects.create(
@@ -815,6 +885,18 @@ class SeasonTests(BaseTestCase):
             {(1, 1), (1, 3)},
         )
         self.assertTrue(all(episode['watched_at'] for episode in response.data['episodes']))
+
+    def test_mark_season_watched_twice_does_not_duplicate_entries(self):
+        show = TVShow.objects.create(tmdb_id=125, name='Twice Show')
+        season = Season.objects.create(show=show, tmdb_id=1251, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=12511, episode_number=1, name='Episode 1')
+        Episode.objects.create(season=season, tmdb_id=12512, episode_number=2, name='Episode 2')
+
+        for _ in range(2):
+            response = self.client.post('/api/tracking/seasons/mark/', {'tmdb_id': 125, 'season_number': 1})
+            self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(WatchEntry.objects.filter(user=self.user, media_type='episode', tmdb_id=125).count(), 2)
 
     def test_mark_season_zero_watched(self):
         show = TVShow.objects.create(tmdb_id=126, name='Specials Show')

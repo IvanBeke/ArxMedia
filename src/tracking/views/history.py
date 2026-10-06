@@ -1,4 +1,5 @@
 from accounts.privacy import visible_owner_q
+from django.db import IntegrityError, transaction
 from django.db.models import (
     Avg,
     Count,
@@ -8,7 +9,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -103,6 +104,26 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         if page is not None:
             return self.get_paginated_response(data)
         return Response(data)
+
+    def create(self, request, *args, **kwargs):
+        # A movie or episode is watched at most once; re-posting it returns the existing entry.
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                self.perform_create(serializer)
+        except IntegrityError:
+            existing = self._existing_entry(serializer.validated_data)
+            if existing is None:
+                raise
+            return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def _existing_entry(self, data):
+        lookup = {'user': self.request.user, 'media_type': data['media_type'], 'tmdb_id': data['tmdb_id']}
+        if data['media_type'] == WatchEntryMediaType.EPISODE:
+            lookup |= {'season_number': data.get('season_number'), 'episode_number': data.get('episode_number')}
+        return WatchEntry.objects.filter(**lookup).first()
 
     def perform_create(self, serializer):
         watched_at = serializer.validated_data.get('watched_at')

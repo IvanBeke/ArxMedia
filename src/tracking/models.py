@@ -65,6 +65,11 @@ class WatchEntry(models.Model):
                 condition=models.Q(media_type=WatchEntryMediaType.MOVIE),
                 name='unique_user_movie_tmdb'
             ),
+            models.UniqueConstraint(
+                fields=['user', 'tmdb_id', 'season_number', 'episode_number'],
+                condition=models.Q(media_type=WatchEntryMediaType.EPISODE),
+                name='unique_user_episode_watch',
+            ),
         ]
 
     def __str__(self):
