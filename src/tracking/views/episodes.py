@@ -5,12 +5,29 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
+from ..cache import cache
 from ..choices import WatchEntryMediaType
 from ..models import WatchEntry
+from ..signals import suppress_watch_entry_delete_signals
 from ..status_sync import refresh_show_status
 from ._helpers import _coerce_int
 
 logger = logging.getLogger(__name__)
+
+
+def _refresh_after_bulk_change(user_id, tmdb_id):
+    """Bulk writes skip (or suppress) per-row signals, so refresh caches and show status once."""
+    cache.invalidate_user_stats(user_id)
+    cache.invalidate_show_progress(user_id, tmdb_id)
+    refresh_show_status(user_id, tmdb_id)
+
+
+def _bulk_delete_episode_entries(user_id, tmdb_id, entries):
+    with suppress_watch_entry_delete_signals():
+        count, _ = entries.delete()
+    if count:
+        _refresh_after_bulk_change(user_id, tmdb_id)
+    return count
 
 
 def _parse_watched_at(value):
@@ -59,7 +76,6 @@ def mark_episode_watched(request):
         entry.watched_at = watched_at
         entry.save(update_fields=['watched_at'])
 
-    from ..cache import cache
     cache.mark_episode_watched(request.user.id, tmdb_id, season_number, episode_number)
 
     return Response({'id': entry.id, 'created': created}, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
@@ -89,7 +105,6 @@ def unmark_episode_watched(request):
     ).delete()
 
     if deleted:
-        from ..cache import cache
         cache.unmark_episode_watched(request.user.id, tmdb_id, season_number, episode_number)
 
     return Response({'deleted': deleted > 0})
@@ -173,11 +188,7 @@ def mark_season_watched(request):
         ignore_conflicts=True
     )
 
-    from ..cache import cache
-    for ep in episodes:
-        cache.mark_episode_watched(request.user.id, tmdb_id, season_number, ep['episode_number'])
-
-    refresh_show_status(request.user.id, tmdb_id)
+    _refresh_after_bulk_change(request.user.id, tmdb_id)
 
     watched_episodes = WatchEntry.objects.filter(
         user=request.user,
@@ -209,7 +220,7 @@ def unmark_season_watched(request):
         season_number=season_number
     )
     episodes = list(entries.values('season_number', 'episode_number', 'watched_at'))
-    count, _ = entries.delete()
+    count = _bulk_delete_episode_entries(request.user.id, tmdb_id, entries)
 
     return Response({'unmarked': count, 'episodes': episodes})
 
@@ -225,10 +236,11 @@ def unmark_show_watched(request):
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
 
-    count, _ = WatchEntry.objects.filter(
+    entries = WatchEntry.objects.filter(
         user=request.user,
         media_type=WatchEntryMediaType.EPISODE,
         tmdb_id=tmdb_id,
-    ).delete()
+    )
+    count = _bulk_delete_episode_entries(request.user.id, tmdb_id, entries)
 
     return Response({'unmarked': count})

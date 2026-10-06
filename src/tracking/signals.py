@@ -1,3 +1,6 @@
+import threading
+from contextlib import contextmanager
+
 from django.contrib.auth import get_user_model
 from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
@@ -8,6 +11,18 @@ from .models import UserMediaStatus, WatchEntry
 from .status_sync import refresh_show_status
 
 _deleting_user_ids: set[int] = set()
+_suppress_state = threading.local()
+
+
+@contextmanager
+def suppress_watch_entry_delete_signals():
+    """Skip per-row delete handling; the caller refreshes caches and status once afterwards."""
+    previous = getattr(_suppress_state, 'active', False)
+    _suppress_state.active = True
+    try:
+        yield
+    finally:
+        _suppress_state.active = previous
 
 
 @receiver(pre_delete, sender=get_user_model(), dispatch_uid='tracking_user_pre_delete_mark')
@@ -46,7 +61,7 @@ def invalidate_watchentry_cache_on_save(sender, instance, **kwargs):
 
 @receiver(post_delete, sender=WatchEntry, dispatch_uid='tracking_watchentry_post_delete_invalidate_cache')
 def invalidate_watchentry_cache_on_delete(sender, instance, **kwargs):
-    if instance.user_id in _deleting_user_ids:
+    if instance.user_id in _deleting_user_ids or getattr(_suppress_state, 'active', False):
         return
 
     from .cache import cache

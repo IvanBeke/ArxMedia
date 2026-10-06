@@ -982,6 +982,48 @@ class SeasonTests(BaseTestCase):
             WatchEntry.objects.filter(user=self.user2, media_type='episode', tmdb_id=123).exists()
         )
 
+    def test_bulk_unmark_refreshes_show_status_once(self):
+        show = TVShow.objects.create(tmdb_id=321, name='Bulk Show')
+        season = Season.objects.create(show=show, tmdb_id=3211, season_number=1, name='Season 1')
+        for number in range(1, 6):
+            Episode.objects.create(season=season, tmdb_id=32110 + number, episode_number=number, name=f'E{number}')
+            WatchEntry.objects.create(
+                user=self.user, media_type='episode', tmdb_id=321, season_number=1, episode_number=number,
+            )
+        self.assertTrue(UserMediaStatus.objects.shows().filter(user=self.user, tmdb_id=321).exists())
+
+        for url, payload in (
+            ('/api/tracking/seasons/unmark/', {'tmdb_id': 321, 'season_number': 1}),
+            ('/api/tracking/shows/unmark/', {'tmdb_id': 321}),
+        ):
+            with self.subTest(url=url), \
+                    patch('tracking.views.episodes.refresh_show_status', wraps=refresh_show_status) as refresh, \
+                    patch('tracking.signals.refresh_show_status') as per_row_refresh:
+                response = self.client.post(url, payload)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(refresh.call_count, 1 if response.data['unmarked'] else 0)
+                per_row_refresh.assert_not_called()
+            WatchEntry.objects.bulk_create([
+                WatchEntry(user=self.user, media_type='episode', tmdb_id=321, season_number=1, episode_number=n)
+                for n in range(1, 6)
+            ])
+
+        self.client.post('/api/tracking/shows/unmark/', {'tmdb_id': 321})
+        self.assertFalse(
+            UserMediaStatus.objects.shows().filter(user=self.user, tmdb_id=321, status='watched').exists()
+        )
+
+    def test_mark_season_watched_invalidates_user_stats(self):
+        show = TVShow.objects.create(tmdb_id=322, name='Stats Show')
+        season = Season.objects.create(show=show, tmdb_id=3221, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=32211, episode_number=1, name='E1')
+
+        with patch('tracking.views.episodes.cache.invalidate_user_stats') as invalidate:
+            response = self.client.post('/api/tracking/seasons/mark/', {'tmdb_id': 322, 'season_number': 1})
+
+        self.assertEqual(response.status_code, 200)
+        invalidate.assert_called_once_with(self.user.id)
+
     def test_unmark_show_watched_requires_tmdb_id(self):
         response = self.client.post('/api/tracking/shows/unmark/', {})
         self.assertEqual(response.status_code, 400)
