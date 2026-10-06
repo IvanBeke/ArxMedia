@@ -56,15 +56,16 @@ const MediaHistoryTabStub = {
   template: '<div class="history-tab-stub" />',
 }
 
-async function mountView() {
+async function mountView(tab = 'history') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/movies/:id', name: 'movie-detail', component: MovieDetailView },
       { path: '/history', name: 'history', component: { template: '<div />' } },
+      { path: '/people/:id', name: 'person-detail', component: { template: '<div />' } },
     ],
   })
-  await router.push(`/movies/${TMDB_ID}?tab=history`)
+  await router.push(`/movies/${TMDB_ID}?tab=${tab}`)
   await router.isReady()
 
   const pinia = createPinia()
@@ -133,5 +134,17 @@ describe('MovieDetailView history tab', () => {
       media_type: 'movie',
       tmdb_id: String(TMDB_ID),
     })
+  })
+
+  it('links crew highlights to the person profile', async () => {
+    getMovieCredits.mockResolvedValue({
+      cast: [],
+      crew: [{ id: 9340, credit_id: 'c1', name: 'Lana Wachowski', job: 'Director' }],
+      guest_stars: [],
+    })
+    const wrapper = await mountView('overview')
+
+    const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'Lana Wachowski')
+    expect(link?.attributes('href')).toBe('/people/9340')
   })
 })

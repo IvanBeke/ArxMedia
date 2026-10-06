@@ -144,7 +144,11 @@
                 <p class="text-gray-500 text-xs mb-2">Crew highlights</p>
                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                   <div v-for="person in topCrew" :key="person.credit_id" class="text-gray-400 max-w-full break-words">
-                    <span class="text-gray-500">{{ person.job }}:</span> {{ person.name }}
+                    <span class="text-gray-500">{{ person.job }}:</span>
+                    <RouterLink
+                      :to="`/people/${person.id}`"
+                      class="text-secondary hover:text-brand-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 rounded-sm"
+                    >{{ person.name }}</RouterLink>
                   </div>
                 </div>
               </div>
