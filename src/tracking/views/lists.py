@@ -3,7 +3,6 @@ import logging
 from accounts.privacy import can_view_account_content, get_viewer_relationship
 from django.db import IntegrityError, transaction
 from django.db.models import Q
-from media.tmdb import tmdb
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -28,6 +27,7 @@ from ._helpers import (
     _apply_secondary_title_ordering,
     _apply_status_filter,
     _compute_mixed_runtime_and_counts,
+    _ensure_local_metadata,
     _normalize_sort,
     _parse_bool_param,
     _parse_multi_param,
@@ -194,19 +194,7 @@ class ListItemListCreateView(generics.ListCreateAPIView):
 
         media_type = serializer.validated_data.get('media_type')
         tmdb_id = serializer.validated_data.get('tmdb_id')
-        try:
-            if media_type == MediaType.MOVIE:
-                from media.models import Movie
-
-                if not Movie.objects.filter(tmdb_id=tmdb_id).exists():
-                    tmdb.sync_movie(tmdb_id)
-            elif media_type == MediaType.TV:
-                from media.models import TVShow
-
-                if not TVShow.objects.filter(tmdb_id=tmdb_id).exists():
-                    tmdb.sync_tv_show(tmdb_id)
-        except Exception as exc:
-            logger.warning('Failed to sync %s metadata for list item tmdb_id=%s: %s', media_type, tmdb_id, exc)
+        _ensure_local_metadata(media_type, tmdb_id)
 
         with transaction.atomic():
             max_order = ListItem.objects.filter(custom_list=custom_list).aggregate(m=Max('custom_order'))['m']

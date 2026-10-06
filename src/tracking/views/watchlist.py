@@ -6,7 +6,6 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from media.tmdb import tmdb
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -28,6 +27,7 @@ from ._helpers import (
     _apply_secondary_title_ordering,
     _coerce_int,
     _compute_mixed_runtime_and_counts,
+    _ensure_local_metadata,
     _normalize_sort,
     _parse_bool_param,
     _parse_multi_param,
@@ -147,13 +147,7 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
         if watched:
             raise ValidationError('This content has already been watched and cannot be added to watchlist.')
 
-        try:
-            if media_type == MediaType.MOVIE:
-                tmdb.sync_movie(tmdb_id)
-            elif media_type == MediaType.TV:
-                tmdb.sync_tv_show(tmdb_id)
-        except Exception as exc:
-            logger.warning('Failed to sync %s metadata for watchlist tmdb_id=%s: %s', media_type, tmdb_id, exc)
+        _ensure_local_metadata(media_type, tmdb_id)
 
         instance = UserMediaStatus.objects.set_planning(self.request.user, media_type, tmdb_id)
         serializer.instance = instance

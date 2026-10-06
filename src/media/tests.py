@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import requests
 from django.contrib.auth import get_user_model
 from django.core.cache import cache as django_cache
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -1710,6 +1711,26 @@ class MediaTests(TestCase):
         anon = APIClient()
 
         self.assertEqual(anon.get('/api/media/people/search/?q=test').status_code, 401)
+
+
+class MediaViewTransactionTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='txn', password='testpass123')
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_media_views_do_not_wrap_tmdb_calls_in_a_request_transaction(self):
+        baseline = len(connection.atomic_blocks)
+        depths = []
+
+        def capture(*args, **kwargs):
+            depths.append(len(connection.atomic_blocks))
+            return {'results': []}
+
+        with patch.object(tmdb, 'get_trending', side_effect=capture):
+            self.client.get('/api/media/trending/', {'type': 'movie'})
+
+        self.assertEqual(depths, [baseline])
 
 
 class TMDBUseCacheTests(TestCase):

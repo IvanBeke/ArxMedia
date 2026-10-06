@@ -655,6 +655,18 @@ class WatchlistTests(BaseTestCase):
         self.assertEqual(response.status_code, 201)
         mock_sync_tv_show.assert_called_once_with(457)
 
+    @patch('media.tmdb.tmdb.sync_tv_show')
+    @patch('media.tmdb.tmdb.sync_movie')
+    def test_add_to_watchlist_skips_sync_for_locally_stored_media(self, mock_sync_movie, mock_sync_tv_show):
+        Movie.objects.create(tmdb_id=125, title='Stored Movie')
+        TVShow.objects.create(tmdb_id=458, name='Stored Show')
+
+        for payload in ({'media_type': 'movie', 'tmdb_id': 125}, {'media_type': 'tv', 'tmdb_id': 458}):
+            self.assertEqual(self.client.post('/api/tracking/watchlist/', payload).status_code, 201)
+
+        mock_sync_movie.assert_not_called()
+        mock_sync_tv_show.assert_not_called()
+
     def test_block_watched_content_to_watchlist(self):
         WatchEntry.objects.create(
             user=self.user, media_type='movie', tmdb_id=123,

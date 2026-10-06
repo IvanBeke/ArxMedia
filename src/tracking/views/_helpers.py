@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING
 
 from django.db.models import (
@@ -16,6 +17,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, Greatest, Lower
 from django.utils import timezone
+from media.tmdb import tmdb
 from rest_framework.exceptions import ValidationError
 
 from ..choices import (
@@ -29,6 +31,8 @@ from ..models import (
     WatchEntry,
 )
 from ..query_helpers import media_ids_q
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from media.models import Season
@@ -409,3 +413,14 @@ def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_
     return queryset.order_by(F(field_name).asc(nulls_last=True), 'resolved_title', id_order)
 
 
+def _ensure_local_metadata(media_type: str, tmdb_id: int) -> None:
+    """Sync catalog metadata from TMDB only when the item is not stored locally yet."""
+    from media.models import Movie, TVShow
+
+    try:
+        if media_type == MediaType.MOVIE and not Movie.objects.filter(tmdb_id=tmdb_id).exists():
+            tmdb.sync_movie(tmdb_id)
+        elif media_type == MediaType.TV and not TVShow.objects.filter(tmdb_id=tmdb_id).exists():
+            tmdb.sync_tv_show(tmdb_id)
+    except Exception as exc:
+        logger.warning('Failed to sync %s metadata for tmdb_id=%s: %s', media_type, tmdb_id, exc)

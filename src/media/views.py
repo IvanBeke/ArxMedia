@@ -24,6 +24,9 @@ from .tmdb import tmdb
 
 logger = logging.getLogger(__name__)
 
+# Every view here is marked non_atomic_requests: TMDB calls must not run inside a
+# request-wide transaction, and catalog writes are idempotent upserts.
+
 TRENDING_MEDIA_TYPES = ('all', 'movie', 'tv', 'person')
 TRENDING_TIME_WINDOWS = ('day', 'week')
 # External ids are interpolated into the TMDB URL path, so only allow plain identifier characters.
@@ -114,6 +117,7 @@ def _episode_credits_payload(credit):
     }
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def genres_list(request):
@@ -210,6 +214,7 @@ def _search_by_prefixed_id(query, scope):
     }
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def search(request):
@@ -248,6 +253,7 @@ def search(request):
         return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def trending(request):
@@ -284,6 +290,7 @@ def trending(request):
         return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def popular(request):
@@ -325,6 +332,7 @@ def popular(request):
         return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def movie_detail(request, tmdb_id):
@@ -373,6 +381,7 @@ def movie_detail(request, tmdb_id):
     return Response(data)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def movie_credits(request, tmdb_id):
@@ -380,6 +389,7 @@ def movie_credits(request, tmdb_id):
     return Response(credits_data)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def tv_detail(request, tmdb_id):
@@ -423,6 +433,7 @@ def tv_detail(request, tmdb_id):
     return Response(data)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def tv_heatmap(request, tmdb_id):
@@ -452,6 +463,7 @@ class MetadataRefreshThrottle(UserRateThrottle):
     scope = 'metadata_refresh'
 
 
+@transaction.non_atomic_requests
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 @throttle_classes([UserRateThrottle, MetadataRefreshThrottle])
@@ -465,6 +477,7 @@ def refresh_movie_metadata(request, tmdb_id):
     return Response(MovieSerializer(movie).data)
 
 
+@transaction.non_atomic_requests
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 @throttle_classes([UserRateThrottle, MetadataRefreshThrottle])
@@ -483,6 +496,7 @@ def refresh_tv_metadata(request, tmdb_id):
     return Response(_serialize_tv_show_detail(show))
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def season_detail(request, tmdb_id, season_number):
@@ -547,6 +561,7 @@ def season_detail(request, tmdb_id, season_number):
     return Response(season_data)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def season_credits(request, tmdb_id, season_number):
@@ -564,6 +579,7 @@ def season_credits(request, tmdb_id, season_number):
     })
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def episode_credits(request, tmdb_id, season_number, episode_number):
@@ -618,6 +634,7 @@ def episode_credits(request, tmdb_id, season_number, episode_number):
     return Response(_episode_credits_payload(credit))
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def tv_credits(request, tmdb_id):
@@ -656,6 +673,7 @@ def _annotate_recommendation_results(user, results, media_type):
                 item['user_status'] = status_map[key]
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def movie_external_ids(request, tmdb_id):
@@ -667,6 +685,7 @@ def movie_external_ids(request, tmdb_id):
     return Response(data if isinstance(data, dict) else {})
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def tv_external_ids(request, tmdb_id):
@@ -686,6 +705,7 @@ def tv_external_ids(request, tmdb_id):
     return Response(stored)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def episode_external_ids(request, tmdb_id, season_number, episode_number):
@@ -704,6 +724,7 @@ def episode_external_ids(request, tmdb_id, season_number, episode_number):
     return Response(stored)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def movie_recommendations(request, tmdb_id):
@@ -720,6 +741,7 @@ def movie_recommendations(request, tmdb_id):
     return Response(data)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def tv_recommendations(request, tmdb_id):
@@ -736,6 +758,7 @@ def tv_recommendations(request, tmdb_id):
     return Response(data)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def collection_detail(request, collection_id):
@@ -757,6 +780,7 @@ def _person_profile_url(profile_path):
     return None
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def person_detail(request, person_id):
@@ -780,6 +804,7 @@ def person_detail(request, person_id):
     return Response(data)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def people_search(request):
@@ -802,6 +827,7 @@ def people_search(request):
     return Response(data)
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def person_credits(request, person_id):
@@ -821,6 +847,7 @@ def person_credits(request, person_id):
     return Response({'cast': cast, 'crew': crew})
 
 
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def person_external_ids(request, person_id):
