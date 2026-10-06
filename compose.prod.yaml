@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arxmedia}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arxmedia} -d ${POSTGRES_DB:-arxmedia}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -68,7 +68,7 @@ services:
       redis:
         condition: service_healthy
       app:
-        condition: service_started
+        condition: service_healthy
     env_file: .env
     environment:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
@@ -82,6 +82,12 @@ services:
     volumes:
       - media_files:/app/media_uploads
     command: celery -A arxmedia.celery worker --loglevel=info
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A arxmedia.celery inspect ping -d celery@$$HOSTNAME --timeout 10 || exit 1"]
+      interval: 60s
+      timeout: 20s
+      start_period: 30s
+      retries: 3
 
   beat:
     image: ghcr.io/ivanbeke/arxmedia:latest
@@ -92,7 +98,7 @@ services:
       redis:
         condition: service_healthy
       app:
-        condition: service_started
+        condition: service_healthy
     env_file: .env
     environment:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
