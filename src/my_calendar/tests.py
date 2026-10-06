@@ -21,6 +21,13 @@ class CalendarTests(TestCase):
         response = anon.get('/api/calendar/?days=30')
         self.assertEqual(response.status_code, 401)
 
+    def test_calendar_rejects_invalid_start_date(self):
+        for start in ('not-a-date', '2026-02-30', '2026-13-01'):
+            with self.subTest(start=start):
+                response = self.client.get('/api/calendar/', {'start': start})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('start', response.data)
+
     def test_my_calendar_includes_watchlist_movies(self):
         movie = Movie.objects.create(
             tmdb_id=301,

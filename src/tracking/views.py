@@ -2024,7 +2024,10 @@ class ListItemListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         list_id = self.kwargs.get('list_id')
-        custom_list = CustomList.objects.get(id=list_id)
+        try:
+            custom_list = CustomList.objects.get(id=list_id)
+        except CustomList.DoesNotExist:
+            raise PermissionDenied('List not found.')
         is_owner = custom_list.user_id == self.request.user.id
         is_collaborator = ListCollaborator.objects.filter(custom_list=custom_list, user=self.request.user).exists()
         if not (is_owner or is_collaborator):

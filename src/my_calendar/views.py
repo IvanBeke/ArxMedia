@@ -7,6 +7,7 @@ from django.utils.dateparse import parse_date
 from media.models import Episode, Movie
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from tracking.models import UserMediaStatus
 
@@ -14,7 +15,12 @@ from tracking.models import UserMediaStatus
 def _parse_range(request):
     start_param = request.query_params.get('start')
     days_param = request.query_params.get('days', '30')
-    start = parse_date(start_param) if start_param else timezone.localdate()
+    try:
+        start = parse_date(start_param) if start_param else timezone.localdate()
+    except ValueError:
+        start = None
+    if start is None:
+        raise ValidationError({'start': 'start must be a valid date (YYYY-MM-DD).'})
     try:
         days = int(days_param)
     except (TypeError, ValueError):

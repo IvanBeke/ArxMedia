@@ -2706,6 +2706,11 @@ class ListItemTests(BaseTestCase):
             [('tv', 8001), ('movie', 8002)],
         )
 
+    def test_add_item_to_missing_list_returns_403(self):
+        response = self.client.post('/api/tracking/lists/999999/items/', {'media_type': 'movie', 'tmdb_id': 123})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(ListItem.objects.count(), 0)
+
     def test_add_item_to_list(self):
         lst = CustomList.objects.create(user=self.user, name='Test List')
         data = {'media_type': 'movie', 'tmdb_id': 123}
