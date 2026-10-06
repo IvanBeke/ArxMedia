@@ -1,7 +1,12 @@
+import importlib
+import os
+from unittest.mock import patch
+
 from accounts.models import User
 from django.contrib import admin
+from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from media.models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
 from social.models import Follow
 from tracking.models import (
@@ -19,6 +24,40 @@ from tracking.models import (
 class DatabaseSettingsTests(TestCase):
     def test_atomic_requests_enabled(self):
         self.assertIs(connection.settings_dict['ATOMIC_REQUESTS'], True)
+
+
+class ProductionSettingsGuardTests(SimpleTestCase):
+    STRONG_KEY = 'k' * 50
+
+    def _load(self, module_name, env):
+        module = importlib.import_module(f'arxmedia.settings.{module_name}')
+        base = importlib.import_module('arxmedia.settings.base')
+        self.addCleanup(importlib.reload, module)
+        self.addCleanup(importlib.reload, base)
+        with patch.dict(os.environ, env, clear=True):
+            importlib.reload(base)
+            return importlib.reload(module)
+
+    def test_debug_defaults_to_false(self):
+        base = self._load('base', {'SECRET_KEY': self.STRONG_KEY})
+        self.assertFalse(base.DEBUG)
+
+    def test_weak_secret_key_rejected_without_debug(self):
+        for key in ('', 'short', 'change-me-to-a-long-random-string' + 'x' * 30, 'django-insecure-' + 'x' * 50):
+            with self.subTest(key=key), self.assertRaises(ImproperlyConfigured):
+                self._load('base', {'SECRET_KEY': key})
+
+    def test_weak_secret_key_allowed_in_debug(self):
+        base = self._load('base', {'DEBUG': 'True'})
+        self.assertTrue(base.DEBUG)
+
+    def test_database_url_required_without_debug(self):
+        with self.assertRaises(ImproperlyConfigured):
+            self._load('database', {'SECRET_KEY': self.STRONG_KEY})
+
+    def test_forwarded_host_not_trusted_by_default(self):
+        security = self._load('security', {'DEBUG': 'True'})
+        self.assertFalse(security.USE_X_FORWARDED_HOST)
 
 
 class AdminConfigurationTests(TestCase):

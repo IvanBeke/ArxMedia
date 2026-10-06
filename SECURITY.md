@@ -9,9 +9,10 @@ ArxMedia is built first for self-hosting.
 
 ## Self-hosting baseline
 
-- Set a strong `SECRET_KEY`.
-- Set `DEBUG=False`.
-- Use strong database credentials.
+- Set a strong `SECRET_KEY`. With `DEBUG=False` (the default) the app refuses to start if it is shorter than 50 characters or still a placeholder.
+- Keep `DEBUG=False` outside local development. `DATABASE_URL` and `FERNET_KEY` are then required.
+- Use strong database credentials. `compose.prod.yaml` requires `SECRET_KEY` and `POSTGRES_PASSWORD` to be set.
+- Only set `USE_X_FORWARDED_HOST=True` when a trusted reverse proxy sets `X-Forwarded-Host`.
 - Keep `.env` private and never commit it.
 - Put the app behind a reverse proxy with HTTPS.
 

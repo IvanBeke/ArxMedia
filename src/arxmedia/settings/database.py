@@ -3,10 +3,13 @@
 import os
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
-from .base import BASE_DIR
+from .base import BASE_DIR, DEBUG
 
 _db_url = os.environ.get('DATABASE_URL', '')
+if not _db_url and not DEBUG:
+    raise ImproperlyConfigured('DATABASE_URL must be set when DEBUG=False.')
 if _db_url:
     DATABASES = {
         'default': dj_database_url.config(

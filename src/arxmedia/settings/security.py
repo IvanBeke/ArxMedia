@@ -26,7 +26,7 @@ else:
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
 
-USE_X_FORWARDED_HOST = os.environ.get('USE_X_FORWARDED_HOST', 'True') == 'True'
+USE_X_FORWARDED_HOST = os.environ.get('USE_X_FORWARDED_HOST', 'False') == 'True'
 
 SESSION_COOKIE_HTTPONLY = True
 # The SPA reads the CSRF cookie and echoes it in the X-CSRFToken header.
