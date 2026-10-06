@@ -6,8 +6,9 @@ from accounts.models import User
 from django.contrib import admin
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from media.models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
+from rest_framework.test import APIClient
 from social.models import Follow
 from tracking.models import (
     CustomList,
@@ -54,6 +55,30 @@ class ProductionSettingsGuardTests(SimpleTestCase):
     def test_forwarded_host_not_trusted_by_default(self):
         security = self._load('security', {'DEBUG': 'True'})
         self.assertFalse(security.USE_X_FORWARDED_HOST)
+
+
+UNREACHABLE_REDIS_CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:1/0',
+        'OPTIONS': {'IGNORE_EXCEPTIONS': True, 'SOCKET_CONNECT_TIMEOUT': 0.2, 'SOCKET_TIMEOUT': 0.2},
+    },
+}
+
+
+@override_settings(CACHES=UNREACHABLE_REDIS_CACHES)
+class RedisOutageTests(TestCase):
+    def test_login_session_and_throttled_api_work_without_redis(self):
+        User.objects.create_user(username='offline', password='Offline-pass-123')
+        client = APIClient()
+
+        login = client.post('/api/auth/login/', {'username': 'offline', 'password': 'Offline-pass-123'})
+        me = client.get('/api/auth/me/')
+        stats = client.get('/api/tracking/stats/')
+
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(stats.status_code, 200)
 
 
 class AdminConfigurationTests(TestCase):

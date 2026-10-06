@@ -1,15 +1,14 @@
-import json
 import logging
 import time
 from functools import partial
 
-import redis
 import requests
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.utils.dateparse import parse_date
 
-from .http import build_session, run_parallel
+from .http import build_session, response_cache_key, run_parallel
 from .models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
 from .tvmaze import tvmaze
 
@@ -66,15 +65,7 @@ class TMDBService:
     POSTCREDITS_KEYWORD_IDS = frozenset({179430, 179431})  # after credits stinger, during credits stinger
 
     def __init__(self):
-        self._redis = None
         self._session = build_session()
-
-    def _get_redis(self):
-        if self._redis is None:
-            url = getattr(settings, 'REDIS_URL', None)
-            if url:
-                self._redis = redis.from_url(url, decode_responses=True)
-        return self._redis
 
     def _should_retry_request(self, exc, endpoint: str) -> bool:
         if isinstance(exc, requests.Timeout):
@@ -99,13 +90,11 @@ class TMDBService:
     def _get(self, endpoint, params=None, *, use_cache=True):
         params = dict(params or {})
 
-        cache_key = f'tmdb:{endpoint}:{json.dumps(params, sort_keys=True)}'
-        r = self._get_redis()
-
-        if r and use_cache:
-            cached = r.get(cache_key)
+        cache_key = response_cache_key('tmdb', endpoint, params)
+        if use_cache:
+            cached = cache.get(cache_key)
             if cached is not None:
-                return json.loads(cached)
+                return cached
 
         params['api_key'] = self.API_KEY
 
@@ -131,15 +120,8 @@ class TMDBService:
         if response_data is None:
             raise RuntimeError(f'TMDB request failed without response payload for endpoint {endpoint}')
 
-        data = response_data
-
-        if r:
-            try:
-                r.set(cache_key, json.dumps(data), ex=self.CACHE_TTL)
-            except redis.exceptions.ConnectionError as exc:
-                logger.warning('Redis cache set failed for key %s: %s', cache_key, exc)
-
-        return data
+        cache.set(cache_key, response_data, self.CACHE_TTL)
+        return response_data
 
     def _get_appended(self, endpoint, appends, *, use_cache=True):
         """Fetch ``endpoint`` with ``append_to_response``.

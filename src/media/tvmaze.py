@@ -1,13 +1,12 @@
-import json
 import logging
 from datetime import datetime
 
-import redis
 import requests
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 
-from .http import build_session
+from .http import build_session, response_cache_key
 
 logger = logging.getLogger(__name__)
 
@@ -18,32 +17,18 @@ class TVMazeService:
 
     def __init__(self):
         self._session = build_session()
-        self._redis = None
-
-    def _get_redis(self):
-        if self._redis is None:
-            url = getattr(settings, 'REDIS_URL', None)
-            if url:
-                self._redis = redis.from_url(url, decode_responses=True)
-        return self._redis
 
     def _request(self, path, params=None):
         params = params or {}
-        cache_key = f'tvmaze:{path}:{json.dumps(params, sort_keys=True)}'
-        cache = self._get_redis()
-        if cache:
-            cached = cache.get(cache_key)
-            if cached is not None:
-                return json.loads(cached)
+        cache_key = response_cache_key('tvmaze', path, params)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
         url = f'{self.BASE_URL}{path}'
         response = self._session.get(url, params=params, timeout=20)
         response.raise_for_status()
         data = response.json()
-        if cache:
-            try:
-                cache.set(cache_key, json.dumps(data), ex=self.CACHE_TTL)
-            except redis.exceptions.ConnectionError as exc:
-                logger.warning('TVMaze cache set failed for key %s: %s', cache_key, exc)
+        cache.set(cache_key, data, self.CACHE_TTL)
         return data
 
     def lookup_show_by_id(self, tvmaze_id):

@@ -430,8 +430,6 @@ def reconcile_user_media_status(
 
     # Bulk writes skip signals, so cached stats/progress must be dropped here.
     tracking_cache.invalidate_user_stats(user.id)
-    for tmdb_id in sorted(tv_ids):
-        tracking_cache.invalidate_show_progress(user.id, tmdb_id)
 
 
 def _apply_status_winner(user, record: StatusRecord, skip_existing: bool = False):

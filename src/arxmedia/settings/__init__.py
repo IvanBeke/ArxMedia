@@ -10,6 +10,7 @@ _SETTINGS_MODULES = [
     'static_media',
     'api',
     'integrations',
+    'caching',
     'celery',
     'logging_conf',
 ]

@@ -1,3 +1,5 @@
+import hashlib
+import json
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -6,6 +8,12 @@ import requests
 from requests.adapters import HTTPAdapter
 
 MAX_WORKERS = 8
+
+
+def response_cache_key(prefix: str, path: str, params: dict) -> str:
+    """Short, whitespace-free cache key for an external API response."""
+    raw = f'{path}?{json.dumps(params, sort_keys=True, separators=(",", ":"))}'
+    return f'{prefix}:{hashlib.sha256(raw.encode()).hexdigest()}'
 
 
 def build_session(pool_size: int = MAX_WORKERS) -> requests.Session:

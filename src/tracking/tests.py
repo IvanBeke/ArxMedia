@@ -8,6 +8,7 @@ from unittest.mock import patch
 from celery.schedules import crontab
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache as django_cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -37,29 +38,8 @@ User = get_user_model()
 
 
 class BaseTestCase(TestCase):
-    @classmethod
-    def setUpClass(cls):
-        test_redis_url = 'redis' + '://' + 'redis:6379/' + '15'
-        cls._redis_settings = override_settings(REDIS_URL=test_redis_url)
-        cls._redis_settings.enable()
-        cache._redis = None
-        redis_client = cache._get_redis()
-        if redis_client:
-            redis_client.flushdb()
-        super().setUpClass()
-
-    @classmethod
-    def tearDownClass(cls):
-        try:
-            redis_client = cache._get_redis()
-            if redis_client:
-                redis_client.flushdb()
-        finally:
-            cache._redis = None
-            cls._redis_settings.disable()
-            super().tearDownClass()
-
     def setUp(self):
+        django_cache.clear()
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',
@@ -3137,10 +3117,7 @@ class UserStatsTests(BaseTestCase):
         self.assertEqual(response.data['movies_watched'], 2)
 
     def test_stats_cache_hit_does_not_recompute(self):
-        from tracking.cache import cache
 
-        redis_client = cache._get_redis()
-        self.assertIsNotNone(redis_client)
         cache.invalidate_user_stats(self.user.id)
         with patch.object(cache, '_compute_user_stats', wraps=cache._compute_user_stats) as compute:
             first = cache.get_user_stats(self.user.id)

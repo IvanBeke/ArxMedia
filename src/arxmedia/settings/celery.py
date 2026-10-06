@@ -4,7 +4,7 @@ import os
 
 from celery.schedules import crontab
 
-REDIS_URL = os.environ.get('REDIS_URL', '')
+from .caching import REDIS_URL
 
 if REDIS_URL.endswith('/0'):
     _default_celery_redis_url = REDIS_URL[:-2] + '/1'

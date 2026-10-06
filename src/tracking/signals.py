@@ -55,7 +55,6 @@ def invalidate_watchentry_cache_on_save(sender, instance, **kwargs):
             },
         )
     if instance.media_type == WatchEntryMediaType.EPISODE:
-        cache.invalidate_show_progress(instance.user_id, instance.tmdb_id)
         refresh_show_status(instance.user_id, instance.tmdb_id)
 
 
@@ -101,5 +100,4 @@ def invalidate_watchentry_cache_on_delete(sender, instance, **kwargs):
                 tmdb_id=instance.tmdb_id,
             ).delete()
     if instance.media_type == WatchEntryMediaType.EPISODE:
-        cache.invalidate_show_progress(instance.user_id, instance.tmdb_id)
         refresh_show_status(instance.user_id, instance.tmdb_id)

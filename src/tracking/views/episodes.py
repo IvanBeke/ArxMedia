@@ -16,9 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 def _refresh_after_bulk_change(user_id, tmdb_id):
-    """Bulk writes skip (or suppress) per-row signals, so refresh caches and show status once."""
+    """Bulk writes skip (or suppress) per-row signals, so refresh cached stats and show status once."""
     cache.invalidate_user_stats(user_id)
-    cache.invalidate_show_progress(user_id, tmdb_id)
     refresh_show_status(user_id, tmdb_id)
 
 
@@ -76,8 +75,6 @@ def mark_episode_watched(request):
         entry.watched_at = watched_at
         entry.save(update_fields=['watched_at'])
 
-    cache.mark_episode_watched(request.user.id, tmdb_id, season_number, episode_number)
-
     return Response({'id': entry.id, 'created': created}, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
@@ -103,9 +100,6 @@ def unmark_episode_watched(request):
         season_number=season_number,
         episode_number=episode_number,
     ).delete()
-
-    if deleted:
-        cache.unmark_episode_watched(request.user.id, tmdb_id, season_number, episode_number)
 
     return Response({'deleted': deleted > 0})
 

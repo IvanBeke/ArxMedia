@@ -4,11 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import requests
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.cache import cache as django_cache
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from tracking.models import Rating, UserMediaStatus, WatchEntry
 
+from media.http import response_cache_key
 from media.models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
 from media.tmdb import _non_empty_defaults, tmdb
 from media.tvmaze import TVMazeService, tvmaze
@@ -1711,10 +1713,12 @@ class MediaTests(TestCase):
 
 
 class TMDBUseCacheTests(TestCase):
+    def setUp(self):
+        django_cache.clear()
+
     def test_get_does_not_retry_after_request_timeout(self):
         with (
             patch.object(tmdb._session, 'get', side_effect=requests.Timeout('TMDB timed out')) as mock_requests_get,
-            patch.object(tmdb, '_get_redis', return_value=None),
             patch('media.tmdb.time.sleep') as mock_sleep,
             self.assertRaises(requests.Timeout),
         ):
@@ -1728,37 +1732,47 @@ class TMDBUseCacheTests(TestCase):
         mock_response = MagicMock()
         mock_response.json.return_value = payload
 
-        redis_mock = MagicMock()
-        redis_mock.get.return_value = json.dumps({'title': 'Stale Movie'})
+        params = {'append_to_response': 'credits,videos'}
+        key = response_cache_key('tmdb', '/movie/550', params)
+        django_cache.set(key, {'title': 'Stale Movie'})
 
-        with (
-            patch.object(tmdb._session, 'get', return_value=mock_response) as mock_requests_get,
-            patch.object(tmdb, '_get_redis', return_value=redis_mock),
-        ):
-            result = tmdb._get('/movie/550', {'append_to_response': 'credits,videos'}, use_cache=False)
+        with patch.object(tmdb._session, 'get', return_value=mock_response) as mock_requests_get:
+            result = tmdb._get('/movie/550', params, use_cache=False)
 
         self.assertEqual(result, payload)
         self.assertEqual(mock_requests_get.call_args.kwargs['timeout'], tmdb.REQUEST_TIMEOUT)
-        redis_mock.get.assert_not_called()
-
-        expected_key = 'tmdb:/movie/550:' + json.dumps({'append_to_response': 'credits,videos'}, sort_keys=True)
-        redis_mock.set.assert_called_once_with(expected_key, json.dumps(payload), ex=tmdb.CACHE_TTL)
+        self.assertEqual(django_cache.get(key), payload)
 
     def test_get_with_cache_returns_cached_payload_without_network_call(self):
         cached_payload = {'id': 550, 'title': 'Cached Movie'}
 
-        redis_mock = MagicMock()
-        redis_mock.get.return_value = json.dumps(cached_payload)
+        params = {'append_to_response': 'credits,videos'}
+        django_cache.set(response_cache_key('tmdb', '/movie/550', params), cached_payload)
 
-        with (
-            patch.object(tmdb._session, 'get') as mock_requests_get,
-            patch.object(tmdb, '_get_redis', return_value=redis_mock),
-        ):
-            result = tmdb._get('/movie/550', {'append_to_response': 'credits,videos'}, use_cache=True)
+        with patch.object(tmdb._session, 'get') as mock_requests_get:
+            result = tmdb._get('/movie/550', params, use_cache=True)
 
         self.assertEqual(result, cached_payload)
         mock_requests_get.assert_not_called()
-        redis_mock.set.assert_not_called()
+
+    def test_get_survives_unreachable_redis(self):
+        payload = {'id': 550, 'title': 'Live Movie'}
+        mock_response = MagicMock()
+        mock_response.json.return_value = payload
+        unreachable = {
+            'default': {
+                'BACKEND': 'django_redis.cache.RedisCache',
+                'LOCATION': 'redis://127.0.0.1:1/0',
+                'OPTIONS': {'IGNORE_EXCEPTIONS': True, 'SOCKET_CONNECT_TIMEOUT': 0.2, 'SOCKET_TIMEOUT': 0.2},
+            },
+        }
+
+        with override_settings(CACHES=unreachable), \
+                patch.object(tmdb._session, 'get', return_value=mock_response) as mock_requests_get:
+            self.assertEqual(tmdb._get('/movie/550'), payload)
+            self.assertEqual(tmdb._get('/movie/550'), payload)
+
+        self.assertEqual(mock_requests_get.call_count, 2)
 
     @patch('tracking.status_sync.refresh_all_statuses_for_show')
     def test_sync_tv_show_propagates_use_cache_false(self, mock_refresh_statuses):
