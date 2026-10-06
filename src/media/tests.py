@@ -83,6 +83,7 @@ class MediaTests(TestCase):
         return {}
 
     def setUp(self):
+        django_cache.clear()
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',
@@ -1243,7 +1244,7 @@ class MediaTests(TestCase):
             use_cache=False,
             only_seasons=None,
         )
-        mock_sync_credits_task.delay.assert_called_once_with(1399)
+        mock_sync_credits_task.delay.assert_called_once_with(1399, None, False)
 
     @patch('media.views.sync_show_episode_credits')
     def test_tv_detail_cold_load_defers_episode_credits(self, mock_credits_task):
@@ -1260,7 +1261,7 @@ class MediaTests(TestCase):
             ).exists()
         )
         self.assertFalse(EpisodeCredit.objects.filter(episode__season__show__tmdb_id=1399).exists())
-        mock_credits_task.delay.assert_called_once_with(1399)
+        mock_credits_task.delay.assert_called_once_with(1399, None, True)
 
     @patch('media.views.sync_show_episode_credits')
     @patch('media.views.tmdb.sync_tv_show')
@@ -1279,7 +1280,7 @@ class MediaTests(TestCase):
         mock_sync.assert_called_once_with(
             701, user_id=self.user.id, use_cache=True, only_seasons=[2]
         )
-        mock_credits_task.delay.assert_called_once_with(701)
+        mock_credits_task.delay.assert_called_once_with(701, [2], True)
 
     @patch('media.views.sync_show_episode_credits')
     @patch('media.views.tmdb.sync_tv_show')
@@ -1711,6 +1712,35 @@ class MediaTests(TestCase):
         anon = APIClient()
 
         self.assertEqual(anon.get('/api/media/people/search/?q=test').status_code, 401)
+
+
+class EpisodeCreditsQueueTests(TestCase):
+    def setUp(self):
+        django_cache.clear()
+
+    @patch('media.views.sync_show_episode_credits')
+    def test_identical_credit_syncs_are_queued_once(self, mock_task):
+        from media.views import _queue_episode_credits_sync
+
+        for _ in range(3):
+            _queue_episode_credits_sync(1399, season_numbers=[2], use_cache=True)
+        _queue_episode_credits_sync(1399, season_numbers=[3], use_cache=True)
+        _queue_episode_credits_sync(1399, use_cache=False)
+
+        self.assertEqual(
+            [call.args for call in mock_task.delay.call_args_list],
+            [(1399, [2], True), (1399, [3], True), (1399, None, False)],
+        )
+
+    @patch('media.views.sync_show_episode_credits')
+    def test_queues_when_the_cache_is_unavailable(self, mock_task):
+        from media.views import _queue_episode_credits_sync
+
+        with patch('media.views.cache.add', return_value=None):
+            _queue_episode_credits_sync(1399, season_numbers=[1])
+            _queue_episode_credits_sync(1399, season_numbers=[1])
+
+        self.assertEqual(mock_task.delay.call_count, 2)
 
 
 class MediaViewTransactionTests(TestCase):

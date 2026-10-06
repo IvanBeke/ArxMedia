@@ -1,6 +1,8 @@
 import logging
 import re
 
+from django.conf import settings
+from django.core.cache import cache
 from django.db import models, transaction
 from django.db.models import F, Window
 from django.db.models.functions import RowNumber
@@ -76,9 +78,14 @@ def _resolve_region(request):
     return 'US'
 
 
-def _queue_episode_credits_sync(tmdb_id: int) -> None:
+def _queue_episode_credits_sync(tmdb_id: int, *, season_numbers=None, use_cache=True) -> None:
+    seasons = sorted(int(number) for number in season_numbers) if season_numbers else None
+    lock_key = f'credits-sync:{int(tmdb_id)}:{",".join(map(str, seasons)) if seasons else "all"}:{int(use_cache)}'
+    # add() is False when an identical sync is already queued; None means the cache is down, so queue anyway.
+    if cache.add(lock_key, True, getattr(settings, 'TMDB_CREDITS_SYNC_LOCK_TTL', 600)) is False:
+        return
     try:
-        sync_show_episode_credits.delay(int(tmdb_id))
+        sync_show_episode_credits.delay(int(tmdb_id), seasons, use_cache)
     except Exception:
         logger.warning('Failed to queue episode credits sync for tv %s', tmdb_id, exc_info=True)
 
@@ -95,7 +102,9 @@ def _sync_tv_for_read(tmdb_id, *, user_id=None, use_cache=True, only_seasons=Non
         use_cache=use_cache,
         only_seasons=only_seasons,
     )
-    transaction.on_commit(lambda: _queue_episode_credits_sync(tmdb_id))
+    transaction.on_commit(
+        lambda: _queue_episode_credits_sync(tmdb_id, season_numbers=only_seasons, use_cache=use_cache)
+    )
     return show
 
 

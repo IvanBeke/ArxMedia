@@ -5243,6 +5243,21 @@ class SystemTaskTests(TestCase):
         for call in mock_sync_credits.call_args_list:
             self.assertIs(call.kwargs['use_cache'], False)
 
+    @patch('tracking.tasks.system.tmdb.get_episode_credits', return_value={'cast': []})
+    def test_sync_show_episode_credits_limits_to_seasons_and_uses_cache(self, mock_get_credits):
+        from tracking.tasks.system import sync_show_episode_credits
+
+        show = TVShow.objects.create(tmdb_id=4445, name='Scoped Show')
+        for number in (1, 2):
+            season = Season.objects.create(show=show, tmdb_id=44450 + number, season_number=number, name=f'S{number}')
+            Episode.objects.create(season=season, tmdb_id=444500 + number, episode_number=1, name='E1')
+
+        result = sync_show_episode_credits(4445, [2], True)
+
+        self.assertEqual(result['episode_credits_synced'], 1)
+        self.assertEqual([call.args[1] for call in mock_get_credits.call_args_list], [2])
+        self.assertIs(mock_get_credits.call_args.kwargs['use_cache'], True)
+
     @patch('tracking.tasks.system.tmdb.get_episode_credits')
     def test_sync_show_episode_credits_skips_missing_show(self, mock_sync_credits):
         from tracking.tasks.system import sync_show_episode_credits
