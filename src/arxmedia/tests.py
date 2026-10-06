@@ -57,6 +57,15 @@ class ProductionSettingsGuardTests(SimpleTestCase):
         self.assertFalse(security.USE_X_FORWARDED_HOST)
 
 
+class TestIsolationSettingsTests(SimpleTestCase):
+    def test_tests_never_use_shared_redis_or_the_real_broker(self):
+        from django.conf import settings
+
+        self.assertTrue(settings.TESTING)
+        self.assertEqual(settings.CELERY_BROKER_URL, 'memory://')
+        self.assertEqual(settings.CACHES['default']['BACKEND'], 'django.core.cache.backends.locmem.LocMemCache')
+
+
 UNREACHABLE_REDIS_CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',

@@ -4,6 +4,7 @@ import os
 
 from celery.schedules import crontab
 
+from .base import TESTING
 from .caching import REDIS_URL
 
 if REDIS_URL.endswith('/0'):
@@ -15,6 +16,10 @@ else:
 
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', _default_celery_redis_url)
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', _default_celery_redis_url)
+if TESTING:
+    # Tasks queued by tests stay in process memory instead of reaching the dev worker.
+    CELERY_BROKER_URL = 'memory://'
+    CELERY_RESULT_BACKEND = 'cache+memory://'
 CELERY_TIMEZONE = os.environ.get('TIME_ZONE', 'Europe/Madrid')
 CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_TASK_ALWAYS_EAGER', 'False') == 'True'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True

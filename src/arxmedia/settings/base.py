@@ -1,6 +1,7 @@
 """Core project settings and environment bootstrap."""
 
 import os
+import sys
 from pathlib import Path
 
 import django_stubs_ext
@@ -12,6 +13,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-me-in-production')
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+# Test runs must never touch shared Redis state or the real Celery broker.
+TESTING = sys.argv[1:2] == ['test']
 ALLOWED_HOSTS = [
     host.strip() for host in os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',') if host.strip()
 ]

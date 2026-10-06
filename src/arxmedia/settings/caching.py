@@ -1,13 +1,12 @@
 """Cache settings. Redis is optional: every cache call degrades to a miss when it is unreachable."""
 
 import os
-import sys
+
+from .base import TESTING
 
 REDIS_URL = os.environ.get('REDIS_URL', '')
-# Test runs use an isolated in-memory cache instead of the shared Redis instance.
-_TESTING = sys.argv[1:2] == ['test']
 
-if REDIS_URL and not _TESTING:
+if REDIS_URL and not TESTING:
     CACHES = {
         'default': {
             'BACKEND': 'django_redis.cache.RedisCache',
