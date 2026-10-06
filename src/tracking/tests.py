@@ -3641,6 +3641,44 @@ class DataImportExportTests(BaseTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data['format'], 'format must be csv or zip')
 
+    def test_import_rejects_oversized_upload(self):
+        file_obj = SimpleUploadedFile('big.zip', b'zip-bytes', content_type='application/zip')
+        with patch('tracking.views.MAX_IMPORT_UPLOAD_BYTES', 4):
+            response = self.client.post('/api/tracking/data/import/?source=arxmedia', {'file': file_obj}, format='multipart')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('file', response.data)
+        self.assertFalse(DataTransferJob.objects.filter(user=self.user, job_type='import').exists())
+
+    def test_import_archive_rejects_zip_bombs_before_extracting(self):
+        from tracking.import_config import open_import_zip
+        from tracking.tasks.providers import parse_arxmedia_zip, parse_trakt_zip, parse_wetrakr_zip
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('watch_history.json', b'0' * 2048)
+        content = buffer.getvalue()
+
+        with patch('tracking.import_config.MAX_IMPORT_ARCHIVE_UNCOMPRESSED_BYTES', 1024):
+            for parser in (parse_arxmedia_zip, parse_trakt_zip, parse_wetrakr_zip):
+                with self.subTest(parser=parser.__name__), self.assertRaisesMessage(ValueError, 'too large when extracted'):
+                    parser(content)
+        with patch('tracking.import_config.MAX_IMPORT_ARCHIVE_ENTRIES', 0), self.assertRaisesMessage(ValueError, 'too many files'):
+            open_import_zip(content)
+
+    def test_import_and_export_are_rate_limited(self):
+        from django.core.cache import cache as django_cache
+
+        django_cache.clear()
+        self.addCleanup(django_cache.clear)
+        rates = {**settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'], 'data_import': '1/hour', 'data_export': '1/hour'}
+        with patch('rest_framework.throttling.SimpleRateThrottle.THROTTLE_RATES', rates):
+            for expected in (201, 429):
+                file_obj = SimpleUploadedFile('a.zip', self._build_arxmedia_zip(), content_type='application/zip')
+                response = self.client.post('/api/tracking/data/import/?source=arxmedia', {'file': file_obj}, format='multipart')
+                self.assertEqual(response.status_code, expected)
+            self.assertEqual(self.client.post('/api/tracking/data/export/').status_code, 201)
+            self.assertEqual(self.client.post('/api/tracking/data/export/').status_code, 429)
+
     def test_arxmedia_import_defaults_to_zip(self):
         file_obj = SimpleUploadedFile(
             'arxmedia-export.zip',

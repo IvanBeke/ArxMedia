@@ -1,11 +1,10 @@
 """Trakt zip import provider: pure parsing only (no DB/TMDB access)."""
 
-import io
 import json
 import re
-import zipfile
 
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
+from ...import_config import open_import_zip
 from ...import_metadata import UNKNOWN_IMPORTED_DATE, _parse_watched_at, _safe_int
 from ...import_records import (
     RATINGS_COLLECTION,
@@ -87,7 +86,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
     show_ids: set[int] = set()
     warnings: list[dict] = []
 
-    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+    with open_import_zip(content) as archive:
         file_names = sorted((name for name in archive.namelist() if name.lower().endswith('.json')), key=_zip_json_sort_key)
 
         for name in file_names:

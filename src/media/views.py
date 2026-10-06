@@ -4,8 +4,9 @@ from django.db import models, transaction
 from django.db.models import F, Window
 from django.db.models.functions import RowNumber
 from rest_framework import permissions, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
 from tracking.tasks import sync_show_episode_credits
@@ -437,8 +438,13 @@ def tv_heatmap(request, tmdb_id):
     return Response(data)
 
 
+class MetadataRefreshThrottle(UserRateThrottle):
+    scope = 'metadata_refresh'
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
+@throttle_classes([UserRateThrottle, MetadataRefreshThrottle])
 def refresh_movie_metadata(request, tmdb_id):
     try:
         movie = tmdb.sync_movie(tmdb_id, use_cache=False)
@@ -451,6 +457,7 @@ def refresh_movie_metadata(request, tmdb_id):
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
+@throttle_classes([UserRateThrottle, MetadataRefreshThrottle])
 def refresh_tv_metadata(request, tmdb_id):
     try:
         show = _sync_tv_for_read(

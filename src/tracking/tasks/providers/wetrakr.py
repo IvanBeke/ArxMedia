@@ -8,6 +8,7 @@ from datetime import datetime
 from django.utils import timezone
 
 from ...choices import DataTransferFormat, ListPrivacy, MediaType, TvShowStatus, WatchEntryMediaType
+from ...import_config import open_import_zip
 from ...import_metadata import UNKNOWN_IMPORTED_DATE, _parse_watched_at, _safe_int
 from ...import_records import (
     LISTS_COLLECTION,
@@ -114,7 +115,7 @@ def parse_wetrakr_zip(content: bytes) -> ParsedImport:
             {'kind': 'csv_row', 'file': file_name, 'row': row_number, 'column': column},
         )
 
-    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+    with open_import_zip(content) as archive:
         root_files = {
             item.filename
             for item in archive.infolist()

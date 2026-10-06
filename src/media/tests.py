@@ -1188,6 +1188,21 @@ class MediaTests(TestCase):
         self.assertIn('metadata_updated_at', response.data)
         mock_sync_movie.assert_called_once_with(550, use_cache=False)
 
+    @patch('media.views.tmdb.sync_movie')
+    def test_refresh_metadata_is_rate_limited(self, mock_sync_movie):
+        from django.conf import settings
+        from django.core.cache import cache as django_cache
+
+        mock_sync_movie.return_value = Movie.objects.create(tmdb_id=550, title='Fight Club')
+        django_cache.clear()
+        self.addCleanup(django_cache.clear)
+        rates = {**settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'], 'metadata_refresh': '1/hour'}
+        with patch('rest_framework.throttling.SimpleRateThrottle.THROTTLE_RATES', rates):
+            self.assertEqual(self.client.post('/api/media/movies/550/refresh/').status_code, 200)
+            self.assertEqual(self.client.post('/api/media/movies/550/refresh/').status_code, 429)
+            self.assertEqual(self.client.post('/api/media/tv/1399/refresh/').status_code, 429)
+        self.assertEqual(mock_sync_movie.call_count, 1)
+
     @patch('media.views.sync_show_episode_credits')
     @patch('media.views.tmdb.sync_tv_show')
     def test_refresh_tv_metadata_updates_show_and_seasons(self, mock_sync_tv_show, mock_sync_credits_task):

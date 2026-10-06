@@ -1,12 +1,11 @@
 """ArxMedia backup import provider: pure parsing only (no DB/TMDB access)."""
 
-import io
 import json
-import zipfile
 
 from django.utils import timezone
 
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
+from ...import_config import open_import_zip
 from ...import_metadata import UNKNOWN_IMPORTED_DATE, _parse_watched_at, _safe_int
 from ...import_records import (
     DROPPED_COLLECTION,
@@ -288,7 +287,7 @@ def parse_arxmedia_zip(content: bytes) -> ParsedImport:
     unsupported_files = 0
     seen_files: set[str] = set()
 
-    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+    with open_import_zip(content) as archive:
         for name in sorted(item.filename for item in archive.infolist() if not item.is_dir()):
             file_report = {'file': name, 'status': 'processed', 'records_seen': 0, 'error': ''}
             collection = ARXMEDIA_ARCHIVE_FILES.get(name)

@@ -12,6 +12,14 @@ This document describes the import architecture used by tracking data imports.
 Source and format compatibility is defined in `src/tracking/import_config.py` via
 `IMPORT_SOURCE_FORMATS`.
 
+## Limits
+
+Defined in `src/tracking/import_config.py`:
+
+- Uploads larger than `MAX_IMPORT_UPLOAD_BYTES` (50 MB) are rejected with `400`.
+- ZIP providers open archives through `open_import_zip`. Before anything is extracted, it fails the job when an archive has more than `MAX_IMPORT_ARCHIVE_ENTRIES` (1000) files, or more than `MAX_IMPORT_ARCHIVE_UNCOMPRESSED_BYTES` (250 MB) in total once extracted.
+- Rate limits per user (`src/arxmedia/settings/api.py`): `data_import` 20/hour, `data_export` 10/hour, and `metadata_refresh` 60/hour. Exceeding one returns `429`.
+
 ## Unified flow
 
 All providers follow the same lifecycle:

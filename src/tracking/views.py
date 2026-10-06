@@ -32,6 +32,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle, UserRateThrottle
 
 from .choices import (
     DataImportMode,
@@ -43,7 +44,7 @@ from .choices import (
     TvShowStatus,
     WatchEntryMediaType,
 )
-from .import_config import expected_formats_for_source, supported_import_sources
+from .import_config import MAX_IMPORT_UPLOAD_BYTES, expected_formats_for_source, supported_import_sources
 from .import_errors import ImportDomainError, ImportErrorCode, raise_import_validation_error
 from .models import (
     CustomList,
@@ -2152,6 +2153,8 @@ class ListItemReorderView(generics.GenericAPIView):
 
 class DataImportView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [UserRateThrottle, ScopedRateThrottle]
+    throttle_scope = 'data_import'
 
     def post(self, request, *args, **kwargs):
         fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.ZIP)).lower()
@@ -2161,6 +2164,8 @@ class DataImportView(generics.CreateAPIView):
         uploaded = request.FILES.get('file')
         if not uploaded:
             raise ValidationError({'file': 'file is required'})
+        if uploaded.size > MAX_IMPORT_UPLOAD_BYTES:
+            raise ValidationError({'file': f'file must be at most {MAX_IMPORT_UPLOAD_BYTES // (1024 * 1024)} MB'})
 
         supported_sources = supported_import_sources()
         if not source:
@@ -2190,6 +2195,8 @@ class DataImportView(generics.CreateAPIView):
 
 class DataExportView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [UserRateThrottle, ScopedRateThrottle]
+    throttle_scope = 'data_export'
 
     def post(self, request, *args, **kwargs):
         fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.ZIP)).lower()
