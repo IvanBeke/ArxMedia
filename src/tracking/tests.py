@@ -546,6 +546,19 @@ class QueryCountTests(BaseTestCase):
         self.assertEqual(response.status_code, 200, url)
         return len(ctx.captured_queries)
 
+    def test_sorting_only_computes_the_requested_sort_field(self):
+        UserMediaStatus.objects.set_planning(self.user, 'movie', 9600)
+
+        def page_sql(sort):
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(self.client.get('/api/tracking/watchlist/', {'sort': sort}).status_code, 200)
+            return next(q['sql'] for q in ctx.captured_queries if 'ORDER BY' in q['sql'] and 'tracking_usermediastatus' in q['sql'])
+
+        title_sql = page_sql('title')
+        self.assertNotIn('vote_count', title_sql)
+        self.assertNotIn('runtime', title_sql)
+        self.assertIn('vote_count', page_sql('vote_count'))
+
     def test_list_endpoints_do_not_query_per_row(self):
         urls = ['/api/tracking/stats/', '/api/tracking/history/', '/api/tracking/lists/', '/api/tracking/watchlist/']
         self._add_rows(0, 2)

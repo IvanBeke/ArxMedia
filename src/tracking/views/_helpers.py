@@ -232,7 +232,7 @@ def _normalize_sort(sort_raw: str | None, direction_raw: str | None, default_sor
     return sort_value, direction
 
 
-def _annotate_media_sort_fields(queryset, user=None):
+def _alias_media_sort_fields(queryset, user=None):
     from media.models import Episode, Movie, TVShow
 
     movie_lookup = Movie.objects.filter(tmdb_id=OuterRef('tmdb_id'))
@@ -256,7 +256,8 @@ def _annotate_media_sort_fields(queryset, user=None):
 
     today = timezone.now().date()
 
-    annotated = queryset.annotate(
+    # alias() keeps these out of SELECT: only the expressions the chosen ordering references reach the SQL.
+    annotated = queryset.alias(
         movie_title=Subquery(movie_lookup.values('title')[:1]),
         tv_title=Subquery(tv_lookup.values('name')[:1]),
         movie_release_date=Subquery(movie_lookup.values('release_date')[:1]),
@@ -290,7 +291,7 @@ def _annotate_media_sort_fields(queryset, user=None):
             ).order_by('air_date', 'season__season_number', 'episode_number').values('air_date')[:1]
         ),
         movie_watched_date=Subquery(movie_watch_lookup.values('event_at')[:1]),
-    ).annotate(
+    ).alias(
         resolved_title=Lower(Coalesce('movie_title', 'tv_title', Value(''))),
         resolved_date=Coalesce('movie_release_date', 'tv_first_air_date'),
         resolved_runtime=Coalesce('movie_runtime', 'tv_total_runtime'),
@@ -323,7 +324,7 @@ def _annotate_media_sort_fields(queryset, user=None):
         resolved_next_episode_date=Coalesce('tv_next_episode_date', Value(None, output_field=DateField())),
     )
 
-    return annotated.annotate(
+    return annotated.alias(
         resolved_time_left=ExpressionWrapper(
             Coalesce('tv_time_left_minutes', Value(0)),
             output_field=IntegerField(),
@@ -337,7 +338,7 @@ def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_
             return queryset.order_by(F('custom_order').desc(nulls_last=True), 'id')
         return queryset.order_by(F('custom_order').asc(nulls_last=True), 'id')
 
-    queryset = _annotate_media_sort_fields(queryset, user=user)
+    queryset = _alias_media_sort_fields(queryset, user=user)
 
     id_order = '-id' if id_desc else 'id'
 
