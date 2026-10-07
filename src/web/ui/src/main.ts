@@ -8,14 +8,13 @@ import { useThemeStore } from '@/stores/theme'
 import { ensureTemporal } from '@/utils/temporal'
 
 async function bootstrap(): Promise<void> {
-  await ensureTemporal()
-
   const pinia = createPinia()
   const authStore = useAuthStore(pinia)
   const themeStore = useThemeStore(pinia)
 
   themeStore.init()
-  await authStore.init()
+  // Independent startup waits: the Temporal polyfill (only on browsers without it) and the session check.
+  await Promise.all([ensureTemporal(), authStore.init()])
 
   const app = createApp(App)
   app.use(pinia)

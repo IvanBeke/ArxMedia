@@ -14,6 +14,14 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/static/web/apple-touch-icon.png" />
     <title>ArxMedia - Track What You Watch</title>
+    <script>
+      // Apply the theme before first paint (same rule as stores/theme.ts) to avoid a light flash in dark mode.
+      try {
+        const saved = localStorage.getItem('theme')
+        const dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+        document.documentElement.classList.toggle('dark', dark)
+      } catch (error) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -24,6 +32,9 @@
     {% vite_asset 'src/main.ts' %}
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- Painted until Vue mounts and replaces it. -->
+      <div class="min-h-screen bg-surface" aria-busy="true"></div>
+    </div>
   </body>
 </html>
