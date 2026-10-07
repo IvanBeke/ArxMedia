@@ -67,14 +67,6 @@ export default defineConfig({
               expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 30 },
             },
           },
-          {
-            urlPattern: /^https:\/\/image\.tmdb\.org\//,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'tmdb-images',
-              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 7 },
-            },
-          },
         ],
       },
     }),
