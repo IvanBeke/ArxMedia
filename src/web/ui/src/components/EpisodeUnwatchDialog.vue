@@ -17,9 +17,10 @@ import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { useUnwatchConfirm } from '@/composables/useUnwatchConfirm'
 type EpisodeTarget = { tmdbId: string | number; seasonNumber: string | number; episodeNumber: string | number }
 
+const props = withDefaults(defineProps<{ onError?: (message: string) => void }>(), { onError: undefined })
 const emit = defineEmits<{ unwatched: [episode: EpisodeTarget] }>()
 
-const { unmark } = useEpisodeWatchActions()
+const { unmark } = useEpisodeWatchActions(props.onError ? { onError: props.onError } : {})
 
 const { confirmDialog, removing, open, onConfirm } = useUnwatchConfirm({
   emit,

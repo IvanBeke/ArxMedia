@@ -128,6 +128,8 @@
         </button>
       </div>
     </div>
+
+    <LoadError v-else :message="loadError || 'Could not load your settings.'" @retry="loadProfile" />
   </div>
 </template>
 
@@ -135,12 +137,14 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { authAPI } from '@/api'
+import LoadError from '@/components/LoadError.vue'
 import { useAuthStore } from '@/stores/auth'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { usePwa } from '@/composables/usePwa'
 import { ACCOUNT_VISIBILITY } from '@/constants/tracking'
+import { getApiErrorMessage } from '@/utils/errors'
 import type { ApiError, ProfileUpdatePayload, User } from '@/types/api'
 
 type ProfileForm = Required<Pick<ProfileUpdatePayload, 'username' | 'email' | 'bio' | 'location' | 'preferred_region' | 'account_visibility'>>
@@ -156,6 +160,7 @@ const changingPassword = ref(false)
 const { successMsg, showSuccess } = useFlashMessages({ successDurationMs: 3000 })
 const { offlineReady, canInstall, needRefresh, installedApp, install, update } = usePwa()
 const errorMsg = ref('')
+const loadError = ref('')
 const selectedLocale = ref(prefs.locale)
 
 const form = ref<ProfileForm>({
@@ -179,7 +184,9 @@ const passwordForm = ref({
   confirmPassword: ''
 })
 
-onMounted(async () => {
+async function loadProfile() {
+  loading.value = true
+  loadError.value = ''
   try {
     const data = await authAPI.me()
     if (data) {
@@ -193,12 +200,14 @@ onMounted(async () => {
         account_visibility: data.account_visibility || ACCOUNT_VISIBILITY.PUBLIC,
       }
     }
-  } catch (error) {
-    console.error('Failed to load profile:', error)
+  } catch (error: unknown) {
+    loadError.value = getApiErrorMessage(error, 'Could not load your settings.')
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(loadProfile)
 
 async function saveProfile() {
   saving.value = true
@@ -230,7 +239,8 @@ async function updateAccountVisibility() {
     }
     showSuccess(`Account visibility set to ${data.account_visibility.replace('_', ' ')}`)
   } catch (error: unknown) {
-    console.error('Failed to update privacy:', error)
+    errorMsg.value = getApiErrorMessage(error, 'Could not update account visibility.')
+    if (user.value) form.value.account_visibility = user.value.account_visibility
   }
 }
 

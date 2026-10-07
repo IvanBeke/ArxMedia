@@ -8,7 +8,13 @@
       @cancel="handleDatePickerCancel"
     />
 
-    <EpisodeUnwatchDialog ref="unwatchDialog" @unwatched="onEpisodeUnwatched" />
+    <EpisodeUnwatchDialog ref="unwatchDialog" :on-error="showActionError" @unwatched="onEpisodeUnwatched" />
+
+    <Transition name="fade">
+      <div v-if="actionError" role="alert" class="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
+        {{ actionError }}
+      </div>
+    </Transition>
 
     <RouterLink :to="backLink" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-6">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -127,8 +133,8 @@
       </div>
     </div>
 
-    <div v-else class="text-center py-16 text-gray-500">
-      <p>Episode not found.</p>
+    <div v-else class="max-w-3xl mx-auto py-16">
+      <LoadError :message="loadError || 'Could not load this episode.'" @retry="load()" />
     </div>
   </div>
 </template>
@@ -151,8 +157,11 @@ import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import ExternalLinks from '@/components/ExternalLinks.vue'
 import CastGrid from '@/components/CastGrid.vue'
+import LoadError from '@/components/LoadError.vue'
 import { formatDateTimeByLocale, useI18n } from '@/i18n'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
+import { useFlashMessages } from '@/composables/useFlashMessages'
+import { getApiErrorMessage } from '@/utils/errors'
 import { tmdbImageUrl } from '@/utils/images'
 import { episodeExternalLinks } from '@/utils/externalLinks'
 import { watchedTooltipText } from '@/utils/watchOptions'
@@ -176,6 +185,7 @@ const episodeNum = computed(() => Number.parseInt(String(route.params.episodeNum
 const backLink = computed(() => `/tv/${tmdbId.value}/season/${seasonNum.value}?tab=episodes`)
 
 const loading = ref(true)
+const loadError = ref('')
 const showData = ref<TVShow | null>(null)
 const episodeData = ref<Episode | null>(null)
 const creditsData = ref<Credits | null>(null)
@@ -186,13 +196,14 @@ const isWatched = ref(false)
 const watchedAt = ref('')
 const episodeHeading = ref<HTMLElement | null>(null)
 const unwatchDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
+const { errorMsg: actionError, showError: showActionError } = useFlashMessages()
 const {
   showDatePicker,
   pickerInitialValue,
   handleDatePickerConfirm,
   handleDatePickerCancel,
   markFromOption,
-} = useEpisodeWatchActions()
+} = useEpisodeWatchActions({ onError: showActionError })
 const { t } = useI18n()
 
 const watchButtonTooltip = computed(() => watchedTooltipText(isWatched.value, watchedAt.value, t))
@@ -289,6 +300,7 @@ async function load(moveFocus = false) {
   const episodeNumber = episodeNum.value
 
   loading.value = true
+  loadError.value = ''
   showData.value = null
   episodeData.value = null
   creditsData.value = null
@@ -343,9 +355,9 @@ async function load(moveFocus = false) {
         }
       })
     }
-  } catch (error) {
+  } catch (error: unknown) {
     if (active && loadId === latestLoadId) {
-      console.error('Failed to load episode:', error)
+      loadError.value = getApiErrorMessage(error, 'Could not load this episode.')
     }
   } finally {
     if (active && loadId === latestLoadId) {

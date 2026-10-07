@@ -19,6 +19,8 @@
     </div>
 
     <!-- Lists Grid -->
+    <LoadError v-else-if="loadError" :message="loadError" @retry="loadLists" />
+
     <div v-else-if="lists.length" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       <RouterLink
         v-for="list in lists"
@@ -186,14 +188,17 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
 import { authAPI, trackingAPI } from '@/api'
+import LoadError from '@/components/LoadError.vue'
 import { LIST_PRIVACY } from '@/constants/tracking'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { formatDateByLocale } from '@/i18n'
-import type { ApiError, CustomList, UserCard } from '@/types/api'
+import type { CustomList, UserCard } from '@/types/api'
+import { getApiErrorMessage } from '@/utils/errors'
 import { normalizePagedResponse } from '@/utils/pagination'
 
 const lists = ref<CustomList[]>([])
 const loading = ref(true)
+const loadError = ref('')
 const creating = ref(false)
 const createError = ref('')
 const createDialog = ref<HTMLDialogElement | null>(null)
@@ -232,8 +237,7 @@ async function createList() {
     resetCreateForm()
     await loadLists()
   } catch (error: unknown) {
-    createError.value = isApiError(error) && typeof error.detail === 'string' ? error.detail : 'Failed to create list.'
-    console.error('Failed to create list:', error)
+    createError.value = getApiErrorMessage(error, 'Failed to create list.')
   } finally {
     creating.value = false
   }
@@ -307,7 +311,6 @@ async function searchCollaborators() {
       collaboratorResults.value = (data || []).filter((user) => !selectedIds.has(user.id))
     } catch (error) {
       collaboratorResults.value = []
-      console.error('Failed to search users:', error)
     } finally {
       searchingUsers.value = false
     }
@@ -316,11 +319,12 @@ async function searchCollaborators() {
 
 async function loadLists() {
   loading.value = true
+  loadError.value = ''
   try {
     const data = await trackingAPI.getLists()
     lists.value = normalizePagedResponse<CustomList>(data).items
   } catch (error: unknown) {
-    console.error('Failed to load lists:', error)
+    loadError.value = getApiErrorMessage(error, 'Could not load your lists.')
   } finally {
     loading.value = false
   }
@@ -329,10 +333,6 @@ async function loadLists() {
 onMounted(() => {
   loadLists()
 })
-
-function isApiError(error: unknown): error is ApiError {
-  return typeof error === 'object' && error !== null
-}
 </script>
 
 <style scoped>

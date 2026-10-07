@@ -155,6 +155,20 @@ describe('TVDetailView hero progress', () => {
     expect(trackingAPI.removeFromHistory).not.toHaveBeenCalled()
   })
 
+  it('shows a retryable error when the show fails to load', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+    getTV.mockRejectedValueOnce({ detail: 'Request failed (500)', status: 500 })
+
+    const wrapper = await mountView(true)
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('Request failed (500)')
+    await wrapper.get('[role="alert"] button').trigger('click')
+    await flushPromises()
+
+    expect(getTV).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('/3 watched')
+  })
+
   it('excludes specials from the watched count', async () => {
     getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1], [1, 2], [0, 1]]))
 

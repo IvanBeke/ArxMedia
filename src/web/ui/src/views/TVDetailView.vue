@@ -19,9 +19,14 @@
       @confirm="confirmRemoveWatchedEpisodes"
     />
 
-    <EpisodeUnwatchDialog ref="unwatchEpisodeDialog" @unwatched="onEpisodeUnwatched" />
+    <EpisodeUnwatchDialog ref="unwatchEpisodeDialog" :on-error="showError" @unwatched="onEpisodeUnwatched" />
+
+    <div v-if="loadError" class="max-w-3xl mx-auto px-4 py-16">
+      <LoadError :message="loadError" @retry="loadPage" />
+    </div>
 
     <DetailHero
+      v-else
       :backdrop-url="show?.backdrop_url"
       :backdrop-alt="show?.name"
       :poster-url="show?.poster_url"
@@ -332,6 +337,7 @@ import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import EpisodeHeatmap from '@/components/EpisodeHeatmap.vue'
 import DetailHero from '@/components/DetailHero.vue'
+import LoadError from '@/components/LoadError.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import MediaActionsBar from '@/components/MediaActionsBar.vue'
@@ -373,6 +379,7 @@ const show = ref<TVShow | null>(null)
 const aggregateCredits = ref<Credits | null>(null)
 const recommendations = ref<MediaResult[]>([])
 const loading = ref(true)
+const loadError = ref('')
 const loadingSeasons = ref(false)
 const loadingCredits = ref(false)
 const loadingRecs = ref(false)
@@ -592,24 +599,28 @@ function formatSeasonProgressFraction(sn: number) {
 }
 
 async function toggleSeasonWatched(sn: number) {
-  const progress = getSeasonProgress(sn)
-  if (progress === 100) {
-    const response = await trackingAPI.unmarkSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
-    for (const episode of response.episodes) {
-      if (episode.season_number !== null && episode.episode_number !== null) {
-        unmarkLocally(episode.season_number, episode.episode_number)
+  try {
+    const progress = getSeasonProgress(sn)
+    if (progress === 100) {
+      const response = await trackingAPI.unmarkSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
+      for (const episode of response.episodes) {
+        if (episode.season_number !== null && episode.episode_number !== null) {
+          unmarkLocally(episode.season_number, episode.episode_number)
+        }
       }
-    }
-    showSuccess('Season unwatched')
-  } else {
-    const response = await trackingAPI.markSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
-    for (const episode of response.episodes) {
-      if (episode.season_number !== null && episode.episode_number !== null) {
-        markLocally(episode.season_number, episode.episode_number, episode.watched_at)
+      showSuccess('Season unwatched')
+    } else {
+      const response = await trackingAPI.markSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
+      for (const episode of response.episodes) {
+        if (episode.season_number !== null && episode.episode_number !== null) {
+          markLocally(episode.season_number, episode.episode_number, episode.watched_at)
+        }
       }
+      await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
+      showSuccess('Season marked as watched')
     }
-    await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
-    showSuccess('Season marked as watched')
+  } catch (error: unknown) {
+    showError(getApiErrorMessage(error, 'Could not update this season.'))
   }
 }
 
@@ -719,7 +730,12 @@ async function confirmRemoveWatchedEpisodes() {
 }
 
 async function handleDropShow() {
-  await trackingAPI.dropMedia({ tmdb_id: tmdbId.value, media_type: MEDIA_TYPE.TV })
+  try {
+    await trackingAPI.dropMedia({ tmdb_id: tmdbId.value, media_type: MEDIA_TYPE.TV })
+  } catch (error: unknown) {
+    showError(getApiErrorMessage(error, 'Could not drop this show.'))
+    return
+  }
   await loadShow()
   showSuccess('Show dropped')
 }
@@ -756,7 +772,9 @@ async function loadShow() {
       show.value = data
       syncShowStatusFromUserStatus()
     }
-  } catch {
+  } catch (error: unknown) {
+    // A failed reload after an action keeps the page; only a failed first load replaces it.
+    if (!show.value) loadError.value = getApiErrorMessage(error, 'Could not load this show.')
   }
 }
 
@@ -804,9 +822,12 @@ function handleRecommendationStatusChanged(payload: MediaStatusChangedPayload) {
   applyStatusChanged(recommendations.value, payload)
 }
 
-onMounted(async () => {
+async function loadPage() {
+  loading.value = true
+  loadError.value = ''
   await loadShow()
   loading.value = false
+  if (!show.value) return
   void loadCredits()
   void loadRecommendations()
 
@@ -826,5 +847,7 @@ onMounted(async () => {
       if (found) userRating.value = found.score
     }
   }
-})
+}
+
+onMounted(loadPage)
 </script>

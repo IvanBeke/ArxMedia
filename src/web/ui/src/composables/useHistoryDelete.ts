@@ -3,6 +3,7 @@ import { trackingAPI } from '@/api'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
 import type { WatchEntry } from '@/types/api'
+import { getApiErrorMessage } from '@/utils/errors'
 
 export function getRemoveHistoryConfirmText(entry: WatchEntry): string {
   const { t } = useI18n()
@@ -14,6 +15,7 @@ export function getRemoveHistoryConfirmText(entry: WatchEntry): string {
 
 export function useHistoryDelete(options: {
   onDeleted: (entry: WatchEntry) => Promise<void> | void
+  onError?: (message: string) => void
 }) {
   const deletingEntryId = ref<number | null>(null)
 
@@ -24,8 +26,8 @@ export function useHistoryDelete(options: {
     try {
       await trackingAPI.deleteHistory(entry.id)
       await options.onDeleted(entry)
-    } catch (e) {
-      console.error('Failed to delete history entry', e)
+    } catch (error: unknown) {
+      options.onError?.(getApiErrorMessage(error, 'Could not remove this entry.'))
     } finally {
       deletingEntryId.value = null
     }

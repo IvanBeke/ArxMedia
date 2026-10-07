@@ -8,6 +8,12 @@
       </div>
     </div>
 
+    <Transition name="fade">
+      <div v-if="deleteError" role="alert" class="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
+        {{ deleteError }}
+      </div>
+    </Transition>
+
     <!-- Filters -->
     <div class="flex flex-wrap items-center gap-4 mb-6">
       <div class="flex gap-1 bg-surface-200 rounded-md p-1">
@@ -117,6 +123,7 @@ import { trackingAPI } from '@/api'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
+import { useFlashMessages } from '@/composables/useFlashMessages'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
@@ -217,7 +224,6 @@ async function loadHistory() {
     count.value = 0
     lastLoadedCount.value = 0
     loadError.value = true
-    console.error('Failed to load history', e)
   } finally {
     loading.value = false
   }
@@ -319,7 +325,9 @@ function toggleDayGrouping() {
   groupByDay.value = !groupByDay.value
 }
 
+const { errorMsg: deleteError, showError: showDeleteError } = useFlashMessages()
 const { deletingEntryId, deleteEntry } = useHistoryDelete({
+  onError: showDeleteError,
   onDeleted: async (entry) => {
     const nextPage = entries.value.length === 1 && currentPage.value > 1
       ? currentPage.value - 1

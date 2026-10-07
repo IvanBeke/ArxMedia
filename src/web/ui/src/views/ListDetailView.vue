@@ -413,6 +413,10 @@
       />
 
     </div>
+
+    <div v-else class="max-w-3xl mx-auto py-16">
+      <LoadError :message="loadError || 'Could not load list.'" @retry="retryLoad" />
+    </div>
   </div>
 </template>
 
@@ -421,6 +425,7 @@ import { nextTick, ref, onMounted, onBeforeUnmount, computed, watch, type Compon
 import { useRoute, useRouter } from 'vue-router'
 import { authAPI, trackingAPI, mediaAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
+import LoadError from '@/components/LoadError.vue'
 import MediaCard from '@/components/MediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
@@ -454,6 +459,7 @@ const auth = useAuthStore()
 const list = ref<CustomList | null>(null)
 const items = ref<ListItem[]>([])
 const loading = ref(true)
+const loadError = ref('')
 const updating = ref(false)
 const loadingItems = ref(false)
 const searchQuery = ref('')
@@ -618,6 +624,7 @@ function openDeleteListDialog() {
 
 async function loadList() {
   loading.value = true
+  loadError.value = ''
   try {
     const data = await trackingAPI.getList(listId())
     if (data) {
@@ -628,12 +635,16 @@ async function loadList() {
         privacy: data.privacy
       }
     }
-  } catch (error) {
-    console.error('Failed to load list:', error)
-    showFeedback(getApiErrorMessage(error, 'Could not load list.'), 'error')
+  } catch (error: unknown) {
+    loadError.value = getApiErrorMessage(error, 'Could not load list.')
   } finally {
     loading.value = false
   }
+}
+
+async function retryLoad() {
+  await loadList()
+  if (list.value) await loadItems()
 }
 
 async function loadItems() {
@@ -1052,7 +1063,6 @@ async function updateList() {
     await loadList()
     closeEditModal()
   } catch (error) {
-    console.error('Failed to update list:', error)
     showFeedback(getApiErrorMessage(error, 'Could not update list.'), 'error')
   } finally {
     updating.value = false
@@ -1069,7 +1079,6 @@ async function confirmDeleteList() {
     deleteListDialog.value?.close()
     router.push('/lists')
   } catch (error) {
-    console.error('Failed to delete list:', error)
     showFeedback(getApiErrorMessage(error, 'Could not delete list.'), 'error')
   } finally {
     deletingList.value = false
@@ -1091,8 +1100,8 @@ async function searchMedia() {
         tmdb_id: 'tmdb_id' in item && typeof item.tmdb_id === 'number' ? item.tmdb_id : item.id,
       }))
     }
-  } catch (error) {
-    console.error('Search failed:', error)
+  } catch (error: unknown) {
+    showFeedback(getApiErrorMessage(error, 'Search failed. Try again.'), 'error')
   } finally {
     searching.value = false
   }
@@ -1174,7 +1183,6 @@ async function searchCollaborators() {
       collaboratorResults.value = (data || []).filter((entry) => !existingIds.has(entry.id))
     } catch (error) {
       collaboratorResults.value = []
-      console.error('Failed to search users:', error)
     } finally {
       searchingUsers.value = false
     }

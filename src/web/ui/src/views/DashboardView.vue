@@ -3,10 +3,17 @@
     <h1 class="font-display text-2xl text-primary font-semibold mb-1">Dashboard</h1>
     <p class="text-muted text-sm mb-8">Welcome back, <span class="text-brand-400">{{ auth.user?.username }}</span></p>
 
+    <Transition name="fade">
+      <div v-if="actionError" role="alert" class="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
+        {{ actionError }}
+      </div>
+    </Transition>
+
     <!-- Weekly Pulse stats -->
     <div v-if="loadingStats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
       <div v-for="n in 4" :key="n" class="h-24 skeleton rounded-lg"></div>
     </div>
+    <LoadError v-else-if="statsError" class="mb-10" message="Could not load your stats." @retry="loadDashboard" />
 
     <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
       <div class="card p-4">
@@ -38,6 +45,7 @@
       <div v-if="loadingUpNext" class="flex gap-4 overflow-x-auto pb-2">
         <div v-for="n in 3" :key="n" class="w-40 h-60 skeleton rounded-lg flex-shrink-0"></div>
       </div>
+      <LoadError v-else-if="upNextError" message="Could not load Up Next." @retry="loadDashboard" />
       <div v-else-if="upNext?.length" class="flex gap-4 overflow-x-auto pb-2">
         <div
           v-for="item in upNext"
@@ -81,6 +89,7 @@
       <div v-if="loadingUpcoming" class="flex gap-4 overflow-x-auto pb-2">
         <div v-for="n in 3" :key="n" class="w-40 h-60 skeleton rounded-lg flex-shrink-0"></div>
       </div>
+      <LoadError v-else-if="upcomingError" message="Could not load upcoming episodes." @retry="loadDashboard" />
       <div v-else-if="upcoming?.length" class="flex gap-4 overflow-x-auto pb-2">
         <div
           v-for="item in upcoming"
@@ -115,6 +124,7 @@
       <div v-if="loadingStats" class="space-y-2">
         <div v-for="n in 5" :key="n" class="h-14 skeleton rounded-lg"></div>
       </div>
+      <p v-else-if="statsError" class="text-muted text-sm">Recent activity is unavailable right now.</p>
       <div v-else-if="stats?.recent_activity?.length" class="flex gap-4 overflow-x-auto pb-2">
         <HistoryMediaCard
           v-for="entry in stats.recent_activity"
@@ -142,8 +152,11 @@ import { ref, onMounted } from 'vue'
 import { trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
+import LoadError from '@/components/LoadError.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
+import { useFlashMessages } from '@/composables/useFlashMessages'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
+import { getApiErrorMessage } from '@/utils/errors'
 import { getEpisodeLink, getShowLink, getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import type { DashboardStats, UpNextItem, UpcomingItem } from '@/api'
 
@@ -154,6 +167,10 @@ const upNext = ref<UpNextItem[] | null>(null)
 const loadingUpNext = ref(true)
 const upcoming = ref<UpcomingItem[] | null>(null)
 const loadingUpcoming = ref(true)
+const statsError = ref(false)
+const upNextError = ref(false)
+const upcomingError = ref(false)
+const { errorMsg: actionError, showError: showActionError } = useFlashMessages()
 const markingId = ref<number | null>(null)
 
 const upcomingDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -189,8 +206,8 @@ async function markNextEpisodeWatched(item: UpNextItem) {
       episode_number: item.next_episode.episode_number
     })
     await refreshTrackingLists()
-  } catch (e) {
-    console.error('Failed to mark episode watched', e)
+  } catch (error: unknown) {
+    showActionError(getApiErrorMessage(error, 'Could not mark the episode as watched.'))
   } finally {
     markingId.value = null
   }
@@ -198,34 +215,29 @@ async function markNextEpisodeWatched(item: UpNextItem) {
 
 const { deletingEntryId, deleteEntry: removeRecentEntry } = useHistoryDelete({
   onDeleted: () => refreshTrackingLists(),
+  onError: showActionError,
 })
 
-onMounted(async () => {
+async function loadDashboard() {
+  loadingStats.value = loadingUpNext.value = loadingUpcoming.value = true
   const [statsRes, upNextRes, upcomingRes] = await Promise.allSettled([
     trackingAPI.getStats(),
     trackingAPI.getUpNext(),
     trackingAPI.getUpcoming(),
   ])
 
-  if (statsRes.status === 'fulfilled') {
-    stats.value = statsRes.value
-  } else {
-    console.error('stats error:', statsRes.reason)
-  }
+  statsError.value = statsRes.status === 'rejected'
+  if (statsRes.status === 'fulfilled') stats.value = statsRes.value
   loadingStats.value = false
 
-  if (upNextRes.status === 'fulfilled') {
-    upNext.value = upNextRes.value
-  } else {
-    console.error('upNext error:', upNextRes.reason)
-  }
+  upNextError.value = upNextRes.status === 'rejected'
+  if (upNextRes.status === 'fulfilled') upNext.value = upNextRes.value
   loadingUpNext.value = false
 
-  if (upcomingRes.status === 'fulfilled') {
-    upcoming.value = upcomingRes.value
-  } else {
-    console.error('upcoming error:', upcomingRes.reason)
-  }
+  upcomingError.value = upcomingRes.status === 'rejected'
+  if (upcomingRes.status === 'fulfilled') upcoming.value = upcomingRes.value
   loadingUpcoming.value = false
-})
+}
+
+onMounted(loadDashboard)
 </script>

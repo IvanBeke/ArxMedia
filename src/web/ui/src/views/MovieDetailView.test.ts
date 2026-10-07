@@ -147,4 +147,18 @@ describe('MovieDetailView history tab', () => {
     const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'Lana Wachowski')
     expect(link?.attributes('href')).toBe('/people/9340')
   })
+
+  it('shows a retryable error when the movie fails to load', async () => {
+    getMovie.mockRejectedValueOnce({ detail: 'Resource not found.', status: 404 })
+
+    const wrapper = await mountView('overview')
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('Resource not found.')
+    await wrapper.get('[role="alert"] button').trigger('click')
+    await flushPromises()
+
+    expect(getMovie).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
 })
+

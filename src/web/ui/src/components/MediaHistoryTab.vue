@@ -12,6 +12,12 @@
       </RouterLink>
     </div>
 
+    <Transition name="fade">
+      <div v-if="deleteError" role="alert" class="px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
+        {{ deleteError }}
+      </div>
+    </Transition>
+
     <div v-if="loading" class="grid max-w-6xl grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" aria-label="Loading watch history">
       <div v-for="n in 6" :key="n" class="aspect-[2/3] skeleton rounded-lg"></div>
     </div>
@@ -46,6 +52,7 @@ import { computed, ref, watch } from 'vue'
 import { trackingAPI } from '@/api'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import { getApiErrorMessage } from '@/utils/errors'
+import { useFlashMessages } from '@/composables/useFlashMessages'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { historyItemQuery, historyItemRoute, type HistoryItemFilter } from '@/utils/historyFilters'
 import { normalizePagedResponse } from '@/utils/pagination'
@@ -70,10 +77,12 @@ const historyParams = computed(() => ({
 
 const fullHistoryLink = computed(() => historyItemRoute(props.filter))
 
+const { errorMsg: deleteError, showError: showDeleteError } = useFlashMessages()
 const { deletingEntryId, deleteEntry } = useHistoryDelete({
   onDeleted: async () => {
     await loadHistory()
   },
+  onError: showDeleteError,
 })
 
 async function loadHistory() {
@@ -93,7 +102,6 @@ async function loadHistory() {
     entries.value = []
     count.value = 0
     errorMessage.value = getApiErrorMessage(error, 'Could not load watch history.')
-    console.error('Failed to load media history', error)
   } finally {
     if (currentRequestId === requestId) {
       loading.value = false

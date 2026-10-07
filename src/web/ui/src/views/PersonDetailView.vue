@@ -75,7 +75,7 @@
                 </button>
               </div>
             </div>
-            <p v-if="loadError" class="text-sm text-muted">Filmography unavailable right now.</p>
+            <p v-if="creditsError" class="text-sm text-muted">Filmography unavailable right now.</p>
             <PersonFilmographyList v-else :items="actingCredits" :media-filter="actingFilter" empty-label="No acting credits available." />
           </section>
 
@@ -84,15 +84,15 @@
             <PersonFilmographyList :items="crewCredits" media-filter="all" empty-label="No crew credits available." />
           </section>
 
-          <p v-if="!loadingCredits && !loadError && !actingCount && !crewCredits.length" class="text-sm text-muted">
+          <p v-if="!loadingCredits && !creditsError && !actingCount && !crewCredits.length" class="text-sm text-muted">
             No filmography available.
           </p>
         </div>
       </div>
     </div>
 
-    <div v-if="!loading && !person" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-      <p class="text-sm text-muted">Actor not found.</p>
+    <div v-if="!loading && !person" class="max-w-3xl mx-auto px-4 pb-20">
+      <LoadError :message="pageError || 'Could not load this person.'" @retry="loadPerson" />
     </div>
   </div>
 </template>
@@ -102,6 +102,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { mediaAPI } from '@/api'
 import DetailHero from '@/components/DetailHero.vue'
+import LoadError from '@/components/LoadError.vue'
+import { getApiErrorMessage } from '@/utils/errors'
 import ExternalLinks from '@/components/ExternalLinks.vue'
 import PersonFilmographyList from '@/components/PersonFilmographyList.vue'
 import PersonKnownForScroller from '@/components/PersonKnownForScroller.vue'
@@ -120,7 +122,8 @@ const person = ref<PersonDetail | null>(null)
 const credits = ref<PersonCombinedCredits | null>(null)
 const loading = ref(true)
 const loadingCredits = ref(true)
-const loadError = ref(false)
+const creditsError = ref(false)
+const pageError = ref('')
 const biographyExpanded = ref(false)
 const actingFilter = ref<PersonMediaFilter>('all')
 
@@ -155,22 +158,28 @@ const actingCount = computed(() => actingCredits.value.length)
 const knownCredits = computed(() => knownCreditsCount(credits.value))
 const knownFor = computed(() => topKnownFor(actingCredits.value, 8))
 
-onMounted(async () => {
+async function loadPerson() {
+  loading.value = true
+  pageError.value = ''
   try {
     person.value = await mediaAPI.getPerson(personId.value)
-  } catch (e) {
-    console.error('Failed to load person:', e)
+  } catch (error: unknown) {
+    pageError.value = getApiErrorMessage(error, 'Could not load this person.')
     person.value = null
+    return
   } finally {
     loading.value = false
   }
+  loadingCredits.value = true
+  creditsError.value = false
   try {
     credits.value = await mediaAPI.getPersonCredits(personId.value)
-  } catch (e) {
-    console.error('Failed to load person credits:', e)
-    loadError.value = true
+  } catch {
+    creditsError.value = true
   } finally {
     loadingCredits.value = false
   }
-})
+}
+
+onMounted(loadPerson)
 </script>

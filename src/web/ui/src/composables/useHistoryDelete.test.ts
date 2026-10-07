@@ -94,3 +94,19 @@ describe('useHistoryDelete', () => {
     expect(deletingEntryId.value).toBeNull()
   })
 })
+
+describe('useHistoryDelete errors', () => {
+  it('reports a failed delete through onError and clears the loading state', async () => {
+    trackingAPI.deleteHistory.mockRejectedValueOnce({ detail: 'Not allowed.', status: 403 })
+    const onDeleted = vi.fn()
+    const onError = vi.fn()
+    const { deleteEntry, deletingEntryId } = useHistoryDelete({ onDeleted, onError })
+
+    await deleteEntry(entry())
+
+    expect(onError).toHaveBeenCalledWith('Not allowed.')
+    expect(onDeleted).not.toHaveBeenCalled()
+    expect(deletingEntryId.value).toBeNull()
+  })
+})
+

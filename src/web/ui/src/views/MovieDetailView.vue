@@ -10,7 +10,12 @@
 
     <MovieUnwatchDialog ref="unwatchDialog" :on-error="showError" @unwatched="onMovieUnwatched" />
 
+    <div v-if="loadError" class="max-w-3xl mx-auto px-4 py-16">
+      <LoadError :message="loadError" @retry="loadPage" />
+    </div>
+
     <DetailHero
+      v-else
       :backdrop-url="movie?.backdrop_url"
       :backdrop-alt="movie?.title"
       :poster-url="movie?.poster_url"
@@ -245,6 +250,7 @@ import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import MovieUnwatchDialog from '@/components/MovieUnwatchDialog.vue'
 import DetailHero from '@/components/DetailHero.vue'
+import LoadError from '@/components/LoadError.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import MediaActionsBar from '@/components/MediaActionsBar.vue'
@@ -281,6 +287,7 @@ const creditsData = ref<Credits | null>(null)
 const collectionDetail = ref<CollectionDetail | null>(null)
 const recommendations = ref<MediaResult[]>([])
 const loading = ref(true)
+const loadError = ref('')
 const loadingCollection = ref(false)
 const loadingRecs = ref(false)
 const recsError = ref(false)
@@ -460,7 +467,9 @@ function handleRecommendationStatusChanged(payload: MediaStatusChangedPayload) {
   applyStatusChanged(recommendations.value, payload)
 }
 
-onMounted(async () => {
+async function loadMovie(): Promise<boolean> {
+  loading.value = true
+  loadError.value = ''
   try {
     const [movieRes, creditsRes] = await Promise.all([
       mediaAPI.getMovie(movieId.value),
@@ -470,9 +479,17 @@ onMounted(async () => {
     creditsData.value = creditsRes
     void loadCollection()
     void loadRecommendations()
+    return true
+  } catch (error: unknown) {
+    loadError.value = getApiErrorMessage(error, 'Could not load this movie.')
+    return false
   } finally {
     loading.value = false
   }
+}
+
+async function loadPage() {
+  if (!(await loadMovie())) return
 
   if (auth.isAuthenticated) {
     const [histRes, ratingRes] = await Promise.allSettled([
@@ -489,7 +506,9 @@ onMounted(async () => {
       if (found) userRating.value = found.score
     }
   }
-})
+}
+
+onMounted(loadPage)
 
 async function handleWatchTrigger() {
   if (watchedCount.value > 0) {
