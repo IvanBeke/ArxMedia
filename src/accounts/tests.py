@@ -494,7 +494,7 @@ class AccountTests(TestCase):
 
         index_cond = next(line for line in plan.splitlines() if 'Index Cond' in line)
         self.assertIn('watchentry_user_history_idx', plan)
-        self.assertIn('COALESCE', index_cond)
+        self.assertIn('watched_at', index_cond)
 
     def test_activity_heatmap_hidden_from_stranger_on_private_profile(self):
         target = User.objects.create_user(

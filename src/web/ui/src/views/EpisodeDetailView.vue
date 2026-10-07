@@ -392,14 +392,14 @@ async function handleWatchTrigger() {
 }
 
 async function handleWatchOption(option: WatchedAtOption) {
-  const finalWatchedAt = await markFromOption(option, {
+  const marked = await markFromOption(option, {
     tmdbId: tmdbId.value,
     seasonNumber: seasonNum.value,
     episodeNumber: episodeNum.value,
   }, { pickerInitial: watchedAt.value })
-  if (!finalWatchedAt) return
+  if (!marked) return
   isWatched.value = true
-  watchedAt.value = finalWatchedAt
+  watchedAt.value = marked.watchedAt ?? ''
 }
 
 const focusOnMount = episodeViewWasUnmounted

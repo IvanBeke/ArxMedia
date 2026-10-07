@@ -128,7 +128,7 @@ describe('SeasonDetailView progress', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getSeasonCredits.mockResolvedValue(null)
-    markEpisodeWatched.mockResolvedValue({ id: 1, created: true, watched_at: '1970-01-01T00:00:00Z' })
+    markEpisodeWatched.mockResolvedValue({ id: 1, created: true, watched_at: null })
     markSeasonWatched.mockResolvedValue({})
   })
 

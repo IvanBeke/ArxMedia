@@ -1,8 +1,7 @@
 from datetime import date, datetime, time, timedelta
 
 from django.contrib.auth import get_user_model, login, logout, update_session_auth_hash
-from django.db.models import DateTimeField
-from django.db.models.functions import Coalesce, TruncDate
+from django.db.models.functions import TruncDate
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -189,17 +188,16 @@ class UserActivityHeatmapView(APIView):
             # Today is Feb 29 and last year is not a leap year.
             start = today.replace(year=today.year - 1, day=28)
 
-        # A timestamp range on the same COALESCE as the history index lets Postgres
-        # read just this window instead of casting every entry to a date.
+        # A timestamp range on watched_at lets Postgres read just this window from the index;
+        # entries with an unknown watch date (null) have no day, so they are left out.
         tz = timezone.get_current_timezone()
         window_start = timezone.make_aware(datetime.combine(start, time.min), tz)
         window_end = timezone.make_aware(datetime.combine(today + timedelta(days=1), time.min), tz)
         rows = list(
             WatchEntry.objects
             .filter(user=target)
-            .annotate(event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField()))
-            .filter(event_at__gte=window_start, event_at__lt=window_end)
-            .annotate(day=TruncDate('event_at'))
+            .filter(watched_at__gte=window_start, watched_at__lt=window_end)
+            .annotate(day=TruncDate('watched_at'))
             .values('day', 'media_type', 'tmdb_id', 'season_number', 'episode_number')
             .order_by('day', 'id')
         )

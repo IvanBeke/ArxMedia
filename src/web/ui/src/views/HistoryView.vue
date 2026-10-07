@@ -125,6 +125,7 @@ import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
+import { useI18n } from '@/i18n'
 import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import { historyItemQueryFromRoute } from '@/utils/historyFilters'
@@ -137,6 +138,7 @@ type HistoryStats = { movies_watched: number; episodes_watched: number }
 type HistoryGroup = { key: string; label: string; items: WatchEntry[] }
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 
 const entries = ref<WatchEntry[]>([])
@@ -170,7 +172,7 @@ const groupedEntries = computed<HistoryGroup[]>(() => {
   for (const entry of entries.value) {
     const key = isoDateKey(entry.watched_at) || 'unknown'
     const label = key === 'unknown'
-      ? 'Unknown date'
+      ? t('watch_date_unknown')
       : formatTemporalDate(entry.watched_at, 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
     if (!byKey.has(key)) {

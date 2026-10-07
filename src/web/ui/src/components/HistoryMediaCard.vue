@@ -85,6 +85,7 @@ import CardMediaTypeBadge from '@/components/cards/primitives/CardMediaTypeBadge
 import CardUserRating from '@/components/cards/primitives/CardUserRating.vue'
 import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import { useMediaCardModel } from '@/composables/useMediaCardModel'
+import { useI18n } from '@/i18n'
 import { formatIsoAsDDMMYYYY, formatIsoTimeHHMM } from '@/utils/temporal'
 import type { WatchEntry } from '@/types/api'
 
@@ -122,6 +123,7 @@ const { model } = useMediaCardModel(
 )
 
 const card = computed(() => model.value)
+const { t } = useI18n()
 const hasRating = computed(() => card.value.userRating !== null && card.value.userRating !== undefined)
 
 const timestampLabel = computed(() => {
@@ -129,7 +131,7 @@ const timestampLabel = computed(() => {
     return props.timestampText
   }
   const rawTimestamp = props.timestamp || props.entry.watched_at
-  if (!rawTimestamp) return ''
+  if (!rawTimestamp) return t('watch_date_unknown')
   const datePart = formatIsoAsDDMMYYYY(rawTimestamp)
   const timePart = formatIsoTimeHHMM(rawTimestamp)
   if (!datePart || !timePart) return ''

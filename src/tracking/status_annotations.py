@@ -104,7 +104,7 @@ def annotate_media_user_status(user, media_items):
 
     movie_watched_rows = WatchEntry.objects.for_user(user).movies().filter(
         tmdb_id__in=movie_ids,
-    ).with_event_at().values('tmdb_id').annotate(last_watched_at=Max('event_at'))
+    ).values('tmdb_id').annotate(last_watched_at=Max('watched_at'))
     movie_watched_map = {row['tmdb_id']: row['last_watched_at'] for row in movie_watched_rows}
 
     result = {}
@@ -162,13 +162,13 @@ def annotate_season_user_status(user, season_items):
     watched_rows = WatchEntry.objects.for_user(user).episodes().filter(
         tmdb_id__in=tmdb_ids,
         season_number__in=season_numbers,
-    ).with_event_at().values(
+    ).values(
         'tmdb_id',
         'season_number',
     ).annotate(
         watched_episodes=Count('id'),
-        first_watched_at=Min('event_at'),
-        last_watched_at=Max('event_at'),
+        first_watched_at=Min('watched_at'),
+        last_watched_at=Max('watched_at'),
     )
     watched_map = {(row['tmdb_id'], row['season_number']): row for row in watched_rows}
 

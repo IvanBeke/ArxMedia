@@ -1,7 +1,7 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, F, Q
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from tracking.choices import ListPrivacy
@@ -169,7 +169,7 @@ class PublicUserSerializer(serializers.ModelSerializer):
 
         entries = list(
             WatchEntry.objects.filter(user=obj)
-            .order_by('-watched_at', '-id')[:12]
+            .order_by(F('watched_at').desc(nulls_last=True), '-id')[:12]
         )
         if not entries:
             return []

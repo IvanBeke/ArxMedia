@@ -3,7 +3,6 @@ import logging
 from django.db.models import (
     Case,
     DateField,
-    DateTimeField,
     Exists,
     ExpressionWrapper,
     F,
@@ -188,7 +187,7 @@ def _alias_media_sort_fields(queryset, user=None):
             user=user,
             media_type=WatchEntryMediaType.MOVIE,
             tmdb_id=OuterRef('tmdb_id'),
-        ).annotate(event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())).order_by('-event_at', '-id')
+        ).order_by(F('watched_at').desc(nulls_last=True), '-id')
         rating_lookup = Rating.objects.filter(
             user=user,
             media_type=OuterRef('media_type'),
@@ -231,7 +230,7 @@ def _alias_media_sort_fields(queryset, user=None):
                 air_date__gte=today,
             ).order_by('air_date', 'season__season_number', 'episode_number').values('air_date')[:1]
         ),
-        movie_watched_date=Subquery(movie_watch_lookup.values('event_at')[:1]),
+        movie_watched_date=Subquery(movie_watch_lookup.values('watched_at')[:1]),
     ).alias(
         resolved_title=Lower(Coalesce('movie_title', 'tv_title', Value(''))),
         resolved_date=Coalesce('movie_release_date', 'tv_first_air_date'),

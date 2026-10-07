@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { mount, RouterLinkStub } from '@vue/test-utils'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
@@ -36,6 +37,16 @@ function mountCard(entry: WatchEntry) {
 }
 
 describe('HistoryMediaCard', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('labels an entry without a watch date as unknown', () => {
+    const wrapper = mountCard(historyEntry({ watched_at: null }))
+
+    expect(wrapper.text()).toContain('Unknown date')
+  })
+
   it('renders a special episode type beside the episode code', () => {
     const wrapper = mountCard(historyEntry({ episode_type: 'season_finale' }))
     const tag = wrapper.find('.episode-type-pill')

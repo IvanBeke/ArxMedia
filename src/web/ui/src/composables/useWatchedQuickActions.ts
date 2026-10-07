@@ -60,7 +60,7 @@ export function useWatchedQuickActions() {
     mediaType: MediaType,
     tmdbId: MediaId,
     watchedAt: string | null = null,
-  ): Promise<{ status: WatchEntryStatus; watchedAt: string } | null> {
+  ): Promise<{ status: WatchEntryStatus; watchedAt: string | null } | null> {
     const id = Number(tmdbId)
     const loadingSet = getLoadingSet(mediaType)
     if (loadingSet.value.has(id)) {
@@ -86,7 +86,7 @@ export function useWatchedQuickActions() {
         watched_at: watchedAt,
       })
       triggerPulse(mediaType, id)
-      return { status: WATCH_ENTRY_STATUS.WATCHED, watchedAt: entry.watched_at ?? '' }
+      return { status: WATCH_ENTRY_STATUS.WATCHED, watchedAt: entry.watched_at }
     } finally {
       updateSet(loadingSet, id, false)
     }

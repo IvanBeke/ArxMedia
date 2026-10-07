@@ -21,7 +21,8 @@ export function useEpisodeWatchActions(options: EpisodeWatchActionOptions = {}) 
     handleDatePickerCancel,
   } = useWatchedDateTimePicker()
 
-  async function markFromOption(option: WatchedAtOption | string, target: EpisodeTarget, context: EpisodeContext = {}): Promise<string | null> {
+  /** Returns the stored watch moment (null when unknown), or null when cancelled or failed. */
+  async function markFromOption(option: WatchedAtOption | string, target: EpisodeTarget, context: EpisodeContext = {}): Promise<{ watchedAt: string | null } | null> {
     const resolution = await resolveWatchedAtFromOption(option, {
       pickDateTime: () => pickWatchedDateTime(context.pickerInitial || ''),
     })
@@ -37,7 +38,7 @@ export function useEpisodeWatchActions(options: EpisodeWatchActionOptions = {}) 
         watched_at: resolution.watchedAt,
       })
       // The backend resolves tokens like "release_date"; use the moment it stored.
-      return response.watched_at
+      return { watchedAt: response.watched_at }
     } catch (error) {
       onError(getApiErrorMessage(error, 'Could not mark episode as watched.'))
       return null

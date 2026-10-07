@@ -2,6 +2,7 @@ import threading
 from contextlib import contextmanager
 
 from django.contrib.auth import get_user_model
+from django.db.models import F
 from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
@@ -41,7 +42,7 @@ def invalidate_watchentry_cache_on_save(sender, instance, **kwargs):
 
     cache.invalidate_user_stats(instance.user_id)
     if instance.media_type == WatchEntryMediaType.MOVIE:
-        watched_at = instance.watched_at or instance.created_at or timezone.now()
+        watched_at = instance.watched_at
         UserMediaStatus.objects.update_or_create(
             user_id=instance.user_id,
             media_type=MediaType.MOVIE,
@@ -50,7 +51,7 @@ def invalidate_watchentry_cache_on_save(sender, instance, **kwargs):
                 'status': 'watched',
                 'completed_at': watched_at,
                 'last_watched_at': watched_at,
-                'status_changed_at': watched_at,
+                'status_changed_at': watched_at or timezone.now(),
                 'progress_percent': 100,
             },
         )
@@ -71,14 +72,14 @@ def invalidate_watchentry_cache_on_delete(sender, instance, **kwargs):
             user_id=instance.user_id,
             media_type=WatchEntryMediaType.MOVIE,
             tmdb_id=instance.tmdb_id,
-        ).order_by('-watched_at', '-created_at', '-id').first()
+        ).order_by(F('watched_at').desc(nulls_last=True), '-created_at', '-id').first()
         movie_status = UserMediaStatus.objects.filter(
             user_id=instance.user_id,
             media_type=MediaType.MOVIE,
             tmdb_id=instance.tmdb_id,
         ).first()
         if latest_movie_watch:
-            watched_at = latest_movie_watch.watched_at or latest_movie_watch.created_at or timezone.now()
+            watched_at = latest_movie_watch.watched_at
             UserMediaStatus.objects.update_or_create(
                 user_id=instance.user_id,
                 media_type=MediaType.MOVIE,
@@ -87,7 +88,7 @@ def invalidate_watchentry_cache_on_delete(sender, instance, **kwargs):
                     'status': 'watched',
                     'completed_at': watched_at,
                     'last_watched_at': watched_at,
-                    'status_changed_at': watched_at,
+                    'status_changed_at': watched_at or timezone.now(),
                     'progress_percent': 100,
                 },
             )

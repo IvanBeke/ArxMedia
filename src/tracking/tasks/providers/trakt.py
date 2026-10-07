@@ -5,7 +5,7 @@ import re
 
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
 from ...import_config import open_import_zip
-from ...import_metadata import UNKNOWN_IMPORTED_DATE, _parse_watched_at, _safe_int
+from ...import_metadata import _parse_watched_at, _safe_int
 from ...import_records import (
     RATINGS_COLLECTION,
     WATCH_HISTORY_COLLECTION,
@@ -190,7 +190,7 @@ def parse_trakt_zip(content: bytes) -> ParsedImport:
                         invalid_count += 1
                         add_import_warning(warnings, 'missing_tmdb_id', 'The hidden progress record does not contain a TMDB ID.', {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']})
                         continue
-                    records.append(StatusRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, status=TvShowStatus.DROPPED, status_at=_parse_watched_at(record.get('hidden_at')) or UNKNOWN_IMPORTED_DATE, origin=file_name))
+                    records.append(StatusRecord(media_type=MediaType.TV, tmdb_id=tmdb_id, status=TvShowStatus.DROPPED, status_at=_parse_watched_at(record.get('hidden_at')), origin=file_name))
 
                 elif lower == 'watched-shows.json':
                     # Show-level history entries carry no per-episode data here;

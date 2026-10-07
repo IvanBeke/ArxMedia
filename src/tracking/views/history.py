@@ -3,12 +3,9 @@ from django.db import IntegrityError, transaction
 from django.db.models import (
     Avg,
     Count,
-    DateTimeField,
     F,
     Q,
 )
-from django.db.models.functions import Coalesce
-from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -59,12 +56,12 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         if episode_number is not None:
             qs = qs.filter(episode_number=_coerce_int(episode_number, 'episode_number'))
 
-        qs = qs.annotate(sort_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField()))
 
         order = (self.request.query_params.get('order') or 'newest').lower()
         if order == 'oldest':
-            return qs.order_by(F('sort_at').asc(nulls_last=True), 'id')
-        return qs.order_by(F('sort_at').desc(nulls_last=True), '-id')
+            # Unknown watch dates (null) sort as the oldest entries in both directions.
+            return qs.order_by(F('watched_at').asc(nulls_first=True), 'id')
+        return qs.order_by(F('watched_at').desc(nulls_last=True), '-id')
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -141,10 +138,8 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         return WatchEntry.objects.filter(**lookup).first()
 
     def perform_create(self, serializer):
-        watched_at = serializer.validated_data.get('watched_at')
-        if not watched_at:
-            watched_at = timezone.now()
-        serializer.save(user=self.request.user, watched_at=watched_at)
+        # create() already resolved watched_at; None means the watch date is unknown.
+        serializer.save(user=self.request.user)
 
 
 class WatchEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -243,7 +238,7 @@ def user_stats(request):
 
     avg_rating = Rating.objects.filter(user=user).aggregate(avg=Avg('score'))['avg']
 
-    recent = list(entries.order_by('-watched_at')[:10])
+    recent = list(entries.order_by(F('watched_at').desc(nulls_last=True), '-id')[:10])
     context = watch_entry_context(recent)
 
     recent_movie_ids = set()

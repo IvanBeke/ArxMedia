@@ -633,8 +633,6 @@ class WatchedAtResolutionTests(BaseTestCase):
         self.assertGreaterEqual(WatchEntry.objects.get(tmdb_id=342).watched_at, before)
 
     def test_unknown_now_and_explicit_timestamps(self):
-        from tracking.import_metadata import UNKNOWN_IMPORTED_DATE
-
         before = timezone.now()
         for tmdb_id, value in ((343, 'unknown'), (344, 'now'), (345, None), (346, '2022-02-02T10:00:00Z')):
             payload = {'media_type': 'movie', 'tmdb_id': tmdb_id}
@@ -642,7 +640,7 @@ class WatchedAtResolutionTests(BaseTestCase):
                 payload['watched_at'] = value
             self.assertEqual(self.client.post('/api/tracking/history/', payload, format='json').status_code, 201)
 
-        self.assertEqual(WatchEntry.objects.get(tmdb_id=343).watched_at, UNKNOWN_IMPORTED_DATE)
+        self.assertIsNone(WatchEntry.objects.get(tmdb_id=343).watched_at)
         self.assertGreaterEqual(WatchEntry.objects.get(tmdb_id=344).watched_at, before)
         self.assertGreaterEqual(WatchEntry.objects.get(tmdb_id=345).watched_at, before)
         self.assertEqual(WatchEntry.objects.get(tmdb_id=346).watched_at, datetime(2022, 2, 2, 10, 0, tzinfo=UTC))
@@ -657,6 +655,107 @@ class WatchedAtResolutionTests(BaseTestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertIn('watched_at', response.data)
         self.assertFalse(WatchEntry.objects.filter(user=self.user, tmdb_id=347).exists())
+
+
+class UnknownWatchDateTests(BaseTestCase):
+    """A null watched_at means the watch date is unknown."""
+
+    def test_history_sorts_unknown_dates_as_the_oldest(self):
+        older = WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=360, watched_at=timezone.now() - timedelta(days=5))
+        newer = WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=361, watched_at=timezone.now())
+        unknown = WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=362, watched_at=None)
+
+        newest_first = [row['id'] for row in self.client.get('/api/tracking/history/').data['results']]
+        oldest_first = [row['id'] for row in self.client.get('/api/tracking/history/', {'order': 'oldest'}).data['results']]
+
+        self.assertEqual(newest_first, [newer.id, older.id, unknown.id])
+        self.assertEqual(oldest_first, [unknown.id, older.id, newer.id])
+
+    def test_recent_activity_lists_unknown_dates_last(self):
+        dated = WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=363, watched_at=timezone.now() - timedelta(days=30))
+        unknown = WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=364, watched_at=None)
+
+        recent = self.client.get('/api/tracking/stats/').data['recent_activity']
+
+        self.assertEqual([row['id'] for row in recent], [dated.id, unknown.id])
+
+    def test_heatmap_leaves_out_unknown_dates(self):
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=365, watched_at=timezone.now())
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=366, watched_at=None)
+
+        response = self.client.get(f'/api/auth/users/{self.user.username}/activity/')
+
+        self.assertEqual(response.data['total'], 1)
+
+    def test_show_status_dates_ignore_unknown_watches(self):
+        show = TVShow.objects.create(tmdb_id=367, name='Mixed Dates', status='Returning Series')
+        season = Season.objects.create(show=show, tmdb_id=3671, season_number=1, name='S1')
+        for number in (1, 2):
+            Episode.objects.create(season=season, tmdb_id=36710 + number, episode_number=number, name=f'E{number}', air_date=date(2020, 1, number))
+        dated = timezone.now() - timedelta(days=2)
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=367, season_number=1, episode_number=1, watched_at=dated)
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=367, season_number=1, episode_number=2, watched_at=None)
+
+        row = UserMediaStatus.objects.get(user=self.user, media_type='tv', tmdb_id=367)
+
+        self.assertEqual(row.watched_episodes, 2)
+        self.assertEqual(row.started_at, dated)
+        self.assertEqual(row.last_watched_at, dated)
+
+    def test_movie_with_unknown_watch_date_is_watched_without_dates(self):
+        before = timezone.now()
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=368, watched_at=None)
+
+        row = UserMediaStatus.objects.get(user=self.user, media_type='movie', tmdb_id=368)
+
+        self.assertEqual(row.status, 'watched')
+        self.assertIsNone(row.last_watched_at)
+        self.assertIsNone(row.completed_at)
+        self.assertGreaterEqual(row.status_changed_at, before)
+
+
+class UnknownWatchDateMigrationTests(TransactionTestCase):
+    def _targets(self, tracking_migration):
+        executor = MigrationExecutor(connection)
+        others = [node for node in executor.loader.graph.leaf_nodes() if node[0] != 'tracking']
+        return [('tracking', tracking_migration), *others]
+
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+    def test_migration_turns_the_epoch_marker_into_null(self):
+        epoch = datetime(1970, 1, 1, tzinfo=UTC)
+        before = self._targets('0031_watch_entry_history_indexes')
+        after = self._targets('0032_unknown_watched_at_as_null')
+        executor = MigrationExecutor(connection)
+        executor.migrate(before)
+        old_apps = executor.loader.project_state(before).apps
+        user = old_apps.get_model('accounts', 'User').objects.create(username='epoch-user')
+        OldWatchEntry = old_apps.get_model('tracking', 'WatchEntry')
+        OldStatus = old_apps.get_model('tracking', 'UserMediaStatus')
+        legacy_null = OldWatchEntry.objects.create(user=user, media_type='movie', tmdb_id=1, watched_at=None)
+        unknown = OldWatchEntry.objects.create(user=user, media_type='movie', tmdb_id=2, watched_at=epoch)
+        dated_at = datetime(2024, 3, 1, tzinfo=UTC)
+        dated = OldWatchEntry.objects.create(user=user, media_type='movie', tmdb_id=3, watched_at=dated_at)
+        status = OldStatus.objects.create(
+            user=user, media_type='tv', tmdb_id=4, status='dropped',
+            dropped_at=epoch, status_changed_at=epoch, last_watched_at=epoch, started_at=epoch,
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(after)
+
+        self.assertEqual(WatchEntry.objects.get(id=legacy_null.id).watched_at, WatchEntry.objects.get(id=legacy_null.id).created_at)
+        self.assertIsNone(WatchEntry.objects.get(id=unknown.id).watched_at)
+        self.assertEqual(WatchEntry.objects.get(id=dated.id).watched_at, dated_at)
+        migrated = UserMediaStatus.objects.get(id=status.id)
+        self.assertIsNone(migrated.last_watched_at)
+        self.assertIsNone(migrated.started_at)
+        self.assertEqual(migrated.dropped_at, migrated.created_at)
+        self.assertEqual(migrated.status_changed_at, migrated.created_at)
 
 
 class UniqueEpisodeWatchMigrationTests(TransactionTestCase):
@@ -4314,8 +4413,7 @@ class DataImportExportTests(BaseTestCase):
         with self.assertRaisesMessage(ValueError, 'must be stored at the ZIP root'):
             parse_wetrakr_zip(content)
 
-    def test_wetrakr_missing_tracked_at_uses_unknown_sentinel(self):
-        from tracking.import_metadata import UNKNOWN_IMPORTED_DATE
+    def test_wetrakr_missing_tracked_at_is_an_unknown_watch_date(self):
         from tracking.tasks.providers.wetrakr import parse_wetrakr_zip
 
         content = self._build_wetrakr_zip(
@@ -4326,8 +4424,8 @@ class DataImportExportTests(BaseTestCase):
         )
         parsed = parse_wetrakr_zip(content)
 
-        self.assertEqual(parsed.watch_entries()[0].watched_at, UNKNOWN_IMPORTED_DATE)
-        self.assertEqual(parsed.unresolved_episodes[0].watched_at, UNKNOWN_IMPORTED_DATE)
+        self.assertIsNone(parsed.watch_entries()[0].watched_at)
+        self.assertIsNone(parsed.unresolved_episodes[0].watched_at)
 
     def test_prepare_zip_import_sets_awaiting_confirmation(self):
         buffer = io.BytesIO()
@@ -5123,7 +5221,7 @@ class DataImportExportTests(BaseTestCase):
         from django.core.management import call_command
 
         Movie.objects.create(tmdb_id=8001, title='Orphan Movie')
-        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=8001)
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=8001, watched_at=timezone.now())
         UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=8002, status='plan_to_watch')
         UserMediaStatus.objects.filter(media_type='movie', tmdb_id=8001).delete()
 

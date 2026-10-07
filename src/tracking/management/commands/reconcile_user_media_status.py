@@ -65,7 +65,7 @@ class Command(BaseCommand):
                 WatchEntryRecord(
                     media_type=entry.media_type,
                     tmdb_id=entry.tmdb_id,
-                    watched_at=entry.watched_at or entry.created_at,
+                    watched_at=entry.watched_at,
                     season_number=entry.season_number,
                     episode_number=entry.episode_number,
                 )

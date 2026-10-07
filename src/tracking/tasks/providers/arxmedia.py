@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
 from ...import_config import open_import_zip
-from ...import_metadata import UNKNOWN_IMPORTED_DATE, _parse_watched_at, _safe_int
+from ...import_metadata import _parse_watched_at, _safe_int
 from ...import_records import (
     DROPPED_COLLECTION,
     LISTS_COLLECTION,
@@ -129,7 +129,6 @@ def _parse_arxmedia_document(
             status_at=(
                 _parse_watched_at(item.get('plan_to_watch_at'))
                 or _parse_watched_at(item.get('status_changed_at'))
-                or UNKNOWN_IMPORTED_DATE
             ),
         ))
 
@@ -151,7 +150,6 @@ def _parse_arxmedia_document(
             status_at=(
                 _parse_watched_at(item.get('dropped_at'))
                 or _parse_watched_at(item.get('status_changed_at'))
-                or UNKNOWN_IMPORTED_DATE
             ),
         ))
 

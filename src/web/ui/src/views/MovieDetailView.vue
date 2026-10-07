@@ -268,7 +268,7 @@ import { applyStatusChanged, type MediaStatusChangedPayload } from '@/utils/medi
 import { canRateByStatus, formatUpdatedAtLabel } from '@/utils/mediaStatus'
 import { formatHoursMinutes } from '@/utils/progress'
 import { movieExternalLinks } from '@/utils/externalLinks'
-import { instantEpochMs, instantFromEpochMs, nowInstantIso, temporalYear } from '@/utils/temporal'
+import { instantEpochMs, instantFromEpochMs, temporalYear } from '@/utils/temporal'
 import { watchedTooltipText } from '@/utils/watchOptions'
 import type { CollectionDetail, Credits, MediaResult, Movie, PaginatedResponse, WatchEntry } from '@/types/api'
 import type { WatchedAtOption } from '@/utils/watchOptions'
@@ -538,7 +538,7 @@ async function handleWatchOption(option: WatchedAtOption) {
 
   watchedCount.value++
   inWatchlist.value = false
-  latestWatchedAt.value = movie.value?.user_status?.watched_at || nowInstantIso()
+  latestWatchedAt.value = movie.value?.user_status?.watched_at ?? ''
   showSuccess('Marked as watched!')
 }
 

@@ -31,7 +31,14 @@ describe('useEpisodeWatchActions', () => {
       episode_number: 5,
       watched_at: token,
     })
-    expect(result).toBe('2020-05-01T21:00:00Z')
+    expect(result).toEqual({ watchedAt: '2020-05-01T21:00:00Z' })
+  })
+
+  it('treats an unknown watch date from the backend as a successful mark', async () => {
+    trackingAPI.markEpisodeWatched.mockResolvedValueOnce({ id: 1, created: true, watched_at: null })
+    const { markFromOption } = useEpisodeWatchActions()
+
+    await expect(markFromOption('unknown', TARGET)).resolves.toEqual({ watchedAt: null })
   })
 
   it('aborts without calling the API when the picker is dismissed', async () => {

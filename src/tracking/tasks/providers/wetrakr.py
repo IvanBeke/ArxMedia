@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from ...choices import DataTransferFormat, ListPrivacy, MediaType, TvShowStatus, WatchEntryMediaType
 from ...import_config import open_import_zip
-from ...import_metadata import UNKNOWN_IMPORTED_DATE, _parse_watched_at, _safe_int
+from ...import_metadata import _parse_watched_at, _safe_int
 from ...import_records import (
     LISTS_COLLECTION,
     RATINGS_COLLECTION,
@@ -190,7 +190,7 @@ def parse_wetrakr_zip(content: bytes) -> ParsedImport:
 
                     # tracked_at is the event date; updated_at is export/sync time
                     # and must never stand in for a missing event date.
-                    event_at = _parse_watched_at(row.get('tracked_at')) or UNKNOWN_IMPORTED_DATE
+                    event_at = _parse_watched_at(row.get('tracked_at'))
                     if status == 'watched':
                         if item_type == MediaType.MOVIE:
                             records.append(

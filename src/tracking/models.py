@@ -34,13 +34,6 @@ class WatchEntryQuerySet(models.QuerySet):
     def for_show(self, tmdb_id):
         return self.episodes().filter(tmdb_id=tmdb_id)
 
-    def with_event_at(self):
-        return self.annotate(
-            event_at=Coalesce(
-                'watched_at', 'created_at', output_field=models.DateTimeField()
-            )
-        )
-
 
 class WatchEntry(models.Model):
     user = models.ForeignKey(
@@ -58,10 +51,11 @@ class WatchEntry(models.Model):
         indexes = [
             models.Index(fields=['user', 'media_type', 'tmdb_id', 'season_number', 'episode_number']),
             models.Index(fields=['user', 'watched_at'], name='watchentry_user_watched_idx'),
-            # Matches the history list ordering, so a page is read from the index without sorting.
+            # Matches the history list ordering (unknown dates sort as the oldest), so a page is read
+            # straight from the index in either direction without sorting.
             models.Index(
                 F('user'),
-                Coalesce('watched_at', 'created_at').desc(nulls_last=True),
+                F('watched_at').desc(nulls_last=True),
                 F('id').desc(),
                 name='watchentry_user_history_idx',
             ),

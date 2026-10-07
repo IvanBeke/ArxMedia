@@ -527,14 +527,14 @@ function openRemoveHistoryDialog() {
 async function handleEpisodeWatchOption(sn: number, payload: EpisodeTarget & { option: WatchedAtOption; releaseDate: string | null }) {
   const epNum = payload.episodeNumber
 
-  const finalWatchedAt = await markFromOption(payload.option, {
+  const marked = await markFromOption(payload.option, {
     tmdbId: tmdbId.value,
     seasonNumber: sn,
     episodeNumber: epNum,
   }, { pickerInitial: watchedAt(sn, epNum) })
-  if (!finalWatchedAt) return
+  if (!marked) return
 
-  markLocally(sn, epNum, finalWatchedAt)
+  markLocally(sn, epNum, marked.watchedAt)
   showSuccess('Episode marked as watched')
 }
 

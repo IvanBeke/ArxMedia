@@ -5,6 +5,7 @@ from django.db.models import (
     Case,
     DateTimeField,
     Exists,
+    F,
     IntegerField,
     OuterRef,
     Q,
@@ -261,9 +262,7 @@ def _annotate_my_shows_episodes(status_queryset, user, now):
         tmdb_id=OuterRef('tmdb_id'),
         season_number__isnull=False,
         episode_number__isnull=False,
-    ).annotate(
-        event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField())
-    ).order_by('-event_at', '-id')
+    ).order_by(F('watched_at').desc(nulls_last=True), '-id')
     return status_queryset.with_next_episode().annotate(
         upcoming_season_number=Subquery(upcoming_episode.values('season__season_number')[:1]),
         upcoming_episode_number=Subquery(upcoming_episode.values('episode_number')[:1]),

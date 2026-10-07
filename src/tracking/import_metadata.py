@@ -4,7 +4,7 @@ Lives at the app level (not under tasks/) so both the celery layer and the
 import engine can use it without circular imports."""
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 
 from django.utils import timezone
 from media.models import Movie, Season, TVShow
@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 # Shared "unknown" timestamp for imports: a missing source date must never be
 # replaced with an unrelated timestamp (export/sync time, import time, now).
-UNKNOWN_IMPORTED_DATE = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _safe_int(value):

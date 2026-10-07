@@ -7,7 +7,7 @@ deletion and the canonical status reconciliation.
 """
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from .cache import cache as tracking_cache
@@ -323,12 +323,10 @@ def _history_ids(user, watch_media_type: str, tmdb_ids: set[int]) -> set[int]:
 def _last_history_event(user, watch_media_type: str, tmdb_id: int):
     entry = (
         WatchEntry.objects.filter(user=user, media_type=watch_media_type, tmdb_id=tmdb_id)
-        .order_by('-watched_at', '-created_at', '-id')
+        .order_by(F('watched_at').desc(nulls_last=True), '-created_at', '-id')
         .first()
     )
-    if entry is None:
-        return None
-    return entry.watched_at or entry.created_at or timezone.now()
+    return entry.watched_at if entry else None
 
 
 def _write_movie_watched(user, tmdb_id: int, event_at):
@@ -340,7 +338,8 @@ def _write_movie_watched(user, tmdb_id: int, event_at):
             'status': TvShowStatus.WATCHED,
             'completed_at': event_at,
             'last_watched_at': event_at,
-            'status_changed_at': event_at,
+            # An unknown watch date (None) still changed the status now.
+            'status_changed_at': event_at or timezone.now(),
             'progress_percent': 100,
         },
     )

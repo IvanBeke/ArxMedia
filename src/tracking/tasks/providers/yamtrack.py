@@ -2,7 +2,7 @@
 
 import csv
 import io
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
@@ -39,7 +39,6 @@ def _parse_yamtrack_score(value) -> int | None:
 
 # Watched dates come exclusively from end_date; every other timestamp column
 # is yamtrack-internal. Rows without one import with the epoch as "unknown".
-UNKNOWN_WATCHED_DATE = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _yamtrack_watch_entry_status(value: str) -> str | None:
@@ -102,7 +101,7 @@ def parse_yamtrack_csv(content: bytes) -> ParsedImport:
         progressed_at = _parse_watched_at(row.get('progressed_at'))
         end_at = _parse_watched_at(row.get('end_date'))
         created_at = _parse_watched_at(row.get('created_at'))
-        event_at = end_at or progressed_at or created_at or UNKNOWN_WATCHED_DATE
+        event_at = end_at or progressed_at or created_at
 
         collections.update(_yamtrack_collection_from_row(media_type, status, score, end_at, progressed_at))
 

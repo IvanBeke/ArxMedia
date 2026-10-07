@@ -85,9 +85,10 @@ def refresh_show_status(user_id: int, tmdb_id: int):
     time_left_has_unknown = progress['time_left_has_unknown']
     watched_data = WatchEntry.objects.for_user(user_id).for_show(tmdb_id).filter(
         season_number__gt=0,
-    ).with_event_at().aggregate(
-        first_watched_at=Min('event_at'),
-        last_watched_at=Max('event_at'),
+    ).aggregate(
+        # Unknown dates (null) are ignored, so they never become the first or last watch.
+        first_watched_at=Min('watched_at'),
+        last_watched_at=Max('watched_at'),
     )
     # calculate_show_progress already loaded every non-special watch key for this show.
     has_watched_entries = bool(progress['valid_watched_keys'] or progress['orphan_watched_keys'])
