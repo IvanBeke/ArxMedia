@@ -45,15 +45,6 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = _env_int('CELERY_WORKER_MAX_TASKS_PER_CHILD'
 # the hard limit kills the worker process shortly after.
 CELERY_TASK_SOFT_TIME_LIMIT = _env_int('CELERY_TASK_SOFT_TIME_LIMIT', 30 * 60)
 CELERY_TASK_TIME_LIMIT = _env_int('CELERY_TASK_TIME_LIMIT', 35 * 60)
-# The 6-hourly TMDB changes sweep is a serial pass over every changed item, so it gets its own budget.
-TMDB_CHANGES_SYNC_SOFT_TIME_LIMIT = _env_int('TMDB_CHANGES_SYNC_SOFT_TIME_LIMIT', 4 * 60 * 60)
-TMDB_CHANGES_SYNC_TIME_LIMIT = _env_int('TMDB_CHANGES_SYNC_TIME_LIMIT', 4 * 60 * 60 + 5 * 60)
-CELERY_TASK_ANNOTATIONS = {
-    'tracking.sync_tmdb_changed_items': {
-        'soft_time_limit': TMDB_CHANGES_SYNC_SOFT_TIME_LIMIT,
-        'time_limit': TMDB_CHANGES_SYNC_TIME_LIMIT,
-    },
-}
 CELERY_BEAT_SCHEDULE = {
     'tracking-heartbeat-hourly': {
         'task': 'tracking.heartbeat',

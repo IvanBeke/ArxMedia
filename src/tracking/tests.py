@@ -18,6 +18,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from media.models import Episode, Genre, Movie, Season, TVShow
+from media.tmdb import TMDBNotFoundError
 from rest_framework.test import APIClient
 from social.models import Follow
 
@@ -5215,32 +5216,23 @@ class SystemTaskTests(TestCase):
         self.assertTrue(DataTransferJob.objects.filter(id=kept_export.id).exists())
         self.assertTrue(DataTransferJob.objects.filter(id=stuck_import.id).exists())
 
-    @patch('tracking.tasks.system.tmdb.sync_tv_show')
-    @patch('tracking.tasks.system.tmdb.sync_movie')
+    @patch('tracking.tasks.system.sync_tmdb_metadata_item.delay')
     @patch('tracking.tasks.system.tmdb.get_tv_changes')
     @patch('tracking.tasks.system.tmdb.get_movie_changes')
-    def test_sync_tmdb_changed_items_syncs_only_local_and_all_seasons(
+    def test_sync_tmdb_changed_items_queues_one_task_per_local_item(
         self,
         mock_get_movie_changes,
         mock_get_tv_changes,
-        mock_sync_movie,
-        mock_sync_tv_show,
+        mock_item_delay,
     ):
         Movie.objects.create(tmdb_id=11, title='Local movie')
-        show = TVShow.objects.create(tmdb_id=22, name='Local show', number_of_seasons=2)
-        Season.objects.create(show=show, tmdb_id=2200, season_number=0, name='Specials')
-        Season.objects.create(show=show, tmdb_id=2201, season_number=1, name='Season 1')
-        Season.objects.create(show=show, tmdb_id=2202, season_number=2, name='Season 2')
+        TVShow.objects.create(tmdb_id=22, name='Local show')
 
         mock_get_movie_changes.side_effect = [
             {'results': [{'id': 11}, {'id': 999}], 'total_pages': 2},
             {'results': [{'id': 888}], 'total_pages': 2},
         ]
-        mock_get_tv_changes.return_value = {
-            'results': [{'id': 22}, {'id': 777}],
-            'total_pages': 1,
-        }
-        mock_sync_tv_show.return_value = show
+        mock_get_tv_changes.return_value = {'results': [{'id': 22}, {'id': 777}], 'total_pages': 1}
 
         from tracking.tasks.system import sync_tmdb_changed_items
 
@@ -5248,95 +5240,34 @@ class SystemTaskTests(TestCase):
 
         self.assertEqual(result['movie_changed_total'], 3)
         self.assertEqual(result['tv_changed_total'], 2)
-        self.assertEqual(result['local_movies_matched'], 1)
-        self.assertEqual(result['local_tv_matched'], 1)
-        self.assertEqual(result['movies_synced'], 1)
-        self.assertEqual(result['tv_synced'], 1)
-        self.assertEqual(result['seasons_synced'], 3)
-        self.assertEqual(result['episode_credits_synced'], 0)
-        self.assertEqual(result['episode_credit_failures'], 0)
-
-        mock_sync_movie.assert_called_once_with(11, use_cache=False)
-        mock_sync_tv_show.assert_called_once_with(22, use_cache=False)
-
-        self.assertEqual(mock_get_movie_changes.call_count, 2)
-        self.assertEqual(mock_get_tv_changes.call_count, 1)
-        for call in mock_get_movie_changes.call_args_list:
-            self.assertFalse(call.kwargs['use_cache'])
-        for call in mock_get_tv_changes.call_args_list:
+        self.assertEqual((result['movies_queued'], result['tv_queued']), (1, 1))
+        self.assertEqual([call.args for call in mock_item_delay.call_args_list], [('movie', 11), ('tv', 22)])
+        for call in mock_get_movie_changes.call_args_list + mock_get_tv_changes.call_args_list:
             self.assertFalse(call.kwargs['use_cache'])
 
-    @patch('tracking.tasks.system.tmdb.get_episode_credits')
+    @patch('tracking.tasks.system.sync_show_episode_credits.delay')
     @patch('tracking.tasks.system.tmdb.sync_tv_show')
     @patch('tracking.tasks.system.tmdb.sync_movie')
-    @patch('tracking.tasks.system.tmdb.get_tv_changes')
-    @patch('tracking.tasks.system.tmdb.get_movie_changes')
-    def test_sync_tmdb_changed_items_refreshes_episode_credits_for_changed_local_shows(
-        self,
-        mock_get_movie_changes,
-        mock_get_tv_changes,
-        mock_sync_movie,
-        mock_sync_tv_show,
-        mock_get_episode_credits,
+    def test_sync_tmdb_metadata_item_bypasses_cache_and_refreshes_show_credits(
+        self, mock_sync_movie, mock_sync_tv_show, mock_credits_delay,
     ):
-        show = TVShow.objects.create(tmdb_id=3333, name='Changed Show', number_of_seasons=1)
-        season = Season.objects.create(show=show, tmdb_id=33331, season_number=1, name='Season 1')
-        season.episodes.create(tmdb_id=333311, episode_number=1, name='Episode 1')
-        season.episodes.create(tmdb_id=333312, episode_number=2, name='Episode 2')
-
-        mock_get_movie_changes.return_value = {'results': [], 'total_pages': 1}
-        mock_get_tv_changes.return_value = {'results': [{'id': 3333}], 'total_pages': 1}
-        mock_sync_tv_show.return_value = show
-
-        from tracking.tasks.system import sync_tmdb_changed_items
-
-        result = sync_tmdb_changed_items()
-
-        self.assertEqual(result['tv_changed_total'], 1)
-        self.assertEqual(result['local_tv_matched'], 1)
-        self.assertEqual(result['episode_credits_synced'], 2)
-        self.assertEqual(result['episode_credit_failures'], 0)
-        self.assertEqual(mock_get_episode_credits.call_count, 2)
-        called_triplets = sorted((c.args[0], c.args[1], c.args[2]) for c in mock_get_episode_credits.call_args_list)
-        self.assertEqual(called_triplets, [(3333, 1, 1), (3333, 1, 2)])
-        for call in mock_get_episode_credits.call_args_list:
-            self.assertIs(call.kwargs['use_cache'], False)
-        mock_sync_movie.assert_not_called()
-
-    @patch('tracking.tasks.system.tmdb.sync_movie')
-    @patch('tracking.tasks.system.tmdb.get_tv_changes')
-    @patch('tracking.tasks.system.tmdb.get_movie_changes')
-    def test_sync_tmdb_changed_items_tracks_failures(self, mock_get_movie_changes, mock_get_tv_changes, mock_sync_movie):
-        Movie.objects.create(tmdb_id=11, title='Movie A')
-        Movie.objects.create(tmdb_id=12, title='Movie B')
-
-        mock_get_movie_changes.return_value = {
-            'results': [{'id': 11}, {'id': 12}],
-            'total_pages': 1,
-        }
-        mock_get_tv_changes.return_value = {'results': [], 'total_pages': 1}
-        mock_sync_movie.side_effect = [Exception('boom'), None]
-
-        from tracking.tasks.system import sync_tmdb_changed_items
-
-        result = sync_tmdb_changed_items()
-
-        self.assertEqual(result['movies_synced'], 1)
-        self.assertEqual(result['movie_failures'], 1)
-        self.assertEqual(result['tv_synced'], 0)
-
-    @patch('tracking.tasks.system.tmdb.sync_tv_show')
-    @patch('tracking.tasks.system.tmdb.sync_movie')
-    def test_sync_tmdb_metadata_item_bypasses_cache(self, mock_sync_movie, mock_sync_tv_show):
         from tracking.tasks.system import sync_tmdb_metadata_item
 
         result_movie = sync_tmdb_metadata_item('movie', 11)
         result_tv = sync_tmdb_metadata_item('tv', 22)
 
-        self.assertEqual(result_movie['status'], 'ok')
-        self.assertEqual(result_tv['status'], 'ok')
+        self.assertEqual((result_movie['status'], result_tv['status']), ('ok', 'ok'))
         mock_sync_movie.assert_called_once_with(11, use_cache=False)
         mock_sync_tv_show.assert_called_once_with(22, use_cache=False)
+        mock_credits_delay.assert_called_once_with(22, None, False)
+
+    @patch('tracking.tasks.system.sync_show_episode_credits.delay')
+    @patch('tracking.tasks.system.tmdb.sync_tv_show', side_effect=TMDBNotFoundError('gone'))
+    def test_sync_tmdb_metadata_item_skips_items_removed_from_tmdb(self, mock_sync_tv_show, mock_credits_delay):
+        from tracking.tasks.system import sync_tmdb_metadata_item
+
+        self.assertEqual(sync_tmdb_metadata_item('tv', 23)['status'], 'not_found')
+        mock_credits_delay.assert_not_called()
 
     @patch('tracking.tasks.system.tmdb.get_episode_credits')
     def test_sync_show_episode_credits_syncs_all_local_episodes(self, mock_sync_credits):

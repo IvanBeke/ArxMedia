@@ -66,7 +66,6 @@ class ProductionSettingsGuardTests(SimpleTestCase):
         celery = self._load('celery', {'DEBUG': 'True'})
         self.assertTrue(celery.CELERY_TASK_IGNORE_RESULT)
         self.assertEqual((celery.CELERY_TASK_SOFT_TIME_LIMIT, celery.CELERY_TASK_TIME_LIMIT), (1800, 2100))
-        self.assertEqual((celery.TMDB_CHANGES_SYNC_SOFT_TIME_LIMIT, celery.TMDB_CHANGES_SYNC_TIME_LIMIT), (14400, 14700))
         self.assertEqual(celery.CELERY_BEAT_SCHEDULE['tracking-heartbeat-hourly']['schedule'], 60 * 60)
 
     def test_celery_time_limits_read_from_env(self):
@@ -74,18 +73,8 @@ class ProductionSettingsGuardTests(SimpleTestCase):
             'DEBUG': 'True',
             'CELERY_TASK_SOFT_TIME_LIMIT': '60',
             'CELERY_TASK_TIME_LIMIT': '90',
-            'TMDB_CHANGES_SYNC_SOFT_TIME_LIMIT': '600',
-            'TMDB_CHANGES_SYNC_TIME_LIMIT': '660',
         })
         self.assertEqual((celery.CELERY_TASK_SOFT_TIME_LIMIT, celery.CELERY_TASK_TIME_LIMIT), (60, 90))
-        self.assertEqual((celery.TMDB_CHANGES_SYNC_SOFT_TIME_LIMIT, celery.TMDB_CHANGES_SYNC_TIME_LIMIT), (600, 660))
-
-    def test_tmdb_changes_sync_task_uses_its_own_limits(self):
-        from django.conf import settings
-        from tracking.tasks.system import sync_tmdb_changed_items
-
-        self.assertEqual(sync_tmdb_changed_items.soft_time_limit, settings.TMDB_CHANGES_SYNC_SOFT_TIME_LIMIT)
-        self.assertEqual(sync_tmdb_changed_items.time_limit, settings.TMDB_CHANGES_SYNC_TIME_LIMIT)
 
     def test_forwarded_host_not_trusted_by_default(self):
         security = self._load('security', {'DEBUG': 'True'})

@@ -144,6 +144,7 @@ def sync_tmdb_metadata_item(media_type: str, tmdb_id: int) -> dict[str, int | st
             tmdb.sync_movie(int(tmdb_id), use_cache=False)
         elif media_type in {MediaType.TV, WatchEntryMediaType.EPISODE}:
             tmdb.sync_tv_show(int(tmdb_id), use_cache=False)
+            sync_show_episode_credits.delay(int(tmdb_id), None, False)
         else:
             return {
                 'status': 'skipped',
@@ -166,6 +167,11 @@ def sync_tmdb_metadata_item(media_type: str, tmdb_id: int) -> dict[str, int | st
 
 
 def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict[str, int | str]:
+    """Queue one sync task per locally stored movie/show that TMDB reports as changed in the window.
+
+    Per-item tasks run in parallel across workers, and one slow or failing item no longer
+    stalls or aborts the rest of the sweep.
+    """
     start_date_str = start_date.isoformat()
     end_date_str = end_date.isoformat()
 
@@ -176,50 +182,18 @@ def sync_tmdb_changed_items_for_window(start_date: date, end_date: date) -> dict
         lambda page: tmdb.get_tv_changes(start_date_str, end_date_str, page=page, use_cache=False)
     )
 
-    local_movie_ids = set(Movie.objects.filter(tmdb_id__in=movie_changed_ids).values_list('tmdb_id', flat=True))
-    local_tv_ids = set(TVShow.objects.filter(tmdb_id__in=tv_changed_ids).values_list('tmdb_id', flat=True))
-
-    movies_synced = 0
-    movie_failures = 0
+    local_movie_ids = sorted(Movie.objects.filter(tmdb_id__in=movie_changed_ids).values_list('tmdb_id', flat=True))
+    local_tv_ids = sorted(TVShow.objects.filter(tmdb_id__in=tv_changed_ids).values_list('tmdb_id', flat=True))
     for tmdb_id in local_movie_ids:
-        try:
-            tmdb.sync_movie(tmdb_id, use_cache=False)
-            movies_synced += 1
-        except Exception:
-            movie_failures += 1
-
-    tv_synced = 0
-    tv_failures = 0
-    seasons_synced = 0
-    season_failures = 0
-    episode_credits_synced = 0
-    episode_credit_failures = 0
+        sync_tmdb_metadata_item.delay(MediaType.MOVIE, tmdb_id)
     for tmdb_id in local_tv_ids:
-        try:
-            show = tmdb.sync_tv_show(tmdb_id, use_cache=False)
-            tv_synced += 1
-            seasons_synced += show.seasons.count()
-        except Exception:
-            tv_failures += 1
-            continue
-
-        synced, failures = tmdb.sync_show_episode_credits(show, use_cache=False)
-        episode_credits_synced += synced
-        episode_credit_failures += failures
+        sync_tmdb_metadata_item.delay(MediaType.TV, tmdb_id)
 
     return {
         'window_start': start_date_str,
         'window_end': end_date_str,
         'movie_changed_total': len(movie_changed_ids),
         'tv_changed_total': len(tv_changed_ids),
-        'local_movies_matched': len(local_movie_ids),
-        'local_tv_matched': len(local_tv_ids),
-        'movies_synced': movies_synced,
-        'movie_failures': movie_failures,
-        'tv_synced': tv_synced,
-        'tv_failures': tv_failures,
-        'seasons_synced': seasons_synced,
-        'season_failures': season_failures,
-        'episode_credits_synced': episode_credits_synced,
-        'episode_credit_failures': episode_credit_failures,
+        'movies_queued': len(local_movie_ids),
+        'tv_queued': len(local_tv_ids),
     }
