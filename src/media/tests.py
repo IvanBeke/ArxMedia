@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache as django_cache
 from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 from tracking.models import Rating, UserMediaStatus, WatchEntry
@@ -1712,6 +1713,27 @@ class MediaTests(TestCase):
         anon = APIClient()
 
         self.assertEqual(anon.get('/api/media/people/search/?q=test').status_code, 401)
+
+
+class SeasonDetailQueryCountTests(TestCase):
+    def test_season_detail_does_not_query_per_episode(self):
+        from media.models import EpisodeCredit
+
+        user = User.objects.create_user(username='seasonq', password='testpass123')
+        client = APIClient()
+        client.force_authenticate(user)
+
+        def query_count(episodes):
+            show = TVShow.objects.create(tmdb_id=600 + episodes, name='Show', number_of_seasons=1)
+            season = Season.objects.create(show=show, tmdb_id=650 + episodes, season_number=1, name='Season 1')
+            for number in range(1, episodes + 1):
+                episode = Episode.objects.create(season=season, tmdb_id=10000 * episodes + number, episode_number=number, name=f'E{number}')
+                EpisodeCredit.objects.create(episode=episode, cast=[], crew=[], guest_stars=[])
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(client.get(f'/api/media/tv/{show.tmdb_id}/seasons/1/').status_code, 200)
+            return len(ctx.captured_queries)
+
+        self.assertEqual(query_count(10), query_count(2))
 
 
 class EpisodeCreditsQueueTests(TestCase):

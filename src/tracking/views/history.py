@@ -25,13 +25,13 @@ from ..models import (
     UserMediaStatus,
     WatchEntry,
 )
+from ..query_helpers import watch_entry_context
 from ..serializers import (
     RatingSerializer,
     ReviewSerializer,
     WatchEntrySerializer,
 )
 from ._helpers import (
-    _build_season_map,
     _coerce_int,
 )
 
@@ -70,16 +70,8 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         page = self.paginate_queryset(queryset)
         items = page if page is not None else queryset
 
-        from media.models import Movie, TVShow
         movie_ids = [entry.tmdb_id for entry in items if entry.media_type == WatchEntryMediaType.MOVIE]
         show_ids = [entry.tmdb_id for entry in items if entry.media_type == WatchEntryMediaType.EPISODE]
-        movie_map = {m.tmdb_id: m for m in Movie.objects.filter(tmdb_id__in=movie_ids)}
-        tv_map = {s.tmdb_id: s for s in TVShow.objects.filter(tmdb_id__in=show_ids)}
-        season_map = _build_season_map(
-            (entry.tmdb_id, entry.season_number)
-            for entry in items
-            if entry.media_type == WatchEntryMediaType.EPISODE and entry.season_number
-        )
         rating_rows = Rating.objects.filter(
             user=request.user,
         ).filter(
@@ -89,7 +81,7 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         rating_map = {(row['media_type'], row['tmdb_id']): row['score'] for row in rating_rows}
 
         context = self.get_serializer_context()
-        context.update({'movie_map': movie_map, 'tv_map': tv_map, 'season_map': season_map})
+        context.update(watch_entry_context(items))
         serializer = self.get_serializer(items, many=True, context=context)
         data = serializer.data
 
@@ -228,8 +220,8 @@ def user_stats(request):
 
     avg_rating = Rating.objects.filter(user=user).aggregate(avg=Avg('score'))['avg']
 
-    recent = entries.order_by('-watched_at')[:10]
-    from media.models import Episode, Movie, Season
+    recent = list(entries.order_by('-watched_at')[:10])
+    context = watch_entry_context(recent)
 
     recent_movie_ids = set()
     recent_tv_ids = set()
@@ -247,18 +239,18 @@ def user_stats(request):
 
     recent_data = []
     for entry in recent:
-        d = WatchEntrySerializer(entry).data
+        d = WatchEntrySerializer(entry, context=context).data
         if entry.media_type == WatchEntryMediaType.MOVIE:
-            movie = Movie.objects.filter(tmdb_id=entry.tmdb_id).first()
+            movie = context['movie_map'].get(entry.tmdb_id)
             d['title'] = movie.title if movie else f'Movie #{entry.tmdb_id}'
             d['poster_path'] = movie.poster_path if movie else ''
             d['show_title'] = None
             d['episode_title'] = None
             d['rating'] = rating_map.get((MediaType.MOVIE, entry.tmdb_id))
         elif entry.media_type == WatchEntryMediaType.EPISODE:
-            season = Season.objects.filter(show__tmdb_id=entry.tmdb_id, season_number=entry.season_number).first()
+            season = context['season_map'].get((entry.tmdb_id, entry.season_number))
             if season:
-                ep = Episode.objects.filter(season=season, episode_number=entry.episode_number).first()
+                ep = context['episode_map'].get((entry.tmdb_id, entry.season_number, entry.episode_number))
                 d['show_title'] = season.show.name
                 d['episode_title'] = ep.name if ep else f'Episode {entry.episode_number}'
                 d['title'] = d['episode_title']
@@ -273,7 +265,6 @@ def user_stats(request):
         'movies_watched': stats['movies'],
         'shows_watching': stats['shows_watching'],
         'shows_completed': stats['shows_completed'],
-        'hours': stats['hours'],
         'episodes_watched': WatchEntry.objects.filter(user=user, media_type=WatchEntryMediaType.EPISODE).count(),
         'average_rating': round(avg_rating, 1) if avg_rating else None,
         'top_genres': top_genres,

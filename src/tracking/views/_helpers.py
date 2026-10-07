@@ -1,5 +1,4 @@
 import logging
-from typing import TYPE_CHECKING
 
 from django.db.models import (
     Case,
@@ -34,8 +33,6 @@ from ..query_helpers import media_ids_q
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from media.models import Season
 
 
 def _coerce_int(value, field_name: str) -> int:
@@ -73,22 +70,6 @@ def _collect_media_ids(queryset) -> tuple[set[int], set[int]]:
         elif media_type == MediaType.TV:
             tv_ids.add(tmdb_id)
     return movie_ids, tv_ids
-
-
-def _build_season_map(pairs) -> dict[tuple[int, int], Season | None]:
-    from media.models import Season
-
-    unique_pairs = {(int(tmdb_id), int(season_number)) for tmdb_id, season_number in pairs}
-    season_map: dict[tuple[int, int], Season | None] = {}
-    if not unique_pairs:
-        return season_map
-    pair_show_ids = {tmdb_id for tmdb_id, _ in unique_pairs}
-    seasons_by_show: dict[int, dict[int, Season]] = {}
-    for season in Season.objects.filter(show__tmdb_id__in=pair_show_ids):
-        seasons_by_show.setdefault(season.show.tmdb_id, {})[season.season_number] = season
-    for tmdb_id, season_number in unique_pairs:
-        season_map[(tmdb_id, season_number)] = seasons_by_show.get(tmdb_id, {}).get(season_number)
-    return season_map
 
 
 def _build_user_media_sets(user, movie_ids: set[int], tv_ids: set[int]) -> dict[str, set[int]]:

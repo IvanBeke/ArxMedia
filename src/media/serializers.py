@@ -119,8 +119,8 @@ class SeasonSerializer(serializers.ModelSerializer):
         return obj.episodes.count()
 
     def get_episodes(self, obj):
-        qs = obj.episodes.order_by('episode_number')
-        return EpisodeSerializer(qs, many=True).data
+        # Episode.Meta orders by episode_number; .all() keeps the view's credits prefetch.
+        return EpisodeSerializer(obj.episodes.all(), many=True).data
 
 
 class EpisodeHeatmapSerializer(serializers.Serializer):

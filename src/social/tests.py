@@ -1,6 +1,9 @@
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from media.models import Episode, Season, TVShow
 from rest_framework.test import APIClient
 from tracking.models import Review, WatchEntry
 
@@ -55,3 +58,24 @@ class PrivacyFilteringTests(TestCase):
     def test_reviews_reject_invalid_filters(self):
         self.assertEqual(self.client.get('/api/tracking/reviews/?tmdb_id=abc').status_code, 400)
         self.assertEqual(self.client.get('/api/tracking/reviews/?media_type=book').status_code, 400)
+
+    def test_feed_does_not_query_per_entry(self):
+        def add_entries(start, count):
+            for i in range(start, start + count):
+                show = TVShow.objects.create(tmdb_id=700 + i, name=f'Show {i}')
+                season = Season.objects.create(show=show, tmdb_id=800 + i, season_number=1, name='Season 1')
+                Episode.objects.create(season=season, tmdb_id=900 + i, episode_number=1, name='Pilot')
+                WatchEntry.objects.create(
+                    user=self.public, media_type='episode', tmdb_id=700 + i,
+                    season_number=1, episode_number=1, watched_at=timezone.now(),
+                )
+
+        def query_count():
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(self.client.get('/api/social/feed/').status_code, 200)
+            return len(ctx.captured_queries)
+
+        add_entries(0, 2)
+        before = query_count()
+        add_entries(2, 6)
+        self.assertEqual(query_count(), before)

@@ -29,8 +29,8 @@ from ..models import (
     UserMediaStatus,
     WatchEntry,
 )
+from ..query_helpers import build_season_map
 from ._helpers import (
-    _build_season_map,
     _parse_bool_param,
     _parse_multi_param,
 )
@@ -145,7 +145,7 @@ def up_next(request):
         for show in TVShow.objects.filter(tmdb_id__in=[item['tmdb_id'] for item in watched_show_rows]).only('tmdb_id', 'name', 'poster_path')
     }
 
-    next_season_map = _build_season_map(
+    next_season_map = build_season_map(
         (item['tmdb_id'], item['next_season_number'])
         for item in watched_show_rows
         if item['next_season_number'] is not None

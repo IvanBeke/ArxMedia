@@ -2,7 +2,7 @@ import logging
 
 from accounts.privacy import can_view_account_content, get_viewer_relationship
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -52,13 +52,22 @@ def _can_access_list(viewer, custom_list) -> bool:
     return _can_view_public_lists(viewer, custom_list.user)
 
 
+def _with_list_summary(queryset):
+    """Load everything CustomListSerializer reads, so listing lists costs a fixed number of queries."""
+    return (
+        queryset.select_related('user')
+        .annotate(item_total=Count('items'))
+        .prefetch_related('collaboratorships__user')
+    )
+
+
 class CustomListListCreateView(generics.ListCreateAPIView):
     serializer_class = CustomListSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         if self.request.user.is_staff:
-            return CustomList.objects.all()
+            return _with_list_summary(CustomList.objects.all())
 
         visible_public_lists = Q(privacy=ListPrivacy.PUBLIC) & (
             Q(user__account_visibility='public') |
@@ -69,11 +78,13 @@ class CustomListListCreateView(generics.ListCreateAPIView):
             )
         )
 
-        return CustomList.objects.filter(
+        visible_ids = CustomList.objects.filter(
             Q(user=self.request.user) |
             Q(collaboratorships__user=self.request.user) |
             visible_public_lists
-        ).distinct()
+        ).values('id')
+        # Filter by id so the item count is not multiplied by the visibility joins.
+        return _with_list_summary(CustomList.objects.filter(id__in=visible_ids))
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

@@ -18,35 +18,14 @@ class TrackingCache:
         return stats
 
     def _compute_user_stats(self, user_id):
-        from media.models import Episode, TVShow
+        from .choices import TvShowStatus
+        from .models import UserMediaStatus
 
-        movies = WatchEntry.objects.for_user(user_id).movies().values('tmdb_id').distinct().count()
-
-        episode_entries = WatchEntry.objects.for_user(user_id).episodes().values("tmdb_id").distinct()
-
-        shows_watching = episode_entries.count()
-
-        shows_completed = 0
-        hours_watched = 0
-
-        for entry in episode_entries:
-            show = TVShow.objects.filter(tmdb_id=entry["tmdb_id"]).first()
-            if not show:
-                continue
-            total_eps = Episode.objects.filter(
-                season__show=show
-            ).count()
-            watched_eps = WatchEntry.objects.for_user(user_id).for_show(entry["tmdb_id"]).count()
-
-            if total_eps and watched_eps >= total_eps:
-                shows_completed += 1
-                hours_watched += min(watched_eps, 10)
-
+        watched = WatchEntry.objects.for_user(user_id)
         return {
-            "movies": movies,
-            "shows_watching": shows_watching,
-            "shows_completed": shows_completed,
-            "hours": hours_watched,
+            "movies": watched.movies().values('tmdb_id').distinct().count(),
+            "shows_watching": watched.episodes().values('tmdb_id').distinct().count(),
+            "shows_completed": UserMediaStatus.objects.for_user(user_id).shows().filter(status=TvShowStatus.WATCHED).count(),
         }
 
     def invalidate_user_stats(self, user_id):

@@ -36,14 +36,15 @@ class MediaCardSerializer(serializers.ModelSerializer):
         if cache_key in media_cache:
             return media_cache[cache_key]
 
-        movie_map = self.context.get('movie_map') or {}
-        tv_map = self.context.get('tv_map') or {}
+        # A map supplied by the view is authoritative: a missing key means the media is not stored locally.
+        movie_map = self.context.get('movie_map')
+        tv_map = self.context.get('tv_map')
 
-        if media_type == MediaType.MOVIE and obj.tmdb_id in movie_map:
-            media_cache[cache_key] = movie_map[obj.tmdb_id]
+        if media_type == MediaType.MOVIE and movie_map is not None:
+            media_cache[cache_key] = movie_map.get(obj.tmdb_id)
             return media_cache[cache_key]
-        if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE) and obj.tmdb_id in tv_map:
-            media_cache[cache_key] = tv_map[obj.tmdb_id]
+        if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE) and tv_map is not None:
+            media_cache[cache_key] = tv_map.get(obj.tmdb_id)
             return media_cache[cache_key]
 
         from media.models import Movie, TVShow
@@ -74,9 +75,10 @@ class MediaCardSerializer(serializers.ModelSerializer):
 
         from media.models import Season
 
-        season_map = self.context.get('season_map') or {}
-        season = season_map.get(cache_key)
-        if season is None:
+        season_map = self.context.get('season_map')
+        if season_map is not None:
+            season = season_map.get(cache_key)
+        else:
             season = Season.objects.filter(
                 show__tmdb_id=obj.tmdb_id,
                 season_number=season_number,
@@ -147,9 +149,13 @@ class WatchEntrySerializer(MediaCardSerializer):
         if cache_key in cache:
             return cache[cache_key]
 
-        from media.models import Episode
+        episode_map = self.context.get('episode_map')
+        if episode_map is not None:
+            episode = episode_map.get((obj.tmdb_id, obj.season_number, obj.episode_number))
+        else:
+            from media.models import Episode
 
-        episode = Episode.objects.filter(season=season, episode_number=obj.episode_number).first()
+            episode = Episode.objects.filter(season=season, episode_number=obj.episode_number).first()
         cache[cache_key] = episode
         return episode
 
@@ -234,15 +240,17 @@ class CustomListSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'username', 'created_at', 'updated_at']
 
     def get_item_count(self, obj):
-        return obj.items.count()
+        item_total = getattr(obj, 'item_total', None)
+        return item_total if item_total is not None else obj.items.count()
 
     def get_collaborators(self, obj):
-        return list(obj.collaboratorships.values_list('user__id', flat=True))
+        return [row['id'] for row in self.get_collaborator_users(obj)]
 
     def get_collaborator_users(self, obj):
+        # .all() reuses collaboratorships__user when the view prefetched it.
         return [
-            {'id': row['user__id'], 'username': row['user__username']}
-            for row in obj.collaboratorships.values('user__id', 'user__username')
+            {'id': collaboratorship.user.id, 'username': collaboratorship.user.username}
+            for collaboratorship in obj.collaboratorships.all()
         ]
 
     def _save_collaborators(self, custom_list, collaborators):

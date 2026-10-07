@@ -15,6 +15,7 @@ from django.core.management.base import CommandError
 from django.db import IntegrityError, connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase, TransactionTestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from media.models import Episode, Genre, Movie, Season, TVShow
 from rest_framework.test import APIClient
@@ -519,6 +520,40 @@ class HistoryCreateIdempotencyTests(BaseTestCase):
                     WatchEntry.objects.filter(user=self.user, media_type=payload['media_type'], tmdb_id=payload['tmdb_id']).count(),
                     1,
                 )
+
+
+class QueryCountTests(BaseTestCase):
+    """List endpoints must cost a fixed number of queries however many rows they return."""
+
+    def _add_rows(self, start, count):
+        for i in range(start, start + count):
+            show = TVShow.objects.create(tmdb_id=9100 + i, name=f'Show {i}', number_of_seasons=1)
+            season = Season.objects.create(show=show, tmdb_id=9200 + i, season_number=1, name='Season 1')
+            Episode.objects.create(season=season, tmdb_id=9300 + i, episode_number=1, name='Pilot')
+            Movie.objects.create(tmdb_id=9400 + i, title=f'Movie {i}')
+            WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=9100 + i, season_number=1, episode_number=1, watched_at=timezone.now())
+            WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=9400 + i, watched_at=timezone.now())
+            custom_list = CustomList.objects.create(user=self.user, name=f'List {i}')
+            ListCollaborator.objects.create(custom_list=custom_list, user=self.user2)
+            ListItem.objects.create(custom_list=custom_list, media_type='movie', tmdb_id=9400 + i)
+            # Not stored locally: serializers must not query for media missing from the view's maps.
+            UserMediaStatus.objects.set_planning(self.user, 'movie', 9500 + i)
+
+    def _query_count(self, url):
+        django_cache.clear()
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, url)
+        return len(ctx.captured_queries)
+
+    def test_list_endpoints_do_not_query_per_row(self):
+        urls = ['/api/tracking/stats/', '/api/tracking/history/', '/api/tracking/lists/', '/api/tracking/watchlist/']
+        self._add_rows(0, 2)
+        before = {url: self._query_count(url) for url in urls}
+        self._add_rows(2, 6)
+        after = {url: self._query_count(url) for url in urls}
+
+        self.assertEqual(after, before)
 
 
 class UniqueEpisodeWatchMigrationTests(TransactionTestCase):
