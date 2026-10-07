@@ -184,26 +184,6 @@ export function localDateTimeInputToIso(value: unknown, timeZone = getUserTimeZo
   }
 }
 
-export function plainDateToUserInstantIso(value: unknown, timeZone = getUserTimeZone()): string {
-  const instant = parseInstant(value)
-  if (instant) {
-    return instant.toString()
-  }
-
-  const plainDate = parsePlainDate(value)
-  if (!plainDate) {
-    return ''
-  }
-  try {
-    return plainDate
-      .toZonedDateTime({ timeZone, plainTime: '00:00:00' })
-      .toInstant()
-      .toString()
-  } catch {
-    return ''
-  }
-}
-
 export function shiftIsoMonthStart(value: unknown, amount: number): Temporal.PlainDate | null {
   const plainDate = parsePlainDate(value)
   if (!plainDate) {

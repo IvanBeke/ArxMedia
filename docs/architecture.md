@@ -15,6 +15,7 @@ What "good work" means for this project.
 - Django session auth: `POST /api/auth/login/`, `/logout/` and `/register/` manage an HttpOnly session cookie (`SESSION_COOKIE_AGE`, default 14 days); the SPA sends the `csrftoken` cookie back as `X-CSRFToken` on unsafe requests. Unauthenticated API requests return 401.
 - Redis cache is optional — TMDB and TVMaze services fall back gracefully
 - Import uploads and export archives are private: `MEDIA_ROOT` is not served over HTTP, files are stored under random directories, and exports download only through the owner-scoped `GET /api/tracking/data/jobs/<id>/file/`
+- Watch-tracking endpoints (`/history/`, `/episodes/mark/`, `/seasons/mark/`, `/shows/mark/`) take `watched_at` as `now`, `unknown`, `release_date`, or an ISO 8601 timestamp; `src/tracking/watched_at.py` resolves it (episode broadcast time or air date, movie release date, falling back to now) and responses return the stored moment
 - DRF with `IsAuthenticated` by default and `PageNumberPagination` (PAGE_SIZE=20)
 - All Django code lives under `src/`
 

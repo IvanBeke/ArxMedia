@@ -4,7 +4,6 @@ import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions
 import { useWatchedQuickActions } from '@/composables/useWatchedQuickActions'
 import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
 import { getApiErrorMessage } from '@/utils/errors'
-import { nowInstantIso } from '@/utils/temporal'
 import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
 import type { MediaType, MediaUserStatus } from '@/types/api'
 import type { WatchedAtOption } from '@/utils/watchOptions'
@@ -110,27 +109,24 @@ export function useMediaCardQuickActions(options: MediaCardQuickActionOptions = 
 
       if (!mediaType || actionId === undefined) return null
       const resolution = await resolveWatchedAtFromOption(option, {
-        releaseDate: item.release_date || '',
         pickDateTime: () => pickWatchedDateTime(item?.user_status?.watched_at || ''),
       })
       if (resolution.cancelled) {
         return null
       }
-      const watchedAt = resolution.watchedAt
 
-      const nextStatus = await markWatched(mediaType, actionId, watchedAt)
-      if (!nextStatus) {
+      const marked = await markWatched(mediaType, actionId, resolution.watchedAt)
+      if (!marked) {
         return null
       }
 
-      const nowIso = watchedAt || nowInstantIso()
       patchUserStatus(item, {
-        status: nextStatus,
-        watched_at: nowIso,
-        status_changed_at: nowIso,
+        status: marked.status,
+        watched_at: marked.watchedAt,
+        status_changed_at: marked.watchedAt,
       })
 
-      return nextStatus
+      return marked.status
     } catch (error) {
       onError(getApiErrorMessage(error, 'Could not update watched status.'))
       return null

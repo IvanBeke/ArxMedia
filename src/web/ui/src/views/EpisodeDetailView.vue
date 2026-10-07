@@ -396,7 +396,7 @@ async function handleWatchOption(option: WatchedAtOption) {
     tmdbId: tmdbId.value,
     seasonNumber: seasonNum.value,
     episodeNumber: episodeNum.value,
-  }, { releaseDate: episodeData.value?.broadcast_start || episodeData.value?.air_date || '', pickerInitial: watchedAt.value })
+  }, { pickerInitial: watchedAt.value })
   if (!finalWatchedAt) return
   isWatched.value = true
   watchedAt.value = finalWatchedAt

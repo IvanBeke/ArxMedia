@@ -5,7 +5,6 @@ import {
   formatTemporalDateTime,
   isoDateKey,
   localDateTimeInputToIso,
-  plainDateToUserInstantIso,
   toLocalDateTimeInput,
   weekBounds,
 } from './temporal'
@@ -37,11 +36,6 @@ describe('temporal utils', () => {
 
     expect(formatted).toContain('13:07')
     expect(formatted).not.toMatch(/\b(?:AM|PM)\b/)
-  })
-
-  it('converts plain date to midnight instant for selected timezone', () => {
-    expect(plainDateToUserInstantIso('2026-03-10', 'UTC')).toBe('2026-03-10T00:00:00Z')
-    expect(plainDateToUserInstantIso('not-a-date', 'UTC')).toBe('')
   })
 
   it('returns monday-to-sunday bounds for week containing value', () => {

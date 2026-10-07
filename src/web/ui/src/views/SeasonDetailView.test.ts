@@ -128,7 +128,7 @@ describe('SeasonDetailView progress', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getSeasonCredits.mockResolvedValue(null)
-    markEpisodeWatched.mockResolvedValue({})
+    markEpisodeWatched.mockResolvedValue({ id: 1, created: true, watched_at: '1970-01-01T00:00:00Z' })
     markSeasonWatched.mockResolvedValue({})
   })
 
@@ -234,7 +234,7 @@ describe('SeasonDetailView progress', () => {
     expect(wrapper.findComponent(ProgressBar).props('pct')).toBe(100)
   })
 
-  it('sends a full timestamp when marking a season on its release date', async () => {
+  it('asks the backend to mark each episode on its own release date', async () => {
     getSeason.mockResolvedValue(seasonPayload(12))
     getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
 
@@ -242,12 +242,7 @@ describe('SeasonDetailView progress', () => {
     wrapper.findComponent(WatchSplitButton).vm.$emit('select', 'release')
     await flushPromises()
 
-    expect(markSeasonWatched).toHaveBeenCalledWith(expect.objectContaining({
-      watched_at: '2021-06-21T00:00:00Z',
-    }))
-    expect(markSeasonWatched).not.toHaveBeenCalledWith(expect.objectContaining({
-      use_release_date: true,
-    }))
+    expect(markSeasonWatched).toHaveBeenCalledWith(expect.objectContaining({ watched_at: 'release_date' }))
   })
 
   it('defaults to the overview tab and renders season overview there', async () => {

@@ -31,6 +31,7 @@ from ..serializers import (
     ReviewSerializer,
     WatchEntrySerializer,
 )
+from ..watched_at import resolve_watched_at, wants_release_date
 from ._helpers import (
     _coerce_int,
 )
@@ -99,7 +100,9 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         # A movie or episode is watched at most once; re-posting it returns the existing entry.
-        serializer = self.get_serializer(data=request.data)
+        data = request.data.dict() if hasattr(request.data, 'dict') else dict(request.data)
+        data['watched_at'] = resolve_watched_at(data.get('watched_at'), self._release_for(data))
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         try:
             with transaction.atomic():
@@ -110,6 +113,26 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
                 raise
             return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _release_for(data):
+        """Release moment of the posted item, looked up only when the client asked for it."""
+        if not wants_release_date(data.get('watched_at')):
+            return None
+        from media.models import Episode, Movie
+
+        try:
+            tmdb_id = int(data.get('tmdb_id'))
+        except (TypeError, ValueError):
+            return None
+        if data.get('media_type') == WatchEntryMediaType.MOVIE:
+            return Movie.objects.filter(tmdb_id=tmdb_id).values_list('release_date', flat=True).first()
+        episode = Episode.objects.filter(
+            season__show__tmdb_id=tmdb_id,
+            season__season_number=data.get('season_number'),
+            episode_number=data.get('episode_number'),
+        ).values('broadcast_start', 'air_date').first() or {}
+        return episode.get('broadcast_start') or episode.get('air_date')
 
     def _existing_entry(self, data):
         lookup = {'user': self.request.user, 'media_type': data['media_type'], 'tmdb_id': data['tmdb_id']}

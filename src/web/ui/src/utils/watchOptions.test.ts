@@ -1,71 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { EPOCH_START_ISO } from '@/utils/temporal'
 import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
 
 describe('resolveWatchedAtFromOption', () => {
-  it('marks now with no timestamp and no release flag', async () => {
-    await expect(resolveWatchedAtFromOption('now')).resolves.toEqual({
-      cancelled: false,
-      watchedAt: null,
-      useReleaseDate: false,
-    })
+  it.each([
+    ['now', 'now'],
+    ['release', 'release_date'],
+    ['unknown', 'unknown'],
+    ['something-else', 'now'],
+  ])('maps the %s option to the %s token for the backend to resolve', async (option, token) => {
+    await expect(resolveWatchedAtFromOption(option)).resolves.toEqual({ cancelled: false, watchedAt: token })
   })
 
-  it('converts a release date into a user instant', async () => {
-    const result = await resolveWatchedAtFromOption('release', { releaseDate: '2020-05-01' })
-    expect(result.cancelled).toBe(false)
-    expect(result.useReleaseDate).toBe(true)
-    expect(result.watchedAt).toBe('2020-05-01T00:00:00Z')
-  })
-
-  it('preserves the time in an episode broadcast instant', async () => {
-    const result = await resolveWatchedAtFromOption('release', { releaseDate: '2020-05-01T14:15:00Z' })
-
-    expect(result.watchedAt).toBe('2020-05-01T14:15:00Z')
-  })
-
-  it('keeps a null timestamp when the item has no release date', async () => {
-    const result = await resolveWatchedAtFromOption('release', { releaseDate: '' })
-    expect(result.cancelled).toBe(false)
-    expect(result.useReleaseDate).toBe(true)
-    expect(result.watchedAt).toBeNull()
-  })
-
-  it('uses the epoch start sentinel for unknown date', async () => {
-    const result = await resolveWatchedAtFromOption('unknown')
-    expect(result.cancelled).toBe(false)
-    expect(result.useReleaseDate).toBe(false)
-    expect(result.watchedAt).toBe(EPOCH_START_ISO)
-    expect(result.watchedAt).toBe('1970-01-01T00:00:00Z')
-  })
-
-  it('returns the picked value for the date option', async () => {
+  it('returns the picked timestamp for the date option', async () => {
     const picked = '2024-01-02T03:04:05Z'
-    const result = await resolveWatchedAtFromOption('date', {
-      pickDateTime: async () => picked,
-    })
-    expect(result.cancelled).toBe(false)
-    expect(result.watchedAt).toBe(picked)
+    const result = await resolveWatchedAtFromOption('date', { pickDateTime: async () => picked })
+    expect(result).toEqual({ cancelled: false, watchedAt: picked })
   })
 
-  it('reports cancellation when the picker is dismissed', async () => {
-    const result = await resolveWatchedAtFromOption('date', {
-      pickDateTime: async () => null,
-    })
-    expect(result.cancelled).toBe(true)
-    expect(result.watchedAt).toBeNull()
-  })
-
-  it('reports cancellation when no picker was provided', async () => {
-    const result = await resolveWatchedAtFromOption('date')
-    expect(result.cancelled).toBe(true)
-  })
-
-  it('treats any other option like now', async () => {
-    await expect(resolveWatchedAtFromOption('something-else')).resolves.toEqual({
-      cancelled: false,
-      watchedAt: null,
-      useReleaseDate: false,
-    })
+  it('reports cancellation when the picker is dismissed or missing', async () => {
+    await expect(resolveWatchedAtFromOption('date', { pickDateTime: async () => null })).resolves.toEqual({ cancelled: true, watchedAt: null })
+    await expect(resolveWatchedAtFromOption('date')).resolves.toEqual({ cancelled: true, watchedAt: null })
   })
 })

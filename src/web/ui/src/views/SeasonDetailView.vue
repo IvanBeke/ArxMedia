@@ -323,7 +323,7 @@ async function handleEpisodeWatchOption(payload: EpisodeTarget & { option: Watch
     tmdbId: tmdbId.value,
     seasonNumber: sn,
     episodeNumber: epNum,
-  }, { releaseDate: payload.releaseDate || '', pickerInitial: getEpisodeWatchedAt(epNum) })
+  }, { pickerInitial: getEpisodeWatchedAt(epNum) })
   if (!finalWatchedAt) return
 
   markLocally(sn, epNum, finalWatchedAt)
@@ -332,7 +332,6 @@ async function handleEpisodeWatchOption(payload: EpisodeTarget & { option: Watch
 
 async function handleSeasonWatchOption(option: WatchedAtOption) {
   const resolution = await resolveWatchedAtFromOption(option, {
-    releaseDate: season.value?.air_date ? String(season.value.air_date) : '',
     pickDateTime: () => pickWatchedDateTime(''),
   })
   if (resolution.cancelled) {

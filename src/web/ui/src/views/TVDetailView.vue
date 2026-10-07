@@ -531,7 +531,7 @@ async function handleEpisodeWatchOption(sn: number, payload: EpisodeTarget & { o
     tmdbId: tmdbId.value,
     seasonNumber: sn,
     episodeNumber: epNum,
-  }, { releaseDate: payload.releaseDate || '', pickerInitial: watchedAt(sn, epNum) })
+  }, { pickerInitial: watchedAt(sn, epNum) })
   if (!finalWatchedAt) return
 
   markLocally(sn, epNum, finalWatchedAt)
@@ -677,7 +677,6 @@ async function handleShowWatchOption(option: WatchedAtOption) {
     return
   }
   const resolution = await resolveWatchedAtFromOption(option, {
-    releaseDate: show.value.first_air_date || '',
     pickDateTime: () => pickWatchedDateTime(''),
   })
   if (resolution.cancelled) {
@@ -685,15 +684,11 @@ async function handleShowWatchOption(option: WatchedAtOption) {
   }
   showMarking.value = true
   try {
-    for (const season of show.value.seasons) {
-      await trackingAPI.markSeasonWatched({
-        tmdb_id: tmdbId.value,
-        season_number: season.season_number,
-        watched_at: resolution.watchedAt ?? undefined,
-      })
-    }
-    const epsRes = await trackingAPI.getWatchedEpisodes(tmdbId.value)
-    applyWatchedEpisodes(epsRes)
+    const response = await trackingAPI.markShowWatched({
+      tmdb_id: tmdbId.value,
+      watched_at: resolution.watchedAt ?? undefined,
+    })
+    applyWatchedEpisodes(response)
     seasonEpisodes.value = {}
     await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
     showSuccess('Show marked as watched')

@@ -3,6 +3,7 @@
 from .episodes import (
     mark_episode_watched,
     mark_season_watched,
+    mark_show_watched,
     unmark_episode_watched,
     unmark_season_watched,
     unmark_show_watched,
@@ -66,6 +67,7 @@ __all__ = [
     'drop_media',
     'mark_episode_watched',
     'mark_season_watched',
+    'mark_show_watched',
     'my_movies_list',
     'my_shows_list',
     'recommendations',

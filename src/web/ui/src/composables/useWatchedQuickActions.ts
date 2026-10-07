@@ -55,7 +55,12 @@ export function useWatchedQuickActions() {
     return getPulseSet(mediaType).value.has(Number(tmdbId))
   }
 
-  async function markWatched(mediaType: MediaType, tmdbId: MediaId, watchedAt: string | null = null): Promise<WatchEntryStatus | null> {
+  /** Returns the new status and the watch moment the backend stored (it resolves tokens like "release_date"). */
+  async function markWatched(
+    mediaType: MediaType,
+    tmdbId: MediaId,
+    watchedAt: string | null = null,
+  ): Promise<{ status: WatchEntryStatus; watchedAt: string } | null> {
     const id = Number(tmdbId)
     const loadingSet = getLoadingSet(mediaType)
     if (loadingSet.value.has(id)) {
@@ -65,23 +70,23 @@ export function useWatchedQuickActions() {
     updateSet(loadingSet, id, true)
     try {
       if (mediaType === MEDIA_TYPE.TV) {
-        await trackingAPI.markEpisodeWatched({
+        const response = await trackingAPI.markEpisodeWatched({
           tmdb_id: id,
           season_number: 1,
           episode_number: 1,
           watched_at: watchedAt,
         })
         triggerPulse(mediaType, id)
-        return WATCH_ENTRY_STATUS.WATCHING
+        return { status: WATCH_ENTRY_STATUS.WATCHING, watchedAt: response.watched_at }
       }
 
-      await trackingAPI.addToHistory({
+      const entry = await trackingAPI.addToHistory({
         media_type: MEDIA_TYPE.MOVIE,
         tmdb_id: id,
         watched_at: watchedAt,
       })
       triggerPulse(mediaType, id)
-      return WATCH_ENTRY_STATUS.WATCHED
+      return { status: WATCH_ENTRY_STATUS.WATCHED, watchedAt: entry.watched_at ?? '' }
     } finally {
       updateSet(loadingSet, id, false)
     }

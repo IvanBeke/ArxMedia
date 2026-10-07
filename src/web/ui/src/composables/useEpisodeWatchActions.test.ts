@@ -2,56 +2,36 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/api', () => ({
   trackingAPI: {
-    markEpisodeWatched: vi.fn().mockResolvedValue({}),
+    markEpisodeWatched: vi.fn().mockResolvedValue({ id: 1, created: true, watched_at: '2020-05-01T21:00:00Z' }),
     unmarkEpisodeWatched: vi.fn().mockResolvedValue({}),
   },
 }))
 
 import { trackingAPI as importedTrackingAPI } from '@/api'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
-import { EPOCH_START_ISO } from '@/utils/temporal'
 
 const trackingAPI = vi.mocked(importedTrackingAPI)
 
 const TARGET = { tmdbId: 37854, seasonNumber: 2, episodeNumber: 5 }
 
 describe('useEpisodeWatchActions', () => {
-  it('marks watched now with a null timestamp and returns the current instant', async () => {
+  it.each([
+    ['now', 'now'],
+    ['unknown', 'unknown'],
+    ['release', 'release_date'],
+  ])('sends the %s option as the %s token and returns the moment the backend stored', async (option, token) => {
     trackingAPI.markEpisodeWatched.mockClear()
     const { markFromOption } = useEpisodeWatchActions()
 
-    const result = await markFromOption('now', TARGET)
+    const result = await markFromOption(option, TARGET)
 
     expect(trackingAPI.markEpisodeWatched).toHaveBeenCalledWith({
       tmdb_id: 37854,
       season_number: 2,
       episode_number: 5,
-      watched_at: null,
+      watched_at: token,
     })
-    expect(result).toBeTruthy()
-  })
-
-  it('sends the epoch start sentinel for the unknown option', async () => {
-    trackingAPI.markEpisodeWatched.mockClear()
-    const { markFromOption } = useEpisodeWatchActions()
-
-    const result = await markFromOption('unknown', TARGET)
-
-    expect(trackingAPI.markEpisodeWatched).toHaveBeenCalledWith(
-      expect.objectContaining({ watched_at: EPOCH_START_ISO })
-    )
-    expect(result).toBe(EPOCH_START_ISO)
-  })
-
-  it('converts the release date before marking', async () => {
-    trackingAPI.markEpisodeWatched.mockClear()
-    const { markFromOption } = useEpisodeWatchActions()
-
-    await markFromOption('release', TARGET, { releaseDate: '2020-05-01' })
-
-    expect(trackingAPI.markEpisodeWatched).toHaveBeenCalledWith(
-      expect.objectContaining({ watched_at: '2020-05-01T00:00:00Z' })
-    )
+    expect(result).toBe('2020-05-01T21:00:00Z')
   })
 
   it('aborts without calling the API when the picker is dismissed', async () => {

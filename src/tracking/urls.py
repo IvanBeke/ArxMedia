@@ -15,6 +15,7 @@ urlpatterns = [
     path('episodes/unmark/', views.unmark_episode_watched, name='unmark_episode_watched'),
     path('seasons/mark/', views.mark_season_watched, name='mark_season_watched'),
     path('seasons/unmark/', views.unmark_season_watched, name='unmark_season_watched'),
+    path('shows/mark/', views.mark_show_watched, name='mark_show_watched'),
     path('shows/unmark/', views.unmark_show_watched, name='unmark_show_watched'),
     path('up-next/', views.up_next, name='up_next'),
     path('my-shows/', views.my_shows_list, name='my_shows_list'),

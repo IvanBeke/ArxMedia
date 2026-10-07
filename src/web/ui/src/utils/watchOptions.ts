@@ -1,21 +1,23 @@
 import { formatDateTimeByLocale } from '@/i18n'
-import { EPOCH_START_ISO, plainDateToUserInstantIso } from '@/utils/temporal'
 import type { MessageKey } from '@/i18n'
 
 export type WatchedAtOption = 'now' | 'release' | 'unknown' | 'date'
 
 type Translate = (key: MessageKey) => string
 
+/** What the API accepts as `watched_at`: a token the backend resolves, or an ISO timestamp. */
+export type WatchedAtValue = 'now' | 'unknown' | 'release_date' | (string & {})
+
 interface WatchedAtContext {
-  releaseDate?: string
   pickDateTime?: (() => Promise<string | null>) | null
 }
 
 interface WatchedAtResolution {
   cancelled: boolean
-  watchedAt: string | null
-  useReleaseDate: boolean
+  watchedAt: WatchedAtValue | null
 }
+
+const OPTION_TOKENS: Partial<Record<string, WatchedAtValue>> = { release: 'release_date', unknown: 'unknown' }
 
 export function watchedTooltipText(watched: boolean, watchedAtIso: unknown, t: Translate): string {
   if (!watched) {
@@ -35,30 +37,9 @@ export async function resolveWatchedAtFromOption(
   option: WatchedAtOption | string,
   context: WatchedAtContext = {},
 ): Promise<WatchedAtResolution> {
-  const { releaseDate = '', pickDateTime = null } = context
-
-  if (option === 'release') {
-    return {
-      cancelled: false,
-      watchedAt: releaseDate ? plainDateToUserInstantIso(releaseDate) : null,
-      useReleaseDate: true,
-    }
-  }
-
-  if (option === 'unknown') {
-    return { cancelled: false, watchedAt: EPOCH_START_ISO, useReleaseDate: false }
-  }
-
   if (option === 'date') {
-    if (typeof pickDateTime !== 'function') {
-      return { cancelled: true, watchedAt: null, useReleaseDate: false }
-    }
-    const picked = await pickDateTime()
-    if (!picked) {
-      return { cancelled: true, watchedAt: null, useReleaseDate: false }
-    }
-    return { cancelled: false, watchedAt: picked, useReleaseDate: false }
+    const picked = typeof context.pickDateTime === 'function' ? await context.pickDateTime() : null
+    return picked ? { cancelled: false, watchedAt: picked } : { cancelled: true, watchedAt: null }
   }
-
-  return { cancelled: false, watchedAt: null, useReleaseDate: false }
+  return { cancelled: false, watchedAt: OPTION_TOKENS[option] ?? 'now' }
 }

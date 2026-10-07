@@ -577,6 +577,9 @@ class WatchEntryIndexTests(BaseTestCase):
             # Tiny test tables favour sequential scans; force the planner to show index usability.
             cursor.execute('SET LOCAL enable_seqscan = off')
             cursor.execute('SET LOCAL enable_bitmapscan = off')
+            # Statistics left by other tests can make "other index + sort" look cheaper; forbid sorting so the
+            # plan shows whether an index can serve the ordering on its own.
+            cursor.execute('SET LOCAL enable_sort = off')
             cursor.execute('EXPLAIN ' + sql, params)
             return '\n'.join(row[0] for row in cursor.fetchall())
 
@@ -595,6 +598,65 @@ class WatchEntryIndexTests(BaseTestCase):
 
         self.assertIn('watchentry_user_watched_idx', plan)
         self.assertNotIn('Sort', plan)
+
+
+class WatchedAtResolutionTests(BaseTestCase):
+    """Clients send a watched_at token or timestamp; the backend turns it into the stored moment."""
+
+    def test_episode_release_date_uses_broadcast_time_and_is_returned(self):
+        show = TVShow.objects.create(tmdb_id=340, name='Token Show')
+        season = Season.objects.create(show=show, tmdb_id=3401, season_number=1, name='S1')
+        broadcast = datetime(2023, 5, 4, 20, 30, tzinfo=UTC)
+        Episode.objects.create(season=season, tmdb_id=34011, episode_number=1, name='E1', air_date=date(2023, 5, 4), broadcast_start=broadcast)
+
+        response = self.client.post(
+            '/api/tracking/episodes/mark/',
+            {'tmdb_id': 340, 'season_number': 1, 'episode_number': 1, 'watched_at': 'release_date'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['watched_at'], broadcast)
+        self.assertEqual(WatchEntry.objects.get(user=self.user, tmdb_id=340).watched_at, broadcast)
+
+    def test_movie_release_date_and_missing_release_fallback(self):
+        Movie.objects.create(tmdb_id=341, title='Dated', release_date=date(2010, 7, 16))
+        Movie.objects.create(tmdb_id=342, title='Undated', release_date=None)
+        before = timezone.now()
+
+        dated = self.client.post('/api/tracking/history/', {'media_type': 'movie', 'tmdb_id': 341, 'watched_at': 'release_date'}, format='json')
+        undated = self.client.post('/api/tracking/history/', {'media_type': 'movie', 'tmdb_id': 342, 'watched_at': 'release_date'}, format='json')
+
+        self.assertEqual(dated.status_code, 201)
+        self.assertEqual(timezone.localtime(WatchEntry.objects.get(tmdb_id=341).watched_at).date(), date(2010, 7, 16))
+        self.assertEqual(undated.status_code, 201)
+        self.assertGreaterEqual(WatchEntry.objects.get(tmdb_id=342).watched_at, before)
+
+    def test_unknown_now_and_explicit_timestamps(self):
+        from tracking.import_metadata import UNKNOWN_IMPORTED_DATE
+
+        before = timezone.now()
+        for tmdb_id, value in ((343, 'unknown'), (344, 'now'), (345, None), (346, '2022-02-02T10:00:00Z')):
+            payload = {'media_type': 'movie', 'tmdb_id': tmdb_id}
+            if value is not None:
+                payload['watched_at'] = value
+            self.assertEqual(self.client.post('/api/tracking/history/', payload, format='json').status_code, 201)
+
+        self.assertEqual(WatchEntry.objects.get(tmdb_id=343).watched_at, UNKNOWN_IMPORTED_DATE)
+        self.assertGreaterEqual(WatchEntry.objects.get(tmdb_id=344).watched_at, before)
+        self.assertGreaterEqual(WatchEntry.objects.get(tmdb_id=345).watched_at, before)
+        self.assertEqual(WatchEntry.objects.get(tmdb_id=346).watched_at, datetime(2022, 2, 2, 10, 0, tzinfo=UTC))
+
+    def test_invalid_watched_at_is_rejected_without_writing(self):
+        for url, payload in (
+            ('/api/tracking/history/', {'media_type': 'movie', 'tmdb_id': 347}),
+            ('/api/tracking/episodes/mark/', {'tmdb_id': 347, 'season_number': 1, 'episode_number': 1}),
+        ):
+            with self.subTest(url=url):
+                response = self.client.post(url, {**payload, 'watched_at': 'yesterday-ish'}, format='json')
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('watched_at', response.data)
+        self.assertFalse(WatchEntry.objects.filter(user=self.user, tmdb_id=347).exists())
 
 
 class UniqueEpisodeWatchMigrationTests(TransactionTestCase):
@@ -1049,6 +1111,55 @@ class SeasonTests(BaseTestCase):
         self.assertTrue(
             WatchEntry.objects.filter(user=self.user2, media_type='episode', tmdb_id=123).exists()
         )
+
+    def test_mark_show_watched_marks_every_season_once(self):
+        show = TVShow.objects.create(tmdb_id=330, name='Whole Show', number_of_seasons=2)
+        for number in (0, 1, 2):
+            season = Season.objects.create(show=show, tmdb_id=3300 + number, season_number=number, name=f'S{number}')
+            for episode_number in (1, 2):
+                Episode.objects.create(season=season, tmdb_id=33000 + number * 10 + episode_number, episode_number=episode_number, name='E')
+        WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=330, season_number=1, episode_number=1)
+
+        with patch('tracking.views.episodes.refresh_show_status', wraps=refresh_show_status) as refresh:
+            response = self.client.post('/api/tracking/shows/mark/', {'tmdb_id': 330})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(refresh.call_count, 1)
+        self.assertEqual(
+            {(row['season_number'], row['episode_number']) for row in response.data['episodes']},
+            {(s, e) for s in (1, 2) for e in (1, 2)},
+        )
+        self.assertFalse(WatchEntry.objects.filter(user=self.user, tmdb_id=330, season_number=0).exists())
+
+    def test_mark_show_and_season_use_each_episode_release_date(self):
+        from datetime import date as date_cls
+
+        show = TVShow.objects.create(tmdb_id=331, name='Release Show', number_of_seasons=1)
+        season = Season.objects.create(show=show, tmdb_id=3311, season_number=1, name='S1')
+        Episode.objects.create(season=season, tmdb_id=33111, episode_number=1, name='E1', air_date=date_cls(2024, 1, 5))
+        broadcast = datetime(2024, 1, 12, 21, 0, tzinfo=UTC)
+        Episode.objects.create(
+            season=season, tmdb_id=33112, episode_number=2, name='E2', air_date=date_cls(2024, 1, 12), broadcast_start=broadcast,
+        )
+        Episode.objects.create(season=season, tmdb_id=33113, episode_number=3, name='E3', air_date=None)
+
+        for url, payload in (
+            ('/api/tracking/shows/mark/', {'tmdb_id': 331}),
+            ('/api/tracking/seasons/mark/', {'tmdb_id': 331, 'season_number': 1}),
+        ):
+            with self.subTest(url=url):
+                WatchEntry.objects.filter(user=self.user, tmdb_id=331).delete()
+                before = timezone.now()
+                response = self.client.post(url, {**payload, 'watched_at': 'release_date'}, format='json')
+                self.assertEqual(response.status_code, 200)
+                watched = {e.episode_number: e.watched_at for e in WatchEntry.objects.filter(user=self.user, tmdb_id=331)}
+                self.assertEqual(timezone.localtime(watched[1]).date(), date_cls(2024, 1, 5))
+                self.assertEqual(watched[2], broadcast)
+                self.assertGreaterEqual(watched[3], before)
+
+    def test_mark_show_watched_validates_input(self):
+        self.assertEqual(self.client.post('/api/tracking/shows/mark/', {}).status_code, 400)
+        self.assertEqual(self.client.post('/api/tracking/shows/mark/', {'tmdb_id': 999999}).status_code, 404)
 
     def test_bulk_unmark_refreshes_show_status_once(self):
         show = TVShow.objects.create(tmdb_id=321, name='Bulk Show')

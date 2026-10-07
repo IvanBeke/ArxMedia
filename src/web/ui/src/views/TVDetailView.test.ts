@@ -6,6 +6,7 @@ import { trackingAPI } from '@/api'
 import TVDetailView from '@/views/TVDetailView.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
+import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types/api'
 
@@ -32,6 +33,7 @@ vi.mock('@/api', () => {
       markSeasonWatched: vi.fn().mockResolvedValue({ episodes: [] }),
       unmarkSeasonWatched: vi.fn().mockResolvedValue({ episodes: [] }),
       unmarkShowWatched: vi.fn().mockResolvedValue({}),
+      markShowWatched: vi.fn().mockResolvedValue({ marked: 3, episodes: [] }),
       dropMedia: vi.fn().mockResolvedValue({}),
       removeFromHistory: vi.fn().mockResolvedValue({}),
       rate: vi.fn().mockResolvedValue({}),
@@ -167,6 +169,30 @@ describe('TVDetailView hero progress', () => {
 
     expect(getTV).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('/3 watched')
+  })
+
+  it('marks the whole show watched with a single request', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+    vi.mocked(trackingAPI.markShowWatched).mockResolvedValue({ marked: 3, episodes: watchedPayload([[1, 1], [1, 2], [1, 3]]).episodes })
+
+    const wrapper = await mountView(true)
+    wrapper.findComponent(WatchSplitButton).vm.$emit('select', 'now')
+    await flushPromises()
+
+    expect(trackingAPI.markShowWatched).toHaveBeenCalledTimes(1)
+    expect(trackingAPI.markShowWatched).toHaveBeenCalledWith({ tmdb_id: TMDB_ID, watched_at: 'now' })
+    expect(trackingAPI.markSeasonWatched).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('3/3 watched')
+  })
+
+  it('marks the whole show with each episode release date when release is chosen', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView(true)
+    wrapper.findComponent(WatchSplitButton).vm.$emit('select', 'release')
+    await flushPromises()
+
+    expect(trackingAPI.markShowWatched).toHaveBeenCalledWith({ tmdb_id: TMDB_ID, watched_at: 'release_date' })
   })
 
   it('excludes specials from the watched count', async () => {
