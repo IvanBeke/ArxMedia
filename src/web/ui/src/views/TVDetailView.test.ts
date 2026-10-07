@@ -214,6 +214,25 @@ describe('TVDetailView hero progress', () => {
     expect(wrapper.text()).toContain('8.1')
   })
 
+  it('shows per-season progress counted from the watched episodes', async () => {
+    const payload = showPayload()
+    payload.seasons = [
+      { ...payload.seasons[0]!, season_number: 1, name: 'Season 1', episode_count: 3 },
+      { ...payload.seasons[0]!, season_number: 2, name: 'Season 2', episode_count: 4 },
+      { ...payload.seasons[0]!, season_number: 10, name: 'Season 10', episode_count: 2 },
+    ]
+    getTV.mockResolvedValue(payload)
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1], [1, 2], [1, 3], [2, 1], [10, 1]]))
+
+    const wrapper = await mountView(true)
+    await wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Seasons'))?.trigger('click')
+
+    const text = wrapper.text()
+    expect(text).toContain('3/3 watched')
+    expect(text).toContain('1/4 watched')
+    expect(text).toContain('1/2 watched')
+  })
+
   it('shows a history tab scoped to the show', async () => {
     getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1]]))
     getHistory.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })

@@ -578,18 +578,20 @@ function getSeasonProgress(sn: number) {
   return computeProgressPercent(watched, total)
 }
 
-function getSeasonProgressCounts(sn: number) {
-  const season = show.value?.seasons.find((item) => item.season_number === sn)
-  const eps = seasonEpisodes.value[sn]
-  let total = 0
-  if (eps?.length) {
-    total = eps.length
-  } else if (season?.episode_count) {
-    total = season.episode_count
-  } else {
-    total = Array.from(watchedEps.value).filter(k => k.startsWith(`${sn}-`)).length || 0
+// Watched episodes per season, counted once per change instead of on every progress lookup.
+const watchedCountBySeason = computed(() => {
+  const counts = new Map<number, number>()
+  for (const key of watchedEps.value) {
+    const seasonNumber = Number(key.split('-', 1)[0])
+    counts.set(seasonNumber, (counts.get(seasonNumber) ?? 0) + 1)
   }
-  const watched = Array.from(watchedEps.value).filter(k => k.startsWith(`${sn}-`)).length
+  return counts
+})
+
+function getSeasonProgressCounts(sn: number) {
+  const watched = watchedCountBySeason.value.get(sn) ?? 0
+  const season = show.value?.seasons.find((item) => item.season_number === sn)
+  const total = seasonEpisodes.value[sn]?.length || season?.episode_count || watched
   return { watched, total }
 }
 
