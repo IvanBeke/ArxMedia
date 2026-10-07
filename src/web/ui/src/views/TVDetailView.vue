@@ -624,9 +624,6 @@ async function setShowStatus(status: ShowStatus): Promise<boolean> {
       return false
     }
   }
-  if (status === 'watchlist' && showStatus.value === WATCH_ENTRY_STATUS.WATCHING) {
-    await trackingAPI.removeFromHistory({ media_type: WATCH_ENTRY_MEDIA_TYPE.EPISODE, tmdb_id: tmdbId.value })
-  }
 
   if (status === WATCH_ENTRY_STATUS.WATCHING) {
     // Show watching status is now determined by watching any episode

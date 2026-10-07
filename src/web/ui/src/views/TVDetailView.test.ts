@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
+import { trackingAPI } from '@/api'
 import TVDetailView from '@/views/TVDetailView.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
@@ -143,6 +144,15 @@ describe('TVDetailView hero progress', () => {
     const bars = wrapper.findAllComponents(ProgressBar)
     expect(bars.length).toBeGreaterThan(0)
     expect(bars[0]?.props('pct')).toBe(67)
+  })
+
+  it('does not offer the watchlist or remove history for a show being watched', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1]]))
+
+    const wrapper = await mountView(true)
+
+    expect(wrapper.findAll('button').some((button) => button.text().includes('Watchlist'))).toBe(false)
+    expect(trackingAPI.removeFromHistory).not.toHaveBeenCalled()
   })
 
   it('excludes specials from the watched count', async () => {

@@ -60,4 +60,19 @@ describe('API session requests', () => {
     await expect(authAPI.login({ username: 'x', password: 'y' })).rejects.toMatchObject({ status: 401 })
     expect(window.location.href).toBe(before)
   })
+
+  it('removes a history entry by its full episode key', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ count: 1, results: [{ id: 42, tmdb_id: 7, media_type: 'episode', season_number: 3, episode_number: 9 }] }))
+      .mockResolvedValueOnce(response(null, 204))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await trackingAPI.removeFromHistory({ media_type: 'episode', tmdb_id: 7, season_number: 3, episode_number: 9 })
+
+    const lookup = new URL(String(fetchMock.mock.calls[0]?.[0]))
+    expect(Object.fromEntries(lookup.searchParams)).toEqual({ tmdb_id: '7', media_type: 'episode', season_number: '3', episode_number: '9' })
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/api/tracking/history/42/')
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'DELETE' })
+  })
 })
+
