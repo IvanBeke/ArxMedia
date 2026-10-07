@@ -2,7 +2,9 @@ from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from media.models import Movie, TVShow
 from rest_framework.test import APIClient
@@ -467,6 +469,32 @@ class AccountTests(TestCase):
         self.assertEqual(len(response.data['days']), 367)
         days = {day['date']: day for day in response.data['days']}
         self.assertEqual(days['2024-02-29']['count'], 1)
+
+    def _heatmap_entry_sql(self):
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(f'/api/auth/users/{self.user.username}/activity/')
+        self.assertEqual(response.status_code, 200)
+        return next(q['sql'] for q in ctx.captured_queries if 'tracking_watchentry' in q['sql'])
+
+    def test_activity_heatmap_entry_query_has_no_per_row_subqueries(self):
+        self.authenticate()
+        Movie.objects.create(tmdb_id=5000, title='Movie')
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=5000, watched_at=timezone.now())
+
+        self.assertEqual(self._heatmap_entry_sql().count('SELECT'), 1)
+
+    def test_activity_heatmap_window_is_an_index_condition(self):
+        self.authenticate()
+        sql = self._heatmap_entry_sql()
+        with connection.cursor() as cursor:
+            cursor.execute('SET LOCAL enable_seqscan = off')
+            cursor.execute('SET LOCAL enable_bitmapscan = off')
+            cursor.execute('EXPLAIN ' + sql)
+            plan = '\n'.join(row[0] for row in cursor.fetchall())
+
+        index_cond = next(line for line in plan.splitlines() if 'Index Cond' in line)
+        self.assertIn('watchentry_user_history_idx', plan)
+        self.assertIn('COALESCE', index_cond)
 
     def test_activity_heatmap_hidden_from_stranger_on_private_profile(self):
         target = User.objects.create_user(

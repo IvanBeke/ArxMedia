@@ -1,7 +1,7 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.contrib.auth import get_user_model, login, logout, update_session_auth_hash
-from django.db.models import DateTimeField, OuterRef, Subquery
+from django.db.models import DateTimeField
 from django.db.models.functions import Coalesce, TruncDate
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -189,40 +189,37 @@ class UserActivityHeatmapView(APIView):
             # Today is Feb 29 and last year is not a leap year.
             start = today.replace(year=today.year - 1, day=28)
 
-        # Single query: flat rows annotated with the movie/show display fields,
-        # grouped per day in Python.
-        rows = (
+        # A timestamp range on the same COALESCE as the history index lets Postgres
+        # read just this window instead of casting every entry to a date.
+        tz = timezone.get_current_timezone()
+        window_start = timezone.make_aware(datetime.combine(start, time.min), tz)
+        window_end = timezone.make_aware(datetime.combine(today + timedelta(days=1), time.min), tz)
+        rows = list(
             WatchEntry.objects
             .filter(user=target)
             .annotate(event_at=Coalesce('watched_at', 'created_at', output_field=DateTimeField()))
-            .filter(event_at__date__gte=start, event_at__date__lte=today)
-            .annotate(
-                day=TruncDate('event_at'),
-                movie_title=Subquery(
-                    Movie.objects.filter(tmdb_id=OuterRef('tmdb_id')).values('title')[:1]
-                ),
-                movie_release_date=Subquery(
-                    Movie.objects.filter(tmdb_id=OuterRef('tmdb_id')).values('release_date')[:1]
-                ),
-                show_name=Subquery(
-                    TVShow.objects.filter(tmdb_id=OuterRef('tmdb_id')).values('name')[:1]
-                ),
-            )
-            .values(
-                'day', 'media_type', 'tmdb_id', 'season_number', 'episode_number',
-                'movie_title', 'movie_release_date', 'show_name',
-            )
+            .filter(event_at__gte=window_start, event_at__lt=window_end)
+            .annotate(day=TruncDate('event_at'))
+            .values('day', 'media_type', 'tmdb_id', 'season_number', 'episode_number')
             .order_by('day', 'id')
         )
+        movie_ids = {row['tmdb_id'] for row in rows if row['media_type'] == WatchEntryMediaType.MOVIE}
+        show_ids = {row['tmdb_id'] for row in rows if row['media_type'] != WatchEntryMediaType.MOVIE}
+        movies = {
+            tmdb_id: (title, release_date)
+            for tmdb_id, title, release_date in Movie.objects.filter(tmdb_id__in=movie_ids)
+            .values_list('tmdb_id', 'title', 'release_date')
+        }
+        show_names = dict(TVShow.objects.filter(tmdb_id__in=show_ids).values_list('tmdb_id', 'name'))
 
         items_by_day: dict[date, list[dict]] = {}
         for row in rows:
             if row['media_type'] == WatchEntryMediaType.MOVIE:
-                release_date = row['movie_release_date']
+                movie_title, release_date = movies.get(row['tmdb_id'], (None, None))
                 item = {
                     'media_type': 'movie',
                     'tmdb_id': row['tmdb_id'],
-                    'title': row['movie_title'] or f"Movie #{row['tmdb_id']}",
+                    'title': movie_title or f"Movie #{row['tmdb_id']}",
                     'release_year': release_date.year if release_date else None,
                 }
             else:
@@ -231,7 +228,7 @@ class UserActivityHeatmapView(APIView):
                 item = {
                     'media_type': 'episode',
                     'tmdb_id': row['tmdb_id'],
-                    'title': row['show_name'] or f"TV #{row['tmdb_id']}",
+                    'title': show_names.get(row['tmdb_id']) or f"TV #{row['tmdb_id']}",
                     'season_number': season,
                     'episode_number': episode,
                     'episode_code': f"S{int(season or 0):02d}E{int(episode or 0):02d}",
