@@ -237,7 +237,7 @@
             <div v-for="season in show.seasons" :key="season.season_number" class="card overflow-visible">
               <div class="w-full flex items-center gap-4 p-4">
                 <div class="w-12 h-16 rounded-md bg-surface-200 overflow-hidden flex-shrink-0 cursor-pointer" @click="toggleSeason(season.season_number)">
-                  <img v-if="season.poster_url" :src="season.poster_url" :alt="season.name" class="w-full h-full object-cover" />
+                  <img v-if="season.poster_url" :src="season.poster_url" :alt="season.name" loading="lazy" decoding="async" class="w-full h-full object-cover" />
                   <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-500 p-1">
                     <span class="text-xs font-bold">S{{ season.season_number }}</span>
                   </div>

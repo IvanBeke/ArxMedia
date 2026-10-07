@@ -1,7 +1,7 @@
 <template>
   <div :class="{ grid: !bare }">
     <div v-if="!bare" class="relative row-start-1 col-start-1">
-      <img v-if="backdropUrl" :src="backdropUrl" :alt="backdropAlt" class="absolute inset-0 w-full h-full object-cover" />
+      <img v-if="backdropUrl" :src="backdropUrl" :alt="backdropAlt" fetchpriority="high" class="absolute inset-0 w-full h-full object-cover" />
       <div class="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
       <div class="absolute inset-0 bg-gradient-to-r from-surface/80 to-transparent"></div>
     </div>
@@ -13,7 +13,7 @@
       <div class="flex flex-col items-center text-center sm:text-left md:flex-row md:items-start md:text-left gap-6 md:gap-8">
         <div class="flex-shrink-0">
           <div class="w-32 sm:w-40 md:w-48 rounded-md overflow-hidden shadow-2xl border border-surface-200">
-            <img v-if="posterUrl" :src="posterUrl" :alt="posterAlt" class="w-full" />
+            <img v-if="posterUrl" :src="posterUrl" :alt="posterAlt" class="w-full aspect-[2/3] object-cover" />
             <div v-else class="aspect-[2/3] bg-surface-200 flex flex-col items-center justify-center text-gray-500 p-4">
               <span class="text-xs text-center">{{ posterAlt }}</span>
             </div>

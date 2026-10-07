@@ -27,4 +27,14 @@ describe('DetailHero', () => {
     expect(wrapper.find('.relative.row-start-1').exists()).toBe(false)
     expect(wrapper.find('.max-w-7xl').classes()).toContain('py-8')
   })
+
+  it('prioritises the backdrop and reserves the poster space before images load', () => {
+    const wrapper = mount(DetailHero, {
+      props: { backdropUrl: '/backdrop.jpg', posterUrl: '/poster.jpg', posterAlt: 'Poster' },
+    })
+
+    expect(wrapper.find('img[src="/backdrop.jpg"]').attributes('fetchpriority')).toBe('high')
+    expect(wrapper.find('img[src="/poster.jpg"]').classes()).toContain('aspect-[2/3]')
+  })
 })
+

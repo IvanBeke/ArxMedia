@@ -34,7 +34,7 @@
         <div class="flex flex-col md:flex-row gap-8">
           <div class="flex-shrink-0 w-full md:w-80">
             <SpoilerBlock :item-key="`episode-image-${tmdbId}-${seasonNum}-${episodeNum}`" :watched="isWatched" class="w-full aspect-video rounded-lg bg-surface-200 overflow-hidden">
-              <img v-if="episodeData.still_path" :src="tmdbImageUrl(episodeData.still_path) || ''" :alt="episodeData.name" class="w-full h-full object-cover" />
+              <img v-if="episodeData.still_path" :src="tmdbImageUrl(episodeData.still_path) || ''" :alt="episodeData.name" fetchpriority="high" class="w-full h-full object-cover" />
               <div v-else class="w-full h-full flex items-center justify-center text-gray-600 text-4xl">{{ episodeData.episode_number }}</div>
             </SpoilerBlock>
           </div>
