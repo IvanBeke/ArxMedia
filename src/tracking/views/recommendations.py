@@ -1,5 +1,6 @@
 import logging
 
+from django.db import transaction
 from media.tmdb import tmdb
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
@@ -14,6 +15,8 @@ from ..models import (
 logger = logging.getLogger(__name__)
 
 
+# Calls TMDB and only reads tracking data, so it does not need the request-wide transaction.
+@transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def recommendations(request):
@@ -27,7 +30,7 @@ def recommendations(request):
         WatchEntry.objects.filter(
             user=request.user,
             media_type=WatchEntryMediaType.EPISODE,
-        ).values_list('tmdb_id', flat=True)
+        ).values_list('tmdb_id', flat=True).distinct()
     )
     watchlist_movies = set(
         UserMediaStatus.objects.for_user(request.user).movies().planning().values_list('tmdb_id', flat=True)
@@ -39,7 +42,8 @@ def recommendations(request):
     excluded_movies = watched_movies | watchlist_movies
     excluded_tv = watched_tv | watchlist_tv
 
-    history_count = WatchEntry.objects.filter(user=request.user).count()
+    # Only the "fewer than 3 entries" threshold matters, so never count the whole history.
+    insufficient_history = len(WatchEntry.objects.filter(user=request.user).values_list('id', flat=True)[:3]) < 3
 
     def pick_items(items, excluded, limit=12):
         picked = []
@@ -71,5 +75,5 @@ def recommendations(request):
     return Response({
         'movies': movie_results,
         'tv': tv_results,
-        'insufficient_history': history_count < 3,
+        'insufficient_history': insufficient_history,
     })

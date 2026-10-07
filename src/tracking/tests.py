@@ -3073,6 +3073,41 @@ class ListItemTests(BaseTestCase):
         watched_items = watched.data.get('results', watched.data)
         self.assertEqual({item['tmdb_id'] for item in watched_items}, {7302, 7304})
 
+    def test_list_items_filter_watching_dropped_and_ignores_other_users(self):
+        lst = CustomList.objects.create(user=self.user, name='Show Status List')
+        for tmdb_id, status in ((7311, 'watching'), (7312, 'dropped'), (7313, 'watched')):
+            TVShow.objects.create(tmdb_id=tmdb_id, name=f'Show {tmdb_id}')
+            ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=tmdb_id)
+            UserMediaStatus.objects.create(user=self.user, media_type='tv', tmdb_id=tmdb_id, status=status)
+        TVShow.objects.create(tmdb_id=7314, name='Someone Else Watching')
+        ListItem.objects.create(custom_list=lst, media_type='tv', tmdb_id=7314)
+        UserMediaStatus.objects.create(user=self.user2, media_type='tv', tmdb_id=7314, status='watching')
+
+        def ids(query):
+            response = self.client.get(f'/api/tracking/lists/{lst.id}/items/?{query}')
+            self.assertEqual(response.status_code, 200)
+            return {item['tmdb_id'] for item in response.data.get('results', response.data)}
+
+        self.assertEqual(ids('status=watching'), {7311})
+        self.assertEqual(ids('status=dropped'), {7312})
+        self.assertEqual(ids('status=watching&status=dropped'), {7311, 7312})
+
+    def test_list_status_filters_run_inside_the_list_query(self):
+        lst = CustomList.objects.create(user=self.user, name='Big List')
+        for tmdb_id in range(7500, 7506):
+            Movie.objects.create(tmdb_id=tmdb_id, title=f'Movie {tmdb_id}')
+            ListItem.objects.create(custom_list=lst, media_type='movie', tmdb_id=tmdb_id)
+            WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=tmdb_id, watched_at=timezone.now())
+
+        def query_count(query):
+            with CaptureQueriesContext(connection) as ctx:
+                response = self.client.get(f'/api/tracking/lists/{lst.id}/items/{query}')
+            self.assertEqual(response.status_code, 200)
+            return len(ctx.captured_queries)
+
+        # Filters are EXISTS subqueries: no extra round trips to collect ids.
+        self.assertEqual(query_count('?status=watched&missing_rating=true'), query_count(''))
+
     def test_list_items_missing_rating_excludes_plan_to_watch(self):
         lst = CustomList.objects.create(user=self.user, name='Missing Rating List')
         Movie.objects.create(tmdb_id=7401, title='Planned Movie')
@@ -3292,6 +3327,17 @@ class RecommendationsTests(BaseTestCase):
         tv_ids = [t['id'] for t in response.data['tv']]
         self.assertNotIn(10, movie_ids)
         self.assertNotIn(20, tv_ids)
+
+
+    @patch('media.tmdb.tmdb.get_popular_movies', return_value={'results': []})
+    @patch('media.tmdb.tmdb.get_popular_tv', return_value={'results': []})
+    def test_recommendations_flag_insufficient_history_below_three_entries(self, mock_tv, mock_movies):
+        for episode_number in (1, 2):
+            WatchEntry.objects.create(user=self.user, media_type='episode', tmdb_id=30, season_number=1, episode_number=episode_number)
+        self.assertTrue(self.client.get('/api/tracking/recommendations/').data['insufficient_history'])
+
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=31)
+        self.assertFalse(self.client.get('/api/tracking/recommendations/').data['insufficient_history'])
 
 
 class ListCollaborationTest(BaseTestCase):

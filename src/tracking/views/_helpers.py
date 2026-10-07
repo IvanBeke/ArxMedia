@@ -4,6 +4,7 @@ from django.db.models import (
     Case,
     DateField,
     DateTimeField,
+    Exists,
     ExpressionWrapper,
     F,
     IntegerField,
@@ -72,51 +73,10 @@ def _collect_media_ids(queryset) -> tuple[set[int], set[int]]:
     return movie_ids, tv_ids
 
 
-def _build_user_media_sets(user, movie_ids: set[int], tv_ids: set[int]) -> dict[str, set[int]]:
-    movie_watched_ids = set(
-        WatchEntry.objects.filter(
-            user=user,
-            media_type=WatchEntryMediaType.MOVIE,
-            tmdb_id__in=movie_ids,
-        ).values_list('tmdb_id', flat=True)
+def _user_status_exists(user, media_type: str, status: str):
+    return Exists(
+        UserMediaStatus.objects.for_user(user).filter(media_type=media_type, status=status, tmdb_id=OuterRef('tmdb_id'))
     )
-    movie_watchlist_ids = set(
-        UserMediaStatus.objects.for_user(user).movies().planning().filter(
-            tmdb_id__in=movie_ids,
-        ).values_list('tmdb_id', flat=True)
-    )
-    tv_watchlist_ids = set(
-        UserMediaStatus.objects.for_user(user).shows().planning().filter(
-            tmdb_id__in=tv_ids,
-        ).values_list('tmdb_id', flat=True)
-    )
-    tv_status_rows = UserMediaStatus.objects.for_user(user).shows().filter(
-        tmdb_id__in=tv_ids,
-    ).exclude(
-        status=TvShowStatus.PLAN_TO_WATCH,
-    ).values_list('tmdb_id', 'status')
-
-    tv_watching_ids: set[int] = set()
-    tv_watched_ids: set[int] = set()
-    tv_dropped_ids: set[int] = set()
-
-    for tmdb_id, show_status in tv_status_rows:
-        if show_status == TvShowStatus.WATCHING:
-            tv_watching_ids.add(tmdb_id)
-        elif show_status == TvShowStatus.WATCHED:
-            tv_watched_ids.add(tmdb_id)
-        elif show_status == TvShowStatus.DROPPED:
-            tv_dropped_ids.add(tmdb_id)
-    return {
-        'movie_watched': movie_watched_ids,
-        'movie_plan_to_watch': movie_watchlist_ids,
-        'tv_watching': tv_watching_ids,
-        'tv_watched': tv_watched_ids,
-        'tv_dropped': tv_dropped_ids,
-        'tv_plan_to_watch': tv_watchlist_ids,
-        'watchlist_movie': movie_watchlist_ids,
-        'watchlist_tv': tv_watchlist_ids,
-    }
 
 
 def _apply_status_filter(queryset, user, selected_statuses: list[str]):
@@ -124,23 +84,21 @@ def _apply_status_filter(queryset, user, selected_statuses: list[str]):
     if not normalized:
         return queryset
 
-    movie_ids, tv_ids = _collect_media_ids(queryset)
-    if not movie_ids and not tv_ids:
-        return queryset
-
-    sets = _build_user_media_sets(user, movie_ids, tv_ids)
+    # Correlated EXISTS checks keep the whole filter in one SQL query (no id lists round-tripped through Python).
     status_q = Q()
-
     if 'plan_to_watch' in normalized:
-        status_q |= Q(media_type=MediaType.MOVIE, tmdb_id__in=sets['movie_plan_to_watch'])
-        status_q |= Q(media_type=MediaType.TV, tmdb_id__in=sets['tv_plan_to_watch'])
+        status_q |= Q(_user_status_exists(user, MediaType.MOVIE, TvShowStatus.PLAN_TO_WATCH), media_type=MediaType.MOVIE)
+        status_q |= Q(_user_status_exists(user, MediaType.TV, TvShowStatus.PLAN_TO_WATCH), media_type=MediaType.TV)
     if 'watching' in normalized:
-        status_q |= Q(media_type=MediaType.TV, tmdb_id__in=sets['tv_watching'])
+        status_q |= Q(_user_status_exists(user, MediaType.TV, TvShowStatus.WATCHING), media_type=MediaType.TV)
     if 'watched' in normalized:
-        status_q |= Q(media_type=MediaType.MOVIE, tmdb_id__in=sets['movie_watched'])
-        status_q |= Q(media_type=MediaType.TV, tmdb_id__in=sets['tv_watched'])
+        movie_watched = Exists(
+            WatchEntry.objects.filter(user=user, media_type=WatchEntryMediaType.MOVIE, tmdb_id=OuterRef('tmdb_id'))
+        )
+        status_q |= Q(movie_watched, media_type=MediaType.MOVIE)
+        status_q |= Q(_user_status_exists(user, MediaType.TV, TvShowStatus.WATCHED), media_type=MediaType.TV)
     if 'dropped' in normalized:
-        status_q |= Q(media_type=MediaType.TV, tmdb_id__in=sets['tv_dropped'])
+        status_q |= Q(_user_status_exists(user, MediaType.TV, TvShowStatus.DROPPED), media_type=MediaType.TV)
 
     if not status_q:
         return queryset.none()
@@ -148,31 +106,14 @@ def _apply_status_filter(queryset, user, selected_statuses: list[str]):
 
 
 def _apply_missing_rating_filter(queryset, user):
-    movie_ids, tv_ids = _collect_media_ids(queryset)
-    if not movie_ids and not tv_ids:
-        return queryset
-
-    sets = _build_user_media_sets(user, movie_ids, tv_ids)
-    rating_rows = Rating.objects.filter(
-        user=user,
-        media_type__in=(MediaType.MOVIE, MediaType.TV),
-        tmdb_id__in=(movie_ids | tv_ids),
-    ).values_list('media_type', 'tmdb_id')
-
-    rated_movie_ids = set()
-    rated_tv_ids = set()
-    for media_type, tmdb_id in rating_rows:
-        if media_type == MediaType.MOVIE:
-            rated_movie_ids.add(tmdb_id)
-        elif media_type == MediaType.TV:
-            rated_tv_ids.add(tmdb_id)
-
-    eligible_movie_ids = (movie_ids - sets['movie_plan_to_watch']) - rated_movie_ids
-    eligible_tv_ids = (tv_ids - sets['tv_plan_to_watch']) - rated_tv_ids
-
-    return queryset.filter(
-        media_ids_q(eligible_movie_ids, eligible_tv_ids)
+    """Keep movies and shows the user has not rated, excluding ones still on their watchlist."""
+    rated = Exists(Rating.objects.filter(user=user, media_type=OuterRef('media_type'), tmdb_id=OuterRef('tmdb_id')))
+    planned = Exists(
+        UserMediaStatus.objects.for_user(user).planning().filter(
+            media_type=OuterRef('media_type'), tmdb_id=OuterRef('tmdb_id'),
+        )
     )
+    return queryset.filter(~rated, ~planned, media_type__in=(MediaType.MOVIE, MediaType.TV))
 
 
 def _apply_in_watchlist_filter(queryset, user):
