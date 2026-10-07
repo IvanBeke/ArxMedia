@@ -77,6 +77,7 @@ import PaginationControls from '@/components/PaginationControls.vue'
 import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
 import type { MediaCard as MediaCardItem, MediaType, QueryParams } from '@/types/api'
@@ -127,7 +128,10 @@ function handleWatchlistRemoved(payload: { tmdb_id?: number; media_type: MediaTy
   })
 }
 
+const latestRequest = useLatestRequest()
+
 async function load() {
+  const signal = latestRequest.next()
   const page = currentPage.value
   const showFullLoader = page === 1 || items.value.length === 0
   if (showFullLoader) {
@@ -145,7 +149,7 @@ async function load() {
     page,
   }
   try {
-    const data = await trackingAPI.getWatchlist(params)
+    const data = await trackingAPI.getWatchlist(params, { signal })
     const paged = normalizePagedResponse<MediaCardItem>(data)
     if (paged.items.length || paged.count) {
       count.value = paged.count
@@ -159,6 +163,7 @@ async function load() {
       movies: Number.isFinite(extras.counts?.movies) ? extras.counts?.movies ?? 0 : 0,
     }
   } catch (error) {
+    if (isAbortError(error)) return
     const recoveryPage = invalidPageRecovery(error, page)
     if (recoveryPage !== null) {
       currentPage.value = recoveryPage
@@ -168,10 +173,12 @@ async function load() {
     counts.value = { shows: 0, movies: 0 }
     throw error
   } finally {
-    if (showFullLoader) {
-      loading.value = false
-    } else {
-      loadingMore.value = false
+    if (!signal.aborted) {
+      if (showFullLoader) {
+        loading.value = false
+      } else {
+        loadingMore.value = false
+      }
     }
   }
 }

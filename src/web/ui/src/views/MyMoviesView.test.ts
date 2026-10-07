@@ -4,6 +4,7 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia } from 'pinia'
 import MyMoviesView from '@/views/MyMoviesView.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
+import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import type { VueWrapper } from '@vue/test-utils'
 import type { LocationQueryRaw } from 'vue-router'
 
@@ -61,6 +62,8 @@ function pageNumberTexts(wrapper: VueWrapper) {
     .filter((text) => /^\d+$/.test(text))
 }
 
+const withSignal = expect.objectContaining({ signal: expect.any(AbortSignal) })
+
 describe('MyMoviesView', () => {
   beforeEach(() => {
     getMyMovies.mockReset()
@@ -73,7 +76,7 @@ describe('MyMoviesView', () => {
 
     expect(wrapper.text()).toContain('My Movies')
     expect(wrapper.text()).toContain('3 movies |')
-    expect(getMyMovies).toHaveBeenCalledWith(expect.objectContaining({ sort: 'watched_date', direction: 'desc' }))
+    expect(getMyMovies).toHaveBeenCalledWith(expect.objectContaining({ sort: 'watched_date', direction: 'desc' }), withSignal)
   })
 
   it('keeps the real page count after visiting a partial last page', async () => {
@@ -87,9 +90,35 @@ describe('MyMoviesView', () => {
     wrapper.findComponent(PaginationControls).vm.$emit('go', 3)
     await flushPromises()
 
-    expect(getMyMovies).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }))
+    expect(getMyMovies).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }), withSignal)
     expect(lastTotalPages(wrapper)).toBe(3)
     expect(pageNumberTexts(wrapper)).toEqual(['1', '2', '3'])
+    expect(wrapper.text()).not.toContain('Could not load My Movies.')
+  })
+
+  it('cancels a superseded page load so it cannot overwrite newer results', async () => {
+    const abortedSignals: AbortSignal[] = []
+    getMyMovies
+      .mockResolvedValueOnce(moviesPayload(47, 20))
+      .mockImplementationOnce((_params: unknown, options: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          abortedSignals.push(options.signal)
+          reject(new DOMException('Aborted', 'AbortError'))
+        })
+      }))
+      .mockResolvedValueOnce(moviesPayload(47, 7))
+
+    const wrapper = await mountView()
+    wrapper.findComponent(PaginationControls).vm.$emit('go', 2)
+    await flushPromises()
+    // The list is replaced by a skeleton while loading; the filter bar stays usable.
+    const filterBar = wrapper.findComponent(MediaFilterBar)
+    const hydrated = filterBar.emitted('change')?.[0]?.[0] as { filters: Record<string, unknown> }
+    filterBar.vm.$emit('change', { source: 'interaction', filters: { ...hydrated.filters, search: 'alien' } })
+    await flushPromises()
+
+    expect(abortedSignals).toHaveLength(1)
+    expect(wrapper.findAllComponents({ name: 'MovieRow' })).toHaveLength(7)
     expect(wrapper.text()).not.toContain('Could not load My Movies.')
   })
 
@@ -114,6 +143,16 @@ describe('MyMoviesView', () => {
 
     expect(getMyMovies).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('Server exploded.')
+  })
+  it.each([
+    [{}],
+    [{ sort: 'title', direction: 'asc', page: '2' }],
+  ])('requests the list exactly once on first open (query %o)', async (query) => {
+    getMyMovies.mockReset().mockResolvedValue(moviesPayload(30, 20))
+
+    await mountView(query)
+
+    expect(getMyMovies).toHaveBeenCalledTimes(1)
   })
 })
 

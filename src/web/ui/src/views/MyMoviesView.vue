@@ -76,6 +76,7 @@ import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
 import { getApiErrorMessage } from '@/utils/errors'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
+import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
 import type { MediaCard, QueryParams } from '@/types/api'
 
 interface MovieFilterState { search: string; sort: string; direction: string; mediaType: string; statuses: string[]; genres: string[]; missingRating: boolean }
@@ -134,11 +135,14 @@ function buildParams(): QueryParams {
   }
 }
 
+const latestRequest = useLatestRequest()
+
 async function loadMyMovies() {
+  const signal = latestRequest.next()
   loading.value = true
   errorMsg.value = ''
   try {
-    const data = await trackingAPI.getMyMovies(buildParams())
+    const data = await trackingAPI.getMyMovies(buildParams(), { signal })
     const paged = normalizePagedResponse<MovieRowItem>(data)
     rows.value = paged.items
     const extras = data as typeof data & MediaListExtras
@@ -147,6 +151,7 @@ async function loadMyMovies() {
     lastLoadedCount.value = paged.loadedCount
     totalRuntimeMinutes.value = Number.isFinite(extras.total_runtime_minutes) ? extras.total_runtime_minutes ?? 0 : 0
   } catch (error) {
+    if (isAbortError(error)) return
     const recoveryPage = invalidPageRecovery(error, currentPage.value)
     if (recoveryPage !== null) {
       currentPage.value = recoveryPage
@@ -158,7 +163,7 @@ async function loadMyMovies() {
     lastLoadedCount.value = 0
     errorMsg.value = getApiErrorMessage(error, 'Could not load My Movies.')
   } finally {
-    loading.value = false
+    if (!signal.aborted) loading.value = false
   }
 }
 

@@ -74,6 +74,7 @@ import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
 import { getApiErrorMessage } from '@/utils/errors'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
+import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
 import PaginationControls from '@/components/PaginationControls.vue'
 import ProgressRow from '@/components/ProgressRow.vue'
 import type { QueryParams, ShowProgressItem } from '@/types/api'
@@ -147,11 +148,14 @@ function buildParams(): QueryParams {
   }
 }
 
+const latestRequest = useLatestRequest()
+
 async function loadMyShows() {
+  const signal = latestRequest.next()
   loading.value = true
   errorMsg.value = ''
   try {
-    const data = await trackingAPI.getMyShows(buildParams())
+    const data = await trackingAPI.getMyShows(buildParams(), { signal })
     const paged = normalizePagedResponse<ShowProgressItem>(data)
     rows.value = paged.items
     const extras = data as typeof data & MediaListExtras
@@ -161,6 +165,7 @@ async function loadMyShows() {
     lastLoadedCount.value = paged.loadedCount
     totalRuntimeMinutes.value = Number.isFinite(extras.total_runtime_minutes) ? extras.total_runtime_minutes ?? 0 : 0
   } catch (error) {
+    if (isAbortError(error)) return
     const recoveryPage = invalidPageRecovery(error, currentPage.value)
     if (recoveryPage !== null) {
       currentPage.value = recoveryPage
@@ -172,7 +177,7 @@ async function loadMyShows() {
     lastLoadedCount.value = 0
     errorMsg.value = getApiErrorMessage(error, 'Could not load My Shows.')
   } finally {
-    loading.value = false
+    if (!signal.aborted) loading.value = false
   }
 }
 

@@ -72,6 +72,8 @@ async function mountHistory(query: Record<string, string> = {}) {
   return { wrapper, router }
 }
 
+const withSignal = expect.objectContaining({ signal: expect.any(AbortSignal) })
+
 describe('HistoryView item filters', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -94,7 +96,7 @@ describe('HistoryView item filters', () => {
       episode_number: '2',
       order: 'newest',
       page: 1,
-    })
+    }, withSignal)
   })
 
   it('preserves item filters when changing visible history controls', async () => {
@@ -125,6 +127,6 @@ describe('HistoryView item filters', () => {
       episode_number: '2',
       order: 'oldest',
       page: 1,
-    })
+    }, withSignal)
   })
 })

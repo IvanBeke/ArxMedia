@@ -435,6 +435,7 @@ import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
+import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
@@ -647,8 +648,11 @@ async function retryLoad() {
   if (list.value) await loadItems()
 }
 
+const latestItemsRequest = useLatestRequest()
+
 async function loadItems() {
   if (reorderMode.value) return
+  const signal = latestItemsRequest.next()
   loadingItems.value = true
   try {
     const filterState = appliedFilters.value
@@ -663,7 +667,7 @@ async function loadItems() {
       ...(filterState.missingRating ? { missing_rating: true } : {}),
       ...(filterState.inWatchlist ? { in_watchlist: true } : {}),
     }
-    const data = await trackingAPI.getListItems(listId(), params)
+    const data = await trackingAPI.getListItems(listId(), params, { signal })
     const paged = normalizePagedResponse<ListItem>(data)
     items.value = paged.items
     count.value = paged.count
@@ -674,6 +678,7 @@ async function loadItems() {
       movies: Number.isFinite(data.counts?.movies) ? data.counts?.movies ?? 0 : 0,
     }
   } catch (error) {
+    if (isAbortError(error)) return
     const recoveryPage = invalidPageRecovery(error, currentPage.value)
     if (recoveryPage !== null) {
       currentPage.value = recoveryPage
@@ -686,7 +691,7 @@ async function loadItems() {
     totalRuntimeMinutes.value = 0
     counts.value = { shows: 0, movies: 0 }
   } finally {
-    loadingItems.value = false
+    if (!signal.aborted) loadingItems.value = false
   }
 }
 

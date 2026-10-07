@@ -124,6 +124,7 @@ import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { useI18n } from '@/i18n'
 import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
@@ -206,17 +207,21 @@ function decrementHistoryStats(currentStats: HistoryStats | null, mediaType: Wat
   return currentStats
 }
 
+const latestRequest = useLatestRequest()
+
 async function loadHistory() {
+  const signal = latestRequest.next()
   loading.value = true
   loadError.value = false
   try {
     const [historyRes, statsRes] = await Promise.all([
-      trackingAPI.getHistory(buildHistoryParams()),
+      trackingAPI.getHistory(buildHistoryParams(), { signal }),
       trackingAPI.getStats()
     ])
     applyHistoryResponse(historyRes)
     stats.value = statsRes
   } catch (e) {
+    if (isAbortError(e)) return
     const recoveryPage = invalidPageRecovery(e, currentPage.value)
     if (recoveryPage !== null) {
       currentPage.value = recoveryPage
@@ -227,7 +232,7 @@ async function loadHistory() {
     lastLoadedCount.value = 0
     loadError.value = true
   } finally {
-    loading.value = false
+    if (!signal.aborted) loading.value = false
   }
 }
 

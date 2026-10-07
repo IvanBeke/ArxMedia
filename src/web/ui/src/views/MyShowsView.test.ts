@@ -62,6 +62,8 @@ function pageNumberTexts(wrapper: VueWrapper) {
     .filter((text) => /^\d+$/.test(text))
 }
 
+const withSignal = expect.objectContaining({ signal: expect.any(AbortSignal) })
+
 describe('MyShowsView pagination', () => {
   beforeEach(() => {
     getMyShows.mockReset()
@@ -78,7 +80,7 @@ describe('MyShowsView pagination', () => {
     wrapper.findComponent(PaginationControls).vm.$emit('go', 3)
     await flushPromises()
 
-    expect(getMyShows).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }))
+    expect(getMyShows).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }), withSignal)
     expect(lastTotalPages(wrapper)).toBe(3)
     expect(pageNumberTexts(wrapper)).toEqual(['1', '2', '3'])
     expect(wrapper.text()).not.toContain('Could not load My Shows.')
@@ -112,7 +114,7 @@ describe('MyShowsView pagination', () => {
 
     await mountView({ has_next_episode: '1' })
 
-    expect(getMyShows).toHaveBeenCalledWith(expect.objectContaining({ has_next_episode: true }))
+    expect(getMyShows).toHaveBeenCalledWith(expect.objectContaining({ has_next_episode: true }), withSignal)
   })
 
   it('requests default sorting on first load', async () => {
@@ -122,6 +124,7 @@ describe('MyShowsView pagination', () => {
 
     expect(getMyShows).toHaveBeenCalledWith(
       expect.objectContaining({ sort: 'last_watched', direction: 'desc' }),
+      withSignal,
     )
   })
 
@@ -132,7 +135,19 @@ describe('MyShowsView pagination', () => {
 
     expect(getMyShows).toHaveBeenCalledWith(
       expect.objectContaining({ status: ['plan_to_watch'] }),
+      withSignal,
     )
+  })
+
+  it.each([
+    [{}],
+    [{ sort: 'title', direction: 'asc', page: '2' }],
+  ])('requests the list exactly once on first open (query %o)', async (query) => {
+    getMyShows.mockReset().mockResolvedValue(showsPayload(30, 20))
+
+    await mountView(query)
+
+    expect(getMyShows).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -74,5 +74,15 @@ describe('API session requests', () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/api/tracking/history/42/')
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'DELETE' })
   })
+
+  it('passes an abort signal through to fetch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ count: 0, results: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+
+    await trackingAPI.getMyMovies({ page: 1 }, { signal: controller.signal })
+
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ signal: controller.signal })
+  })
 })
 

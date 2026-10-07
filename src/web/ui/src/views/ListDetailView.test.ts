@@ -191,6 +191,8 @@ async function mountView(listId = '1') {
   return wrapper
 }
 
+const withSignal = expect.objectContaining({ signal: expect.any(AbortSignal) })
+
 describe('ListDetailView custom_order', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -223,7 +225,7 @@ describe('ListDetailView custom_order', () => {
   it('defaults to custom_order sorting', async () => {
     const wrapper = await mountView()
     // MediaFilterBar should be initialized with custom_order
-    expect(getListItems).toHaveBeenCalledWith('1', expect.objectContaining({ sort: 'custom_order', direction: 'asc' }))
+    expect(getListItems).toHaveBeenCalledWith('1', expect.objectContaining({ sort: 'custom_order', direction: 'asc' }), withSignal)
     expect(wrapper.text()).not.toContain('Could not load')
   })
 
