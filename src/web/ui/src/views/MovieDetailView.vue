@@ -1,5 +1,13 @@
 <template>
   <div class="overflow-x-hidden">
+    <FlashToast
+      :messages="[
+        { text: metadataSuccessMsg, kind: 'success' },
+        { text: metadataErrorMsg, kind: 'error' },
+        { text: successMsg, kind: 'success' },
+        { text: errorMsg, kind: 'error' },
+      ]"
+    />
     <WatchedDateTimePicker
       :open="showDatePicker"
       :initial-value="pickerInitialValue"
@@ -97,28 +105,6 @@
           <template #rating>
             <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
             <p v-else class="text-xs text-muted">{{ t('rating_movie_requires_watched') }}</p>
-          </template>
-          <template #messages>
-            <Transition name="fade">
-              <div v-if="metadataSuccessMsg" class="mb-3 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
-                {{ metadataSuccessMsg }}
-              </div>
-            </Transition>
-            <Transition name="fade">
-              <div v-if="metadataErrorMsg" class="mb-3 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm inline-block">
-                {{ metadataErrorMsg }}
-              </div>
-            </Transition>
-            <Transition name="fade">
-              <div v-if="successMsg" class="mb-4 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
-                {{ successMsg }}
-              </div>
-            </Transition>
-            <Transition name="fade">
-              <div v-if="errorMsg" class="mb-4 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm inline-block">
-                {{ errorMsg }}
-              </div>
-            </Transition>
           </template>
         </MediaActionsBar>
       </template>
@@ -250,6 +236,7 @@ import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import MovieUnwatchDialog from '@/components/MovieUnwatchDialog.vue'
 import DetailHero from '@/components/DetailHero.vue'
+import FlashToast from '@/components/FlashToast.vue'
 import LoadError from '@/components/LoadError.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'

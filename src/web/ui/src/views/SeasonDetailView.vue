@@ -10,11 +10,7 @@
 
     <EpisodeUnwatchDialog ref="unwatchDialog" :on-error="showActionError" @unwatched="onEpisodeUnwatched" />
 
-    <Transition name="fade">
-      <div v-if="actionError" role="alert" class="max-w-7xl mx-auto mt-4 px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
-        {{ actionError }}
-      </div>
-    </Transition>
+    <FlashToast :messages="[{ text: actionError, kind: 'error' }]" />
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
       <router-link :to="{ name: 'tv-detail', params: { id: route.params.id }, query: { tab: 'seasons' } }" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-2">
@@ -152,6 +148,7 @@ import { mediaAPI, trackingAPI } from '@/api'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import { useAuthStore } from '@/stores/auth'
 import ProgressBar from '@/components/ProgressBar.vue'
+import FlashToast from '@/components/FlashToast.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'

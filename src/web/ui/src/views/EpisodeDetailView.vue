@@ -10,11 +10,7 @@
 
     <EpisodeUnwatchDialog ref="unwatchDialog" :on-error="showActionError" @unwatched="onEpisodeUnwatched" />
 
-    <Transition name="fade">
-      <div v-if="actionError" role="alert" class="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
-        {{ actionError }}
-      </div>
-    </Transition>
+    <FlashToast :messages="[{ text: actionError, kind: 'error' }]" />
 
     <RouterLink :to="backLink" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-6">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -149,6 +145,7 @@ import { useRoute, RouterLink } from 'vue-router'
 import { ChevronLeft, ChevronRight } from '@lucide/vue'
 import { trackingAPI, mediaAPI } from '@/api'
 import EpisodeCodePill from '@/components/EpisodeCodePill.vue'
+import FlashToast from '@/components/FlashToast.vue'
 import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import SpoilerBlock from '@/components/SpoilerBlock.vue'

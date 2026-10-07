@@ -7,6 +7,8 @@ import TVDetailView from '@/views/TVDetailView.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import WatchSplitButton from '@/components/WatchSplitButton.vue'
+import FlashToast from '@/components/FlashToast.vue'
+import DetailHero from '@/components/DetailHero.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types/api'
 
@@ -183,6 +185,18 @@ describe('TVDetailView hero progress', () => {
     expect(trackingAPI.markShowWatched).toHaveBeenCalledWith({ tmdb_id: TMDB_ID, watched_at: 'now' })
     expect(trackingAPI.markSeasonWatched).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('3/3 watched')
+  })
+
+  it('shows action messages in a toast outside the hero so the hero does not resize', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+    vi.mocked(trackingAPI.markShowWatched).mockRejectedValueOnce({ detail: 'Could not mark show.', status: 500 })
+
+    const wrapper = await mountView(true)
+    wrapper.findComponent(WatchSplitButton).vm.$emit('select', 'now')
+    await flushPromises()
+
+    expect(wrapper.findComponent(FlashToast).text()).toContain('Could not mark show.')
+    expect(wrapper.findComponent(DetailHero).text()).not.toContain('Could not mark show.')
   })
 
   it('marks the whole show with each episode release date when release is chosen', async () => {

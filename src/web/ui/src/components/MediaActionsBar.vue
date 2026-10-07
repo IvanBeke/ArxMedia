@@ -7,8 +7,5 @@
       <p class="text-xs text-gray-500 mb-1.5 uppercase tracking-wider">Your Rating</p>
       <slot name="rating" />
     </div>
-    <div v-if="$slots.messages">
-      <slot name="messages" />
-    </div>
   </div>
 </template>

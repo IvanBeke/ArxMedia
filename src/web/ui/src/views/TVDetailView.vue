@@ -1,5 +1,13 @@
 <template>
   <div class="overflow-x-hidden">
+    <FlashToast
+      :messages="[
+        { text: metadataSuccessMsg, kind: 'success' },
+        { text: metadataErrorMsg, kind: 'error' },
+        { text: successMsg, kind: 'success' },
+        { text: errorMsg, kind: 'error' },
+      ]"
+    />
     <WatchedDateTimePicker
       :open="showDatePicker"
       :initial-value="pickerInitialValue"
@@ -124,20 +132,6 @@
           <template #rating>
             <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
             <p v-else class="text-xs text-muted">{{ t('rating_show_requires_watching') }}</p>
-          </template>
-          <template #messages>
-            <div v-if="metadataSuccessMsg" class="mb-3 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
-              {{ metadataSuccessMsg }}
-            </div>
-            <div v-if="metadataErrorMsg" class="mb-3 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm inline-block">
-              {{ metadataErrorMsg }}
-            </div>
-            <div v-if="successMsg" class="mb-4 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-sm inline-block">
-              {{ successMsg }}
-            </div>
-            <div v-if="errorMsg" class="mb-4 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm inline-block">
-              {{ errorMsg }}
-            </div>
           </template>
         </MediaActionsBar>
       </template>
@@ -337,6 +331,7 @@ import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import EpisodeHeatmap from '@/components/EpisodeHeatmap.vue'
 import DetailHero from '@/components/DetailHero.vue'
+import FlashToast from '@/components/FlashToast.vue'
 import LoadError from '@/components/LoadError.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
