@@ -556,6 +556,33 @@ class QueryCountTests(BaseTestCase):
         self.assertEqual(after, before)
 
 
+class WatchEntryIndexTests(BaseTestCase):
+    def _plan(self, queryset):
+        sql, params = queryset.query.sql_with_params()
+        with connection.cursor() as cursor:
+            # Tiny test tables favour sequential scans; force the planner to show index usability.
+            cursor.execute('SET LOCAL enable_seqscan = off')
+            cursor.execute('SET LOCAL enable_bitmapscan = off')
+            cursor.execute('EXPLAIN ' + sql, params)
+            return '\n'.join(row[0] for row in cursor.fetchall())
+
+    def test_history_page_is_read_in_order_from_the_history_index(self):
+        from tracking.views.history import WatchEntryListCreateView
+
+        view = WatchEntryListCreateView()
+        view.request = type('Request', (), {'user': self.user, 'query_params': {}})()
+        plan = self._plan(view.get_queryset()[:20])
+
+        self.assertIn('watchentry_user_history_idx', plan)
+        self.assertNotIn('Sort', plan)
+
+    def test_recent_activity_uses_the_user_watched_index(self):
+        plan = self._plan(WatchEntry.objects.filter(user=self.user).order_by('-watched_at')[:10])
+
+        self.assertIn('watchentry_user_watched_idx', plan)
+        self.assertNotIn('Sort', plan)
+
+
 class UniqueEpisodeWatchMigrationTests(TransactionTestCase):
     def _targets(self, tracking_migration):
         executor = MigrationExecutor(connection)

@@ -4,7 +4,7 @@ import uuid
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models import Exists, OuterRef, Subquery
+from django.db.models import Exists, F, OuterRef, Subquery
 from django.db.models.functions import Cast, Coalesce
 from django.utils import timezone
 
@@ -56,8 +56,15 @@ class WatchEntry(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['user', 'media_type', 'tmdb_id']),
             models.Index(fields=['user', 'media_type', 'tmdb_id', 'season_number', 'episode_number']),
+            models.Index(fields=['user', 'watched_at'], name='watchentry_user_watched_idx'),
+            # Matches the history list ordering, so a page is read from the index without sorting.
+            models.Index(
+                F('user'),
+                Coalesce('watched_at', 'created_at').desc(nulls_last=True),
+                F('id').desc(),
+                name='watchentry_user_history_idx',
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
