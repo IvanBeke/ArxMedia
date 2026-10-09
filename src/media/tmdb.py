@@ -255,7 +255,7 @@ class TMDBService:
         results = run_parallel(calls + list(extra_calls))
 
         seasons = {}
-        for batch, result in zip(batches, results):
+        for batch, result in zip(batches, results, strict=False):
             if isinstance(result, Exception):
                 logger.warning('Season batch %s failed for tv %s: %s', batch, tmdb_id, result)
             else:
@@ -266,7 +266,7 @@ class TMDBService:
             partial(self.get_season, tmdb_id, number, use_cache=use_cache, include_credits=False)
             for number in leftovers
         ])
-        for number, result in zip(leftovers, leftover_results):
+        for number, result in zip(leftovers, leftover_results, strict=True):
             if isinstance(result, Exception):
                 logger.warning('Failed to fetch season %s for tv %s: %s', number, tmdb_id, result)
             elif isinstance(result, dict) and result:
@@ -358,7 +358,7 @@ class TMDBService:
         seasons, extra_results = self._fetch_seasons_with(tmdb_id, season_numbers, use_cache, extra_calls)
         season_ids = {
             number: _external_ids({'external_ids': result})
-            for number, result in zip(needs_ids, extra_results)
+            for number, result in zip(needs_ids, extra_results, strict=False)
             if isinstance(result, dict)
         }
         tvmaze_result = extra_results[-1]
@@ -626,7 +626,7 @@ class TMDBService:
         ])
         fetched = {}
         failures = 0
-        for (episode_id, season_number, episode_number), result in zip(keys, results):
+        for (episode_id, season_number, episode_number), result in zip(keys, results, strict=True):
             if isinstance(result, Exception):
                 failures += 1
                 logger.warning('Failed to sync episode credits for tv %s season %s episode %s: %s', show.tmdb_id, season_number, episode_number, result)

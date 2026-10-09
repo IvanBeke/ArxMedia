@@ -6,8 +6,9 @@ from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
-from media.models import Movie, TVShow
 from rest_framework.test import APIClient
+
+from media.models import Movie, TVShow
 from social.models import Follow
 from tracking.models import WatchEntry
 

@@ -6,15 +6,17 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
-from media.models import Movie, TVShow
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+
+from media.models import Movie, TVShow
 from social.models import Follow
 from tracking.models import WatchEntry, WatchEntryMediaType
 
+from .authentication import authenticated_user
 from .privacy import can_view_account_content, get_viewer_relationship
 from .serializers import (
     LoginSerializer,
@@ -93,7 +95,8 @@ class UserSearchView(generics.ListAPIView):
         if len(query) < 3:
             return User.objects.none()
 
-        return User.objects.filter(username__icontains=query).exclude(id=self.request.user.id).order_by('username')[:10]
+        user = authenticated_user(self.request)
+        return User.objects.filter(username__icontains=query).exclude(id=user.id).order_by('username')[:10]
 
 
 class UserFollowersView(generics.ListAPIView):

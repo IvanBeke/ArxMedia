@@ -1,10 +1,12 @@
 import logging
+from typing import Any
 
 from django.db import transaction
-from media.tmdb import tmdb
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+
+from media.tmdb import tmdb
 
 from ..choices import WatchEntryMediaType
 from ..models import (
@@ -56,8 +58,8 @@ def recommendations(request):
                 break
         return picked
 
-    movie_results = []
-    tv_results = []
+    movie_results: list[dict[str, Any]] = []
+    tv_results: list[dict[str, Any]] = []
     for page in (1, 2):
         if len(movie_results) < 12:
             try:

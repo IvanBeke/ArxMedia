@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 from datetime import time as dt_time
+from typing import Any
 
 from django.db.models import (
     Case,
@@ -109,6 +110,7 @@ def _episode_candidates(user, now, *, aired):
 def up_next(request):
     """Get next episodes for currently watching shows."""
     from django.utils import timezone
+
     from media.models import TVShow
 
     now = timezone.now()
@@ -511,7 +513,7 @@ def _sort_progress_items(items, sort_by: str, direction: str):
 def _paginated_library_response(request, items, **extras):
     """Paginate library items, attaching the same extras in both paginated and plain responses."""
     paginator = PageNumberPagination()
-    page = paginator.paginate_queryset(items, request)
+    page: list[dict[str, Any]] | None = paginator.paginate_queryset(items, request)
     if page is None:
         return Response({
             'results': items,

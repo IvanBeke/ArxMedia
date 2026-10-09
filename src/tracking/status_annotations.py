@@ -1,4 +1,5 @@
 from django.db.models import Count, Max, Min
+
 from media.models import Episode, TVShow
 
 from .choices import MediaType, SeasonStatus, TvShowStatus
@@ -175,7 +176,7 @@ def annotate_season_user_status(user, season_items):
     )
     watched_map = {(row['tmdb_id'], row['season_number']): row for row in watched_rows}
 
-    total_map = {}
+    total_map: dict[tuple[int, int], int] = {}
     for tmdb_id, season_number, _ in released_episode_keys:
         key = (tmdb_id, season_number)
         total_map[key] = total_map.get(key, 0) + 1

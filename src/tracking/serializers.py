@@ -48,6 +48,8 @@ class MediaCardSerializer(serializers.ModelSerializer):
             return media_cache[cache_key]
 
         from media.models import Movie, TVShow
+
+        media: Movie | TVShow | None
         if media_type == MediaType.MOVIE:
             media = Movie.objects.filter(tmdb_id=obj.tmdb_id).first()
         elif media_type in (MediaType.TV, WatchEntryMediaType.EPISODE):

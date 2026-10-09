@@ -17,11 +17,11 @@ from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from rest_framework.test import APIClient
+
 from media.models import Episode, Genre, Movie, Season, TVShow
 from media.tmdb import TMDBNotFoundError
-from rest_framework.test import APIClient
 from social.models import Follow
-
 from tracking.cache import cache
 from tracking.choices import MediaType, WatchEntryMediaType
 from tracking.models import (
@@ -4273,7 +4273,6 @@ class DataImportExportTests(BaseTestCase):
     def _run_import_pipeline(self, job_id):
         """Run the whole import locally: every queued stage executes inline."""
         from arxmedia.celery import app
-
         from tracking.tasks import run_import_job
 
         eager = {'CELERY_TASK_ALWAYS_EAGER': True, 'CELERY_TASK_EAGER_PROPAGATES': True}

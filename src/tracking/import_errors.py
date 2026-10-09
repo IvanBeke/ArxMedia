@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import NoReturn
 
 from rest_framework.exceptions import ValidationError
 
@@ -21,5 +22,5 @@ class ImportDomainError(Exception):
     field: str = 'job'
 
 
-def raise_import_validation_error(error: ImportDomainError):
+def raise_import_validation_error(error: ImportDomainError) -> NoReturn:
     raise ValidationError({'error_code': error.code, error.field: error.message})

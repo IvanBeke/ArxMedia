@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 
 from django.utils import timezone
+
 from media.models import Movie, Season, TVShow
 from media.tmdb import tmdb
 

@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+
 from tracking.tasks.system import sync_tmdb_changed_items_for_window
 
 
@@ -29,7 +30,9 @@ class Command(BaseCommand):
         result = sync_tmdb_changed_items_for_window(start_date, end_date)
         self.stdout.write(json.dumps(result, sort_keys=True))
 
-    def _parse_date(self, value: str, option_name: str) -> date:
+    def _parse_date(self, value: str | None, option_name: str) -> date:
+        if not value:
+            raise CommandError(f'Missing date for --{option_name}.')
         try:
             return date.fromisoformat(value)
         except ValueError as exc:

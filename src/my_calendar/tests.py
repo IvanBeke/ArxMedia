@@ -3,8 +3,9 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from media.models import Episode, Movie, Season, TVShow
 from rest_framework.test import APIClient
+
+from media.models import Episode, Movie, Season, TVShow
 from tracking.models import UserMediaStatus, WatchEntry
 
 User = get_user_model()

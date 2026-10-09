@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AnonymousUser
 from django.db.models import Q
+
 from social.models import Follow
 
 from .models import AccountVisibility

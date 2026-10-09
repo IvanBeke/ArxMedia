@@ -32,20 +32,28 @@ dev = [
 line-length = 120
 target-version = "py314"
 exclude = ["migrations", ".venv", "manage.py", "node_modules"]
-src = ["src"]
+src = ["."]
 
 [tool.ruff.lint]
-extend-select = ["DJ"]
+extend-select = ["DJ", "I", "UP", "B", "SIM", "RET", "PERF", "G"]
 extend-ignore = ["EXE002", "BLE001"]
 per-file-ignores = { "*/admin.py" = ["RUF012"], "*/models.py" = ["RUF012"], "*/serializers.py" = ["RUF012"], "*/views.py" = ["RUF012"], "*/views/*.py" = ["RUF012"] }
 
 [tool.mypy]
 python_version = "3.14"
+check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 ignore_missing_imports = true
 exclude = "(^|/)(migrations|\\.venv)/|(^|/)manage\\.py$"
 plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+
+# Test files exercise behavior through DRF's test client, whose stubs type
+# responses as plain Django (no .data, Client without force_authenticate).
+# Source stays strict; tests are covered by execution instead.
+[[tool.mypy.overrides]]
+module = "*.tests"
+ignore_errors = true
 
 [tool.django-stubs]
 django_settings_module = "arxmedia.settings"

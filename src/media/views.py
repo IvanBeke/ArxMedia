@@ -10,6 +10,7 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
+
 from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
 from tracking.tasks import sync_show_episode_credits
@@ -258,7 +259,7 @@ def search(request):
 
         return Response(data)
     except Exception as e:
-        logger.error(f"TMDB API error: {e}")
+        logger.error("TMDB API error: %s", e)
         return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
 
 
@@ -284,7 +285,7 @@ def trending(request):
             _annotate_results_with_user_status(request.user, data.get('results', []))
         return Response(data)
     except Exception as e:
-        logger.error(f"TMDB API error: {e}")
+        logger.error("TMDB API error: %s", e)
         return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
 
 
@@ -314,7 +315,7 @@ def popular(request):
 
         return Response(data)
     except Exception as e:
-        logger.error(f"TMDB API error: {e}")
+        logger.error("TMDB API error: %s", e)
         return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
 
 
@@ -799,7 +800,7 @@ def people_search(request):
     try:
         data = tmdb.search_people(query, page)
     except Exception as e:
-        logger.error(f"TMDB API error: {e}")
+        logger.error("TMDB API error: %s", e)
         return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
 
     if not isinstance(data, dict):

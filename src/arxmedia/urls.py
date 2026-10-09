@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path, re_path
 from django.views.static import serve
+
 from web.views import SPAView
 
 

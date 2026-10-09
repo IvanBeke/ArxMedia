@@ -1,4 +1,6 @@
 import os
+from functools import partial
+from typing import NoReturn
 
 from django.db import transaction
 from django.http import FileResponse
@@ -6,6 +8,8 @@ from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle, UserRateThrottle
+
+from accounts.authentication import authenticated_user
 
 from ..choices import (
     DataImportMode,
@@ -20,7 +24,7 @@ from ..serializers import DataTransferJobSerializer
 from ..tasks.import_commands import ConfirmImportCommand
 
 
-def _raise_import_error(code: str, message: str, field: str = 'job'):
+def _raise_import_error(code: str, message: str, field: str = 'job') -> NoReturn:
     raise_import_validation_error(ImportDomainError(code=code, message=message, field=field))
 
 
@@ -51,7 +55,7 @@ class DataImportView(generics.CreateAPIView):
             raise ValidationError({'format': f'format must be {expected} for source={source}.'})
 
         job = DataTransferJob.objects.create(
-            user=request.user,
+            user=authenticated_user(request),
             job_type=DataTransferJobType.IMPORT,
             data_format=fmt,
             status=DataTransferStatus.PENDING,
@@ -62,7 +66,7 @@ class DataImportView(generics.CreateAPIView):
 
         from ..tasks import prepare_import_job
 
-        transaction.on_commit(lambda job_id=job.id: prepare_import_job.delay(job_id))
+        transaction.on_commit(partial(prepare_import_job.delay, job.id))
         return Response(DataTransferJobSerializer(job, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
@@ -82,7 +86,7 @@ class DataExportView(generics.CreateAPIView):
             status=DataTransferStatus.PENDING,
         )
         from ..tasks import export_user_data
-        transaction.on_commit(lambda job_id=job.id: export_user_data.delay(job_id))
+        transaction.on_commit(partial(export_user_data.delay, job.id))
         return Response(DataTransferJobSerializer(job, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
@@ -91,7 +95,7 @@ class DataJobStatusView(generics.RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return DataTransferJob.objects.filter(user=self.request.user)
+        return DataTransferJob.objects.filter(user=authenticated_user(self.request))
 
 
 class DataJobListView(generics.ListAPIView):
@@ -99,7 +103,7 @@ class DataJobListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return DataTransferJob.objects.filter(user=self.request.user)
+        return DataTransferJob.objects.filter(user=authenticated_user(self.request))
 
 
 class DataJobConfirmView(generics.GenericAPIView):
@@ -107,7 +111,12 @@ class DataJobConfirmView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        job = DataTransferJob.objects.filter(user=request.user, id=kwargs.get('pk')).first()
+        user = authenticated_user(request)
+        try:
+            pk = int(str(kwargs.get('pk')))
+        except (TypeError, ValueError):
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+        job = DataTransferJob.objects.filter(user=user, id=pk).first()
         if not job:
             _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
 
@@ -119,7 +128,7 @@ class DataJobConfirmView(generics.GenericAPIView):
 
         from ..tasks import run_import_job
 
-        transaction.on_commit(lambda job_id=job.id: run_import_job.delay(job_id))
+        transaction.on_commit(partial(run_import_job.delay, job.id))
         serializer = self.get_serializer(job, context={'request': request})
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
@@ -129,7 +138,12 @@ class DataJobCancelView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        job = DataTransferJob.objects.filter(user=request.user, id=kwargs.get('pk')).first()
+        user = authenticated_user(request)
+        try:
+            pk = int(str(kwargs.get('pk')))
+        except (TypeError, ValueError):
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+        job = DataTransferJob.objects.filter(user=user, id=pk).first()
         if not job:
             _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
         from ..import_state_machine import cancel
@@ -147,7 +161,12 @@ class DataJobFileView(generics.GenericAPIView):
 
     def _get_export_job(self, request, pk):
         # Scoped to the requesting user: nobody can access another user's file.
-        job = DataTransferJob.objects.filter(user=request.user, id=pk).first()
+        user = authenticated_user(request)
+        try:
+            job_id = int(str(pk))
+        except (TypeError, ValueError):
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+        job = DataTransferJob.objects.filter(user=user, id=job_id).first()
         if not job:
             _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
         if job.job_type != DataTransferJobType.EXPORT:

@@ -1,9 +1,10 @@
-from accounts.privacy import visible_owner_q
 from django.contrib.auth import get_user_model
 from django.db.models import F
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+
+from accounts.privacy import visible_owner_q
 from tracking.models import WatchEntry
 from tracking.query_helpers import watch_entry_context
 from tracking.serializers import WatchEntrySerializer
@@ -29,7 +30,7 @@ def activity_feed(request):
     )
 
     data = WatchEntrySerializer(entries, many=True, context=watch_entry_context(entries)).data
-    for row, entry in zip(data, entries):
+    for row, entry in zip(data, entries, strict=True):
         row['username'] = entry.user.username
 
     return Response(data)

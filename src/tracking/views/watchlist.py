@@ -11,6 +11,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from accounts.authentication import authenticated_user
+
 from ..choices import (
     MediaType,
     TvShowStatus,
@@ -107,7 +109,7 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
             [{'media_type': entry.media_type, 'tmdb_id': entry.tmdb_id} for entry in items],
         )
 
-        context = self.get_serializer_context()
+        context = dict(self.get_serializer_context())
         context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
         total_runtime_minutes, counts = _compute_mixed_runtime_and_counts(queryset)
@@ -128,19 +130,20 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
         })
 
     def perform_create(self, serializer):
+        user = authenticated_user(self.request)
         media_type = serializer.validated_data['media_type']
         tmdb_id = serializer.validated_data['tmdb_id']
 
         # Check if already watched
         if media_type == MediaType.MOVIE:
             watched = WatchEntry.objects.filter(
-                user=self.request.user,
+                user=user,
                 media_type=WatchEntryMediaType.MOVIE,
                 tmdb_id=tmdb_id,
             ).exists()
         else:
             # For TV shows, check if any episodes watched
-            watched = UserMediaStatus.objects.for_user(self.request.user).shows().progressable().filter(
+            watched = UserMediaStatus.objects.for_user(user).shows().progressable().filter(
                 tmdb_id=tmdb_id,
             ).exists()
 
@@ -149,7 +152,7 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
 
         _ensure_local_metadata(media_type, tmdb_id)
 
-        instance = UserMediaStatus.objects.set_planning(self.request.user, media_type, tmdb_id)
+        instance = UserMediaStatus.objects.set_planning(user, media_type, tmdb_id)
         serializer.instance = instance
 
 

@@ -1,4 +1,3 @@
-from accounts.privacy import visible_owner_q
 from django.db import IntegrityError, transaction
 from django.db.models import (
     Avg,
@@ -10,6 +9,9 @@ from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+
+from accounts.authentication import authenticated_user
+from accounts.privacy import visible_owner_q
 
 from ..choices import (
     MediaType,
@@ -39,7 +41,7 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = WatchEntry.objects.filter(user=self.request.user)
+        qs = WatchEntry.objects.filter(user=authenticated_user(self.request))
         media_type = self.request.query_params.get('media_type')
         if media_type in (WatchEntryMediaType.MOVIE, WatchEntryMediaType.EPISODE):
             qs = qs.filter(media_type=media_type)
@@ -78,7 +80,7 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
         ).values('media_type', 'tmdb_id', 'score')
         rating_map = {(row['media_type'], row['tmdb_id']): row['score'] for row in rating_rows}
 
-        context = self.get_serializer_context()
+        context = dict(self.get_serializer_context())
         context.update(watch_entry_context(items))
         serializer = self.get_serializer(items, many=True, context=context)
         data = serializer.data
@@ -124,12 +126,14 @@ class WatchEntryListCreateView(generics.ListCreateAPIView):
             return None
         if data.get('media_type') == WatchEntryMediaType.MOVIE:
             return Movie.objects.filter(tmdb_id=tmdb_id).values_list('release_date', flat=True).first()
-        episode = Episode.objects.filter(
+        row = Episode.objects.filter(
             season__show__tmdb_id=tmdb_id,
             season__season_number=data.get('season_number'),
             episode_number=data.get('episode_number'),
-        ).values('broadcast_start', 'air_date').first() or {}
-        return episode.get('broadcast_start') or episode.get('air_date')
+        ).values('broadcast_start', 'air_date').first()
+        if row is None:
+            return None
+        return row.get('broadcast_start') or row.get('air_date')
 
     def _existing_entry(self, data):
         lookup = {'user': self.request.user, 'media_type': data['media_type'], 'tmdb_id': data['tmdb_id']}
@@ -147,7 +151,7 @@ class WatchEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return WatchEntry.objects.filter(user=self.request.user)
+        return WatchEntry.objects.filter(user=authenticated_user(self.request))
 
 
 class RatingListCreateView(generics.ListCreateAPIView):
@@ -155,7 +159,7 @@ class RatingListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Rating.objects.filter(user=self.request.user)
+        qs = Rating.objects.filter(user=authenticated_user(self.request))
         media_type = self.request.query_params.get('media_type')
         if media_type in (MediaType.MOVIE, MediaType.TV):
             qs = qs.filter(media_type=media_type)
@@ -165,18 +169,19 @@ class RatingListCreateView(generics.ListCreateAPIView):
         return qs.order_by('-updated_at')
 
     def perform_create(self, serializer):
+        user = authenticated_user(self.request)
         media_type = serializer.validated_data['media_type']
         tmdb_id = serializer.validated_data['tmdb_id']
 
         if media_type == MediaType.MOVIE:
             can_rate = WatchEntry.objects.filter(
-                user=self.request.user,
+                user=user,
                 media_type=WatchEntryMediaType.MOVIE,
                 tmdb_id=tmdb_id,
             ).exists()
         else:
             can_rate = UserMediaStatus.objects.shows().filter(
-                user=self.request.user,
+                user=user,
                 tmdb_id=tmdb_id,
                 status__in=(TvShowStatus.WATCHING, TvShowStatus.WATCHED, TvShowStatus.DROPPED),
             ).exists()
@@ -188,7 +193,7 @@ class RatingListCreateView(generics.ListCreateAPIView):
 
         # Upsert rating
         existing = Rating.objects.filter(
-            user=self.request.user,
+            user=user,
             media_type=media_type,
             tmdb_id=tmdb_id,
         ).first()
@@ -196,7 +201,7 @@ class RatingListCreateView(generics.ListCreateAPIView):
             existing.score = serializer.validated_data['score']
             existing.save()
         else:
-            serializer.save(user=self.request.user)
+            serializer.save(user=user)
 
 
 class ReviewListCreateView(generics.ListCreateAPIView):

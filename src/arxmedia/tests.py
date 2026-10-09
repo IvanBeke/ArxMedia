@@ -3,13 +3,14 @@ import os
 import sys
 from unittest.mock import patch
 
-from accounts.models import User
 from django.contrib import admin
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
 from django.test import SimpleTestCase, TestCase, override_settings
-from media.models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
 from rest_framework.test import APIClient
+
+from accounts.models import User
+from media.models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
 from social.models import Follow
 from tracking.models import (
     CustomList,

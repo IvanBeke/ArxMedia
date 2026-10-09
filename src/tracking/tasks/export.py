@@ -37,9 +37,8 @@ def export_user_data(job_id: int) -> dict[str, str]:
             for item in UserMediaStatus.objects.for_user(user).dropped()
         ]
         ratings = list(Rating.objects.filter(user=user).values())
-        lists = []
-        for custom_list in CustomList.objects.filter(user=user).prefetch_related('items'):
-            lists.append({
+        lists = [
+            {
                 'name': custom_list.name,
                 'description': custom_list.description,
                 'privacy': custom_list.privacy,
@@ -52,7 +51,9 @@ def export_user_data(job_id: int) -> dict[str, str]:
                     }
                     for item in custom_list.items.all()
                 ],
-            })
+            }
+            for custom_list in CustomList.objects.filter(user=user).prefetch_related('items')
+        ]
         payload = {
             'watch_history': watch_history,
             'watchlist': watchlist,

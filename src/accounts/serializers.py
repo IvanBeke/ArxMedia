@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Avg, Count, F, Q
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
+
 from tracking.choices import ListPrivacy
 from tracking.models import CustomList, Rating, UserMediaStatus, WatchEntry
 from tracking.serializers import CustomListSerializer, WatchEntrySerializer
@@ -68,8 +69,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('password2')
-        user = User.objects.create_user(**validated_data)
-        return user
+        return User.objects.create_user(**validated_data)
 
 
 class PublicUserSerializer(serializers.ModelSerializer):
@@ -95,7 +95,7 @@ class PublicUserSerializer(serializers.ModelSerializer):
 
     def _viewer_relationship(self, obj):
         if not hasattr(self, '_relationship_cache'):
-            self._relationship_cache = {}
+            self._relationship_cache: dict[int, dict[str, bool]] = {}
 
         if obj.id not in self._relationship_cache:
             request = self.context.get('request')
@@ -106,7 +106,7 @@ class PublicUserSerializer(serializers.ModelSerializer):
 
     def _can_view(self, obj):
         if not hasattr(self, '_can_view_cache'):
-            self._can_view_cache = {}
+            self._can_view_cache: dict[int, bool] = {}
 
         if obj.id not in self._can_view_cache:
             relationship = self._viewer_relationship(obj)

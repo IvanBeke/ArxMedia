@@ -4,6 +4,7 @@ from functools import partial
 from django.db import transaction
 from django.db.models import Max, Min
 from django.utils import timezone
+
 from media.models import Episode, TVShow
 
 from .choices import MediaType, TvShowStatus

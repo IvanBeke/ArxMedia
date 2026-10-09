@@ -1,11 +1,13 @@
 import logging
 
-from accounts.privacy import can_view_account_content, get_viewer_relationship
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
+
+from accounts.authentication import authenticated_user
+from accounts.privacy import can_view_account_content, get_viewer_relationship
 
 from ..choices import (
     ListPrivacy,
@@ -130,7 +132,7 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         try:
             custom_list = CustomList.objects.get(id=list_id)
         except CustomList.DoesNotExist:
-            raise PermissionDenied('List not found.')
+            raise PermissionDenied('List not found.') from None
 
         if not _can_access_list(self.request.user, custom_list):
             raise PermissionDenied('You do not have permission to access this list.')
@@ -188,17 +190,17 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         if sort_key not in valid_sorts:
             sort_key = 'custom_order'
 
-        queryset = _apply_secondary_title_ordering(queryset, sort_key, direction, user=self.request.user)
-        return queryset
+        return _apply_secondary_title_ordering(queryset, sort_key, direction, user=self.request.user)
 
     def perform_create(self, serializer):
+        user = authenticated_user(self.request)
         list_id = self.kwargs.get('list_id')
         try:
             custom_list = CustomList.objects.get(id=list_id)
         except CustomList.DoesNotExist:
-            raise PermissionDenied('List not found.')
-        is_owner = custom_list.user_id == self.request.user.id
-        is_collaborator = ListCollaborator.objects.filter(custom_list=custom_list, user=self.request.user).exists()
+            raise PermissionDenied('List not found.') from None
+        is_owner = custom_list.user_id == user.id
+        is_collaborator = ListCollaborator.objects.filter(custom_list=custom_list, user=user).exists()
         if not (is_owner or is_collaborator):
             raise PermissionDenied('You can only add items to your lists or lists where you collaborate.')
         from django.db.models import Max
@@ -213,7 +215,7 @@ class ListItemListCreateView(generics.ListCreateAPIView):
             try:
                 serializer.save(custom_list=custom_list, custom_order=next_order)
             except IntegrityError:
-                raise ValidationError({'detail': 'Item is already in this list.'})
+                raise ValidationError({'detail': 'Item is already in this list.'}) from None
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -230,7 +232,7 @@ class ListItemListCreateView(generics.ListCreateAPIView):
             [{'media_type': entry.media_type, 'tmdb_id': entry.tmdb_id} for entry in items],
         )
 
-        context = self.get_serializer_context()
+        context = dict(self.get_serializer_context())
         context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
         total_runtime_minutes, counts = _compute_mixed_runtime_and_counts(queryset)
@@ -270,7 +272,7 @@ class ListItemReorderView(generics.GenericAPIView):
         try:
             custom_list = CustomList.objects.get(id=list_id)
         except CustomList.DoesNotExist:
-            raise PermissionDenied('List not found.')
+            raise PermissionDenied('List not found.') from None
 
         if not _can_access_list(request.user, custom_list):
             raise PermissionDenied('You do not have permission to access this list.')
@@ -286,8 +288,8 @@ class ListItemReorderView(generics.GenericAPIView):
 
         try:
             ordered_ids = [int(i) for i in ordered_ids]
-        except (TypeError, ValueError):
-            raise ValidationError({'custom_order': 'custom_order must contain integers.'})
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({'custom_order': 'custom_order must contain integers.'}) from exc
 
         if len(ordered_ids) != len(set(ordered_ids)):
             raise ValidationError({'custom_order': 'custom_order must not contain duplicates.'})

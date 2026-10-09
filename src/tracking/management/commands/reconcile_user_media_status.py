@@ -10,6 +10,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand
 from django.db.models import Q
+
 from tracking.choices import MediaType
 from tracking.import_engine import reconcile_user_media_status
 from tracking.import_records import ParsedImport, StatusRecord, WatchEntryRecord
@@ -58,18 +59,20 @@ class Command(BaseCommand):
         statuses = UserMediaStatus.objects.for_user(user).filter(
             Q(media_type=MediaType.MOVIE) | Q(media_type=MediaType.TV)
         )
-        for row in statuses.iterator():
-            records.append(StatusRecord(media_type=row.media_type, tmdb_id=row.tmdb_id, status=row.status, status_at=row.status_changed_at))
-        for entry in WatchEntry.objects.filter(user=user).iterator():
-            records.append(
-                WatchEntryRecord(
-                    media_type=entry.media_type,
-                    tmdb_id=entry.tmdb_id,
-                    watched_at=entry.watched_at,
-                    season_number=entry.season_number,
-                    episode_number=entry.episode_number,
-                )
+        records.extend(
+            StatusRecord(media_type=row.media_type, tmdb_id=row.tmdb_id, status=row.status, status_at=row.status_changed_at)
+            for row in statuses.iterator()
+        )
+        records.extend(
+            WatchEntryRecord(
+                media_type=entry.media_type,
+                tmdb_id=entry.tmdb_id,
+                watched_at=entry.watched_at,
+                season_number=entry.season_number,
+                episode_number=entry.episode_number,
             )
+            for entry in WatchEntry.objects.filter(user=user).iterator()
+        )
         return ParsedImport(records=tuple(records), collections_present=frozenset(), invalid_count=0, report={})
 
     def _snapshot(self, user) -> dict:

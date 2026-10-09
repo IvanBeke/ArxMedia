@@ -10,12 +10,12 @@ from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
-from tracking.models import Rating, UserMediaStatus, WatchEntry
 
 from media.http import response_cache_key
 from media.models import Episode, EpisodeCredit, Genre, Movie, Season, TVShow
 from media.tmdb import _non_empty_defaults, tmdb
 from media.tvmaze import TVMazeService, tvmaze
+from tracking.models import Rating, UserMediaStatus, WatchEntry
 
 User = get_user_model()
 

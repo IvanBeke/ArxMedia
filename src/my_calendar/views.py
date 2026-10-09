@@ -4,11 +4,12 @@ from django.db.models import DateTimeField
 from django.db.models.functions import Cast, Coalesce
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from media.models import Episode, Movie
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+
+from media.models import Episode, Movie
 from tracking.models import UserMediaStatus
 
 

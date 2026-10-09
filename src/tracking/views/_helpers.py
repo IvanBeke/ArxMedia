@@ -16,8 +16,9 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, Greatest, Lower
 from django.utils import timezone
-from media.tmdb import tmdb
 from rest_framework.exceptions import ValidationError
+
+from media.tmdb import tmdb
 
 from ..choices import (
     MediaType,
@@ -38,8 +39,8 @@ logger = logging.getLogger(__name__)
 def _coerce_int(value, field_name: str) -> int:
     try:
         return int(value)
-    except (TypeError, ValueError):
-        raise ValidationError({field_name: f'{field_name} must be an integer.'})
+    except (TypeError, ValueError) as exc:
+        raise ValidationError({field_name: f'{field_name} must be an integer.'}) from exc
 
 
 def _parse_bool_param(value):

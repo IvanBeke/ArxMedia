@@ -261,7 +261,7 @@ def _parse_arxmedia_document(
     report = _report(tuple(records), invalid_count, unit_count, warnings, len(parsed_lists), data_format)
     report['media_records_seen'] = len(history) + len(watchlist) + len(ratings) + len(dropped)
     report['list_items_seen'] = sum(len(record.items) for record in parsed_lists)
-    parsed = ParsedImport(
+    return ParsedImport(
         records=tuple(records),
         collections_present=frozenset(collections),
         invalid_count=invalid_count,
@@ -272,7 +272,6 @@ def _parse_arxmedia_document(
         },
         lists=tuple(parsed_lists),
     )
-    return parsed
 
 
 def parse_arxmedia_zip(content: bytes) -> ParsedImport:
