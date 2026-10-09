@@ -66,65 +66,37 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref } from 'vue'
 import { trackingAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import MovieRow from '@/components/MovieRow.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
-import { getApiErrorMessage } from '@/utils/errors'
-import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
-import { useQueryPageSync } from '@/composables/useQueryPageSync'
-import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
+import { usePagedFilteredList } from '@/composables/usePagedFilteredList'
 import type { MediaCard, QueryParams } from '@/types/api'
 
 interface MovieFilterState { search: string; sort: string; direction: string; mediaType: string; statuses: string[]; genres: string[]; missingRating: boolean }
-interface FilterChange { filters: MovieFilterState; source: 'hydrate' | 'interaction' }
 interface MediaListExtras { available_genres?: string[]; total_runtime_minutes?: number }
 type MovieRowItem = MediaCard & { genres?: string[]; runtime?: number | null; last_watched_at?: string | null; user_rating?: number | null }
 
-const route = useRoute()
-
-const loading = ref(true)
-const rows = ref<MovieRowItem[]>([])
-const errorMsg = ref('')
-
-const appliedFilters = ref<MovieFilterState>({
-  search: '',
-  sort: 'watched_date',
-  direction: 'desc',
-  mediaType: 'movie',
-  statuses: [],
-  genres: [],
-  missingRating: false,
-})
-
 const availableGenres = ref<string[]>([])
 
-const count = ref(0)
-const totalRuntimeMinutes = ref(0)
-const currentPage = useQueryPageSync(route)
-const lastLoadedCount = ref(0)
-const filterBarRef = ref<{ clearAll: () => void } | null>(null)
-const hydrated = ref(false)
-
-function onFilterBarChange(payload: FilterChange) {
-  const next = payload.filters
-
-  const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
-  appliedFilters.value = next
-  hydrated.value = true
-
-  if (didChange && payload.source === 'interaction') {
-    currentPage.value = 1
-  }
-}
-
-function buildParams(): QueryParams {
-  const filterState = appliedFilters.value
-  return {
-    page: currentPage.value,
+const {
+  loading, rows, errorMsg, count, totalRuntimeMinutes, currentPage, lastLoadedCount,
+  filterBarRef, onFilterBarChange, load: loadMyMovies, onRowError, resetFilters,
+} = usePagedFilteredList<MovieRowItem, MovieFilterState>({
+  fetcher: (params, request) => trackingAPI.getMyMovies(params, request),
+  initialFilters: {
+    search: '',
+    sort: 'watched_date',
+    direction: 'desc',
+    mediaType: 'movie',
+    statuses: [],
+    genres: [],
+    missingRating: false,
+  },
+  toParams: (filterState, page): QueryParams => ({
+    page,
     sort: filterState.sort,
     direction: filterState.direction,
     ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
@@ -132,59 +104,10 @@ function buildParams(): QueryParams {
     ...(filterState.statuses.length ? { status: filterState.statuses } : {}),
     ...(filterState.missingRating ? { missing_rating: true } : {}),
     ...(filterState.genres.length ? { genres: filterState.genres } : {}),
-  }
-}
-
-const latestRequest = useLatestRequest()
-
-async function loadMyMovies() {
-  const signal = latestRequest.next()
-  loading.value = true
-  errorMsg.value = ''
-  try {
-    const data = await trackingAPI.getMyMovies(buildParams(), { signal })
-    const paged = normalizePagedResponse<MovieRowItem>(data)
-    rows.value = paged.items
-    const extras = data as typeof data & MediaListExtras
-    availableGenres.value = extras.available_genres ?? []
-    count.value = paged.count
-    lastLoadedCount.value = paged.loadedCount
-    totalRuntimeMinutes.value = Number.isFinite(extras.total_runtime_minutes) ? extras.total_runtime_minutes ?? 0 : 0
-  } catch (error) {
-    if (isAbortError(error)) return
-    const recoveryPage = invalidPageRecovery(error, currentPage.value)
-    if (recoveryPage !== null) {
-      currentPage.value = recoveryPage
-      return
-    }
-    rows.value = []
-    count.value = 0
-    totalRuntimeMinutes.value = 0
-    lastLoadedCount.value = 0
-    errorMsg.value = getApiErrorMessage(error, 'Could not load My Movies.')
-  } finally {
-    if (!signal.aborted) loading.value = false
-  }
-}
-
-function onRowError(message: string) {
-  errorMsg.value = message
-}
-
-function resetFilters() {
-  filterBarRef.value?.clearAll()
-}
-
-onMounted(() => {
-  if (!hydrated.value) hydrated.value = true
-})
-
-watch(
-  [appliedFilters, currentPage, hydrated],
-  async () => {
-    if (!hydrated.value) return
-    await loadMyMovies()
+  }),
+  loadErrorMessage: 'Could not load My Movies.',
+  onExtras: (data) => {
+    availableGenres.value = (data as typeof data & MediaListExtras).available_genres ?? []
   },
-  { deep: true, immediate: true }
-)
+})
 </script>

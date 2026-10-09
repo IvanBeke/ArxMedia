@@ -66,74 +66,46 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref } from 'vue'
 import { trackingAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import CountRuntimeBadge from '@/components/CountRuntimeBadge.vue'
-import { getApiErrorMessage } from '@/utils/errors'
-import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
-import { useQueryPageSync } from '@/composables/useQueryPageSync'
-import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
 import PaginationControls from '@/components/PaginationControls.vue'
 import ProgressRow from '@/components/ProgressRow.vue'
+import { usePagedFilteredList } from '@/composables/usePagedFilteredList'
 import type { QueryParams, ShowProgressItem } from '@/types/api'
 
 interface ShowFilterState {
   search: string; sort: string; direction: string; mediaType: string; statuses: string[]
   providerStatuses: string[]; genres: string[]; hasUpcoming: boolean; newOnly: boolean
-   missingRating: boolean; hasNextEpisode: boolean; inWatchlist: boolean
+  missingRating: boolean; hasNextEpisode: boolean; inWatchlist: boolean
 }
-interface FilterChange { filters: ShowFilterState; source: 'hydrate' | 'interaction' }
 interface MediaListExtras { available_genres?: string[]; available_provider_statuses?: string[]; total_runtime_minutes?: number }
-
-const route = useRoute()
-
-const loading = ref(true)
-const rows = ref<ShowProgressItem[]>([])
-const errorMsg = ref('')
-
-const appliedFilters = ref<ShowFilterState>({
-  search: '',
-   sort: 'last_watched',
-   direction: 'desc',
-  mediaType: 'tv',
-  statuses: [],
-  providerStatuses: [],
-  genres: [],
-  hasUpcoming: false,
-  newOnly: false,
-  missingRating: false,
-  hasNextEpisode: false,
-  inWatchlist: false,
-})
 
 const availableGenres = ref<string[]>([])
 const availableProviderStatuses = ref<string[]>([])
 
-const count = ref(0)
-const totalRuntimeMinutes = ref(0)
-const currentPage = useQueryPageSync(route)
-const lastLoadedCount = ref(0)
-const filterBarRef = ref<{ clearAll: () => void } | null>(null)
-const hydrated = ref(false)
-
-function onFilterBarChange(payload: FilterChange) {
-  const next = payload.filters
-
-  const didChange = JSON.stringify(appliedFilters.value) !== JSON.stringify(next)
-  appliedFilters.value = next
-  hydrated.value = true
-
-  if (didChange && payload.source === 'interaction') {
-    currentPage.value = 1
-  }
-}
-
-function buildParams(): QueryParams {
-  const filterState = appliedFilters.value
-  return {
-    page: currentPage.value,
+const {
+  loading, rows, errorMsg, count, totalRuntimeMinutes, currentPage, lastLoadedCount,
+  filterBarRef, onFilterBarChange, load: loadMyShows, onRowError, resetFilters,
+} = usePagedFilteredList<ShowProgressItem, ShowFilterState>({
+  fetcher: (params, request) => trackingAPI.getMyShows(params, request),
+  initialFilters: {
+    search: '',
+    sort: 'last_watched',
+    direction: 'desc',
+    mediaType: 'tv',
+    statuses: [],
+    providerStatuses: [],
+    genres: [],
+    hasUpcoming: false,
+    newOnly: false,
+    missingRating: false,
+    hasNextEpisode: false,
+    inWatchlist: false,
+  },
+  toParams: (filterState, page): QueryParams => ({
+    page,
     sort: filterState.sort,
     direction: filterState.direction,
     ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
@@ -145,60 +117,12 @@ function buildParams(): QueryParams {
     ...(filterState.missingRating ? { missing_rating: true } : {}),
     ...(filterState.hasNextEpisode ? { has_next_episode: true } : {}),
     ...(filterState.genres.length ? { genres: filterState.genres } : {}),
-  }
-}
-
-const latestRequest = useLatestRequest()
-
-async function loadMyShows() {
-  const signal = latestRequest.next()
-  loading.value = true
-  errorMsg.value = ''
-  try {
-    const data = await trackingAPI.getMyShows(buildParams(), { signal })
-    const paged = normalizePagedResponse<ShowProgressItem>(data)
-    rows.value = paged.items
+  }),
+  loadErrorMessage: 'Could not load My Shows.',
+  onExtras: (data) => {
     const extras = data as typeof data & MediaListExtras
     availableGenres.value = extras.available_genres ?? []
     availableProviderStatuses.value = extras.available_provider_statuses ?? []
-    count.value = paged.count
-    lastLoadedCount.value = paged.loadedCount
-    totalRuntimeMinutes.value = Number.isFinite(extras.total_runtime_minutes) ? extras.total_runtime_minutes ?? 0 : 0
-  } catch (error) {
-    if (isAbortError(error)) return
-    const recoveryPage = invalidPageRecovery(error, currentPage.value)
-    if (recoveryPage !== null) {
-      currentPage.value = recoveryPage
-      return
-    }
-    rows.value = []
-    count.value = 0
-    totalRuntimeMinutes.value = 0
-    lastLoadedCount.value = 0
-    errorMsg.value = getApiErrorMessage(error, 'Could not load My Shows.')
-  } finally {
-    if (!signal.aborted) loading.value = false
-  }
-}
-
-function onRowError(message: string) {
-  errorMsg.value = message
-}
-
-function resetFilters() {
-  filterBarRef.value?.clearAll()
-}
-
-onMounted(() => {
-  if (!hydrated.value) hydrated.value = true
-})
-
-watch(
-  [appliedFilters, currentPage, hydrated],
-  async () => {
-    if (!hydrated.value) return
-    await loadMyShows()
   },
-  { deep: true, immediate: true }
-)
+})
 </script>
