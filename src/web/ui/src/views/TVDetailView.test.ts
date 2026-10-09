@@ -102,6 +102,7 @@ async function mountView(authenticated: boolean) {
     history: createMemoryHistory(),
     routes: [
       { path: '/tv/:id', name: 'tv-detail', component: TVDetailView },
+      { path: '/tv/:id/season/:seasonNumber', name: 'season-detail', component: { template: '<div />' } },
       { path: '/history', name: 'history', component: { template: '<div />' } },
     ],
   })
@@ -136,7 +137,7 @@ describe('TVDetailView hero progress', () => {
     getTV.mockResolvedValue(showPayload())
     getTVCredits.mockResolvedValue({ cast: [], crew: [], guest_stars: [] })
     getTVRecommendations.mockResolvedValue({ results: [] })
-    getRatings.mockResolvedValue([])
+    getRatings.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
   })
 
   it('shows the watched fraction and progress bar for authenticated users', async () => {

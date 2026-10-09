@@ -122,7 +122,7 @@ describe('MovieDetailView history tab', () => {
     getMovieRecommendations.mockResolvedValue({ results: [] })
     getCollection.mockResolvedValue(null)
     getHistory.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
-    getRatings.mockResolvedValue([])
+    getRatings.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
   })
 
   it('renders a movie-scoped history tab', async () => {

@@ -65,7 +65,7 @@ function seasonPayload(watchedCount: number, total = 50) {
     vote_average: 8.4,
     vote_count: 0,
     air_date: '2021-06-21',
-    credits: { cast: [{ credit_id: 'c1', name: 'Season Star', character: 'Lead', profile_path: null }], crew: [], guest_stars: [] },
+    credits: { cast: [{ id: 101, credit_id: 'c1', name: 'Season Star', character: 'Lead', profile_path: null }], crew: [], guest_stars: [] },
     episodes: Array.from({ length: total }, (_, index) => ({
       episode_number: index + 1,
       name: `Episode ${index + 1}`,
@@ -100,6 +100,7 @@ async function mountView(tab: string | null = 'episodes') {
       { path: '/tv/:id/season/:seasonNumber', name: 'season-detail', component: SeasonDetailView },
       { path: '/tv/:id', name: 'tv-detail', component: { template: '<div />' } },
       { path: '/history', name: 'history', component: { template: '<div />' } },
+      { path: '/people/:id', name: 'person-detail', component: { template: '<div />' } },
     ],
   })
   await router.push(tab ? `/tv/${TMDB_ID}/season/${SEASON_NUMBER}?tab=${tab}` : `/tv/${TMDB_ID}/season/${SEASON_NUMBER}`)
@@ -268,7 +269,7 @@ describe('SeasonDetailView progress', () => {
   it('renders season cast in the cast tab with a link to full show cast', async () => {
     getSeason.mockResolvedValue(seasonPayload(12))
     getSeasonCredits.mockResolvedValue({
-      cast: [{ credit_id: 'a1', name: 'Season Regular', character: 'Lead', profile_path: null, total_episode_count: 8 }],
+      cast: [{ id: 102, credit_id: 'a1', name: 'Season Regular', character: 'Lead', profile_path: null, total_episode_count: 8 }],
       crew: [],
       guest_stars: [],
     })

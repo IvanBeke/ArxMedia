@@ -51,7 +51,7 @@ describe('detail tab scroll', () => {
     })
     getTVCredits.mockResolvedValue({ cast: [], crew: [], guest_stars: [] })
     getTVRecommendations.mockResolvedValue({ results: [] })
-    getRatings.mockResolvedValue([])
+    getRatings.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
     getWatchedEpisodes.mockResolvedValue({ episodes: [] })
     getHistory.mockResolvedValue({ results: [], count: 0, next: null, previous: null })
   })
@@ -59,7 +59,10 @@ describe('detail tab scroll', () => {
   it('switching tabs triggers only tab-only navigations (scroll preserved)', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: '/tv/:id', name: 'tv-detail', component: TVDetailView }],
+      routes: [
+        { path: '/tv/:id', name: 'tv-detail', component: TVDetailView },
+        { path: '/tv/:id/season/:seasonNumber', name: 'season-detail', component: { template: '<div />' } },
+      ],
       scrollBehavior: (to, from, saved) => resolveScrollPosition(to, from, saved),
     })
     await router.push('/tv/1399')
@@ -93,7 +96,10 @@ describe('detail tab scroll under late data', () => {
     getTVRecommendations.mockReturnValue(new Promise((resolve) => { resolveRecs = resolve }))
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: '/tv/:id', name: 'tv-detail', component: TVDetailView }],
+      routes: [
+        { path: '/tv/:id', name: 'tv-detail', component: TVDetailView },
+        { path: '/tv/:id/season/:seasonNumber', name: 'season-detail', component: { template: '<div />' } },
+      ],
       scrollBehavior: (to, from, saved) => resolveScrollPosition(to, from, saved),
     })
     await router.push('/tv/1399?tab=more')

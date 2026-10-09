@@ -90,7 +90,7 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.ts'],
     pool: 'forks',
     isolate: true,
-    deps: { optimizer: { web: { include: ['vue', 'vue-router', 'pinia'] } } },
+    deps: { optimizer: { client: { include: ['vue', 'vue-router', 'pinia'] } } },
     watch: false,
   },
   server: {
