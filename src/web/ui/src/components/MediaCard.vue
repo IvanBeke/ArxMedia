@@ -236,7 +236,7 @@ const showAnyAction = computed(() => {
     || showListRemoveActionButton.value
     || showListAddActionButton.value
 })
-const watchlistAriaLabel = computed(() => getWatchlistAriaLabel(resolvedMediaType.value, isInWatchlist.value))
+const watchlistAriaLabel = computed(() => getWatchlistAriaLabel(resolvedMediaType.value, isInWatchlist.value, props.item?.user_status?.status_changed_at ?? null))
 const watchedAriaLabel = computed(() => t('tracking_mark_as_watched'))
 const removeWatchedAriaLabel = computed(() => 'Remove from watched history')
 const removeHistoryConfirmText = computed(() => {

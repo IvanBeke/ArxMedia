@@ -116,7 +116,7 @@
               </div>
             </template>
           </WatchSplitButton>
-          <ActionGhostButton v-if="showStatus !== WATCH_ENTRY_STATUS.WATCHING && !hasWatchedEpisodes" :active="showStatus === 'watchlist'" @click="handleWatchlistAction">
+          <ActionGhostButton v-if="showStatus !== WATCH_ENTRY_STATUS.WATCHING && !hasWatchedEpisodes" :active="showStatus === 'watchlist'" :title="watchlistTitle" @click="handleWatchlistAction">
             <template #icon>
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
@@ -379,6 +379,7 @@ const loadError = ref('')
 const loadingSeasons = ref(false)
 const loadingCredits = ref(false)
 const showStatus = ref<ShowStatus>(WATCH_ENTRY_STATUS.NONE)
+const watchlistTitle = computed(() => getWatchlistAriaLabel(MEDIA_TYPE.TV, showStatus.value === 'watchlist', show.value?.user_status?.status_changed_at ?? null))
 const metadataFlash = useFlashMessages()
 const {
   successMsg: metadataSuccessMsg,
@@ -429,6 +430,7 @@ const hasWatchedEpisodes = computed(() => watchedEps.value.size > 0)
 const {
   handleQuickAction: runQuickAction,
   handleRemoveWatched: runRemoveWatched,
+  getWatchlistAriaLabel,
 } = useMediaCardQuickActions({ onError: showError })
 const {
   showDatePicker,

@@ -1,4 +1,4 @@
-import { useI18n } from '@/i18n'
+import { formatDateByLocale, useI18n } from '@/i18n'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { useWatchlistQuickActions } from '@/composables/useWatchlistQuickActions'
 import { useWatchedQuickActions } from '@/composables/useWatchedQuickActions'
@@ -62,11 +62,13 @@ export function useMediaCardQuickActions(options: MediaCardQuickActionOptions = 
     return status === WATCH_ENTRY_STATUS.WATCHED || status === WATCH_ENTRY_STATUS.WATCHING
   }
 
-  function getWatchlistAriaLabel(mediaType: MediaType | null, inWatchlist: boolean) {
-    if (mediaType === MEDIA_TYPE.TV) {
-      return inWatchlist ? t('watchlist_remove_show') : t('watchlist_add_show')
-    }
-    return inWatchlist ? t('watchlist_remove_movie') : t('watchlist_add_movie')
+  function getWatchlistAriaLabel(mediaType: MediaType | null, inWatchlist: boolean, addedAt: string | null = null) {
+    const base = mediaType === MEDIA_TYPE.TV
+      ? (inWatchlist ? t('watchlist_remove_show') : t('watchlist_add_show'))
+      : (inWatchlist ? t('watchlist_remove_movie') : t('watchlist_add_movie'))
+    if (!inWatchlist || !addedAt) return base
+    const formatted = formatDateByLocale(addedAt)
+    return formatted ? `${base} · ${t('watchlist_added_date', { date: formatted })}` : base
   }
 
   function patchUserStatus(item: MediaItem, patch: Partial<MediaUserStatus>) {
