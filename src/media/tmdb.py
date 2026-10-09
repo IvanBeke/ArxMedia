@@ -227,12 +227,6 @@ class TMDBService:
     def get_popular_tv(self, page=1):
         return self._get('/tv/popular', {'page': page})
 
-    def get_top_rated_movies(self, page=1):
-        return self._get('/movie/top_rated', {'page': page})
-
-    def get_top_rated_tv(self, page=1):
-        return self._get('/tv/top_rated', {'page': page})
-
     def get_movie_changes(self, start_date: str, end_date: str, page: int = 1, *, use_cache: bool = False):
         return self._get(
             '/movie/changes',
@@ -247,17 +241,12 @@ class TMDBService:
             use_cache=use_cache,
         )
 
-    def fetch_seasons(self, tmdb_id, season_numbers, *, use_cache=True):
-        """Fetch season payloads (with episodes) keyed by season number.
+    def _fetch_seasons_with(self, tmdb_id, season_numbers, use_cache, extra_calls):
+        """Run season batches alongside ``extra_calls``; return seasons and the extra results.
 
         Seasons are bundled APPEND_LIMIT per request and batches run in
         parallel; seasons a batch could not deliver are fetched one by one.
         """
-        seasons, _ = self._fetch_seasons_with(tmdb_id, season_numbers, use_cache, [])
-        return seasons
-
-    def _fetch_seasons_with(self, tmdb_id, season_numbers, use_cache, extra_calls):
-        """Run season batches alongside ``extra_calls``; return seasons and the extra results."""
         batches = [
             season_numbers[start:start + self.APPEND_LIMIT]
             for start in range(0, len(season_numbers), self.APPEND_LIMIT)

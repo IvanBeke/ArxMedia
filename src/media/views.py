@@ -313,8 +313,6 @@ def popular(request):
             resolved_media_type = MediaType.TV
         else:
             data = tmdb.get_popular_movies(page)
-
-        if media_type != 'tv':
             resolved_media_type = MediaType.MOVIE
 
         for result in data.get('results', []):

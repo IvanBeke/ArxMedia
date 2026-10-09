@@ -139,12 +139,6 @@ class EpisodeQuerySet(models.QuerySet):
             now, include_specials=include_specials, include_today=include_today
         ))
 
-    def known_runtime(self):
-        return self.filter(Episode.known_runtime_q())
-
-    def unknown_runtime(self):
-        return self.filter(Episode.unknown_runtime_q())
-
 
 class Episode(models.Model):
     season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name='episodes')
@@ -217,14 +211,6 @@ class Episode(models.Model):
     @classmethod
     def specials_q(cls):
         return Q(season__season_number=0)
-
-    @classmethod
-    def known_runtime_q(cls):
-        return Q(runtime__isnull=False)
-
-    @classmethod
-    def unknown_runtime_q(cls):
-        return Q(runtime__isnull=True)
 
     @classmethod
     def upcoming_q(cls, now=None, *, include_specials=False, include_today=False):

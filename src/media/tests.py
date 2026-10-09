@@ -1941,7 +1941,7 @@ class TMDBFetchTests(TestCase):
             return {append: {'name': append, 'episodes': []} for append in appends}
 
         with patch.object(tmdb, '_get', side_effect=fake_get):
-            seasons = tmdb.fetch_seasons(1399, list(range(1, 46)))
+            seasons, _ = tmdb._fetch_seasons_with(1399, list(range(1, 46)), True, [])
 
         self.assertEqual(sorted(len(appends) for appends in requested), [5, 20, 20])
         self.assertEqual(sorted(seasons), list(range(1, 46)))
@@ -1952,7 +1952,7 @@ class TMDBFetchTests(TestCase):
             'season/1': {'season_number': 1, 'name': 'Season 1', 'episodes': []},
         }
         with patch.object(tmdb, '_get', return_value=response):
-            seasons = tmdb.fetch_seasons(118357, [1])
+            seasons, _ = tmdb._fetch_seasons_with(118357, [1], True, [])
 
         self.assertEqual(seasons[1]['id'], 180379)
         self.assertEqual(seasons[1]['episode_count'], 10)
@@ -1977,7 +1977,7 @@ class TMDBFetchTests(TestCase):
             return {'season/1': {'name': 'Season 1', 'episodes': []}}
 
         with patch.object(tmdb, '_get', side_effect=fake_get) as mock_get:
-            seasons = tmdb.fetch_seasons(1, [1, 2])
+            seasons, _ = tmdb._fetch_seasons_with(1, [1, 2], True, [])
 
         self.assertEqual(sorted(seasons), [1, 2])
         self.assertEqual(mock_get.call_count, 2)

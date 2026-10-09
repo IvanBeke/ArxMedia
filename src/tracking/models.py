@@ -202,26 +202,6 @@ class UserMediaStatusManager(models.Manager.from_queryset(UserMediaStatusQuerySe
         )
         return obj
 
-    def clear_planning(self, user, media_type: str, tmdb_id: int):
-        self.filter(
-            user=user,
-            media_type=media_type,
-            tmdb_id=tmdb_id,
-            status=TvShowStatus.PLAN_TO_WATCH,
-        ).delete()
-
-    def set_status(self, user, media_type: str, tmdb_id: int, status: str):
-        obj, _ = self.update_or_create(
-            user=user,
-            media_type=media_type,
-            tmdb_id=tmdb_id,
-            defaults={
-                'status': status,
-                'status_changed_at': timezone.now(),
-            },
-        )
-        return obj
-
 
 class Review(models.Model):
     user = models.ForeignKey(
