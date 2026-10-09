@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -51,11 +51,16 @@ function pendingJob(overrides: Record<string, unknown> = {}) {
 
 describe('DataTransferView', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     deleteExportFile.mockReset()
     exportData.mockReset()
     getJobStatus.mockReset()
     importData.mockReset()
     listJobs.mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('opens completed import details with report counters and warnings', async () => {
@@ -293,6 +298,28 @@ describe('DataTransferView', () => {
     await flushPromises()
 
     expect(exportData).toHaveBeenCalledWith('zip')
+    wrapper.unmount()
+  })
+
+  it('keeps polling through a failed status check and tells the user', async () => {
+    const processing = pendingJob({ id: 7, job_type: 'export', status: DATA_TRANSFER_STATUS.PROCESSING })
+    const done = { ...processing, status: DATA_TRANSFER_STATUS.DONE }
+    exportData.mockResolvedValue(processing)
+    getJobStatus.mockRejectedValueOnce(new Error('network down')).mockResolvedValue(done)
+    listJobs.mockResolvedValue({ count: 1, next: null, previous: null, results: [done] })
+
+    const wrapper = mountView([])
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text() === 'Create export')?.trigger('click')
+    await flushPromises()
+
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(wrapper.text()).toContain('Lost connection to the server. Retrying…')
+    expect(getJobStatus).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(getJobStatus).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('Lost connection to the server. Retrying…')
     wrapper.unmount()
   })
 

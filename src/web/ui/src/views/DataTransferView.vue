@@ -122,6 +122,7 @@
 
       <section class="card p-5">
         <h2 class="text-primary font-semibold text-xl mb-3">Recent Jobs</h2>
+        <p v-if="pollError" role="alert" class="text-xs text-amber-400 mb-2">{{ pollError }}</p>
         <div v-if="recentJobs.length" class="space-y-3">
           <div
             v-for="recentJob in recentJobs"
@@ -633,12 +634,15 @@ const confirmErrorMessage = computed(() => {
 })
 
 let timer: ReturnType<typeof setInterval> | null = null
+const pollError = ref('')
 
 async function pollJob(jobId: number) {
   if (timer !== null) clearInterval(timer)
+  pollError.value = ''
   timer = setInterval(async () => {
     try {
       const status = await trackingAPI.getJobStatus(jobId)
+      pollError.value = ''
       updateJob(status)
       if (
         status?.status === DATA_TRANSFER_STATUS.AWAITING_CONFIRMATION
@@ -651,8 +655,9 @@ async function pollJob(jobId: number) {
         await loadJobs()
       }
     } catch {
-      if (timer !== null) clearInterval(timer)
-      timer = null
+      // Keep polling through transient network failures so a blip cannot
+      // strand a job in "processing" forever; the message tells the user.
+      pollError.value = 'Lost connection to the server. Retrying…'
     }
   }, 1500)
 }

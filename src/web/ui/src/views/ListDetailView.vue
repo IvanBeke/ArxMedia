@@ -422,6 +422,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref, onMounted, onBeforeUnmount, computed, watch, type ComponentPublicInstance } from 'vue'
+import { useCleanupOnUnmount } from '@/composables/useCleanupOnUnmount'
 import { useRoute, useRouter } from 'vue-router'
 import { authAPI, trackingAPI, mediaAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
@@ -476,6 +477,7 @@ const addDialog = ref<HTMLDialogElement | null>(null)
 const deleteListDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const editNameInput = ref<HTMLInputElement | null>(null)
 let collaboratorDebounce: ReturnType<typeof setTimeout> | null = null
+useCleanupOnUnmount(() => { if (collaboratorDebounce) clearTimeout(collaboratorDebounce) })
 const appliedFilters = ref<ListFilters>({
   search: '',
   sort: 'custom_order',
@@ -560,10 +562,14 @@ function listId(): string | number {
   return Array.isArray(id) ? id[0] || '' : id || ''
 }
 
+let feedbackTimer: ReturnType<typeof setTimeout> | null = null
+useCleanupOnUnmount(() => { if (feedbackTimer) clearTimeout(feedbackTimer) })
+
 function showFeedback(message: string, kind: 'success' | 'error' = 'success') {
   feedbackKind.value = kind
   feedbackMsg.value = message
-  setTimeout(() => {
+  if (feedbackTimer) clearTimeout(feedbackTimer)
+  feedbackTimer = setTimeout(() => {
     if (feedbackMsg.value === message) {
       feedbackMsg.value = ''
     }

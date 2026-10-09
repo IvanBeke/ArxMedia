@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { useCleanupOnUnmount } from '@/composables/useCleanupOnUnmount'
 
 const DEFAULT_SUCCESS_DURATION_MS = 2500
 const DEFAULT_ERROR_DURATION_MS = 3500
@@ -10,6 +11,11 @@ export function useFlashMessages({ successDurationMs = DEFAULT_SUCCESS_DURATION_
   const errorMsg = ref('')
   let successTimer: ReturnType<typeof setTimeout> | undefined
   let errorTimer: ReturnType<typeof setTimeout> | undefined
+
+  useCleanupOnUnmount(() => {
+    clearTimeout(successTimer)
+    clearTimeout(errorTimer)
+  })
 
   function showSuccess(msg: string) {
     errorMsg.value = ''

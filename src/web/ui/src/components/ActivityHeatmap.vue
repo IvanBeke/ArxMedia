@@ -83,6 +83,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useCleanupOnUnmount } from '@/composables/useCleanupOnUnmount'
 import { authAPI } from '@/api'
 import { formatDateByLocale, useI18n } from '@/i18n'
 import { formatTemporalDate } from '@/utils/temporal'
@@ -223,6 +224,8 @@ const popupStyle = computed(() => ({
     ? `translate(-50%, ${POPUP_GAP}px)`
     : `translate(-50%, calc(-100% - ${POPUP_GAP}px))`,
 }))
+
+useCleanupOnUnmount(() => cancelHide())
 
 function cancelHide() {
   if (hideTimer !== null) {

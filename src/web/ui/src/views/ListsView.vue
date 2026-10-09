@@ -187,6 +187,7 @@
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
+import { useCleanupOnUnmount } from '@/composables/useCleanupOnUnmount'
 import { authAPI, trackingAPI } from '@/api'
 import LoadError from '@/components/LoadError.vue'
 import { LIST_PRIVACY } from '@/constants/tracking'
@@ -208,6 +209,7 @@ const collaboratorResults = ref<UserCard[]>([])
 const selectedCollaborators = ref<UserCard[]>([])
 const searchingUsers = ref(false)
 let searchDebounce: ReturnType<typeof setTimeout> | null = null
+useCleanupOnUnmount(() => { if (searchDebounce) clearTimeout(searchDebounce) })
 const newList = ref({
   name: '',
   description: '',

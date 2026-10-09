@@ -85,6 +85,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useCleanupOnUnmount } from '@/composables/useCleanupOnUnmount'
 import { onClickOutside } from '@vueuse/core'
 import { Search, X } from '@lucide/vue'
 import { authAPI, mediaAPI } from '@/api'
@@ -131,6 +132,7 @@ const panelOpen = ref<boolean>(false)
 const loadingPreview = ref<boolean>(false)
 const previewItems = ref<SearchPreviewItem[]>([])
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
+useCleanupOnUnmount(() => clearTimeout(debounceTimer))
 let requestId = 0
 
 const scopeOptions: { label: string; value: SearchScope }[] = [
