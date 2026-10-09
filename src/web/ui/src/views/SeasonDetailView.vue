@@ -160,6 +160,7 @@ import DetailHero from '@/components/DetailHero.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
+import { useDetailTabs } from '@/composables/useDetailTabs'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
 import { getApiErrorMessage } from '@/utils/errors'
@@ -209,15 +210,6 @@ const {
 // adjusted locally as episodes are marked/unmarked.
 const watchedEpisodesCount = ref(0)
 
-const VALID_TABS = ['overview', 'episodes', 'cast', 'history'] as const
-type SeasonTab = (typeof VALID_TABS)[number]
-
-function initialTab(): SeasonTab {
-  const raw = String(route.query.tab || 'overview')
-  return (VALID_TABS as readonly string[]).includes(raw) ? (raw as SeasonTab) : 'overview'
-}
-
-const activeTab = ref<SeasonTab>(initialTab())
 
 const seasonCredits = computed((): Credits | null => season.value?.credits ?? null)
 
@@ -229,27 +221,6 @@ const displayCast = computed(() => {
 const displayCrew = computed(() => {
   if (aggregateCredits.value?.crew?.length) return aggregateCredits.value.crew
   return seasonCredits.value?.crew ?? []
-})
-
-const visibleTabs = computed((): MediaTab[] => {
-  const tabs: MediaTab[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'episodes', label: 'Episodes', count: totalEpisodesCount.value || undefined },
-    { id: 'cast', label: 'Cast', count: displayCast.value.length || undefined },
-    { id: 'history', label: 'History' },
-  ]
-  if (!tabs.some((tab) => tab.id === activeTab.value)) {
-    activeTab.value = 'overview'
-  }
-  return tabs
-})
-
-function setTab(tab: SeasonTab) {
-  activeTab.value = tab
-}
-
-watch(activeTab, (tab) => {
-  router.replace({ query: { ...route.query, tab } })
 })
 
 const externalLinks = computed(() => seasonExternalLinks(
@@ -281,6 +252,13 @@ const seasonProgress = computed(() => {
 })
 
 const totalEpisodesCount = computed(() => season.value?.episodes?.length || 0)
+
+const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'episodes', 'cast', 'history'] as const, () => [
+  { id: 'overview', label: 'Overview' },
+  { id: 'episodes', label: 'Episodes', count: totalEpisodesCount.value || undefined },
+  { id: 'cast', label: 'Cast', count: displayCast.value.length || undefined },
+  { id: 'history', label: 'History' },
+])
 
 const seasonProgressFraction = computed(() => {
   return formatProgressFraction(watchedEpisodesCount.value, totalEpisodesCount.value)

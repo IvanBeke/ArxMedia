@@ -348,6 +348,7 @@ import { applyStatusChanged, type MediaStatusChangedPayload } from '@/utils/medi
 import { canRateByStatus, formatUpdatedAtLabel } from '@/utils/mediaStatus'
 import { showExternalLinks } from '@/utils/externalLinks'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
+import { useDetailTabs } from '@/composables/useDetailTabs'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
@@ -394,17 +395,7 @@ const removeHistoryDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const removingHistory = ref(false)
 const unwatchEpisodeDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
 
-const VALID_TABS = ['overview', 'seasons', 'cast', 'history', 'heatmap', 'more'] as const
-type ShowTab = (typeof VALID_TABS)[number]
-
-function initialTab(): ShowTab {
-  const raw = String(route.query.tab || 'overview')
-  return (VALID_TABS as readonly string[]).includes(raw) ? (raw as ShowTab) : 'overview'
-}
-
-const activeTab = ref<ShowTab>(initialTab())
-
-const visibleTabs = computed((): MediaTab[] => {
+const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'seasons', 'cast', 'history', 'heatmap', 'more'] as const, () => {
   const tabs: MediaTab[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'seasons', label: 'Seasons' },
@@ -415,18 +406,7 @@ const visibleTabs = computed((): MediaTab[] => {
   if (recommendations.value.length > 0 || loadingRecs.value) {
     tabs.push({ id: 'more', label: 'More like this' })
   }
-  if (!tabs.some((tab) => tab.id === activeTab.value)) {
-    activeTab.value = 'overview'
-  }
   return tabs
-})
-
-function setTab(tab: ShowTab) {
-  activeTab.value = tab
-}
-
-watch(activeTab, (tab) => {
-  router.replace({ query: { ...route.query, tab } })
 })
 
 const expandedSeason = ref<number | null>(null)

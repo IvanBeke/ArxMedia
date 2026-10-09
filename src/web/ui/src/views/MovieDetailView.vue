@@ -249,6 +249,7 @@ import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/consta
 import { formatDateByLocale, useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
+import { useDetailTabs } from '@/composables/useDetailTabs'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { tmdbImageUrl } from '@/utils/images'
 import { applyStatusChanged, type MediaStatusChangedPayload } from '@/utils/mediaStatusSync'
@@ -334,17 +335,7 @@ const topCrew = computed(() => {
     .slice(0, 6)
 })
 
-const VALID_TABS = ['overview', 'cast', 'collection', 'history', 'more'] as const
-type MovieTab = (typeof VALID_TABS)[number]
-
-function initialTab(): MovieTab {
-  const raw = String(route.query.tab || 'overview')
-  return (VALID_TABS as readonly string[]).includes(raw) ? (raw as MovieTab) : 'overview'
-}
-
-const activeTab = ref<MovieTab>(initialTab())
-
-const visibleTabs = computed((): MediaTab[] => {
+const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'cast', 'collection', 'history', 'more'] as const, () => {
   const tabs: MediaTab[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'cast', label: 'Cast', count: creditsData.value?.cast?.length },
@@ -353,33 +344,11 @@ const visibleTabs = computed((): MediaTab[] => {
   if (movie.value?.collection?.id) {
     tabs.push({ id: 'collection', label: 'Collection' })
   }
+  // "More like this" only while loading or when there are recommendations; hidden when empty or failed.
   if (recommendations.value.length > 0 || loadingRecs.value) {
     tabs.push({ id: 'more', label: 'More like this' })
-  } else if (!loadingRecs.value && !recsError.value && recommendations.value.length === 0) {
-    // hidden when empty — no tab
-  } else if (recsError.value) {
-    // hidden on error — notice shown in overview? keep hidden per plan
-  }
-  if (!tabs.some((tab) => tab.id === activeTab.value)) {
-    activeTab.value = 'overview'
   }
   return tabs
-})
-
-function setTab(tab: MovieTab) {
-  activeTab.value = tab
-}
-
-watch(activeTab, (tab) => {
-  router.replace({ query: { ...route.query, tab } })
-})
-
-watch(() => route.query.tab, (raw) => {
-  const value = String(raw || 'overview')
-  if ((VALID_TABS as readonly string[]).includes(value) && value !== activeTab.value) {
-    const allowed = visibleTabs.value.some((tab) => tab.id === value)
-    activeTab.value = (allowed ? value : 'overview') as MovieTab
-  }
 })
 
 function releaseYear(value: string | null | undefined) {
