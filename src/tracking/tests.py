@@ -827,6 +827,32 @@ class UniqueEpisodeWatchMigrationTests(TransactionTestCase):
             )
 
 
+class StatusAnnotationTests(BaseTestCase):
+    def test_movie_rating_reported_only_with_non_planning_status(self):
+        from tracking.status_annotations import annotate_media_user_status
+
+        UserMediaStatus.objects.set_planning(self.user, 'movie', 800)
+        Rating.objects.create(user=self.user, media_type='movie', tmdb_id=800, score=7)
+
+        planned = annotate_media_user_status(self.user, [{'media_type': 'movie', 'tmdb_id': 800}])
+        self.assertEqual(planned[('movie', 800)]['status'], 'plan_to_watch')
+        self.assertIsNone(planned[('movie', 800)]['rating'])
+
+        UserMediaStatus.objects.filter(user=self.user, media_type='movie', tmdb_id=800).update(status='dropped')
+        dropped = annotate_media_user_status(self.user, [{'media_type': 'movie', 'tmdb_id': 800}])
+        self.assertEqual(dropped[('movie', 800)]['rating'], 7)
+
+    def test_movie_rating_hidden_without_status_row(self):
+        from tracking.status_annotations import annotate_media_user_status
+
+        Rating.objects.create(user=self.user, media_type='movie', tmdb_id=801, score=6)
+
+        result = annotate_media_user_status(self.user, [{'media_type': 'movie', 'tmdb_id': 801}])
+
+        self.assertIsNone(result[('movie', 801)]['status'])
+        self.assertIsNone(result[('movie', 801)]['rating'])
+
+
 class RatingTests(BaseTestCase):
     def test_create_rating(self):
         WatchEntry.objects.create(

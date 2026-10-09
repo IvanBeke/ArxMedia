@@ -1158,7 +1158,8 @@ class MediaTests(TestCase):
         response = self.client.get('/api/media/movies/777/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['user_status']['status'], 'plan_to_watch')
-        self.assertEqual(response.data['user_status']['rating'], 7)
+        # Ratings stay hidden until the movie leaves the watchlist.
+        self.assertIsNone(response.data['user_status']['rating'])
 
     @patch('media.views.tmdb.sync_tv_show')
     @patch('media.views.tmdb.get_tv_details')

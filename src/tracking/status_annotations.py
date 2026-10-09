@@ -115,12 +115,15 @@ def annotate_media_user_status(user, media_items):
             watched_at = movie_watched_map.get(tmdb_id)
             status, status_changed_at = _resolve_movie_status(show_status, watched_at)
 
+            # Mirror the TV rule below: ratings are only reported for items
+            # with a status row that isn't plan_to_watch.
+            rated = show_status is not None and show_status['status'] != TvShowStatus.PLAN_TO_WATCH
             result[(media_type, tmdb_id)] = {
                 'status': status,
                 'status_changed_at': status_changed_at,
                 'watched_at': watched_at if status == TvShowStatus.WATCHED else None,
-                'rating': rating_data.get('rating'),
-                'rated_at': rating_data.get('rated_at'),
+                'rating': rating_data.get('rating') if rated else None,
+                'rated_at': rating_data.get('rated_at') if rated else None,
             }
             continue
 
