@@ -3,7 +3,7 @@
     <WatchedDateTimePicker
       :open="showDatePicker"
       :initial-value="pickerInitialValue"
-      title="When did you watch this season?"
+      :title="t('picker_when_season')"
       @confirm="handleDatePickerConfirm"
       @cancel="handleDatePickerCancel"
     />
@@ -83,36 +83,36 @@
             <div class="grid md:grid-cols-3 gap-8">
               <div class="md:col-span-2 space-y-6">
                 <div>
-                  <h3 class="text-primary font-medium mb-3">Overview</h3>
+                  <h3 class="text-primary font-medium mb-3">{{ t('tabs_overview') }}</h3>
                   <p v-if="season.overview" class="text-secondary leading-relaxed max-w-2xl">{{ season.overview }}</p>
-                  <p v-else class="text-muted text-sm">No season overview available.</p>
+                  <p v-else class="text-muted text-sm">{{ t('season_no_overview') }}</p>
                 </div>
               </div>
               <div class="space-y-4">
                 <div class="card p-4">
-                  <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Details</p>
+                  <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">{{ t('season_details') }}</p>
                   <dl class="text-sm space-y-1.5">
-                    <div class="flex justify-between gap-2"><dt class="text-muted">Show</dt><dd class="text-secondary truncate max-w-[60%]">{{ showName }}</dd></div>
-                    <div class="flex justify-between gap-2"><dt class="text-muted">Season</dt><dd class="text-secondary">{{ seasonNumber }}</dd></div>
-                    <div class="flex justify-between gap-2"><dt class="text-muted">Episodes</dt><dd class="text-secondary">{{ totalEpisodesCount }}</dd></div>
-                    <div class="flex justify-between gap-2"><dt class="text-muted">Aired</dt><dd class="text-secondary">{{ seasonAirYear || '—' }}</dd></div>
-                    <div class="flex justify-between gap-2"><dt class="text-muted">Watched</dt><dd class="text-secondary">{{ seasonProgressFraction }}</dd></div>
+                    <div class="flex justify-between gap-2"><dt class="text-muted">{{ t('season_show') }}</dt><dd class="text-secondary truncate max-w-[60%]">{{ showName }}</dd></div>
+                    <div class="flex justify-between gap-2"><dt class="text-muted">{{ t('season_season') }}</dt><dd class="text-secondary">{{ seasonNumber }}</dd></div>
+                    <div class="flex justify-between gap-2"><dt class="text-muted">{{ t('tabs_episodes') }}</dt><dd class="text-secondary">{{ totalEpisodesCount }}</dd></div>
+                    <div class="flex justify-between gap-2"><dt class="text-muted">{{ t('season_aired') }}</dt><dd class="text-secondary">{{ seasonAirYear || '—' }}</dd></div>
+                    <div class="flex justify-between gap-2"><dt class="text-muted">{{ t('season_watched') }}</dt><dd class="text-secondary">{{ seasonProgressFraction }}</dd></div>
                   </dl>
                 </div>
               </div>
             </div>
 
             <div class="mt-8">
-              <h3 class="text-primary font-medium mb-3">Top cast</h3>
+              <h3 class="text-primary font-medium mb-3">{{ t('season_top_cast') }}</h3>
               <CastGrid :people="displayCast.slice(0, 8)" />
               <button v-if="displayCast.length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
-                View all cast →
+                {{ t('season_view_all_cast') }}
               </button>
             </div>
           </template>
 
           <template v-else-if="activeTab === 'episodes'">
-            <h3 class="text-primary font-medium mb-3">Episodes</h3>
+            <h3 class="text-primary font-medium mb-3">{{ t('tabs_episodes') }}</h3>
             <SeasonEpisodeList
               v-if="season?.episodes?.length"
               :episodes="season.episodes"
@@ -124,7 +124,7 @@
               @unwatch="openUnwatchConfirm"
             />
             <div v-else-if="!loading" class="text-center py-16 text-muted">
-              <p>No episodes found for this season.</p>
+              <p>{{ t('season_no_episodes') }}</p>
             </div>
           </template>
 
@@ -160,6 +160,7 @@ import DetailHero from '@/components/DetailHero.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
+import { useI18n } from '@/i18n'
 import { useDetailTabs } from '@/composables/useDetailTabs'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
@@ -174,6 +175,7 @@ import type { WatchedAtOption } from '@/utils/watchOptions'
 type EpisodeTarget = { episodeNumber: number }
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10))
 const seasonNumber = computed(() => Number.parseInt(String(route.params.seasonNumber), 10))
@@ -254,10 +256,10 @@ const seasonProgress = computed(() => {
 const totalEpisodesCount = computed(() => season.value?.episodes?.length || 0)
 
 const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'episodes', 'cast', 'history'] as const, () => [
-  { id: 'overview', label: 'Overview' },
-  { id: 'episodes', label: 'Episodes', count: totalEpisodesCount.value || undefined },
-  { id: 'cast', label: 'Cast', count: displayCast.value.length || undefined },
-  { id: 'history', label: 'History' },
+  { id: 'overview', label: t('tabs_overview') },
+  { id: 'episodes', label: t('tabs_episodes'), count: totalEpisodesCount.value || undefined },
+  { id: 'cast', label: t('tabs_cast'), count: displayCast.value.length || undefined },
+  { id: 'history', label: t('tabs_history') },
 ])
 
 const seasonProgressFraction = computed(() => {
@@ -322,7 +324,7 @@ async function handleSeasonWatchOption(option: WatchedAtOption) {
     await loadWatchedEpisodes(tmdbId.value, { seasonNumber: seasonNumber.value })
     watchedEpisodesCount.value = countWatchedInSeasonFromSet(seasonNumber.value)
   } catch (error: unknown) {
-    showActionError(getApiErrorMessage(error, 'Could not mark season as watched.'))
+    showActionError(getApiErrorMessage(error, t('error_mark_season')))
   }
 }
 

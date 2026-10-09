@@ -3,7 +3,7 @@
     <WatchedDateTimePicker
       :open="showDatePicker"
       :initial-value="pickerInitialValue"
-      title="When did you watch this episode?"
+      :title="t('picker_when_episode')"
       @confirm="handleDatePickerConfirm"
       @cancel="handleDatePickerCancel"
     />
@@ -84,12 +84,12 @@
           v-if="previousEpisode || nextEpisode"
           class="episode-navigation flex items-center"
           :class="previousEpisode ? 'justify-between' : 'justify-end'"
-          aria-label="Episode navigation"
+          :aria-label="t('episode_nav_label')"
         >
           <RouterLink
             v-if="previousEpisode"
             :to="getEpisodeLink(tmdbId, previousEpisode.seasonNumber, previousEpisode.episodeNumber)"
-            :aria-label="`Previous episode: S${previousEpisode.seasonNumber}E${previousEpisode.episodeNumber}, ${previousEpisode.name}`"
+            :aria-label="t('episode_nav_previous', { code: `S${previousEpisode.seasonNumber}E${previousEpisode.episodeNumber}`, name: previousEpisode.name })"
             class="episode-navigation-link"
           >
             <ChevronLeft class="h-6 w-6" aria-hidden="true" />
@@ -97,7 +97,7 @@
           <RouterLink
             v-if="nextEpisode"
             :to="getEpisodeLink(tmdbId, nextEpisode.seasonNumber, nextEpisode.episodeNumber)"
-            :aria-label="`Next episode: S${nextEpisode.seasonNumber}E${nextEpisode.episodeNumber}, ${nextEpisode.name}`"
+            :aria-label="t('episode_nav_next', { code: `S${nextEpisode.seasonNumber}E${nextEpisode.episodeNumber}`, name: nextEpisode.name })"
             class="episode-navigation-link"
           >
             <ChevronRight class="h-6 w-6" aria-hidden="true" />
@@ -108,17 +108,17 @@
       <div class="grid md:grid-cols-3 gap-8 mt-10">
         <div class="md:col-span-2 space-y-8">
           <div v-if="episodeCast.length">
-            <h3 class="text-primary font-medium mb-3">Cast</h3>
+            <h3 class="text-primary font-medium mb-3">{{ t('episode_cast') }}</h3>
             <CastGrid :people="episodeCast" />
           </div>
           <div v-if="creditsData?.guest_stars?.length">
-            <h3 class="text-primary font-medium mb-3">Guest stars</h3>
+            <h3 class="text-primary font-medium mb-3">{{ t('episode_guest_stars') }}</h3>
             <CastGrid :people="creditsData.guest_stars" empty-label="No guest stars listed." />
           </div>
         </div>
         <div>
           <div v-if="episodeCrew.length" class="card p-4">
-            <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Crew</p>
+            <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">{{ t('person_crew') }}</p>
             <div class="space-y-1.5 text-sm">
               <div v-for="person in episodeCrew.slice(0, 8)" :key="person.credit_id" class="text-muted">
                 <span class="text-gray-500">{{ person.job }}:</span> <span class="text-secondary">{{ person.name }}</span>
@@ -130,7 +130,7 @@
     </div>
 
     <div v-else class="max-w-3xl mx-auto py-16">
-      <LoadError :message="loadError || 'Could not load this episode.'" @retry="load()" />
+      <LoadError :message="loadError || t('error_load_episode')" @retry="load()" />
     </div>
   </div>
 </template>
@@ -354,7 +354,7 @@ async function load(moveFocus = false) {
     }
   } catch (error: unknown) {
     if (active && loadId === latestLoadId) {
-      loadError.value = getApiErrorMessage(error, 'Could not load this episode.')
+      loadError.value = getApiErrorMessage(error, t('error_load_episode'))
     }
   } finally {
     if (active && loadId === latestLoadId) {

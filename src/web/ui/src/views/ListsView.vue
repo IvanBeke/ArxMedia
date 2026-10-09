@@ -2,14 +2,14 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex items-center justify-between mb-8">
       <div>
-        <h1 class="font-display text-2xl text-primary font-semibold">My Lists</h1>
-        <p class="text-gray-500 text-sm mt-1">Create and manage your custom lists</p>
+        <h1 class="font-display text-2xl text-primary font-semibold">{{ t('lists_title') }}</h1>
+        <p class="text-gray-500 text-sm mt-1">{{ t('lists_subtitle') }}</p>
       </div>
       <button @click="openCreateModal" class="btn-primary inline-flex items-center whitespace-nowrap">
         <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
         </svg>
-        Create List
+        {{ t('lists_create') }}
       </button>
     </div>
 
@@ -47,9 +47,9 @@
       <svg class="w-16 h-16 text-gray-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
       </svg>
-      <p class="text-gray-500 text-lg mb-2">No lists yet</p>
-      <p class="text-gray-600 text-sm mb-6">Create your first custom list to organize your movies and shows</p>
-      <button @click="openCreateModal" class="btn-primary">Create Your First List</button>
+      <p class="text-gray-500 text-lg mb-2">{{ t('lists_empty_title') }}</p>
+      <p class="text-gray-600 text-sm mb-6">{{ t('lists_empty_body') }}</p>
+      <button @click="openCreateModal" class="btn-primary">{{ t('lists_empty_cta') }}</button>
     </div>
 
     <dialog
@@ -63,8 +63,8 @@
       <div class="p-6 md:p-7">
         <div class="flex items-start justify-between mb-5">
           <div>
-            <h2 id="create-list-title" class="text-xl font-display text-primary font-semibold">Create New List</h2>
-            <p class="text-sm text-muted mt-1">Name your list, add context, set privacy, and invite collaborators.</p>
+            <h2 id="create-list-title" class="text-xl font-display text-primary font-semibold">{{ t('lists_new_title') }}</h2>
+            <p class="text-sm text-muted mt-1">{{ t('lists_new_hint') }}</p>
           </div>
           <button type="button" @click="closeCreateModal" class="text-gray-500 hover:text-primary">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -75,7 +75,7 @@
 
         <form @submit.prevent="createList" class="space-y-5">
           <div>
-            <label for="list-name" class="block text-sm text-gray-400 mb-1">List Name</label>
+            <label for="list-name" class="block text-sm text-gray-400 mb-1">{{ t('lists_name') }}</label>
             <input
               id="list-name"
               ref="nameInput"
@@ -84,25 +84,25 @@
               required
               maxlength="200"
               class="input w-full"
-              placeholder="My Weekend Watch Picks"
+              :placeholder="t('lists_name_placeholder')"
             >
             <p class="text-xs text-muted mt-1">{{ newList.name.length }}/200</p>
           </div>
 
           <div>
-            <label for="list-description" class="block text-sm text-gray-400 mb-1">Description <span class="text-muted">(optional)</span></label>
+            <label for="list-description" class="block text-sm text-gray-400 mb-1">{{ t('lists_description') }} <span class="text-muted">{{ t('common_optional') }}</span></label>
             <textarea
               id="list-description"
               v-model="newList.description"
               class="input w-full min-h-[96px]"
               maxlength="1000"
-              placeholder="A quick note about what this list tracks and why."
+              :placeholder="t('lists_description_placeholder')"
             ></textarea>
             <p class="text-xs text-muted mt-1">{{ newList.description.length }}/1000</p>
           </div>
 
           <div>
-            <label class="block text-sm text-gray-400 mb-2">Privacy</label>
+            <label class="block text-sm text-gray-400 mb-2">{{ t('lists_privacy') }}</label>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <button
                 type="button"
@@ -110,8 +110,8 @@
                 :class="newList.privacy === LIST_PRIVACY.PUBLIC ? 'border-brand-500 bg-brand-500/10' : 'border-surface-200 hover:border-surface-300'"
                 @click="newList.privacy = LIST_PRIVACY.PUBLIC"
               >
-                <p class="text-sm font-medium text-primary">Public</p>
-                <p class="text-xs text-muted mt-1">Visibility follows your profile privacy settings.</p>
+                <p class="text-sm font-medium text-primary">{{ t('common_public') }}</p>
+                <p class="text-xs text-muted mt-1">{{ t('lists_privacy_hint') }}</p>
               </button>
               <button
                 type="button"
@@ -119,14 +119,14 @@
                 :class="newList.privacy === LIST_PRIVACY.PRIVATE ? 'border-brand-500 bg-brand-500/10' : 'border-surface-200 hover:border-surface-300'"
                 @click="newList.privacy = LIST_PRIVACY.PRIVATE"
               >
-                <p class="text-sm font-medium text-primary">Private</p>
-                <p class="text-xs text-muted mt-1">Visible only to you and collaborators.</p>
+                <p class="text-sm font-medium text-primary">{{ t('common_private') }}</p>
+                <p class="text-xs text-muted mt-1">{{ t('lists_private_hint') }}</p>
               </button>
             </div>
           </div>
 
           <div>
-            <label for="collaborator-search" class="block text-sm text-gray-400 mb-1">Collaborators <span class="text-muted">(optional)</span></label>
+            <label for="collaborator-search" class="block text-sm text-gray-400 mb-1">{{ t('lists_collaborators') }} <span class="text-muted">{{ t('common_optional') }}</span></label>
             <div class="relative">
               <input
                 id="collaborator-search"
@@ -134,7 +134,7 @@
                 type="text"
                 autocomplete="off"
                 class="input w-full"
-                placeholder="Search username (min 3 chars)"
+                :placeholder="t('list_search_users')"
                 @input="searchCollaborators"
               >
               <div
@@ -151,8 +151,8 @@
                   <p class="text-sm text-primary">{{ user.username }}</p>
                   <p v-if="user.bio" class="text-xs text-muted truncate">{{ user.bio }}</p>
                 </button>
-                <p v-if="!collaboratorResults.length && !searchingUsers" class="px-3 py-2 text-xs text-muted">No users found.</p>
-                <p v-if="searchingUsers" class="px-3 py-2 text-xs text-muted">Searching...</p>
+                <p v-if="!collaboratorResults.length && !searchingUsers" class="px-3 py-2 text-xs text-muted">{{ t('common_no_users') }}</p>
+                <p v-if="searchingUsers" class="px-3 py-2 text-xs text-muted">{{ t('common_searching') }}</p>
               </div>
             </div>
 
@@ -166,7 +166,7 @@
                 <button type="button" class="text-brand-200 hover:text-primary" @click="removeCollaborator(user.id)">x</button>
               </span>
             </div>
-            <p class="text-xs text-muted mt-2">Collaborators can view private lists and add items.</p>
+            <p class="text-xs text-muted mt-2">{{ t('lists_collab_hint') }}</p>
           </div>
 
           <div v-if="createError" class="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
@@ -174,9 +174,9 @@
           </div>
 
           <div class="flex gap-3 pt-1">
-            <button type="button" @click="closeCreateModal" class="btn-secondary flex-1">Cancel</button>
+            <button type="button" @click="closeCreateModal" class="btn-secondary flex-1">{{ t('common_cancel') }}</button>
             <button type="submit" class="btn-primary flex-1" :disabled="creating || !newList.name.trim()">
-              {{ creating ? 'Creating...' : 'Create List' }}
+              {{ creating ? t('lists_creating') : t('lists_create') }}
             </button>
           </div>
         </form>
@@ -188,6 +188,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
 import { useCleanupOnUnmount } from '@/composables/useCleanupOnUnmount'
+import { useI18n } from '@/i18n'
 import { authAPI, trackingAPI } from '@/api'
 import LoadError from '@/components/LoadError.vue'
 import { LIST_PRIVACY } from '@/constants/tracking'
@@ -198,6 +199,7 @@ import { getApiErrorMessage } from '@/utils/errors'
 import { normalizePagedResponse } from '@/utils/pagination'
 
 const lists = ref<CustomList[]>([])
+const { t } = useI18n()
 const loading = ref(true)
 const loadError = ref('')
 const creating = ref(false)
@@ -239,7 +241,7 @@ async function createList() {
     resetCreateForm()
     await loadLists()
   } catch (error: unknown) {
-    createError.value = getApiErrorMessage(error, 'Failed to create list.')
+    createError.value = getApiErrorMessage(error, t('error_create_list'))
   } finally {
     creating.value = false
   }
@@ -326,7 +328,7 @@ async function loadLists() {
     const data = await trackingAPI.getLists()
     lists.value = normalizePagedResponse<CustomList>(data).items
   } catch (error: unknown) {
-    loadError.value = getApiErrorMessage(error, 'Could not load your lists.')
+    loadError.value = getApiErrorMessage(error, t('error_load_lists'))
   } finally {
     loading.value = false
   }

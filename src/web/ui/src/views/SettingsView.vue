@@ -1,6 +1,6 @@
 <template>
   <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <h1 class="font-display text-2xl text-primary font-semibold mb-6">Settings</h1>
+    <h1 class="font-display text-2xl text-primary font-semibold mb-6">{{ t('settings_title') }}</h1>
 
     <div v-if="loading" class="space-y-4">
       <div v-for="n in 6" :key="n" class="h-12 skeleton rounded-md"></div>
@@ -20,23 +20,23 @@
 
         <div class="space-y-3">
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Username</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_username') }}</label>
             <input v-model="form.username" class="input rounded-md" />
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Email</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_email') }}</label>
             <input v-model="form.email" type="email" class="input rounded-md" />
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Bio</label>
-            <textarea v-model="form.bio" class="input rounded-md resize-none" rows="3" placeholder="Tell others about yourself..."></textarea>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_bio') }}</label>
+            <textarea v-model="form.bio" class="input rounded-md resize-none" rows="3" :placeholder="t('settings_bio_placeholder')"></textarea>
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Location</label>
-            <input v-model="form.location" class="input rounded-md" placeholder="City, Country" />
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_location') }}</label>
+            <input v-model="form.location" class="input rounded-md" :placeholder="t('settings_location_placeholder')" />
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Provider Region</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_provider_region') }}</label>
             <select v-model="form.preferred_region" class="input rounded-md">
               <option v-for="region in providerRegions" :key="region" :value="region">{{ region }}</option>
             </select>
@@ -44,7 +44,7 @@
         </div>
 
         <button @click="saveProfile" class="btn-primary text-sm" :disabled="saving">
-          {{ saving ? 'Saving...' : 'Save Profile' }}
+          {{ saving ? t('settings_saving') : t('settings_save_profile') }}
         </button>
       </div>
 
@@ -54,13 +54,13 @@
 
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="min-w-0">
-            <p class="text-sm text-primary">Account Visibility</p>
-            <p class="text-xs text-gray-500">Choose who can view your profile activity and social graph</p>
+            <p class="text-sm text-primary">{{ t('settings_account_visibility') }}</p>
+            <p class="text-xs text-gray-500">{{ t('settings_visibility_hint') }}</p>
           </div>
           <select v-model="form.account_visibility" @change="updateAccountVisibility" class="input rounded-md text-sm w-full sm:w-auto sm:max-w-[220px]">
-            <option :value="ACCOUNT_VISIBILITY.PUBLIC">Public</option>
-            <option :value="ACCOUNT_VISIBILITY.PRIVATE">Private</option>
-            <option :value="ACCOUNT_VISIBILITY.FRIENDS_ONLY">Friends only</option>
+            <option :value="ACCOUNT_VISIBILITY.PUBLIC">{{ t('common_public') }}</option>
+            <option :value="ACCOUNT_VISIBILITY.PRIVATE">{{ t('common_private') }}</option>
+            <option :value="ACCOUNT_VISIBILITY.FRIENDS_ONLY">{{ t('settings_friends_only') }}</option>
           </select>
         </div>
       </div>
@@ -81,7 +81,7 @@
             @click="toggleSpoilerMode"
             class="relative w-12 h-6 rounded-full transition-colors duration-200"
             :class="prefs.spoilerMode ? 'bg-brand-500' : 'bg-surface-200'"
-            aria-label="Toggle spoiler mode"
+            :aria-label="t('settings_spoiler_toggle')"
           >
             <div
               class="absolute top-1 w-4 h-4 rounded-full bg-white transition-transform duration-200"
@@ -106,30 +106,30 @@
 
       <!-- Change Password -->
       <div class="card p-6 space-y-4">
-        <h2 class="text-sm font-medium text-primary">Change Password</h2>
+        <h2 class="text-sm font-medium text-primary">{{ t('settings_change_password') }}</h2>
 
         <div class="space-y-3">
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Current Password</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_current_password') }}</label>
             <input v-model="passwordForm.currentPassword" type="password" class="input rounded-md" />
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">New Password</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_new_password') }}</label>
             <input v-model="passwordForm.newPassword" type="password" class="input rounded-md" />
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Confirm New Password</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_confirm_password') }}</label>
             <input v-model="passwordForm.confirmPassword" type="password" class="input rounded-md" />
           </div>
         </div>
 
         <button @click="changePassword" class="btn-primary text-sm" :disabled="changingPassword">
-          {{ changingPassword ? 'Changing...' : 'Change Password' }}
+          {{ changingPassword ? t('settings_changing') : t('settings_change_password') }}
         </button>
       </div>
     </div>
 
-    <LoadError v-else :message="loadError || 'Could not load your settings.'" @retry="loadProfile" />
+    <LoadError v-else :message="loadError || t('error_load_settings')" @retry="loadProfile" />
   </div>
 </template>
 
@@ -201,7 +201,7 @@ async function loadProfile() {
       }
     }
   } catch (error: unknown) {
-    loadError.value = getApiErrorMessage(error, 'Could not load your settings.')
+    loadError.value = getApiErrorMessage(error, t('error_load_settings'))
   } finally {
     loading.value = false
   }
@@ -219,10 +219,10 @@ async function saveProfile() {
       user.value = data
       auth.user = data
       form.value.preferred_region = data.preferred_region || form.value.preferred_region
-      showSuccess('Profile updated successfully!')
+      showSuccess(t('settings_profile_ok'))
     }
   } catch (error: unknown) {
-    errorMsg.value = (error as ApiError).detail || 'Failed to update profile'
+    errorMsg.value = (error as ApiError).detail || t('settings_update_failed')
   } finally {
     saving.value = false
   }
@@ -237,9 +237,9 @@ async function updateAccountVisibility() {
     if (auth.user) {
       auth.user.account_visibility = data.account_visibility
     }
-    showSuccess(`Account visibility set to ${data.account_visibility.replace('_', ' ')}`)
+    showSuccess(t('settings_visibility_set', { value: data.account_visibility.replace('_', ' ') }))
   } catch (error: unknown) {
-    errorMsg.value = getApiErrorMessage(error, 'Could not update account visibility.')
+    errorMsg.value = getApiErrorMessage(error, t('error_update_visibility'))
     if (user.value) form.value.account_visibility = user.value.account_visibility
   }
 }
@@ -255,15 +255,15 @@ function toggleSpoilerMode() {
 async function changePassword() {
   successMsg.value = ''
   if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
-    errorMsg.value = 'New passwords do not match'
+    errorMsg.value = t('settings_password_mismatch')
     return
   }
   if (!passwordForm.value.currentPassword) {
-    errorMsg.value = 'Current password is required'
+    errorMsg.value = t('settings_password_required')
     return
   }
   if (passwordForm.value.newPassword.length < 8) {
-    errorMsg.value = 'Password must be at least 8 characters'
+    errorMsg.value = t('settings_password_short')
     return
   }
 
@@ -274,7 +274,7 @@ async function changePassword() {
       current_password: passwordForm.value.currentPassword,
       new_password: passwordForm.value.newPassword
     })
-    showSuccess('Password updated successfully!')
+    showSuccess(t('settings_password_ok'))
     passwordForm.value = {
       currentPassword: '',
       newPassword: '',
@@ -289,7 +289,7 @@ async function changePassword() {
     } else if (apiError.detail) {
       errorMsg.value = apiError.detail
     } else {
-      errorMsg.value = 'Failed to change password'
+      errorMsg.value = t('settings_password_failed')
     }
   } finally {
     changingPassword.value = false

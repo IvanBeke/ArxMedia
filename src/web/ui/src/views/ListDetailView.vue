@@ -22,13 +22,13 @@
               <h1 class="font-display text-2xl text-primary font-semibold truncate">{{ list.name }}</h1>
               <span class="badge text-[10px]" :class="privacyClass(list.privacy)">{{ list.privacy }}</span>
             </div>
-            <p class="text-sm text-secondary">{{ list.description || 'No description' }}</p>
+            <p class="text-sm text-secondary">{{ list.description || t('list_no_description') }}</p>
             <p class="text-xs text-muted">
-              {{ list.username }} · {{ list.item_count }} items · Created {{ formatDateByLocale(list.created_at) }}
+              {{ list.username }} · {{ t('list_item_count', { count: list.item_count }) }} · {{ t('list_created', { date: formatDateByLocale(list.created_at) }) }}
             </p>
             <p class="text-xs text-muted">
-              <span v-if="list.privacy === LIST_PRIVACY.PUBLIC">Public lists follow the owner profile visibility settings.</span>
-              <span v-else>Private lists are visible only to owner and collaborators.</span>
+              <span v-if="list.privacy === LIST_PRIVACY.PUBLIC">{{ t('list_public_hint') }}</span>
+              <span v-else>{{ t('list_private_hint') }}</span>
             </p>
           </div>
 
@@ -39,16 +39,16 @@
               <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
               </svg>
-              Add Item
+              {{ t('list_add_item') }}
             </button>
-            <button @click="openEditModal" class="btn-ghost text-sm">Edit</button>
-            <button @click="openDeleteListDialog" class="btn-ghost text-sm border-red-500/40 text-red-300 hover:bg-red-500/10">Delete</button>
+            <button @click="openEditModal" class="btn-ghost text-sm">{{ t('common_edit') }}</button>
+            <button @click="openDeleteListDialog" class="btn-ghost text-sm border-red-500/40 text-red-300 hover:bg-red-500/10">{{ t('common_delete') }}</button>
           </div>
         </div>
 
         <div class="mt-4 pt-4 border-t border-surface-200">
           <div class="flex items-center gap-3 flex-wrap text-xs">
-            <p class="text-muted uppercase tracking-wide">Collaborators:</p>
+            <p class="text-muted uppercase tracking-wide">{{ t('list_collaborators_label') }}</p>
             <div v-if="list.collaborator_users?.length" class="flex flex-wrap gap-2">
               <span
                 v-for="user in list.collaborator_users"
@@ -58,7 +58,7 @@
                 <RouterLink :to="`/profile/${user.username}`" class="hover:text-primary transition-colors">{{ user.username }}</RouterLink>
               </span>
             </div>
-            <p v-else class="text-muted">No collaborators yet.</p>
+            <p v-else class="text-muted">{{ t('list_no_collaborators') }}</p>
           </div>
         </div>
       </section>
@@ -104,16 +104,16 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
           </svg>
-          Reorder
+          {{ t('list_reorder') }}
         </button>
         <template v-else>
-          <button type="button" class="btn-ghost text-sm" :disabled="savingOrder" @click="cancelReorderMode">Cancel</button>
+          <button type="button" class="btn-ghost text-sm" :disabled="savingOrder" @click="cancelReorderMode">{{ t('common_cancel') }}</button>
           <button type="button" class="btn-primary text-sm" :disabled="savingOrder" @click="exitReorderMode">
-            {{ savingOrder ? 'Saving…' : 'Done' }}
+            {{ savingOrder ? t('list_saving') : t('list_done') }}
           </button>
-          <span class="text-xs text-muted">Drag by handle to reorder. Click Done to save.</span>
-          <span v-if="savingOrder" class="text-xs text-brand-300">Saving…</span>
-          <span v-else-if="hasReordered" class="text-xs text-amber-300">Unsaved changes</span>
+          <span class="text-xs text-muted">{{ t('list_reorder_hint') }}</span>
+          <span v-if="savingOrder" class="text-xs text-brand-300">{{ t('list_saving') }}</span>
+          <span v-else-if="hasReordered" class="text-xs text-amber-300">{{ t('list_unsaved') }}</span>
         </template>
       </div>
 
@@ -226,14 +226,14 @@
 
       <section v-if="!items.length && !loading && !loadingItems" class="card p-12 text-center">
         <template v-if="hasActiveFilters">
-          <p class="text-gray-500 text-lg mb-2">No items match your filters</p>
-          <p class="text-gray-600 text-sm mb-6">Try adjusting or clearing the active filters</p>
-          <button class="btn-primary" @click="resetFilters">Clear filters</button>
+          <p class="text-gray-500 text-lg mb-2">{{ t('list_no_match') }}</p>
+          <p class="text-gray-600 text-sm mb-6">{{ t('list_adjust_filters') }}</p>
+          <button class="btn-primary" @click="resetFilters">{{ t('list_clear_filters') }}</button>
         </template>
         <template v-else>
-          <p class="text-gray-500 text-lg mb-2">No items in this list yet</p>
-          <p class="text-gray-600 text-sm mb-6">Add movies and shows to get started</p>
-          <button v-if="canEdit" @click="openAddModal" class="btn-primary">Add Items</button>
+          <p class="text-gray-500 text-lg mb-2">{{ t('list_empty') }}</p>
+          <p class="text-gray-600 text-sm mb-6">{{ t('list_empty_hint') }}</p>
+          <button v-if="canEdit" @click="openAddModal" class="btn-primary">{{ t('list_add_items') }}</button>
         </template>
       </section>
 
@@ -248,8 +248,8 @@
         <div class="p-6 md:p-7">
           <div class="flex items-start justify-between mb-5">
             <div>
-              <h2 id="edit-list-title" class="text-xl font-display text-primary font-semibold">Edit List</h2>
-              <p class="text-sm text-muted mt-1">Update list details and manage collaborators in one place.</p>
+              <h2 id="edit-list-title" class="text-xl font-display text-primary font-semibold">{{ t('list_edit_title') }}</h2>
+              <p class="text-sm text-muted mt-1">{{ t('list_edit_hint') }}</p>
             </div>
             <button type="button" @click="closeEditModal" class="text-gray-500 hover:text-primary">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -260,17 +260,17 @@
 
           <form @submit.prevent="updateList" class="space-y-5">
             <div>
-              <label class="block text-sm text-gray-400 mb-1">Name</label>
+              <label class="block text-sm text-gray-400 mb-1">{{ t('list_name') }}</label>
               <input ref="editNameInput" v-model="editForm.name" type="text" required maxlength="200" class="input w-full">
               <p class="text-xs text-muted mt-1">{{ editForm.name.length }}/200</p>
             </div>
             <div>
-              <label class="block text-sm text-gray-400 mb-1">Description <span class="text-muted">(optional)</span></label>
+              <label class="block text-sm text-gray-400 mb-1">{{ t('lists_description') }} <span class="text-muted">{{ t('common_optional') }}</span></label>
               <textarea v-model="editForm.description" maxlength="1000" class="input w-full min-h-[96px]"></textarea>
               <p class="text-xs text-muted mt-1">{{ editForm.description.length }}/1000</p>
             </div>
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Privacy</label>
+              <label class="block text-sm text-gray-400 mb-2">{{ t('lists_privacy') }}</label>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -278,8 +278,8 @@
                   :class="editForm.privacy === LIST_PRIVACY.PUBLIC ? 'border-brand-500 bg-brand-500/10' : 'border-surface-200 hover:border-surface-300'"
                   @click="editForm.privacy = LIST_PRIVACY.PUBLIC"
                 >
-                  <p class="text-sm font-medium text-primary">Public</p>
-                  <p class="text-xs text-muted mt-1">Visibility follows your profile privacy settings.</p>
+                  <p class="text-sm font-medium text-primary">{{ t('common_public') }}</p>
+                  <p class="text-xs text-muted mt-1">{{ t('lists_privacy_hint') }}</p>
                 </button>
                 <button
                   type="button"
@@ -287,14 +287,14 @@
                    :class="editForm.privacy === LIST_PRIVACY.PRIVATE ? 'border-brand-500 bg-brand-500/10' : 'border-surface-200 hover:border-surface-300'"
                   @click="editForm.privacy = LIST_PRIVACY.PRIVATE"
                 >
-                  <p class="text-sm font-medium text-primary">Private</p>
-                  <p class="text-xs text-muted mt-1">Visible only to you and collaborators.</p>
+                  <p class="text-sm font-medium text-primary">{{ t('common_private') }}</p>
+                  <p class="text-xs text-muted mt-1">{{ t('lists_private_hint') }}</p>
                 </button>
               </div>
             </div>
 
             <div v-if="isOwner" class="space-y-3">
-              <label for="edit-collaborator-search" class="block text-sm text-gray-400 mb-1">Collaborators</label>
+              <label for="edit-collaborator-search" class="block text-sm text-gray-400 mb-1">{{ t('lists_collaborators') }}</label>
               <div class="relative">
                 <input
                   id="edit-collaborator-search"
@@ -302,7 +302,7 @@
                   type="text"
                   autocomplete="off"
                   class="input w-full"
-                  placeholder="Search username (min 3 chars)"
+                  :placeholder="t('list_search_users')"
                   @input="searchCollaborators"
                 >
                 <div
@@ -319,8 +319,8 @@
                     <p class="text-sm text-primary">{{ user.username }}</p>
                     <p v-if="user.bio" class="text-xs text-muted truncate">{{ user.bio }}</p>
                   </button>
-                  <p v-if="!collaboratorResults.length && !searchingUsers" class="px-3 py-2 text-xs text-muted">No users found.</p>
-                  <p v-if="searchingUsers" class="px-3 py-2 text-xs text-muted">Searching...</p>
+                  <p v-if="!collaboratorResults.length && !searchingUsers" class="px-3 py-2 text-xs text-muted">{{ t('common_no_users') }}</p>
+                  <p v-if="searchingUsers" class="px-3 py-2 text-xs text-muted">{{ t('common_searching') }}</p>
                 </div>
               </div>
 
@@ -335,13 +335,13 @@
                 </span>
               </div>
               <div v-else class="rounded-md border border-surface-200 bg-surface-200/20 px-3 py-2 text-xs text-muted">
-                No collaborators yet - add by username.
+                {{ t('list_add_collab_hint') }}
               </div>
             </div>
 
             <div class="flex gap-3 pt-1">
-              <button type="button" @click="closeEditModal" class="btn-ghost flex-1">Cancel</button>
-              <button type="submit" class="btn-primary flex-1" :disabled="updating">{{ updating ? 'Saving...' : 'Save Changes' }}</button>
+              <button type="button" @click="closeEditModal" class="btn-ghost flex-1">{{ t('common_cancel') }}</button>
+              <button type="submit" class="btn-primary flex-1" :disabled="updating">{{ updating ? t('list_saving') : t('list_save_changes') }}</button>
             </div>
           </form>
         </div>
@@ -355,7 +355,7 @@
          @click="onDialogClick($event, addDialog)"
       >
         <div class="p-6 md:p-7">
-          <h2 id="add-list-item-title" class="text-xl font-display text-primary font-semibold mb-4">Add to List</h2>
+          <h2 id="add-list-item-title" class="text-xl font-display text-primary font-semibold mb-4">{{ t('list_add_to_list') }}</h2>
           <div class="mb-4">
             <input
               v-model="searchQuery"
@@ -393,20 +393,20 @@
               </div>
             </div>
           </div>
-          <p v-else-if="searchQuery && !searching" class="text-gray-500 text-sm text-center py-4">No results found</p>
+          <p v-else-if="searchQuery && !searching" class="text-gray-500 text-sm text-center py-4">{{ t('common_no_results') }}</p>
 
           <div class="flex justify-end">
-            <button type="button" @click="closeAddModal" class="btn-ghost">Close</button>
+            <button type="button" @click="closeAddModal" class="btn-ghost">{{ t('common_close') }}</button>
           </div>
         </div>
       </dialog>
 
       <ConfirmDialog
         ref="deleteListDialog"
-        title="Delete this list?"
+        :title="t('list_delete_title')"
         message="This permanently deletes the list and removes all list memberships from it."
-        confirm-label="Delete"
-        cancel-label="Keep list"
+        :confirm-label="t('common_delete')"
+        :cancel-label="t('list_keep_list')"
         loading-label="Deleting..."
         :loading="deletingList"
         @confirm="confirmDeleteList"
@@ -415,7 +415,7 @@
     </div>
 
     <div v-else class="max-w-3xl mx-auto py-16">
-      <LoadError :message="loadError || 'Could not load list.'" @retry="retryLoad" />
+      <LoadError :message="loadError || t('error_load_list')" @retry="retryLoad" />
     </div>
   </div>
 </template>
@@ -423,6 +423,7 @@
 <script setup lang="ts">
 import { nextTick, ref, onMounted, onBeforeUnmount, computed, watch, type ComponentPublicInstance } from 'vue'
 import { useCleanupOnUnmount } from '@/composables/useCleanupOnUnmount'
+import { useI18n } from '@/i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { authAPI, trackingAPI, mediaAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
@@ -455,6 +456,7 @@ type FilterBarInstance = ComponentPublicInstance<{ clearAll: () => void }>
 type ReorderDrag = { id: number; item: ListItem; sourceIndex: number; targetIndex: number; width: number; height: number; position: { x: number; y: number } }
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
 
@@ -643,7 +645,7 @@ async function loadList() {
       }
     }
   } catch (error: unknown) {
-    loadError.value = getApiErrorMessage(error, 'Could not load list.')
+    loadError.value = getApiErrorMessage(error, t('error_load_list'))
   } finally {
     loading.value = false
   }
@@ -690,7 +692,7 @@ async function loadItems() {
       currentPage.value = recoveryPage
       return
     }
-    showFeedback(getApiErrorMessage(error, 'Could not load list items.'), 'error')
+    showFeedback(getApiErrorMessage(error, t('list_items_failed')), 'error')
     items.value = []
     count.value = 0
     lastLoadedCount.value = 0
@@ -722,7 +724,7 @@ async function loadAllItemsForReorder() {
     count.value = totalCount
     lastLoadedCount.value = all.length
   } catch (error) {
-    showFeedback(getApiErrorMessage(error, 'Could not load list items.'), 'error')
+    showFeedback(getApiErrorMessage(error, t('list_items_failed')), 'error')
   } finally {
     loadingItems.value = false
   }
@@ -1018,23 +1020,23 @@ async function persistOrder() {
   const orderedIds = items.value.map((i) => i.id)
   const snapshot = [...items.value]
   if (!orderedIds.length) {
-    showFeedback('Nothing to save.', 'error')
+    showFeedback(t('list_nothing_to_save'), 'error')
     savingOrder.value = false
     return false
   }
   if (!route.params.id) {
-    showFeedback('Could not save order: missing list id.', 'error')
+    showFeedback(t('list_missing_id'), 'error')
     savingOrder.value = false
     return false
   }
   try {
     await trackingAPI.reorderList(listId(), orderedIds)
-    showFeedback('Order saved.')
+    showFeedback(t('list_order_saved'))
     hasReordered.value = false
     originalOrderIds.value = [...orderedIds]
     return true
   } catch (error) {
-    showFeedback(getApiErrorMessage(error, 'Could not save order.'), 'error')
+    showFeedback(getApiErrorMessage(error, t('list_order_failed')), 'error')
     try {
       await loadAllItemsForReorder()
     } catch {
@@ -1074,7 +1076,7 @@ async function updateList() {
     await loadList()
     closeEditModal()
   } catch (error) {
-    showFeedback(getApiErrorMessage(error, 'Could not update list.'), 'error')
+    showFeedback(getApiErrorMessage(error, t('list_update_failed')), 'error')
   } finally {
     updating.value = false
   }
@@ -1090,7 +1092,7 @@ async function confirmDeleteList() {
     deleteListDialog.value?.close()
     router.push('/lists')
   } catch (error) {
-    showFeedback(getApiErrorMessage(error, 'Could not delete list.'), 'error')
+    showFeedback(getApiErrorMessage(error, t('list_delete_failed')), 'error')
   } finally {
     deletingList.value = false
   }
@@ -1112,7 +1114,7 @@ async function searchMedia() {
       }))
     }
   } catch (error: unknown) {
-    showFeedback(getApiErrorMessage(error, 'Search failed. Try again.'), 'error')
+    showFeedback(getApiErrorMessage(error, t('error_search_failed')), 'error')
   } finally {
     searching.value = false
   }
@@ -1127,13 +1129,13 @@ function handleListItemAdded() {
   } else {
     loadItems()
   }
-  showFeedback('Item added to list.')
+  showFeedback(t('list_item_added'))
 }
 
 async function addSearchResultToList(result: MediaResult & { tmdb_id: number }) {
   const tmdbId = result.tmdb_id || result.id
   if (!tmdbId || !listId()) {
-    showFeedback('Could not add item to list.', 'error')
+    showFeedback(t('list_item_add_failed'), 'error')
     return
   }
   const requestKey = `${result.media_type}-${tmdbId}`
@@ -1148,7 +1150,7 @@ async function addSearchResultToList(result: MediaResult & { tmdb_id: number }) 
     })
     handleListItemAdded()
   } catch (error) {
-    showFeedback(getApiErrorMessage(error, 'Could not add item to list.'), 'error')
+    showFeedback(getApiErrorMessage(error, t('list_item_add_failed')), 'error')
   } finally {
     addingResultKey.value = ''
   }
@@ -1160,7 +1162,7 @@ function handleListItemRemoved() {
   } else {
     loadItems()
   }
-  showFeedback('Item removed from list.')
+  showFeedback(t('list_item_removed'))
 }
 
 function addCollaborator(user: UserCard) {

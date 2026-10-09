@@ -1,7 +1,7 @@
 <template>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <h1 class="font-display text-2xl text-primary font-semibold mb-1">Dashboard</h1>
-    <p class="text-muted text-sm mb-8">Welcome back, <span class="text-brand-400">{{ auth.user?.username }}</span></p>
+    <h1 class="font-display text-2xl text-primary font-semibold mb-1">{{ t('dashboard_title') }}</h1>
+    <p class="text-muted text-sm mb-8">{{ t('dashboard_welcome') }} <span class="text-brand-400">{{ auth.user?.username }}</span></p>
 
     <Transition name="fade">
       <div v-if="actionError" role="alert" class="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm">
@@ -13,31 +13,31 @@
     <div v-if="loadingStats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
       <div v-for="n in 4" :key="n" class="h-24 skeleton rounded-lg"></div>
     </div>
-    <LoadError v-else-if="statsError" class="mb-10" message="Could not load your stats." @retry="loadDashboard" />
+    <LoadError v-else-if="statsError" class="mb-10" :message="t('error_load_stats')" @retry="loadDashboard" />
 
     <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
       <div class="card p-4">
         <p class="text-3xl font-display text-brand-500">{{ stats?.movies_watched || 0 }}</p>
-        <p class="text-muted text-xs mt-1">Movies Watched</p>
+        <p class="text-muted text-xs mt-1">{{ t('dashboard_movies_watched') }}</p>
       </div>
       <div class="card p-4">
         <p class="text-3xl font-display text-brand-500">{{ stats?.episodes_watched || 0 }}</p>
-        <p class="text-muted text-xs mt-1">Episodes Watched</p>
+        <p class="text-muted text-xs mt-1">{{ t('dashboard_episodes_watched') }}</p>
       </div>
       <div class="card p-4">
         <p class="text-3xl font-display text-brand-500">{{ stats?.shows_watching || 0 }}</p>
-        <p class="text-muted text-xs mt-1">Shows Watching</p>
+        <p class="text-muted text-xs mt-1">{{ t('dashboard_shows_watching') }}</p>
       </div>
       <div class="card p-4">
         <p class="text-3xl font-display text-brand-500">{{ stats?.average_rating || '–' }}</p>
-        <p class="text-muted text-xs mt-1">Avg. Rating</p>
+        <p class="text-muted text-xs mt-1">{{ t('dashboard_avg_rating') }}</p>
       </div>
     </div>
 
     <!-- Up Next Row -->
     <div class="mb-8">
       <RouterLink to="/my-shows?status=watching&has_next_episode=1" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
-        <span>Up Next</span>
+        <span>{{ t('dashboard_up_next') }}</span>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
@@ -45,7 +45,7 @@
       <div v-if="loadingUpNext" class="flex gap-4 overflow-x-auto pb-2">
         <div v-for="n in 3" :key="n" class="w-40 h-60 skeleton rounded-lg flex-shrink-0"></div>
       </div>
-      <LoadError v-else-if="upNextError" message="Could not load Up Next." @retry="loadDashboard" />
+      <LoadError v-else-if="upNextError" :message="t('error_load_up_next')" @retry="loadDashboard" />
       <div v-else-if="upNext?.length" class="flex gap-4 overflow-x-auto pb-2">
         <div
           v-for="item in upNext"
@@ -74,14 +74,14 @@
         </div>
       </div>
       <div v-else class="card p-6 text-center">
-        <p class="text-muted text-sm">My Shows is empty. Add titles to Watchlist or start watching to see them here.</p>
+        <p class="text-muted text-sm">{{ t('dashboard_empty_shows') }}</p>
       </div>
     </div>
 
     <!-- Upcoming Row -->
     <div class="mb-8">
       <RouterLink to="/calendar" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
-        <span>Upcoming</span>
+        <span>{{ t('dashboard_upcoming') }}</span>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
@@ -89,7 +89,7 @@
       <div v-if="loadingUpcoming" class="flex gap-4 overflow-x-auto pb-2">
         <div v-for="n in 3" :key="n" class="w-40 h-60 skeleton rounded-lg flex-shrink-0"></div>
       </div>
-      <LoadError v-else-if="upcomingError" message="Could not load upcoming episodes." @retry="loadDashboard" />
+      <LoadError v-else-if="upcomingError" :message="t('error_load_upcoming')" @retry="loadDashboard" />
       <div v-else-if="upcoming?.length" class="flex gap-4 overflow-x-auto pb-2">
         <div
           v-for="item in upcoming"
@@ -110,13 +110,13 @@
         </div>
       </div>
       <div v-else class="card p-6 text-center">
-        <p class="text-muted text-sm">No upcoming episodes</p>
+        <p class="text-muted text-sm">{{ t('dashboard_no_upcoming') }}</p>
       </div>
     </div>
 
     <div class="mb-8">
       <RouterLink to="/history" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
-        <span>Recent Activity</span>
+        <span>{{ t('dashboard_recent_activity') }}</span>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
@@ -124,7 +124,7 @@
       <div v-if="loadingStats" class="space-y-2">
         <div v-for="n in 5" :key="n" class="h-14 skeleton rounded-lg"></div>
       </div>
-      <p v-else-if="statsError" class="text-muted text-sm">Recent activity is unavailable right now.</p>
+      <p v-else-if="statsError" class="text-muted text-sm">{{ t('error_recent_activity_unavailable') }}</p>
       <div v-else-if="stats?.recent_activity?.length" class="flex gap-4 overflow-x-auto pb-2">
         <HistoryMediaCard
           v-for="entry in stats.recent_activity"
@@ -140,8 +140,8 @@
         />
       </div>
       <div v-else class="card p-8 text-center">
-        <p class="text-muted text-sm mb-3">No activity yet</p>
-        <RouterLink to="/search" class="btn-primary text-sm">Discover Content</RouterLink>
+        <p class="text-muted text-sm mb-3">{{ t('dashboard_no_activity') }}</p>
+        <RouterLink to="/search" class="btn-primary text-sm">{{ t('dashboard_discover') }}</RouterLink>
       </div>
     </div>
   </div>
@@ -155,6 +155,7 @@ import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import LoadError from '@/components/LoadError.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { useI18n } from '@/i18n'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { getApiErrorMessage } from '@/utils/errors'
 import { getEpisodeLink, getShowLink, getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
@@ -162,6 +163,7 @@ import type { DashboardStats, UpNextItem, UpcomingItem } from '@/api'
 
 const auth = useAuthStore()
 const stats = ref<DashboardStats | null>(null)
+const { t } = useI18n()
 const loadingStats = ref(true)
 const upNext = ref<UpNextItem[] | null>(null)
 const loadingUpNext = ref(true)
@@ -207,7 +209,7 @@ async function markNextEpisodeWatched(item: UpNextItem) {
     })
     await refreshTrackingLists()
   } catch (error: unknown) {
-    showActionError(getApiErrorMessage(error, 'Could not mark the episode as watched.'))
+    showActionError(getApiErrorMessage(error, t('error_mark_episode')))
   } finally {
     markingId.value = null
   }

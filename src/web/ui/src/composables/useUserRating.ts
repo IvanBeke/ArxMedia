@@ -14,6 +14,7 @@ export function useUserRating(options: {
   getId: () => string | number
   getStatus: () => unknown
   getRateErrorMessage: () => string
+  getRatedMessage: (score: number) => string
   notifySuccess: (message: string) => void
   notifyError: (message: string) => void
 }) {
@@ -23,7 +24,7 @@ export function useUserRating(options: {
   async function submitRating(score: number) {
     try {
       await trackingAPI.rate({ media_type: options.mediaType, tmdb_id: options.getId(), score })
-      options.notifySuccess(`Rated ${score}/10!`)
+      options.notifySuccess(options.getRatedMessage(score))
     } catch (error) {
       options.notifyError(getApiErrorMessage(error, options.getRateErrorMessage()))
     }

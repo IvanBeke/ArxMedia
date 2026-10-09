@@ -11,7 +11,7 @@
     <WatchedDateTimePicker
       :open="showDatePicker"
       :initial-value="pickerInitialValue"
-      title="When did you watch this episode?"
+      :title="t('picker_when_episode')"
       @confirm="handleDatePickerConfirm"
       @cancel="handleDatePickerCancel"
     />
@@ -95,14 +95,14 @@
                   @click="handleRemoveWatchedEpisodes"
                   class="block w-full px-3 py-2 text-left text-sm text-muted hover:bg-surface-200 hover:text-primary transition-colors rounded"
                 >
-                  Remove watched episodes
+                  {{ t('show_remove_episodes') }}
                 </button>
                 <button
                   type="button"
                   @click="handleDropShow"
                   class="block w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-surface-200 hover:text-red-300 transition-colors rounded"
                 >
-                  Drop show
+                  {{ t('show_drop') }}
                 </button>
               </div>
               <div v-else>
@@ -111,7 +111,7 @@
                   @click="handleWatchingAction"
                   class="block w-full px-3 py-2 text-left text-sm text-muted hover:bg-surface-200 hover:text-primary transition-colors rounded"
                 >
-                  Set as watching
+                  {{ t('show_set_watching') }}
                 </button>
               </div>
             </template>
@@ -122,12 +122,12 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
               </svg>
             </template>
-            {{ showStatus === 'watchlist' ? 'In Watchlist' : 'Watchlist' }}
+            {{ showStatus === 'watchlist' ? t('show_in_watchlist') : t('show_add_watchlist') }}
           </ActionGhostButton>
           <AddToListPopover
             :media-type="MEDIA_TYPE.TV"
             :tmdb-id="tmdbId"
-            @added="() => showSuccess('Added to list')"
+            @added="() => showSuccess(t('list_added_short'))"
           />
           <template #rating>
             <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
@@ -148,11 +148,11 @@
           <div class="grid md:grid-cols-3 gap-8">
             <div class="md:col-span-2 space-y-6 min-w-0">
               <div>
-                <h3 class="text-primary font-medium mb-3">Synopsis</h3>
+                <h3 class="text-primary font-medium mb-3">{{ t('show_synopsis') }}</h3>
                 <p class="text-secondary leading-relaxed break-words">{{ show?.overview }}</p>
               </div>
               <div v-if="show.watch_providers" class="min-w-0">
-                <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">Watch Now (Powered by JustWatch)</p>
+                <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">{{ t('show_watch_now') }}</p>
                 <div class="flex flex-wrap gap-2">
                   <div
                     v-for="p in (show.watch_providers.flatrate || []).slice(0, 6)"
@@ -162,36 +162,36 @@
                     <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
                     <span class="truncate">{{ p.provider_name }}</span>
                   </div>
-                  <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
+                  <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">{{ t('show_no_providers') }}</span>
                 </div>
               </div>
             </div>
             <div class="space-y-4 min-w-0">
               <div class="card p-4">
-                <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Details</p>
+                <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">{{ t('show_details') }}</p>
                 <dl class="text-sm space-y-1.5">
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Status</dt>
+                    <dt class="text-muted shrink-0">{{ t('show_status') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.status || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Network</dt>
+                    <dt class="text-muted shrink-0">{{ t('show_network') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ displayNetworks || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">First aired</dt>
+                    <dt class="text-muted shrink-0">{{ t('show_first_aired') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.first_air_date || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Last aired</dt>
+                    <dt class="text-muted shrink-0">{{ t('show_last_aired') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.last_air_date || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Runtime</dt>
+                    <dt class="text-muted shrink-0">{{ t('show_runtime') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.episode_runtime ? `${show.episode_runtime} min/ep` : '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Language</dt>
+                    <dt class="text-muted shrink-0">{{ t('show_language') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.language || '—' }}</dd>
                   </div>
                 </dl>
@@ -214,10 +214,10 @@
           </div>
 
           <div class="mt-8">
-            <h3 class="text-primary font-medium mb-3">Top cast</h3>
+            <h3 class="text-primary font-medium mb-3">{{ t('show_top_cast') }}</h3>
             <CastGrid :people="(aggregateCredits?.cast || []).slice(0, 8)" />
             <button v-if="(aggregateCredits?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
-              View all cast →
+              {{ t('show_view_all_cast') }}
             </button>
           </div>
         </template>
@@ -246,7 +246,7 @@
                       <button @click.stop="toggleSeasonWatched(season.season_number)" class="text-xs px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap" :class="getSeasonProgress(season.season_number) === 100 ? 'bg-brand-500 text-white hover:bg-brand-600' : 'bg-surface-200 text-muted hover:text-primary hover:bg-surface-300'">
                         {{ getSeasonProgress(season.season_number) === 100 ? 'Watched' : 'Mark watched' }}
                       </button>
-                      <button @click="toggleSeason(season.season_number)" class="p-1 hover:bg-surface-200 rounded transition-colors" :aria-label="`Expand ${season.name}`">
+                      <button @click="toggleSeason(season.season_number)" class="p-1 hover:bg-surface-200 rounded transition-colors" :aria-label="t('show_expand_season', { name: season.name })">
                         <svg class="w-5 h-5 text-muted transition-transform" :class="expandedSeason === season.season_number ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                         </svg>
@@ -279,7 +279,7 @@
                   @unwatch="(payload) => openEpisodeUnwatchConfirm(season.season_number, payload)"
                 />
 
-                <div v-else class="p-4 text-center text-muted text-sm">No episodes available for this season.</div>
+                <div v-else class="p-4 text-center text-muted text-sm">{{ t('show_no_season_episodes') }}</div>
               </div>
             </div>
           </div>
@@ -292,8 +292,8 @@
           </div>
           <CastGrid v-else :people="aggregateCredits?.cast || []" />
           <div v-if="(aggregateCredits?.crew || []).length" class="mt-8">
-            <h3 class="text-primary font-medium mb-3">Crew</h3>
-            <CastGrid :people="(aggregateCredits?.crew || []).slice(0, 24)" empty-label="No crew information available." />
+            <h3 class="text-primary font-medium mb-3">{{ t('show_crew') }}</h3>
+            <CastGrid :people="(aggregateCredits?.crew || []).slice(0, 24)" :empty-label="t('show_no_crew')" />
           </div>
         </template>
 
@@ -306,7 +306,7 @@
         </template>
 
         <template v-if="activeTab === 'more'">
-          <p v-if="recsError" class="text-sm text-muted mb-3">Recommendations unavailable right now.</p>
+          <p v-if="recsError" class="text-sm text-muted mb-3">{{ t('common_recs_unavailable') }}</p>
           <RecommendationsRow :items="recommendations" :media-type="MEDIA_TYPE.TV" :loading="loadingRecs" @status-changed="handleRecommendationStatusChanged" />
         </template>
       </div>
@@ -399,6 +399,7 @@ const { userRating, canRate, submitRating } = useUserRating({
   getId: () => tmdbId.value,
   getStatus: () => show.value?.user_status?.status,
   getRateErrorMessage: () => t('rating_show_requires_watching'),
+  getRatedMessage: (score) => t('rating_rated_score', { score }),
   notifySuccess: showSuccess,
   notifyError: showError,
 })
@@ -409,11 +410,11 @@ const unwatchEpisodeDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | nul
 
 const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'seasons', 'cast', 'history', 'heatmap', 'more'] as const, () => {
   const tabs: MediaTab[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'seasons', label: 'Seasons' },
-    { id: 'cast', label: 'Cast', count: aggregateCredits.value?.cast?.length },
-    { id: 'history', label: 'History' },
-    { id: 'heatmap', label: 'Heatmap' },
+    { id: 'overview', label: t('tabs_overview') },
+    { id: 'seasons', label: t('tabs_seasons') },
+    { id: 'cast', label: t('tabs_cast'), count: aggregateCredits.value?.cast?.length },
+    { id: 'history', label: t('tabs_history') },
+    { id: 'heatmap', label: t('tabs_heatmap') },
   ]
   if (recommendations.value.length > 0 || loadingRecs.value) {
     tabs.push({ id: 'more', label: 'More like this' })
@@ -449,10 +450,10 @@ const {
 const showMarking = ref(false)
 
 const watchButtonLabel = computed(() => {
-  if (showStatus.value === WATCH_ENTRY_STATUS.WATCHING) return 'Watching'
-  if (showStatus.value === WATCH_ENTRY_STATUS.WATCHED) return 'Watched'
-  if (showStatus.value === WATCH_ENTRY_STATUS.DROPPED) return 'Dropped'
-  return 'Watch'
+  if (showStatus.value === WATCH_ENTRY_STATUS.WATCHING) return t('watch_action_watching')
+  if (showStatus.value === WATCH_ENTRY_STATUS.WATCHED) return t('watch_action_watched')
+  if (showStatus.value === WATCH_ENTRY_STATUS.DROPPED) return t('watch_action_dropped')
+  return t('watch_action_watch')
 })
 
 const metadataUpdatedAtLabel = computed(() => formatUpdatedAtLabel(show.value?.metadata_updated_at))
@@ -520,7 +521,7 @@ async function handleEpisodeWatchOption(sn: number, payload: EpisodeTarget & { o
   if (!marked) return
 
   markLocally(sn, epNum, marked.watchedAt)
-  showSuccess('Episode marked as watched')
+  showSuccess(t('show_episode_marked'))
 }
 
 function openEpisodeUnwatchConfirm(sn: number, payload: EpisodeTarget) {
@@ -533,7 +534,7 @@ function openEpisodeUnwatchConfirm(sn: number, payload: EpisodeTarget) {
 
 async function onEpisodeUnwatched(target: { seasonNumber: string | number; episodeNumber: string | number }) {
   unmarkLocally(Number(target.seasonNumber), Number(target.episodeNumber))
-  showSuccess('Episode unwatched')
+  showSuccess(t('show_episode_unwatched'))
 }
 
 function toggleSeason(sn: number) {
@@ -595,7 +596,7 @@ async function toggleSeasonWatched(sn: number) {
           unmarkLocally(episode.season_number, episode.episode_number)
         }
       }
-      showSuccess('Season unwatched')
+      showSuccess(t('show_season_unwatched'))
     } else {
       const response = await trackingAPI.markSeasonWatched({ tmdb_id: tmdbId.value, season_number: sn })
       for (const episode of response.episodes) {
@@ -604,10 +605,10 @@ async function toggleSeasonWatched(sn: number) {
         }
       }
       await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
-      showSuccess('Season marked as watched')
+      showSuccess(t('show_season_marked'))
     }
   } catch (error: unknown) {
-    showError(getApiErrorMessage(error, 'Could not update this season.'))
+    showError(getApiErrorMessage(error, t('error_update_season')))
   }
 }
 
@@ -649,13 +650,13 @@ async function handleWatchingAction() {
     if (!updated) {
       return
     }
-    showSuccess('Removed from watching')
+    showSuccess(t('show_removed_watching'))
   } else {
     const updated = await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
     if (!updated) {
       return
     }
-    showSuccess('Added to watching!')
+    showSuccess(t('show_added_watching'))
   }
 }
 
@@ -678,9 +679,9 @@ async function handleShowWatchOption(option: WatchedAtOption) {
     applyWatchedEpisodes(response)
     seasonEpisodes.value = {}
     await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
-    showSuccess('Show marked as watched')
+    showSuccess(t('show_marked'))
   } catch (error) {
-    showError(getApiErrorMessage(error, 'Could not mark show as watched.'))
+    showError(getApiErrorMessage(error, t('show_mark_failed')))
   } finally {
     showMarking.value = false
   }
@@ -705,7 +706,7 @@ async function confirmRemoveWatchedEpisodes() {
     seasonEpisodes.value = {}
     await loadShow()
     removeHistoryDialog.value?.close()
-    showSuccess('Removed watched episodes')
+    showSuccess(t('show_removed_episodes'))
   } finally {
     removingHistory.value = false
   }
@@ -715,11 +716,11 @@ async function handleDropShow() {
   try {
     await trackingAPI.dropMedia({ tmdb_id: tmdbId.value, media_type: MEDIA_TYPE.TV })
   } catch (error: unknown) {
-    showError(getApiErrorMessage(error, 'Could not drop this show.'))
+    showError(getApiErrorMessage(error, t('error_drop_show')))
     return
   }
   await loadShow()
-  showSuccess('Show dropped')
+  showSuccess(t('show_dropped'))
 }
 
 async function handleWatchlistAction() {
@@ -728,13 +729,13 @@ async function handleWatchlistAction() {
     if (!updated) {
       return
     }
-    showSuccess('Removed from watchlist')
+    showSuccess(t('show_removed_watchlist'))
   } else {
     const updated = await setShowStatus('watchlist')
     if (!updated) {
       return
     }
-    showSuccess('Added to watchlist!')
+    showSuccess(t('show_added_watchlist'))
   }
 }
 
@@ -747,7 +748,7 @@ async function loadShow() {
     }
   } catch (error: unknown) {
     // A failed reload after an action keeps the page; only a failed first load replaces it.
-    if (!show.value) loadError.value = getApiErrorMessage(error, 'Could not load this show.')
+    if (!show.value) loadError.value = getApiErrorMessage(error, t('error_load_show'))
   }
 }
 
@@ -758,9 +759,9 @@ async function refreshMetadata() {
     await mediaAPI.refreshTV(tmdbId.value)
     await loadShow()
     seasonEpisodes.value = {}
-    showMetadataSuccess('Metadata updated from TMDB and TVMaze')
+    showMetadataSuccess(t('metadata_updated_show'))
   } catch (error) {
-    showMetadataError(getApiErrorMessage(error, 'Could not refresh metadata.'))
+    showMetadataError(getApiErrorMessage(error, t('movie_refresh_failed')))
   } finally {
     refreshingMetadata.value = false
   }

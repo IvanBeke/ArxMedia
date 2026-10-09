@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
 import PersonDetailView from '@/views/PersonDetailView.vue'
 import type { PersonCredit } from '@/types/api'
 
@@ -47,6 +48,7 @@ async function mountView() {
   await router.push('/people/34546')
   await router.isReady()
 
+  setActivePinia(createPinia())
   const wrapper = mount(PersonDetailView, {
     global: {
       plugins: [router],

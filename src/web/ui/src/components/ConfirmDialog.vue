@@ -10,7 +10,7 @@
       <h2 :id="titleId" class="text-lg font-display text-primary font-semibold">{{ title }}</h2>
       <p v-if="message" class="mt-2 text-sm text-muted">{{ message }}</p>
       <div class="mt-5 flex gap-3">
-        <button type="button" class="btn-ghost flex-1" @click="close">{{ cancelLabel }}</button>
+        <button type="button" class="btn-ghost flex-1" @click="close">{{ cancelText }}</button>
         <button
           type="button"
           class="btn-ghost flex-1 cursor-pointer"
@@ -18,7 +18,7 @@
           :disabled="loading"
           @click="$emit('confirm')"
         >
-          {{ loading ? (loadingLabel || confirmLabel) : confirmLabel }}
+          {{ loading ? (loadingLabel || confirmText) : confirmText }}
         </button>
       </div>
     </div>
@@ -26,10 +26,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, useId } from 'vue'
+import { computed, ref, useId } from 'vue'
+import { useI18n } from '@/i18n'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   message?: string
   confirmLabel?: string
@@ -38,8 +39,12 @@ withDefaults(defineProps<{
   loading?: boolean
   danger?: boolean
 }>(), {
-  message: '', confirmLabel: 'Confirm', cancelLabel: 'Cancel', loadingLabel: '', loading: false, danger: true,
+  message: '', confirmLabel: '', cancelLabel: '', loadingLabel: '', loading: false, danger: true,
 })
+
+const { t } = useI18n()
+const confirmText = computed(() => props.confirmLabel || t('common_confirm'))
+const cancelText = computed(() => props.cancelLabel || t('common_cancel'))
 
 defineEmits<{ confirm: [] }>()
 

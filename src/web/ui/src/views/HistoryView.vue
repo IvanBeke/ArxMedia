@@ -1,10 +1,10 @@
 <template>
   <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
-      <h1 class="font-display text-2xl text-primary font-semibold">History</h1>
+      <h1 class="font-display text-2xl text-primary font-semibold">{{ t('history_title') }}</h1>
       <div class="text-sm text-muted">
-        <span class="text-brand-400 font-medium">{{ stats?.movies_watched || 0 }}</span> movies · 
-        <span class="text-brand-400 font-medium">{{ stats?.episodes_watched || 0 }}</span> episodes
+        <span class="text-brand-400 font-medium">{{ stats?.movies_watched || 0 }}</span> {{ t('history_movies_unit') }} 
+        <span class="text-brand-400 font-medium">{{ stats?.episodes_watched || 0 }}</span> {{ t('history_episodes_unit') }}
       </div>
     </div>
 
@@ -31,7 +31,7 @@
         @click="toggleSort"
         class="text-xs text-muted hover:text-primary flex items-center gap-1"
       >
-        <span>{{ sortOrder === 'newest' ? 'Newest' : 'Oldest' }} first</span>
+        <span>{{ sortOrder === 'newest' ? t('history_newest_first') : t('history_oldest_first') }} {{ t('history_first_suffix') }}</span>
         <svg class="w-3 h-3" :class="{ 'rotate-180': sortOrder === 'oldest' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
         </svg>
@@ -41,14 +41,14 @@
         class="group-toggle ml-auto"
         :data-on="groupByDay ? 'true' : 'false'"
         :aria-pressed="groupByDay"
-        aria-label="Group by day"
+        :aria-label="t('history_group_by_day')"
         @click="toggleDayGrouping"
       >
         <span class="group-toggle-pill">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10m-12 9h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v11a2 2 0 002 2z" />
           </svg>
-          <span class="group-toggle-label">Group by day</span>
+          <span class="group-toggle-label">{{ t('history_group_by_day') }}</span>
         </span>
       </button>
     </div>
@@ -63,8 +63,8 @@
 
     <!-- Error -->
     <div v-else-if="loadError" class="card p-10 text-center" role="alert">
-      <p class="text-secondary">Could not load watch history.</p>
-      <button type="button" class="btn-ghost mt-4" @click="loadHistory">Try again</button>
+      <p class="text-secondary">{{ t('history_load_failed') }}</p>
+      <button type="button" class="btn-ghost mt-4" @click="loadHistory">{{ t('action_try_again') }}</button>
     </div>
 
     <!-- History List -->
@@ -111,7 +111,7 @@
         </svg>
       </div>
       <p class="text-muted mb-4">{{ hasItemFilter ? 'No matching watch history' : 'No watch history yet' }}</p>
-      <RouterLink to="/search" class="btn-primary">Start Watching</RouterLink>
+      <RouterLink to="/search" class="btn-primary">{{ t('history_start_watching') }}</RouterLink>
     </div>
   </div>
 </template>
@@ -155,16 +155,16 @@ const lastLoadedCount = ref(0)
 let suppressRouteLoad = false
 
 const filters: { label: string; value: HistoryFilter }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Movies', value: MEDIA_TYPE.MOVIE },
-  { label: 'Episodes', value: WATCH_ENTRY_MEDIA_TYPE.EPISODE },
+  { label: t('history_filter_all'), value: 'all' },
+  { label: t('history_filter_movies'), value: MEDIA_TYPE.MOVIE },
+  { label: t('history_filter_episodes'), value: WATCH_ENTRY_MEDIA_TYPE.EPISODE },
 ]
 
 const hasItemFilter = computed(() => Object.keys(historyItemQueryFromRoute(route.query)).length > 0)
 
 const groupedEntries = computed<HistoryGroup[]>(() => {
   if (!groupByDay.value) {
-    return [{ key: 'all', label: 'All entries', items: entries.value }]
+    return [{ key: 'all', label: t('history_all_entries'), items: entries.value }]
   }
 
   const grouped: HistoryGroup[] = []

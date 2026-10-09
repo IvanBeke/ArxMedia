@@ -23,7 +23,7 @@
           <p v-if="biographyFull" class="text-secondary leading-relaxed whitespace-pre-line">
             {{ biographyText }}
           </p>
-          <p v-else class="text-muted text-sm">No biography available.</p>
+          <p v-else class="text-muted text-sm">{{ t('person_no_bio') }}</p>
           <button
             v-if="isBiographyTruncated || biographyExpanded"
             type="button"
@@ -51,14 +51,14 @@
         <PersonSidebar :person="person" :known-credits="knownCredits" class="self-start" />
 
         <div class="min-w-0 space-y-10">
-          <section aria-label="Known for">
-            <h2 class="text-primary font-medium mb-3">Known For</h2>
+          <section :aria-label="t('person_known_for_label')">
+            <h2 class="text-primary font-medium mb-3">{{ t('person_known_for') }}</h2>
             <PersonKnownForScroller :items="knownFor" />
           </section>
 
-          <section aria-label="Acting filmography">
+          <section :aria-label="t('person_acting_label')">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-              <h2 class="text-primary font-medium">Acting{{ actingCount ? ` (${actingCount})` : '' }}</h2>
+              <h2 class="text-primary font-medium">{{ t('person_acting') }}{{ actingCount ? ` (${actingCount})` : '' }}</h2>
               <div class="flex gap-1.5" role="group" aria-label="Filter acting by media type">
                 <button
                   v-for="option in mediaFilterOptions"
@@ -75,30 +75,31 @@
                 </button>
               </div>
             </div>
-            <p v-if="creditsError" class="text-sm text-muted">Filmography unavailable right now.</p>
-            <PersonFilmographyList v-else :items="actingCredits" :media-filter="actingFilter" empty-label="No acting credits available." />
+            <p v-if="creditsError" class="text-sm text-muted">{{ t('common_recs_unavailable') }}</p>
+            <PersonFilmographyList v-else :items="actingCredits" :media-filter="actingFilter" :empty-label="t('person_no_acting_credits')" />
           </section>
 
-          <section v-if="crewCredits.length" aria-label="Crew filmography">
-            <h2 class="text-primary font-medium mb-3">Crew{{ crewCredits.length ? ` (${crewCredits.length})` : '' }}</h2>
-            <PersonFilmographyList :items="crewCredits" media-filter="all" empty-label="No crew credits available." />
+          <section v-if="crewCredits.length" :aria-label="t('person_crew_label')">
+            <h2 class="text-primary font-medium mb-3">{{ t('person_crew') }}{{ crewCredits.length ? ` (${crewCredits.length})` : '' }}</h2>
+            <PersonFilmographyList :items="crewCredits" media-filter="all" :empty-label="t('person_no_filmography')" />
           </section>
 
           <p v-if="!loadingCredits && !creditsError && !actingCount && !crewCredits.length" class="text-sm text-muted">
-            No filmography available.
+            {{ t('person_no_filmography') }}
           </p>
         </div>
       </div>
     </div>
 
     <div v-if="!loading && !person" class="max-w-3xl mx-auto px-4 pb-20">
-      <LoadError :message="pageError || 'Could not load this person.'" @retry="loadPerson" />
+      <LoadError :message="pageError || t('error_load_person')" @retry="loadPerson" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from '@/i18n'
 import { useRoute } from 'vue-router'
 import { mediaAPI } from '@/api'
 import DetailHero from '@/components/DetailHero.vue'
@@ -117,6 +118,7 @@ import type { PersonCombinedCredits, PersonDetail } from '@/types/api'
 const BIOGRAPHY_PREVIEW_LENGTH = 600
 
 const route = useRoute()
+const { t } = useI18n()
 const personId = computed(() => String(route.params.id ?? ''))
 const person = ref<PersonDetail | null>(null)
 const credits = ref<PersonCombinedCredits | null>(null)
@@ -128,9 +130,9 @@ const biographyExpanded = ref(false)
 const actingFilter = ref<PersonMediaFilter>('all')
 
 const mediaFilterOptions: { label: string; value: PersonMediaFilter }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Movies', value: MEDIA_TYPE.MOVIE },
-  { label: 'TV Shows', value: MEDIA_TYPE.TV },
+  { label: t('person_filter_all'), value: 'all' },
+  { label: t('person_filter_movies'), value: MEDIA_TYPE.MOVIE },
+  { label: t('person_filter_tv'), value: MEDIA_TYPE.TV },
 ]
 
 const externalLinks = computed(() => personExternalLinks(personId.value, person.value?.external_ids))
@@ -164,7 +166,7 @@ async function loadPerson() {
   try {
     person.value = await mediaAPI.getPerson(personId.value)
   } catch (error: unknown) {
-    pageError.value = getApiErrorMessage(error, 'Could not load this person.')
+    pageError.value = getApiErrorMessage(error, t('error_load_person'))
     person.value = null
     return
   } finally {

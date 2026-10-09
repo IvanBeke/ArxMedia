@@ -17,6 +17,7 @@ export function useHistoryDelete(options: {
   onDeleted: (entry: WatchEntry) => Promise<void> | void
   onError?: (message: string) => void
 }) {
+  const { t } = useI18n()
   const deletingEntryId = ref<number | null>(null)
 
   async function deleteEntry(entry: WatchEntry): Promise<void> {
@@ -27,7 +28,7 @@ export function useHistoryDelete(options: {
       await trackingAPI.deleteHistory(entry.id)
       await options.onDeleted(entry)
     } catch (error: unknown) {
-      options.onError?.(getApiErrorMessage(error, 'Could not remove this entry.'))
+      options.onError?.(getApiErrorMessage(error, t('error_remove_entry')))
     } finally {
       deletingEntryId.value = null
     }

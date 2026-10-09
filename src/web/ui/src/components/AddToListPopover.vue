@@ -26,7 +26,7 @@
       class="rounded-lg border border-surface-200 bg-surface-100 p-2"
       :class="modalMode ? 'w-full' : 'absolute right-0 mt-2 w-72 shadow-xl z-[120]'"
     >
-      <p class="text-xs text-muted px-2 py-1">Add to existing list</p>
+      <p class="text-xs text-muted px-2 py-1">{{ t('list_popover_existing') }}</p>
       <div class="max-h-40 overflow-y-auto">
         <button
           v-for="item in lists"
@@ -39,17 +39,17 @@
           <span class="text-primary">{{ item.name }}</span>
           <span class="text-[11px] text-muted ml-1">({{ item.privacy }})</span>
         </button>
-        <p v-if="!lists.length" class="px-2 py-2 text-xs text-muted">No lists yet</p>
+        <p v-if="!lists.length" class="px-2 py-2 text-xs text-muted">{{ t('list_popover_empty') }}</p>
       </div>
 
       <div class="mt-2 border-t border-surface-200 pt-2 px-1">
-        <p class="text-xs text-muted mb-1">Create list and add</p>
+        <p class="text-xs text-muted mb-1">{{ t('list_popover_create_hint') }}</p>
         <div class="flex gap-1">
           <input
             v-model="newListName"
             type="text"
             class="input flex-1 min-w-0 text-sm py-1.5"
-            placeholder="New list name"
+            :placeholder="t('list_popover_name_placeholder')"
             :disabled="submitting"
             @keydown.enter.prevent="createAndAdd"
           >
@@ -59,7 +59,7 @@
             :disabled="submitting || !newListName.trim()"
             @click="createAndAdd"
           >
-            Create & add
+            {{ t('list_popover_create_add') }}
           </button>
         </div>
       </div>
@@ -77,6 +77,7 @@ import { trackingAPI } from '@/api'
 import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { useI18n } from '@/i18n'
 import type { CustomList } from '@/types/api'
 import { normalizePagedResponse } from '@/utils/pagination'
 
@@ -99,6 +100,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const lists = ref<CustomList[]>([])
 const newListName = ref('')
+const { t } = useI18n()
 const { successMsg, errorMsg, showSuccess: setSuccess, showError: setError } = useFlashMessages({ successDurationMs: 1800 })
 const rootRef = ref<HTMLElement | null>(null)
 
@@ -138,10 +140,10 @@ async function addToExisting(listId: number) {
   submitting.value = true
   try {
     await trackingAPI.addToList(listId, { media_type: props.mediaType, tmdb_id: props.tmdbId })
-    setSuccess('Added to list')
+    setSuccess(t('list_added_short'))
     emit('added')
   } catch (error) {
-    setError(getApiErrorMessage(error, 'Could not add to list.'))
+    setError(getApiErrorMessage(error, t('list_popover_add_failed')))
   } finally {
     submitting.value = false
   }
@@ -151,7 +153,7 @@ async function createAndAdd() {
   if (submitting.value) return
   const name = newListName.value.trim()
   if (!name) {
-    setError('List name is required.')
+    setError(t('list_popover_name_required'))
     return
   }
   submitting.value = true
@@ -160,10 +162,10 @@ async function createAndAdd() {
     await trackingAPI.addToList(created.id, { media_type: props.mediaType, tmdb_id: props.tmdbId })
     newListName.value = ''
     await loadLists()
-    setSuccess('List created and item added')
+    setSuccess(t('list_popover_created_added'))
     emit('added')
   } catch (error) {
-    setError(getApiErrorMessage(error, 'Could not create list and add item.'))
+    setError(getApiErrorMessage(error, t('list_popover_create_failed')))
   } finally {
     submitting.value = false
   }

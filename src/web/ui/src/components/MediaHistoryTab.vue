@@ -2,13 +2,13 @@
   <div class="space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h3 class="text-primary font-medium">Watch history</h3>
+        <h3 class="text-primary font-medium">{{ t('history_tab_title') }}</h3>
         <p v-if="count > 0" class="text-sm text-muted mt-1">
-          {{ count }} {{ count === 1 ? 'entry' : 'entries' }}
+          {{ count }} {{ count === 1 ? t('history_entry_one') : t('history_entry_many') }}
         </p>
       </div>
       <RouterLink :to="fullHistoryLink" class="text-sm text-brand-400 hover:text-brand-300">
-        View full history →
+        {{ t('history_view_full') }}
       </RouterLink>
     </div>
 
@@ -18,13 +18,13 @@
       </div>
     </Transition>
 
-    <div v-if="loading" class="grid max-w-6xl grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" aria-label="Loading watch history">
+    <div v-if="loading" class="grid max-w-6xl grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" :aria-label="t('history_loading')">
       <div v-for="n in 6" :key="n" class="aspect-[2/3] skeleton rounded-lg"></div>
     </div>
 
     <div v-else-if="errorMessage" class="card p-8 text-center" role="alert">
       <p class="text-secondary">{{ errorMessage }}</p>
-      <button type="button" class="btn-ghost mt-4" @click="loadHistory">Try again</button>
+      <button type="button" class="btn-ghost mt-4" @click="loadHistory">{{ t('action_try_again') }}</button>
     </div>
 
     <div v-else-if="entries.length" class="grid max-w-6xl grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
@@ -42,7 +42,7 @@
     </div>
 
     <div v-else class="card p-8 text-center text-muted" aria-live="polite">
-      No watch history for this item yet.
+      {{ t('history_empty_item') }}
     </div>
   </div>
 </template>
@@ -53,6 +53,7 @@ import { trackingAPI } from '@/api'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import { getApiErrorMessage } from '@/utils/errors'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { useI18n } from '@/i18n'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { historyItemQuery, historyItemRoute, type HistoryItemFilter } from '@/utils/historyFilters'
 import { normalizePagedResponse } from '@/utils/pagination'
@@ -64,6 +65,7 @@ const props = defineProps<{
 }>()
 
 const entries = ref<WatchEntry[]>([])
+const { t } = useI18n()
 const count = ref(0)
 const loading = ref(true)
 const errorMessage = ref('')
@@ -101,7 +103,7 @@ async function loadHistory() {
     if (currentRequestId !== requestId) return
     entries.value = []
     count.value = 0
-    errorMessage.value = getApiErrorMessage(error, 'Could not load watch history.')
+    errorMessage.value = getApiErrorMessage(error, t('history_load_failed'))
   } finally {
     if (currentRequestId === requestId) {
       loading.value = false

@@ -18,6 +18,7 @@ function setup(status: unknown = WATCH_ENTRY_STATUS.WATCHED) {
     getId: () => 603,
     getStatus: () => status,
     getRateErrorMessage: () => 'Rate after watching.',
+    getRatedMessage: (score) => `Rated ${score}/10!`,
     notifySuccess: (message) => success.push(message),
     notifyError: (message) => errors.push(message),
   })

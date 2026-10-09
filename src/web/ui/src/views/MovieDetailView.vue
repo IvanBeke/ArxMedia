@@ -11,7 +11,7 @@
     <WatchedDateTimePicker
       :open="showDatePicker"
       :initial-value="pickerInitialValue"
-      title="When did you watch this movie?"
+      :title="t('picker_when_movie')"
       @confirm="handleDatePickerConfirm"
       @cancel="handleDatePickerCancel"
     />
@@ -84,7 +84,7 @@
                   @click="handleDropMovie"
                   class="block w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-surface-200 hover:text-red-300 transition-colors rounded"
                 >
-                  Drop movie
+                  {{ t('movie_drop') }}
                 </button>
               </div>
             </template>
@@ -100,7 +100,7 @@
           <AddToListPopover
             :media-type="MEDIA_TYPE.MOVIE"
             :tmdb-id="Number(route.params.id)"
-            @added="() => showSuccess('Added to list')"
+            @added="() => showSuccess(t('list_added_short'))"
           />
           <template #rating>
             <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
@@ -118,7 +118,7 @@
           <div class="grid md:grid-cols-3 gap-8">
             <div class="md:col-span-2 space-y-6 min-w-0">
               <div v-if="movie.watch_providers" class="min-w-0">
-                <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">Watch Now (Powered by JustWatch)</p>
+                <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">{{ t('movie_watch_now') }}</p>
                 <div class="flex flex-wrap gap-2">
                   <div
                     v-for="p in (movie.watch_providers.flatrate || []).slice(0, 6)"
@@ -128,11 +128,11 @@
                     <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
                     <span class="truncate">{{ p.provider_name }}</span>
                   </div>
-                  <span v-if="!(movie.watch_providers.flatrate || []).length" class="text-xs text-muted">No streaming providers found.</span>
+                  <span v-if="!(movie.watch_providers.flatrate || []).length" class="text-xs text-muted">{{ t('movie_no_providers') }}</span>
                 </div>
               </div>
               <div v-if="topCrew.length" class="min-w-0">
-                <p class="text-gray-500 text-xs mb-2">Crew highlights</p>
+                <p class="text-gray-500 text-xs mb-2">{{ t('movie_crew_highlights') }}</p>
                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                   <div v-for="person in topCrew" :key="person.credit_id" class="text-gray-400 max-w-full break-words">
                     <span class="text-gray-500">{{ person.job }}:</span>
@@ -146,26 +146,26 @@
             </div>
             <div class="space-y-4 min-w-0">
               <div class="card p-4">
-                <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Details</p>
+                <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">{{ t('movie_details') }}</p>
                 <dl class="text-sm space-y-1.5">
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Status</dt>
+                    <dt class="text-muted shrink-0">{{ t('movie_status') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.status || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Runtime</dt>
+                    <dt class="text-muted shrink-0">{{ t('movie_runtime') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ runtimeLabel || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Released</dt>
+                    <dt class="text-muted shrink-0">{{ t('movie_released') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ formatDateByLocale(movie.release_date) || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Language</dt>
+                    <dt class="text-muted shrink-0">{{ t('movie_language') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.language || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">Post-credits scene</dt>
+                    <dt class="text-muted shrink-0">{{ t('movie_post_credits') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.has_postcredits_scene ? 'Yes' : 'No' }}</dd>
                   </div>
                 </dl>
@@ -188,10 +188,10 @@
           </div>
 
           <div class="mt-8">
-            <h3 class="text-primary font-medium mb-3">Top cast</h3>
+            <h3 class="text-primary font-medium mb-3">{{ t('movie_top_cast') }}</h3>
             <CastGrid :people="(creditsData?.cast || []).slice(0, 8)" />
             <button v-if="(creditsData?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
-              View all cast →
+              {{ t('movie_view_all_cast') }}
             </button>
           </div>
         </template>
@@ -200,8 +200,8 @@
           <h3 class="text-primary font-medium mb-3">Cast{{ creditsData?.cast?.length ? ` (${creditsData.cast.length})` : '' }}</h3>
           <CastGrid :people="creditsData?.cast || []" />
           <div v-if="(creditsData?.crew || []).length" class="mt-8">
-            <h3 class="text-primary font-medium mb-3">Crew</h3>
-            <CastGrid :people="creditsData?.crew || []" empty-label="No crew information available." />
+            <h3 class="text-primary font-medium mb-3">{{ t('movie_crew') }}</h3>
+            <CastGrid :people="creditsData?.crew || []" :empty-label="t('movie_no_crew')" />
           </div>
         </template>
 
@@ -214,7 +214,7 @@
         </template>
 
         <template v-else-if="activeTab === 'more'">
-          <p v-if="recsError" class="text-sm text-muted mb-3">Recommendations unavailable right now.</p>
+          <p v-if="recsError" class="text-sm text-muted mb-3">{{ t('common_recs_unavailable') }}</p>
           <RecommendationsRow :items="recommendations" :loading="loadingRecs" @status-changed="handleRecommendationStatusChanged" />
         </template>
       </div>
@@ -300,6 +300,7 @@ const { userRating, canRate, submitRating } = useUserRating({
   getId: () => movieId.value,
   getStatus: () => movie.value?.user_status?.status,
   getRateErrorMessage: () => t('rating_movie_requires_watched'),
+  getRatedMessage: (score) => t('rating_rated_score', { score }),
   notifySuccess: showSuccess,
   notifyError: showError,
 })
@@ -316,8 +317,8 @@ const {
 } = useMediaCardQuickActions({ onError: showError })
 
 const watchedMessage = computed(() => {
-  if (isDropped.value) return 'Dropped'
-  return watchedCount.value > 0 ? 'Watched' : 'Watch'
+  if (isDropped.value) return t('watch_action_dropped')
+  return watchedCount.value > 0 ? t('watch_action_watched') : t('watch_action_watch')
 })
 
 const isDropped = computed(() => movie.value?.user_status?.status === WATCH_ENTRY_STATUS.DROPPED)
@@ -347,16 +348,16 @@ const topCrew = computed(() => {
 
 const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'cast', 'collection', 'history', 'more'] as const, () => {
   const tabs: MediaTab[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'cast', label: 'Cast', count: creditsData.value?.cast?.length },
-    { id: 'history', label: 'History' },
+    { id: 'overview', label: t('tabs_overview') },
+    { id: 'cast', label: t('tabs_cast'), count: creditsData.value?.cast?.length },
+    { id: 'history', label: t('tabs_history') },
   ]
   if (movie.value?.collection?.id) {
-    tabs.push({ id: 'collection', label: 'Collection' })
+    tabs.push({ id: 'collection', label: t('tabs_collection') })
   }
   // "More like this" only while loading or when there are recommendations; hidden when empty or failed.
   if (recommendations.value.length > 0 || loadingRecs.value) {
-    tabs.push({ id: 'more', label: 'More like this' })
+    tabs.push({ id: 'more', label: t('tabs_more') })
   }
   return tabs
 })
@@ -399,7 +400,7 @@ function openUnwatchConfirm() {
 async function onMovieUnwatched() {
   await refreshWatchHistory()
   inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
-  showSuccess('Removed from watched history')
+  showSuccess(t('movie_removed_history'))
 }
 
 async function loadCollection() {
@@ -430,7 +431,7 @@ async function loadMovie(): Promise<boolean> {
     void loadRecommendations()
     return true
   } catch (error: unknown) {
-    loadError.value = getApiErrorMessage(error, 'Could not load this movie.')
+    loadError.value = getApiErrorMessage(error, t('error_load_movie'))
     return false
   } finally {
     loading.value = false
@@ -487,7 +488,7 @@ async function handleWatchOption(option: WatchedAtOption) {
   watchedCount.value++
   inWatchlist.value = false
   latestWatchedAt.value = movie.value?.user_status?.watched_at ?? ''
-  showSuccess('Marked as watched!')
+  showSuccess(t('movie_marked_watched'))
 }
 
 async function handleDropMovie() {
@@ -498,9 +499,9 @@ async function handleDropMovie() {
     await trackingAPI.dropMedia({ tmdb_id: movieId.value, media_type: MEDIA_TYPE.MOVIE })
     movie.value = await mediaAPI.getMovie(movieId.value)
     inWatchlist.value = false
-    showSuccess('Movie dropped')
+    showSuccess(t('movie_dropped'))
   } catch (error) {
-    showError(getApiErrorMessage(error, 'Could not drop movie.'))
+    showError(getApiErrorMessage(error, t('movie_drop_failed')))
   }
 }
 
@@ -514,7 +515,7 @@ async function toggleWatchlist() {  if (!movie.value) {
   }
 
   inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
-  showSuccess(result === 'removed' ? 'Removed from watchlist' : 'Added to watchlist!')
+  showSuccess(result === 'removed' ? t('show_removed_watchlist') : t('show_added_watchlist'))
 }
 
 async function refreshMetadata() {
@@ -524,9 +525,9 @@ async function refreshMetadata() {
     await mediaAPI.refreshMovie(movieId.value)
     movie.value = await mediaAPI.getMovie(movieId.value)
     inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
-    showMetadataSuccess('Metadata updated from TMDB')
+    showMetadataSuccess(t('metadata_updated_movie'))
   } catch (error) {
-    showMetadataError(getApiErrorMessage(error, 'Could not refresh metadata.'))
+    showMetadataError(getApiErrorMessage(error, t('movie_refresh_failed')))
   } finally {
     refreshingMetadata.value = false
   }

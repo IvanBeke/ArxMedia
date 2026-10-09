@@ -1,11 +1,11 @@
 <template>
   <ConfirmDialog
     ref="confirmDialog"
-    title="Remove this movie from history?"
-    message="This will remove the movie from your watched history."
-    confirm-label="Unwatch"
-    cancel-label="Keep watched"
-    loading-label="Unwatching..."
+    :title="t('dialog_unwatch_movie_title')"
+    :message="t('dialog_unwatch_movie_message')"
+    :confirm-label="t('dialog_unwatch_episode_confirm')"
+    :cancel-label="t('dialog_unwatch_episode_keep')"
+    :loading-label="t('dialog_unwatch_episode_loading')"
     :loading="removing"
     @confirm="onConfirm"
   />
@@ -15,10 +15,13 @@
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
+import { useI18n } from '@/i18n'
 import { useUnwatchConfirm } from '@/composables/useUnwatchConfirm'
 import type { MediaResult } from '@/types/api'
 
 const props = withDefaults(defineProps<{ onError?: (message: string) => void }>(), { onError: undefined })
+
+const { t } = useI18n()
 
 const emit = defineEmits<{ unwatched: [movie: MediaResult] }>()
 
