@@ -23,7 +23,8 @@ const PRESET_SIZES = new Set(['xs', 's', 'sm'])
 const displayValue = computed(() => {
   const season = Number(props.seasonNumber)
   const episode = Number(props.episodeNumber)
-  if (!Number.isInteger(season) || season <= 0 || !Number.isInteger(episode) || episode <= 0) {
+  // Season 0 holds specials and renders as S00; only negative or non-integer numbers fall back.
+  if (!Number.isInteger(season) || season < 0 || !Number.isInteger(episode) || episode <= 0) {
     return props.fallback
   }
   return `S${String(season).padStart(2, '0')}·E${String(episode).padStart(2, '0')}`

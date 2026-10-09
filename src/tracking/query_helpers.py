@@ -31,12 +31,12 @@ def watch_entry_context(entries):
     movie_ids = {entry.tmdb_id for entry in entries if entry.media_type == WatchEntryMediaType.MOVIE}
     episode_entries = [entry for entry in entries if entry.media_type == WatchEntryMediaType.EPISODE]
     season_map = build_season_map(
-        (entry.tmdb_id, entry.season_number) for entry in episode_entries if entry.season_number
+        (entry.tmdb_id, entry.season_number) for entry in episode_entries if entry.season_number is not None
     )
     season_keys = {season.id: key for key, season in season_map.items() if season is not None}
     episode_map = {}
     if season_keys:
-        episode_numbers = {entry.episode_number for entry in episode_entries if entry.episode_number}
+        episode_numbers = {entry.episode_number for entry in episode_entries if entry.episode_number is not None}
         for episode in Episode.objects.filter(season_id__in=season_keys, episode_number__in=episode_numbers):
             episode_map[(*season_keys[episode.season_id], episode.episode_number)] = episode
     return {

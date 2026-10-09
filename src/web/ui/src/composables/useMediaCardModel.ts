@@ -65,7 +65,7 @@ export function useMediaCardModel(context: string, entrySource: MaybeRefOrGetter
       showMediaTypeBadge: options.showMediaTypeBadge ?? context === 'mixed',
       mediaType: itemMediaType,
       episodeCode: {
-        visible: Boolean(isEpisode && item.season_number && item.episode_number),
+        visible: Boolean(isEpisode && item.season_number != null && item.episode_number != null),
           seasonNumber: item.season_number ?? 0,
           episodeNumber: item.episode_number ?? 0,
       },

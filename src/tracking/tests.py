@@ -758,6 +758,27 @@ class UnknownWatchDateMigrationTests(TransactionTestCase):
         self.assertEqual(migrated.status_changed_at, migrated.created_at)
 
 
+class SpecialEpisodeHistoryTests(BaseTestCase):
+    """Season 0 (specials) must resolve titles, shows and posters like any other season."""
+
+    def test_history_resolves_special_episode_details(self):
+        show = TVShow.objects.create(tmdb_id=700, name='Special Show')
+        season = Season.objects.create(show=show, tmdb_id=7000, season_number=0, name='Specials', poster_path='/s0.jpg')
+        Episode.objects.create(season=season, tmdb_id=70001, episode_number=1, name='Special One')
+        WatchEntry.objects.create(
+            user=self.user, media_type='episode', tmdb_id=700, season_number=0, episode_number=1,
+            watched_at=timezone.now(),
+        )
+
+        response = self.client.get('/api/tracking/history/', {'tmdb_id': 700, 'media_type': 'episode'})
+
+        self.assertEqual(response.status_code, 200)
+        row = response.data['results'][0]
+        self.assertEqual(row['title'], 'Special One')
+        self.assertEqual(row['show_name'], 'Special Show')
+        self.assertTrue(row['poster_url'].endswith('/s0.jpg'))
+
+
 class UniqueEpisodeWatchMigrationTests(TransactionTestCase):
     def _targets(self, tracking_migration):
         executor = MigrationExecutor(connection)

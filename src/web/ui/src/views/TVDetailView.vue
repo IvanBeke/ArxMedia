@@ -240,11 +240,11 @@
                 <div class="flex-1 min-w-0">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <RouterLink :to="`/tv/${tmdbId}/season/${season.season_number}`" class="min-w-0 flex-1 truncate text-primary font-medium hover:text-brand-400 transition-colors">
-                      {{ season.name }}
+                      {{ season.season_number === 0 ? t('episode_special_season') : season.name }}
                     </RouterLink>
                     <div class="flex items-center gap-2 shrink-0">
                       <button @click.stop="toggleSeasonWatched(season.season_number)" class="text-xs px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap" :class="getSeasonProgress(season.season_number) === 100 ? 'bg-brand-500 text-white hover:bg-brand-600' : 'bg-surface-200 text-muted hover:text-primary hover:bg-surface-300'">
-                        {{ getSeasonProgress(season.season_number) === 100 ? 'Watched' : 'Mark watched' }}
+                        {{ getSeasonProgress(season.season_number) === 100 ? t('show_season_watched') : t('show_season_mark_watched') }}
                       </button>
                       <button @click="toggleSeason(season.season_number)" class="p-1 hover:bg-surface-200 rounded transition-colors" :aria-label="t('show_expand_season', { name: season.name })">
                         <svg class="w-5 h-5 text-muted transition-transform" :class="expandedSeason === season.season_number ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -253,11 +253,11 @@
                       </button>
                     </div>
                   </div>
-                  <p class="text-muted text-sm mt-0.5">{{ season.episode_count }} episodes{{ season.air_date ? ` · ${temporalYear(season.air_date) || ''}` : '' }}<RatingBadge v-if="season.vote_average" :value="season.vote_average" size="xs" class="ml-2 align-middle" /></p>
+                  <p class="text-muted text-sm mt-0.5">{{ season.episode_count }} {{ season.episode_count === 1 ? t('common_episode_one') : t('common_episode_many') }}{{ season.air_date ? ` · ${temporalYear(season.air_date) || ''}` : '' }}<RatingBadge v-if="season.vote_average" :value="season.vote_average" size="xs" class="ml-2 align-middle" /></p>
                   <p v-if="season.overview" class="text-muted text-xs mt-1 line-clamp-3 break-words">{{ season.overview }}</p>
                   <div class="mt-2">
                     <ProgressBar :pct="getSeasonProgress(season.season_number)" />
-                    <p class="text-xs text-muted mt-1">{{ formatSeasonProgressFraction(season.season_number) }} watched</p>
+                    <p class="text-xs text-muted mt-1">{{ formatSeasonProgressFraction(season.season_number) }} {{ t('show_season_progress_watched') }}</p>
                   </div>
                 </div>
               </div>

@@ -61,7 +61,7 @@ class MediaCardSerializer(serializers.ModelSerializer):
     def _get_season(self, obj):
         media_type = getattr(obj, 'media_type', None)
         season_number = getattr(obj, 'season_number', None)
-        if media_type != WatchEntryMediaType.EPISODE or not season_number:
+        if media_type != WatchEntryMediaType.EPISODE or season_number is None:
             return None
 
         cache = getattr(self, '_season_cache', None)
@@ -133,7 +133,7 @@ class WatchEntrySerializer(MediaCardSerializer):
         read_only_fields = ['id', 'created_at']
 
     def _get_episode(self, obj):
-        if obj.media_type != WatchEntryMediaType.EPISODE or not obj.season_number or not obj.episode_number:
+        if obj.media_type != WatchEntryMediaType.EPISODE or obj.season_number is None or obj.episode_number is None:
             return None
 
         season = self._get_season(obj)
@@ -165,7 +165,7 @@ class WatchEntrySerializer(MediaCardSerializer):
             if episode and episode.name:
                 return episode.name
 
-            if obj.episode_number:
+            if obj.episode_number is not None:
                 return f'Episode {obj.episode_number}'
             return f'Episode #{obj.tmdb_id}'
         return super().get_title(obj)

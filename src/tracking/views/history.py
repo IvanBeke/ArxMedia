@@ -274,7 +274,7 @@ def user_stats(request):
                 d['title'] = d['episode_title']
             else:
                 d['show_title'] = None
-                d['episode_title'] = f'Episode {entry.episode_number}' if entry.episode_number else f'Episode #{entry.tmdb_id}'
+                d['episode_title'] = f'Episode {entry.episode_number}' if entry.episode_number is not None else f'Episode #{entry.tmdb_id}'
                 d['title'] = d['episode_title']
             d['rating'] = rating_map.get((MediaType.TV, entry.tmdb_id))
         recent_data.append(d)

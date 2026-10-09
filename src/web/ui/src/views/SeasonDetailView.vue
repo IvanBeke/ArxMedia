@@ -17,14 +17,14 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
         </svg>
-        Back to {{ showName }}
+        {{ t('season_back_to', { name: showName }) }}
       </router-link>
     </div>
 
     <DetailHero
       bare
       :poster-url="season?.poster_url"
-      :poster-alt="season?.name"
+      :poster-alt="season && season.season_number === 0 ? t('episode_special_season') : (season?.name ?? '')"
       :loading="loading"
     >
       <template #eyebrow>
@@ -33,11 +33,11 @@
         </RouterLink>
       </template>
       <template #title>
-        <h1 v-if="season" class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ season.name }}</h1>
+        <h1 v-if="season" class="font-display text-3xl md:text-5xl text-primary font-semibold mb-1">{{ season.season_number === 0 ? t('episode_special_season') : season.name }}</h1>
       </template>
       <template #meta>
         <p v-if="season" class="text-muted text-sm mb-3">
-          Season {{ seasonNumber }} · {{ totalEpisodesCount }} episode{{ totalEpisodesCount !== 1 ? 's' : '' }}{{ seasonAirYear ? ` · ${seasonAirYear}` : '' }} · {{ seasonProgressFraction }} watched
+          {{ t('season_season') }} {{ seasonNumber }} · {{ totalEpisodesCount }} {{ totalEpisodesCount === 1 ? t('common_episode_one') : t('common_episode_many') }}{{ seasonAirYear ? ` · ${seasonAirYear}` : '' }} · {{ seasonProgressFraction }} {{ t('show_season_progress_watched') }}
         </p>
       </template>
       <template #badges>
