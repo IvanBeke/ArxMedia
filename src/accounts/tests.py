@@ -80,7 +80,11 @@ class AccountTests(TestCase):
         response = client.post('/api/auth/login/', {'username': 'testuser', 'password': 'testpass123'})
         self.assertEqual(response.status_code, 403)
 
-        client.get('/')
+        with patch(
+            'django_vite.templatetags.django_vite.DjangoViteAssetLoader.instance'
+        ) as loader_instance:
+            loader_instance.return_value.generate_vite_asset.return_value = ''
+            client.get('/')
         token = client.cookies['csrftoken'].value
         response = client.post(
             '/api/auth/login/',
