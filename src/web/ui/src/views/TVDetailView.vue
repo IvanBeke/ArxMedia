@@ -344,11 +344,12 @@ import { useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
 import { tmdbImageUrl } from '@/utils/images'
-import { applyStatusChanged, type MediaStatusChangedPayload } from '@/utils/mediaStatusSync'
-import { canRateByStatus, formatUpdatedAtLabel } from '@/utils/mediaStatus'
+import { formatUpdatedAtLabel } from '@/utils/mediaStatus'
 import { showExternalLinks } from '@/utils/externalLinks'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
 import { useDetailTabs } from '@/composables/useDetailTabs'
+import { useRecommendations } from '@/composables/useRecommendations'
+import { useUserRating } from '@/composables/useUserRating'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
@@ -373,14 +374,10 @@ const historyFilter = computed(() => ({
 
 const show = ref<TVShow | null>(null)
 const aggregateCredits = ref<Credits | null>(null)
-const recommendations = ref<MediaResult[]>([])
 const loading = ref(true)
 const loadError = ref('')
 const loadingSeasons = ref(false)
 const loadingCredits = ref(false)
-const loadingRecs = ref(false)
-const recsError = ref(false)
-const userRating = ref(0)
 const showStatus = ref<ShowStatus>(WATCH_ENTRY_STATUS.NONE)
 const metadataFlash = useFlashMessages()
 const {
@@ -390,6 +387,21 @@ const {
   showError: showMetadataError,
 } = metadataFlash
 const { successMsg, errorMsg, showSuccess, showError } = useFlashMessages()
+
+const { recommendations, loadingRecs, recsError, loadRecommendations, handleRecommendationStatusChanged } = useRecommendations(
+  (id) => mediaAPI.getTVRecommendations(id),
+  MEDIA_TYPE.TV,
+  () => tmdbId.value,
+)
+
+const { userRating, canRate, submitRating } = useUserRating({
+  mediaType: MEDIA_TYPE.TV,
+  getId: () => tmdbId.value,
+  getStatus: () => show.value?.user_status?.status,
+  getRateErrorMessage: () => t('rating_show_requires_watching'),
+  notifySuccess: showSuccess,
+  notifyError: showError,
+})
 const refreshingMetadata = ref(false)
 const removeHistoryDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const removingHistory = ref(false)
@@ -475,8 +487,6 @@ const showTotalCount = computed(() => {
 const showProgress = computed(() => computeProgressPercent(showWatchedCount.value, showTotalCount.value))
 
 const showWatchedFraction = computed(() => formatProgressFraction(showWatchedCount.value, showTotalCount.value))
-
-const canRate = computed(() => canRateByStatus(show.value?.user_status?.status))
 
 function syncShowStatusFromUserStatus() {
   const status = show.value?.user_status?.status
@@ -728,15 +738,6 @@ async function handleWatchlistAction() {
   }
 }
 
-async function submitRating(score: number) {
-  try {
-    await trackingAPI.rate({ media_type: MEDIA_TYPE.TV, tmdb_id: tmdbId.value, score })
-    showSuccess(`Rated ${score}/10!`)
-  } catch (error) {
-    showError(getApiErrorMessage(error, t('rating_show_requires_watching')))
-  }
-}
-
 async function loadShow() {
   try {
     const data = await mediaAPI.getTV(tmdbId.value)
@@ -776,23 +777,6 @@ async function loadCredits() {
   }
 }
 
-async function loadRecommendations() {
-  loadingRecs.value = true
-  recsError.value = false
-  try {
-    const data = await mediaAPI.getTVRecommendations(tmdbId.value)
-    recommendations.value = (data.results || []).map((item) => ({ ...item, media_type: MEDIA_TYPE.TV }))
-  } catch (e) {
-    console.error('Failed to load recommendations:', e)
-    recsError.value = true
-  } finally {
-    loadingRecs.value = false
-  }
-}
-
-function handleRecommendationStatusChanged(payload: MediaStatusChangedPayload) {
-  applyStatusChanged(recommendations.value, payload)
-}
 
 async function loadPage() {
   loading.value = true

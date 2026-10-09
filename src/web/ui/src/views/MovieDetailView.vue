@@ -250,10 +250,11 @@ import { formatDateByLocale, useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
 import { useDetailTabs } from '@/composables/useDetailTabs'
+import { useRecommendations } from '@/composables/useRecommendations'
+import { useUserRating } from '@/composables/useUserRating'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { tmdbImageUrl } from '@/utils/images'
-import { applyStatusChanged, type MediaStatusChangedPayload } from '@/utils/mediaStatusSync'
-import { canRateByStatus, formatUpdatedAtLabel } from '@/utils/mediaStatus'
+import { formatUpdatedAtLabel } from '@/utils/mediaStatus'
 import { formatHoursMinutes } from '@/utils/progress'
 import { movieExternalLinks } from '@/utils/externalLinks'
 import { instantEpochMs, instantFromEpochMs, temporalYear } from '@/utils/temporal'
@@ -273,13 +274,9 @@ const { t } = useI18n()
 const movie = ref<Movie | null>(null)
 const creditsData = ref<Credits | null>(null)
 const collectionDetail = ref<CollectionDetail | null>(null)
-const recommendations = ref<MediaResult[]>([])
 const loading = ref(true)
 const loadError = ref('')
 const loadingCollection = ref(false)
-const loadingRecs = ref(false)
-const recsError = ref(false)
-const userRating = ref(0)
 const watchedCount = ref(0)
 const latestWatchedAt = ref('')
 const inWatchlist = ref(false)
@@ -291,6 +288,21 @@ const {
   showError: showMetadataError,
 } = metadataFlash
 const { successMsg, errorMsg, showSuccess, showError } = useFlashMessages()
+
+const { recommendations, loadingRecs, recsError, loadRecommendations, handleRecommendationStatusChanged } = useRecommendations(
+  (id) => mediaAPI.getMovieRecommendations(id),
+  MEDIA_TYPE.MOVIE,
+  () => movieId.value,
+)
+
+const { userRating, canRate, submitRating } = useUserRating({
+  mediaType: MEDIA_TYPE.MOVIE,
+  getId: () => movieId.value,
+  getStatus: () => movie.value?.user_status?.status,
+  getRateErrorMessage: () => t('rating_movie_requires_watched'),
+  notifySuccess: showSuccess,
+  notifyError: showError,
+})
 const unwatchDialog = ref<InstanceType<typeof MovieUnwatchDialog> | null>(null)
 const refreshingMetadata = ref(false)
 
@@ -323,8 +335,6 @@ const runtimeLabel = computed(() => {
   }
   return formatHoursMinutes(runtime)
 })
-
-const canRate = computed(() => canRateByStatus(movie.value?.user_status?.status))
 
 const topCrew = computed(() => {
   const crew = creditsData.value?.crew || []
@@ -405,23 +415,6 @@ async function loadCollection() {
   }
 }
 
-async function loadRecommendations() {
-  loadingRecs.value = true
-  recsError.value = false
-  try {
-    const data = await mediaAPI.getMovieRecommendations(movieId.value)
-    recommendations.value = (data.results || []).map((item) => ({ ...item, media_type: MEDIA_TYPE.MOVIE }))
-  } catch (e) {
-    console.error('Failed to load recommendations:', e)
-    recsError.value = true
-  } finally {
-    loadingRecs.value = false
-  }
-}
-
-function handleRecommendationStatusChanged(payload: MediaStatusChangedPayload) {
-  applyStatusChanged(recommendations.value, payload)
-}
 
 async function loadMovie(): Promise<boolean> {
   loading.value = true
@@ -523,15 +516,6 @@ async function toggleWatchlist() {  if (!movie.value) {
 
   inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
   showSuccess(result === 'removed' ? 'Removed from watchlist' : 'Added to watchlist!')
-}
-
-async function submitRating(score: number) {
-  try {
-    await trackingAPI.rate({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: movieId.value, score })
-    showSuccess(`Rated ${score}/10!`)
-  } catch (error) {
-    showError(getApiErrorMessage(error, t('rating_movie_requires_watched')))
-  }
 }
 
 async function refreshMetadata() {
