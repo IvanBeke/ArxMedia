@@ -281,18 +281,7 @@ def trending(request):
         _normalize_media_release_date(data.get('results', []))
 
         if request.user.is_authenticated:
-            items = []
-            for result in data.get('results', []):
-                if result.get('media_type') in (MediaType.MOVIE, MediaType.TV):
-                    items.append({
-                        'media_type': result['media_type'],
-                        'tmdb_id': result.get('id'),
-                    })
-            status_map = annotate_media_user_status(request.user, items)
-            for result in data.get('results', []):
-                key = (result.get('media_type'), result.get('id'))
-                if key in status_map:
-                    result['user_status'] = status_map[key]
+            _annotate_results_with_user_status(request.user, data.get('results', []))
         return Response(data)
     except Exception as e:
         logger.error(f"TMDB API error: {e}")
@@ -321,17 +310,7 @@ def popular(request):
         _normalize_media_release_date(data.get('results', []))
 
         if request.user.is_authenticated:
-            status_map = annotate_media_user_status(
-                request.user,
-                [
-                    {'media_type': resolved_media_type, 'tmdb_id': item.get('id')}
-                    for item in data.get('results', [])
-                ],
-            )
-            for result in data.get('results', []):
-                key = (resolved_media_type, result.get('id'))
-                if key in status_map:
-                    result['user_status'] = status_map[key]
+            _annotate_results_with_user_status(request.user, data.get('results', []))
 
         return Response(data)
     except Exception as e:
@@ -731,38 +710,32 @@ def episode_external_ids(request, tmdb_id, season_number, episode_number):
     return Response(stored)
 
 
-@transaction.non_atomic_requests
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def movie_recommendations(request, tmdb_id):
+def _recommendations_response(request, tmdb_id, fetcher, media_type, label):
     page, error = _parse_int_query(request, 'page', 1)
     if error:
         return error
     try:
-        data = tmdb.get_movie_recommendations(tmdb_id, page)
+        data = fetcher(tmdb_id, page)
     except Exception:
-        logger.warning('Failed to fetch movie recommendations for %s from TMDB', tmdb_id, exc_info=True)
+        logger.warning('Failed to fetch %s recommendations for %s from TMDB', label, tmdb_id, exc_info=True)
         return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
     results = data.get('results', []) if isinstance(data, dict) else []
-    _annotate_recommendation_results(request.user, results, MediaType.MOVIE)
+    _annotate_recommendation_results(request.user, results, media_type)
     return Response(data)
+
+
+@transaction.non_atomic_requests
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def movie_recommendations(request, tmdb_id):
+    return _recommendations_response(request, tmdb_id, tmdb.get_movie_recommendations, MediaType.MOVIE, 'movie')
 
 
 @transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def tv_recommendations(request, tmdb_id):
-    page, error = _parse_int_query(request, 'page', 1)
-    if error:
-        return error
-    try:
-        data = tmdb.get_tv_recommendations(tmdb_id, page)
-    except Exception:
-        logger.warning('Failed to fetch TV recommendations for %s from TMDB', tmdb_id, exc_info=True)
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
-    results = data.get('results', []) if isinstance(data, dict) else []
-    _annotate_recommendation_results(request.user, results, MediaType.TV)
-    return Response(data)
+    return _recommendations_response(request, tmdb_id, tmdb.get_tv_recommendations, MediaType.TV, 'TV')
 
 
 @transaction.non_atomic_requests

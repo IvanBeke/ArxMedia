@@ -508,6 +508,24 @@ def _sort_progress_items(items, sort_by: str, direction: str):
     )
 
 
+def _paginated_library_response(request, items, **extras):
+    """Paginate library items, attaching the same extras in both paginated and plain responses."""
+    paginator = PageNumberPagination()
+    page = paginator.paginate_queryset(items, request)
+    if page is None:
+        return Response({
+            'results': items,
+            'count': len(items),
+            'next': None,
+            'previous': None,
+            **extras,
+        })
+    response = paginator.get_paginated_response(page)
+    for key, value in extras.items():
+        response.data[key] = value
+    return response
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def my_shows_list(request):
@@ -525,23 +543,9 @@ def my_shows_list(request):
     status_rows = _my_shows_status_rows(request.user, now, status_queryset)
 
     if not progress_tmdb_ids:
-        paginator = PageNumberPagination()
-        page = paginator.paginate_queryset([], request)
-        if page is None:
-            return Response({
-                'results': [],
-                'count': 0,
-                'next': None,
-                'previous': None,
-                'available_genres': [],
-                'available_provider_statuses': [],
-                'total_runtime_minutes': 0,
-            })
-        response = paginator.get_paginated_response(page)
-        response.data['available_genres'] = []
-        response.data['available_provider_statuses'] = []
-        response.data['total_runtime_minutes'] = 0
-        return response
+        return _paginated_library_response(
+            request, [], available_genres=[], available_provider_statuses=[], total_runtime_minutes=0,
+        )
 
     status_row_by_tmdb_id = {row['tmdb_id']: row for row in status_rows}
     tmdb_ids = list(progress_tmdb_ids)
@@ -585,23 +589,13 @@ def my_shows_list(request):
     }
     total_runtime_minutes = sum(total_runtime_by_show.get(tmdb_id, 0) for tmdb_id in filtered_ids)
 
-    paginator = PageNumberPagination()
-    page = paginator.paginate_queryset(sorted_items, request)
-    if page is None:
-        return Response({
-            'results': sorted_items,
-            'count': len(sorted_items),
-            'next': None,
-            'previous': None,
-            'available_genres': available_genres,
-            'available_provider_statuses': available_provider_statuses,
-            'total_runtime_minutes': total_runtime_minutes,
-        })
-    response = paginator.get_paginated_response(page)
-    response.data['available_genres'] = available_genres
-    response.data['available_provider_statuses'] = available_provider_statuses
-    response.data['total_runtime_minutes'] = total_runtime_minutes
-    return response
+    return _paginated_library_response(
+        request,
+        sorted_items,
+        available_genres=available_genres,
+        available_provider_statuses=available_provider_statuses,
+        total_runtime_minutes=total_runtime_minutes,
+    )
 
 
 def _apply_movie_filters(items, request):
@@ -712,21 +706,9 @@ def my_movies_list(request):
     )
 
     if not status_rows:
-        paginator = PageNumberPagination()
-        page = paginator.paginate_queryset([], request)
-        if page is None:
-            return Response({
-                'results': [],
-                'count': 0,
-                'next': None,
-                'previous': None,
-                'available_genres': [],
-                'total_runtime_minutes': 0,
-            })
-        response = paginator.get_paginated_response(page)
-        response.data['available_genres'] = []
-        response.data['total_runtime_minutes'] = 0
-        return response
+        return _paginated_library_response(
+            request, [], available_genres=[], total_runtime_minutes=0,
+        )
 
     status_row_by_tmdb_id = {row['tmdb_id']: row for row in status_rows}
     tmdb_ids = list(status_row_by_tmdb_id)
@@ -773,21 +755,12 @@ def my_movies_list(request):
         for item in filtered
     )
 
-    paginator = PageNumberPagination()
-    page = paginator.paginate_queryset(sorted_items, request)
-    if page is None:
-        return Response({
-            'results': sorted_items,
-            'count': len(sorted_items),
-            'next': None,
-            'previous': None,
-            'available_genres': available_genres,
-            'total_runtime_minutes': total_runtime_minutes,
-        })
-    response = paginator.get_paginated_response(page)
-    response.data['available_genres'] = available_genres
-    response.data['total_runtime_minutes'] = total_runtime_minutes
-    return response
+    return _paginated_library_response(
+        request,
+        sorted_items,
+        available_genres=available_genres,
+        total_runtime_minutes=total_runtime_minutes,
+    )
 
 
 @api_view(['GET'])
