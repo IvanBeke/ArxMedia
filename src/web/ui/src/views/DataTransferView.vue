@@ -845,7 +845,7 @@ function selectImportMode(mode: ImportMode) {
 
 async function loadJobs() {
   const data = await trackingAPI.listJobs()
-  jobs.value = Array.isArray(data) ? data : data.results || []
+  jobs.value = data.results || []
 }
 
 function latestProcessingJob() {

@@ -53,6 +53,26 @@ describe('API session requests', () => {
     expect(options.headers).toEqual({ 'X-CSRFToken': 'test-csrf-token' })
   })
 
+  it('encodes usernames used in path segments', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 1, username: 'a/b' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await authAPI.getUser('a/b@c+d')
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/auth/users/a%2Fb%40c%2Bd/')
+  })
+
+  it('sends the export format as request params', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 9 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await trackingAPI.exportData('zip')
+
+    const [url, options] = fetchMock.mock.calls[0] ?? []
+    expect(new URL(String(url)).searchParams.get('data_format')).toBe('zip')
+    expect(options).toMatchObject({ method: 'POST' })
+  })
+
   it('surfaces auth endpoint 401s without redirecting', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ detail: 'Incorrect username or password.' }, 401)))
     const before = window.location.href

@@ -26,7 +26,7 @@ vi.mock('@/api', () => {
 })
 
 function mountView(jobs: object[]) {
-  listJobs.mockResolvedValueOnce(jobs)
+  listJobs.mockResolvedValueOnce({ count: jobs.length, next: null, previous: null, results: jobs })
   return mount(DataTransferView, { global: { plugins: [createPinia()] } })
 }
 

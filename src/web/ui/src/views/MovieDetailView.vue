@@ -366,8 +366,8 @@ function releaseYear(value: string | null | undefined) {
   return temporalYear(value) || ''
 }
 
-function applyWatchHistory(response: PaginatedResponse<WatchEntry> | WatchEntry[]) {
-  const entries = Array.isArray(response) ? response : response.results
+function applyWatchHistory(response: PaginatedResponse<WatchEntry>) {
+  const entries = response.results
   watchedCount.value = entries.length
   const watchedDates = entries
     .map((entry) => entry.watched_at)
@@ -450,8 +450,7 @@ async function loadPage() {
     }
     inWatchlist.value = movie.value?.user_status?.status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH
     if (ratingRes.status === 'fulfilled') {
-      const ratings = Array.isArray(ratingRes.value) ? ratingRes.value : ratingRes.value.results
-      const found = ratings[0]
+      const found = ratingRes.value.results[0]
       if (found) userRating.value = found.score
     }
   }

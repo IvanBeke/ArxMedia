@@ -798,8 +798,7 @@ async function loadPage() {
     }
 
     if (ratingRes.status === 'fulfilled') {
-      const ratings = Array.isArray(ratingRes.value) ? ratingRes.value : ratingRes.value.results
-      const found = ratings[0]
+      const found = ratingRes.value.results[0]
       if (found) userRating.value = found.score
     }
   }
