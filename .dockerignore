@@ -1,6 +1,6 @@
-venv/
-.venv/
-__pycache__/
+**/venv/
+**/.venv/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -10,7 +10,7 @@ __pycache__/
 db.sqlite3
 media/
 staticfiles/
-node_modules/
-.pnpm-store/
+**/node_modules/
+**/.pnpm-store/
 .git/
 .gitignore
