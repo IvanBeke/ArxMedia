@@ -23,12 +23,17 @@
     </div>
     <RecommendationsRow :items="parts" :media-type="MEDIA_TYPE.MOVIE" @status-changed="handleStatusChanged" />
   </div>
+  <div v-else-if="error" class="card p-6 text-center">
+    <p class="text-sm text-muted">{{ t('common_collection_unavailable') }}</p>
+    <button type="button" class="btn-ghost text-sm mt-3 px-3 py-1.5 rounded-md" @click="emit('retry')">{{ t('action_try_again') }}</button>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import RecommendationsRow from '@/components/RecommendationsRow.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
+import { useI18n } from '@/i18n'
 import { tmdbImageUrl } from '@/utils/images'
 import { applyStatusChanged, sortMediaByReleaseDate, type MediaStatusChangedPayload } from '@/utils/mediaStatusSync'
 import type { CollectionDetail, MediaResult } from '@/types/api'
@@ -36,7 +41,12 @@ import type { CollectionDetail, MediaResult } from '@/types/api'
 const props = withDefaults(defineProps<{
   collection?: CollectionDetail | null
   loading?: boolean
-}>(), { collection: null, loading: false })
+  error?: boolean
+}>(), { collection: null, loading: false, error: false })
+
+const emit = defineEmits<{ retry: [] }>()
+
+const { t } = useI18n()
 
 const overview = computed(() => props.collection?.overview || '')
 

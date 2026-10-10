@@ -162,6 +162,25 @@ describe('SeasonDetailView progress', () => {
     })
   })
 
+  it('shows an unavailable notice with retry when credits fail to load', async () => {
+    const payload = seasonPayload(12)
+    payload.credits = { cast: [], crew: [], guest_stars: [] }
+    getSeason.mockResolvedValue(payload)
+    getSeasonCredits.mockRejectedValueOnce(new Error('credits down'))
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView('cast')
+
+    expect(wrapper.text()).toContain('unavailable')
+    const retry = wrapper.findAll('button').find((button) => button.text() === 'Try again')
+    expect(retry).toBeTruthy()
+    await retry!.trigger('click')
+    await flushPromises()
+
+    expect(getSeasonCredits).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('unavailable')
+  })
+
   it('increments the count optimistically when an unwatched episode is marked', async () => {
     getSeason.mockResolvedValue(seasonPayload(12))
     getWatchedEpisodes.mockResolvedValue(watchedPayload([]))

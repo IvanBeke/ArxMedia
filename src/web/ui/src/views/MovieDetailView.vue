@@ -197,6 +197,9 @@
         </template>
 
         <template v-else-if="activeTab === 'cast'">
+          <p v-if="creditsError" class="text-sm text-muted mb-3">{{ t('common_credits_unavailable') }}
+            <button type="button" class="text-brand-400 hover:text-brand-300" @click="reloadCredits">{{ t('action_try_again') }}</button>
+          </p>
           <h3 class="text-primary font-medium mb-3">Cast{{ creditsData?.cast?.length ? ` (${creditsData.cast.length})` : '' }}</h3>
           <CastGrid :people="creditsData?.cast || []" />
           <div v-if="(creditsData?.crew || []).length" class="mt-8">
@@ -206,7 +209,7 @@
         </template>
 
         <template v-else-if="activeTab === 'collection'">
-          <CollectionStrip :collection="collectionDetail" :loading="loadingCollection" />
+          <CollectionStrip :collection="collectionDetail" :loading="loadingCollection" :error="collectionError" @retry="loadCollection" />
         </template>
 
         <template v-else-if="activeTab === 'history'">
@@ -277,6 +280,8 @@ const collectionDetail = ref<CollectionDetail | null>(null)
 const loading = ref(true)
 const loadError = ref('')
 const loadingCollection = ref(false)
+const collectionError = ref(false)
+const creditsError = ref(false)
 const watchedCount = ref(0)
 const latestWatchedAt = ref('')
 const inWatchlist = ref(false)
@@ -389,7 +394,7 @@ async function refreshWatchHistory() {
     const response = await trackingAPI.getHistory({ media_type: MEDIA_TYPE.MOVIE, tmdb_id: movieId.value })
     applyWatchHistory(response)
   } catch (e) {
-    console.error('Failed to load watch history:', e)
+    showError(getApiErrorMessage(e, t('history_load_failed')))
   }
 }
 
@@ -409,12 +414,23 @@ async function loadCollection() {
   const collectionId = movie.value?.collection?.id
   if (!collectionId) return
   loadingCollection.value = true
+  collectionError.value = false
   try {
     collectionDetail.value = await mediaAPI.getCollection(collectionId)
-  } catch (e) {
-    console.error('Failed to load collection:', e)
+  } catch {
+    collectionDetail.value = null
+    collectionError.value = true
   } finally {
     loadingCollection.value = false
+  }
+}
+
+async function reloadCredits() {
+  creditsError.value = false
+  try {
+    creditsData.value = await mediaAPI.getMovieCredits(movieId.value)
+  } catch {
+    creditsError.value = true
   }
 }
 
@@ -422,10 +438,14 @@ async function loadCollection() {
 async function loadMovie(): Promise<boolean> {
   loading.value = true
   loadError.value = ''
+  creditsError.value = false
   try {
     const [movieRes, creditsRes] = await Promise.all([
       mediaAPI.getMovie(movieId.value),
-      mediaAPI.getMovieCredits(movieId.value).catch(() => null),
+      mediaAPI.getMovieCredits(movieId.value).catch(() => {
+        creditsError.value = true
+        return null
+      }),
     ])
     movie.value = movieRes
     creditsData.value = creditsRes

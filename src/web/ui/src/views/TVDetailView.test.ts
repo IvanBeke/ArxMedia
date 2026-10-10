@@ -174,6 +174,25 @@ describe('TVDetailView hero progress', () => {
     expect(wrapper.text()).toContain('/3 watched')
   })
 
+  it('shows an unavailable notice with retry when credits fail to load', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+    getTVCredits.mockRejectedValueOnce(new Error('credits down'))
+
+    const wrapper = await mountView(true)
+    const castTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Cast'))
+    await castTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('unavailable')
+    const retry = wrapper.findAll('button').find((button) => button.text() === 'Try again')
+    expect(retry).toBeTruthy()
+    await retry!.trigger('click')
+    await flushPromises()
+
+    expect(getTVCredits).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('unavailable')
+  })
+
   it('marks the whole show watched with a single request', async () => {
     getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
     vi.mocked(trackingAPI.markShowWatched).mockResolvedValue({ marked: 3, episodes: watchedPayload([[1, 1], [1, 2], [1, 3]]).episodes })

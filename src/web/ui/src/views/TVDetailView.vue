@@ -287,6 +287,9 @@
 
         <template v-if="activeTab === 'cast'">
           <h3 class="text-primary font-medium mb-3">Cast{{ aggregateCredits?.cast?.length ? ` (${aggregateCredits.cast.length})` : '' }}</h3>
+          <p v-if="creditsError" class="text-sm text-muted mb-3">{{ t('common_credits_unavailable') }}
+            <button type="button" class="text-brand-400 hover:text-brand-300" @click="loadCredits">{{ t('action_try_again') }}</button>
+          </p>
           <div v-if="loadingCredits" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             <div v-for="n in 8" :key="n" class="h-12 skeleton rounded-md"></div>
           </div>
@@ -378,6 +381,7 @@ const loading = ref(true)
 const loadError = ref('')
 const loadingSeasons = ref(false)
 const loadingCredits = ref(false)
+const creditsError = ref(false)
 const showStatus = ref<ShowStatus>(WATCH_ENTRY_STATUS.NONE)
 const watchlistTitle = computed(() => getWatchlistAriaLabel(MEDIA_TYPE.TV, showStatus.value === 'watchlist', show.value?.user_status?.status_changed_at ?? null))
 const metadataFlash = useFlashMessages()
@@ -771,10 +775,11 @@ async function refreshMetadata() {
 
 async function loadCredits() {
   loadingCredits.value = true
+  creditsError.value = false
   try {
     aggregateCredits.value = await mediaAPI.getTVCredits(tmdbId.value)
-  } catch (e) {
-    console.error('Failed to load credits:', e)
+  } catch {
+    creditsError.value = true
   } finally {
     loadingCredits.value = false
   }

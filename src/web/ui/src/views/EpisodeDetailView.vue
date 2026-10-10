@@ -111,6 +111,9 @@
             <h3 class="text-primary font-medium mb-3">{{ t('episode_cast') }}</h3>
             <CastGrid :people="episodeCast" />
           </div>
+          <p v-else-if="episodeCreditsError" class="text-sm text-muted">{{ t('common_credits_unavailable') }}
+            <button type="button" class="text-brand-400 hover:text-brand-300" @click="reloadEpisodeCredits">{{ t('action_try_again') }}</button>
+          </p>
           <div v-if="creditsData?.guest_stars?.length">
             <h3 class="text-primary font-medium mb-3">{{ t('episode_guest_stars') }}</h3>
             <CastGrid :people="creditsData.guest_stars" empty-label="No guest stars listed." />
@@ -186,6 +189,7 @@ const loadError = ref('')
 const showData = ref<TVShow | null>(null)
 const episodeData = ref<Episode | null>(null)
 const creditsData = ref<Credits | null>(null)
+const episodeCreditsError = ref(false)
 const episodeIds = ref<ExternalIds | null>(null)
 const previousEpisode = ref<EpisodeNavigationTarget | null>(null)
 const nextEpisode = ref<EpisodeNavigationTarget | null>(null)
@@ -233,11 +237,11 @@ function toNavigationTarget(
 }
 
 async function fetchSeasonEpisodes(showId: number, seasonNumber: number): Promise<Episode[] | null> {
+  // Navigation is opportunistic: a failed lookup degrades to no nav links.
   try {
     const season = await mediaAPI.getSeason(showId, seasonNumber)
     return orderedEpisodes(season.episodes)
-  } catch (error) {
-    console.error(`Failed to load season ${seasonNumber} for episode navigation:`, error)
+  } catch {
     return null
   }
 }
@@ -298,6 +302,7 @@ async function load(moveFocus = false) {
 
   loading.value = true
   loadError.value = ''
+  episodeCreditsError.value = false
   showData.value = null
   episodeData.value = null
   creditsData.value = null
@@ -316,7 +321,10 @@ async function load(moveFocus = false) {
     const [showRes, seasonRes, creditsRes, watchedRes] = await Promise.all([
       mediaAPI.getTV(showId),
       mediaAPI.getSeason(showId, seasonNumber),
-      mediaAPI.getEpisodeCredits(showId, seasonNumber, episodeNumber).catch(() => null),
+      mediaAPI.getEpisodeCredits(showId, seasonNumber, episodeNumber).catch(() => {
+        episodeCreditsError.value = true
+        return null
+      }),
       trackingAPI.getWatchedEpisodes(showId)
     ])
     if (!active || loadId !== latestLoadId) return
@@ -346,10 +354,8 @@ async function load(moveFocus = false) {
         if (!active || loadId !== latestLoadId) return
         previousEpisode.value = navigation.previous
         nextEpisode.value = navigation.next
-      }).catch((error) => {
-        if (active && loadId === latestLoadId) {
-          console.error('Failed to load episode navigation:', error)
-        }
+      }).catch(() => {
+        // Navigation is opportunistic; absence of links is a valid state.
       })
     }
   } catch (error: unknown) {
@@ -364,6 +370,16 @@ async function load(moveFocus = false) {
         episodeHeading.value?.focus()
       }
     }
+  }
+}
+
+async function reloadEpisodeCredits() {
+  episodeCreditsError.value = false
+  try {
+    const res = await mediaAPI.getEpisodeCredits(tmdbId.value, seasonNum.value, episodeNum.value)
+    if (res) creditsData.value = res
+  } catch {
+    episodeCreditsError.value = true
   }
 }
 

@@ -166,6 +166,21 @@ describe('EpisodeDetailView navigation', () => {
     getWatchedEpisodes.mockResolvedValue({ episodes: [] })
   })
 
+  it('shows an unavailable notice with retry when episode credits fail to load', async () => {
+    getEpisodeCredits.mockRejectedValueOnce(new Error('credits down'))
+
+    const { wrapper } = await mountView(2, 2)
+
+    expect(wrapper.text()).toContain('unavailable')
+    const retry = wrapper.findAll('button').find((button) => button.text() === 'Try again')
+    expect(retry).toBeTruthy()
+    await retry!.trigger('click')
+    await flushPromises()
+
+    expect(getEpisodeCredits).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('unavailable')
+  })
+
   it('links to the previous and next episodes across season boundaries', async () => {
     const { wrapper } = await mountView(2, 2)
 
@@ -249,7 +264,6 @@ describe('EpisodeDetailView navigation', () => {
   })
 
   it('keeps available navigation when an adjacent season fails to load', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     getTV.mockResolvedValue(showPayload([1, 2]))
     getSeason.mockImplementation((_showId: number, seasonNumber: number) => (
       seasonNumber === 1
@@ -261,10 +275,5 @@ describe('EpisodeDetailView navigation', () => {
 
     expect(wrapper.find('[aria-label^="Previous episode:"]').exists()).toBe(false)
     expect(wrapper.get('[aria-label^="Next episode:"]').attributes('aria-label')).toContain('Season 2 Episode 2')
-    expect(errorSpy).toHaveBeenCalledWith(
-      'Failed to load season 1 for episode navigation:',
-      expect.any(Error),
-    )
-    errorSpy.mockRestore()
   })
 })

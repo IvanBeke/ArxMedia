@@ -21,8 +21,7 @@ export function useRecommendations(
     try {
       const data = await fetcher(getId())
       recommendations.value = (data.results || []).map((item) => ({ ...item, media_type: mediaType }))
-    } catch (e) {
-      console.error('Failed to load recommendations:', e)
+    } catch {
       recsError.value = true
     } finally {
       loadingRecs.value = false

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import CollectionStrip from '@/components/CollectionStrip.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import type { CollectionDetail } from '@/types/api'
@@ -24,6 +25,10 @@ function buildCollection(): CollectionDetail {
 }
 
 describe('CollectionStrip', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it('sorts parts by release date with undated last', () => {
     const wrapper = mount(CollectionStrip, {
       props: { collection: buildCollection() },
@@ -48,5 +53,26 @@ describe('CollectionStrip', () => {
     })
     await wrapper.vm.$nextTick()
     expect(collection.parts.find((part) => part.id === 2)?.user_status?.status).toBe('plan_to_watch')
+  })
+
+  it('shows an unavailable notice with retry when loading fails', async () => {
+    const wrapper = mount(CollectionStrip, {
+      props: { collection: null, error: true },
+      global: { stubs: { RecommendationsRow: RecommendationsRowStub } },
+    })
+
+    expect(wrapper.text()).toContain('unavailable')
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.emitted('retry')).toBeTruthy()
+  })
+
+  it('prefers the collection over the error notice once loaded', () => {
+    const wrapper = mount(CollectionStrip, {
+      props: { collection: buildCollection(), error: true },
+      global: { stubs: { RecommendationsRow: RecommendationsRowStub } },
+    })
+
+    expect(wrapper.findAll('.part')).toHaveLength(3)
+    expect(wrapper.text()).not.toContain('unavailable')
   })
 })

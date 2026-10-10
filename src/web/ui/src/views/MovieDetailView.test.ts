@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { flushPromises, mount } from '@vue/test-utils'
 import MovieDetailView from '@/views/MovieDetailView.vue'
+import CollectionStrip from '@/components/CollectionStrip.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useAuthStore } from '@/stores/auth'
@@ -159,6 +160,49 @@ describe('MovieDetailView history tab', () => {
 
     expect(getMovie).toHaveBeenCalledTimes(2)
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('shows an unavailable notice with retry when credits fail to load', async () => {
+    getMovieCredits.mockRejectedValueOnce(new Error('credits down'))
+
+    const wrapper = await mountView('cast')
+
+    expect(wrapper.text()).toContain('unavailable')
+    const retry = wrapper.findAll('button').find((button) => button.text() === 'Try again')
+    expect(retry).toBeTruthy()
+    await retry!.trigger('click')
+    await flushPromises()
+
+    expect(getMovieCredits).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('unavailable')
+  })
+
+  it('flags a failed collection load on the collection tab', async () => {
+    getMovie.mockResolvedValueOnce({
+      id: TMDB_ID,
+      media_type: MEDIA_TYPE.MOVIE,
+      tmdb_id: TMDB_ID,
+      title: 'The Matrix',
+      overview: 'A hacker learns the truth.',
+      genres: [],
+      poster_url: null,
+      backdrop_url: null,
+      runtime: 136,
+      language: 'en',
+      tagline: '',
+      status: 'Released',
+      metadata_updated_at: '',
+      collection: { id: 10, name: 'The Matrix Collection' },
+      user_status: { status: 'watched' },
+    })
+    getCollection.mockRejectedValueOnce(new Error('collection down'))
+
+    const wrapper = await mountView('collection')
+    const collectionTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Collection'))
+    await collectionTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(CollectionStrip).props('error')).toBe(true)
   })
 })
 

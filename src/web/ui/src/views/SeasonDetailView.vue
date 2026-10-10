@@ -130,6 +130,9 @@
 
           <template v-else-if="activeTab === 'cast'">
             <h3 class="text-primary font-medium mb-3">Season cast{{ displayCast.length ? ` (${displayCast.length})` : '' }}</h3>
+            <p v-if="creditsError && !displayCast.length" class="text-sm text-muted mb-3">{{ t('common_credits_unavailable') }}
+              <button type="button" class="text-brand-400 hover:text-brand-300" @click="reloadCredits">{{ t('action_try_again') }}</button>
+            </p>
             <CastGrid :people="displayCast" />
           </template>
 
@@ -187,6 +190,7 @@ const historyFilter = computed(() => ({
 const auth = useAuthStore()
 const season = ref<Season | null>(null)
 const aggregateCredits = ref<Credits | null>(null)
+const creditsError = ref(false)
 const loading = ref(true)
 const showName = ref('TV Show')
 const unwatchDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
@@ -321,10 +325,22 @@ async function handleSeasonWatchOption(option: WatchedAtOption) {
       season_number: seasonNumber.value,
       watched_at: resolution.watchedAt ?? undefined,
     })
-    await loadWatchedEpisodes(tmdbId.value, { seasonNumber: seasonNumber.value })
+    await loadWatchedEpisodes(tmdbId.value, {
+      seasonNumber: seasonNumber.value,
+      onError: (error: unknown) => showActionError(getApiErrorMessage(error, t('history_load_failed'))),
+    })
     watchedEpisodesCount.value = countWatchedInSeasonFromSet(seasonNumber.value)
   } catch (error: unknown) {
     showActionError(getApiErrorMessage(error, t('error_mark_season')))
+  }
+}
+
+async function reloadCredits() {
+  creditsError.value = false
+  try {
+    aggregateCredits.value = await mediaAPI.getSeasonCredits(tmdbId.value, seasonNumber.value)
+  } catch {
+    creditsError.value = true
   }
 }
 
@@ -332,7 +348,10 @@ onMounted(async () => {
   try {
     const [data, credits] = await Promise.all([
       mediaAPI.getSeason(tmdbId.value, seasonNumber.value),
-      mediaAPI.getSeasonCredits(tmdbId.value, seasonNumber.value).catch(() => null),
+      mediaAPI.getSeasonCredits(tmdbId.value, seasonNumber.value).catch(() => {
+        creditsError.value = true
+        return null
+      }),
     ])
     if (data) {
       season.value = data
@@ -345,7 +364,10 @@ onMounted(async () => {
   }
 
   if (auth.isAuthenticated) {
-    await loadWatchedEpisodes(tmdbId.value, { seasonNumber: seasonNumber.value })
+    await loadWatchedEpisodes(tmdbId.value, {
+      seasonNumber: seasonNumber.value,
+      onError: (error: unknown) => showActionError(getApiErrorMessage(error, t('history_load_failed'))),
+    })
   }
 })
 </script>
