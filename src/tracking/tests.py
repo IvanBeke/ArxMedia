@@ -560,6 +560,29 @@ class QueryCountTests(BaseTestCase):
         self.assertNotIn('runtime', title_sql)
         self.assertIn('vote_count', page_sql('vote_count'))
 
+    def _add_library_rows(self, start, count):
+        for i in range(start, start + count):
+            show = TVShow.objects.create(tmdb_id=9600 + i, name=f'Library Show {i}', number_of_seasons=1)
+            season = Season.objects.create(show=show, tmdb_id=9700 + i, season_number=1, name='Season 1')
+            Episode.objects.create(season=season, tmdb_id=9800 + i, episode_number=1, name='Pilot')
+            WatchEntry.objects.create(
+                user=self.user, media_type='episode', tmdb_id=9600 + i,
+                season_number=1, episode_number=1, watched_at=timezone.now(),
+            )
+            UserMediaStatus.objects.update_or_create(
+                user=self.user, media_type='tv', tmdb_id=9600 + i, defaults={'status': 'watching'},
+            )
+            UserMediaStatus.objects.set_planning(self.user, 'movie', 9900 + i)
+
+    def test_library_endpoints_do_not_query_per_row(self):
+        urls = ['/api/tracking/my-shows/', '/api/tracking/my-movies/']
+        self._add_library_rows(0, 2)
+        before = {url: self._query_count(url) for url in urls}
+        self._add_library_rows(2, 6)
+        after = {url: self._query_count(url) for url in urls}
+
+        self.assertEqual(after, before)
+
     def test_list_endpoints_do_not_query_per_row(self):
         urls = ['/api/tracking/stats/', '/api/tracking/history/', '/api/tracking/lists/', '/api/tracking/watchlist/']
         self._add_rows(0, 2)

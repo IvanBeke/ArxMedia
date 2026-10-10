@@ -114,6 +114,22 @@ class RedisOutageTests(TestCase):
         self.assertEqual(me.status_code, 200)
         self.assertEqual(stats.status_code, 200)
 
+    def test_rate_limits_fail_open_without_redis(self):
+        # The login throttle allows 10/minute; exhausting it must not lock
+        # anyone out (or 500) when Redis is unreachable.
+        User.objects.create_user(username='throttled', password='Offline-pass-123')
+        client = APIClient()
+
+        statuses = {
+            client.post(
+                '/api/auth/login/',
+                {'username': 'throttled', 'password': 'wrong-password'},
+            ).status_code
+            for _ in range(15)
+        }
+
+        self.assertEqual(statuses, {401})
+
 
 class AdminConfigurationTests(TestCase):
     def test_all_models_are_registered(self):
