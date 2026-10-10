@@ -25,41 +25,53 @@ docker compose exec app python manage.py showmigrations
 Every app should show all migrations as `[X]` (applied), none as `[ ]`.
 
 ### 4. API responds correctly
+
+Auth is session-cookie based. Save cookies to a jar, log in (CSRF token required), then call authenticated endpoints:
+
 ```bash
-# Trending movies
-curl -s http://localhost:8000/api/media/trending/?type=movie | jq -e '.results'
+JAR=$(mktemp)
+curl -s -c "$JAR" http://localhost:8000/ -o /dev/null
+TOKEN=$(grep csrftoken "$JAR" | awk '{print $NF}')
 
-# Search
-curl -s "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e '.results'
+# Register (201 + session cookie) or log in (200)
+curl -s -c "$JAR" -b "$JAR" -H "X-CSRFToken: $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"username":"smoke","email":"s@example.com","password":"Smoke-pass-123","password2":"Smoke-pass-123"}' \
+  http://localhost:8000/api/auth/register/ | jq -e '.username'
 
-# Auth endpoint
-curl -s http://localhost:8000/api/auth/register/ | jq -e '.username'
+# Authenticated endpoints (401 without the session cookie)
+curl -s -b "$JAR" http://localhost:8000/api/auth/me/ | jq -e '.username'
+curl -s -b "$JAR" "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e '.results'
+curl -s -b "$JAR" "http://localhost:8000/api/media/trending/?type=movie" | jq -e '.results'
 ```
 
-### 5. Embedded UI type checks
+### 5. Backend checks
+
+```bash
+docker compose exec app python manage.py test
+docker compose exec app uv run ruff check . --fix
+docker compose exec app uv run mypy .
+```
+
+### 6. UI checks (run the build only if UI files were touched)
+
 ```bash
 docker compose exec ui sh -lc "pnpm typecheck"
-```
-Must exit 0.
-
-### 6. Embedded UI builds
-```bash
+docker compose exec ui sh -lc "pnpm test"
 docker compose exec ui sh -lc "pnpm install && pnpm build"
 ```
-Must exit 0.
 
-### 6. Task-specific ad-hoc checks
+### 7. Task-specific ad-hoc checks
 
 Define checks from the current user request and the code paths you touched.
 
 Examples:
 
 ```bash
-# API behavior check
-curl -s "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e '.results'
+# API behavior check (authenticated; see step 4 for the session setup)
+curl -s -b "$JAR" "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e '.results'
 
 # Auth/me endpoint check (when auth code changes)
-curl -s -H "Authorization: Bearer <token>" http://localhost:8000/api/auth/me/ | jq -e '.username'
+curl -s -b "$JAR" http://localhost:8000/api/auth/me/ | jq -e '.username'
 ```
 
 Use focused checks that prove the requested behavior and guard against regressions in nearby functionality.

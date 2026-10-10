@@ -40,7 +40,8 @@ Then run focused ad-hoc checks for the behavior you changed. Examples:
 
 ```bash
 docker compose exec app python manage.py test
-curl -s "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e '.results'
+# Authenticated API check (session cookie jar; full flow in docs/verification.md step 4)
+curl -s -b "$JAR" "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e '.results'
 ```
 
 If UI code is touched, also run:

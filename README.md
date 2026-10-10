@@ -4,24 +4,29 @@ ArxMedia is a self-hosted media tracking app built with Django REST Framework an
 
 ## What it does
 
-- Search movies and TV shows via TMDB
-- Track watch history, ratings, and reviews
-- Manage a watchlist
-- Follow users and see social activity
-- View personal dashboard stats
+- Search movies and TV shows via TMDB (with people, collections, and recommendations)
+- Track watch history, ratings, reviews, and episode progress
+- Manage a watchlist and custom lists (private, shared, public)
+- Follow users and see social activity (with account visibility controls)
+- View personal dashboard stats, calendar, and activity heatmaps
+- Import from Trakt/WeTrackr/Yamtrack/ArxMedia backups, export full backups
+- Installable PWA with offline support
 
 ## Stack
 
-- Backend: Django 6, Django REST Framework, session auth
-- Frontend: Vue 3, Pinia, Vue Router, Tailwind CSS
-- Runtime: Python 3.14, Node 22
-- Data: SQLite (local default), PostgreSQL 17 (containerized)
-- Services: Redis, Celery worker, Celery beat
+- Backend: Django 6.1, Django REST Framework 3.18, session auth
+- Frontend: Vue 3.5, Pinia 4, Vue Router 5, Tailwind CSS v4
+- Runtime: Python 3.14, Node 26 (pnpm 12)
+- Data: PostgreSQL 17 via `DATABASE_URL` (SQLite when `DATABASE_URL` is empty)
+- Services: Redis 7, Celery worker, Celery beat
+- Tooling: Vitest, `vite-plugin-pwa`, ruff, mypy
 
 ## Quick start (Docker)
 
 1. Get a free TMDB API key at `https://www.themoviedb.org/settings/api`.
-2. Copy `.env.example` to `.env` and set `TMDB_API_KEY`.
+2. Copy `.env.example` to `.env` and set `TMDB_API_KEY`. For local dev keep
+   `DEBUG=True` and `DJANGO_VITE_DEV_MODE=True` (the example defaults);
+   `.env` values override the compose-file defaults.
 3. Configure Django-Vite mode by environment:
    - Development: `DJANGO_VITE_DEV_MODE=True` (with `DJANGO_VITE_DEV_SERVER_PROTOCOL/HOST/PORT` matching your Vite dev server).
    - Production: `DJANGO_VITE_DEV_MODE=False` (Django serves built assets from `src/web/static/web`).
@@ -41,7 +46,7 @@ App URL: `http://localhost:8000`
 
 ## Key paths
 
-- Django settings: `src/arxmedia/settings.py`
+- Django settings: `src/arxmedia/settings/` (package: `base`, `security`, `django_core`, `database`, `static_media`, `api`, `integrations`, `caching`, `celery`, `logging_conf`)
 - Django URLs: `src/arxmedia/urls.py`
 - Backend apps: `src/accounts`, `src/media`, `src/tracking`, `src/social`, `src/my_calendar`, `src/web`
 - UI source: `src/web/ui/src`
@@ -75,6 +80,13 @@ docker compose exec app python manage.py <command>
 # run focused tests
 docker compose exec app python manage.py test
 
+# lint and types (backend)
+docker compose exec app uv run ruff check . --fix
+docker compose exec app uv run mypy .
+
+# run UI tests
+docker compose exec ui sh -lc "pnpm test"
+
 # add a backend dependency (updates pyproject.toml + uv.lock)
 docker compose exec app uv add <package>
 
@@ -105,6 +117,8 @@ Backend dependencies are baked into the `app`/`worker`/`beat` images at build ti
 
 Use `compose.prod.yaml` directly. It is a complete production stack and pulls the published image.
 Production serves static assets from the image with WhiteNoise (no `static_files` volume mount in prod).
+The app container runs migrations automatically at startup, then serves with
+gunicorn (3 workers × 4 threads by default, see `GUNICORN_WORKERS`/`GUNICORN_THREADS`).
 
 ```bash
 docker compose -f compose.prod.yaml up -d

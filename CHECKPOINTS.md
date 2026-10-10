@@ -31,7 +31,12 @@ Examples:
 # Manual checks
 docker compose ps
 docker compose exec app python manage.py showmigrations
-curl -s http://localhost:8000/api/media/trending/?type=movie | jq -e '.results'
+
+# Authenticated API check (session cookie jar; full flow in docs/verification.md step 4)
+JAR=$(mktemp)
+curl -s -c "$JAR" http://localhost:8000/ -o /dev/null  # sets csrftoken
+# ... log in with -b "$JAR" plus the X-CSRFToken header, then:
+curl -s -b "$JAR" http://localhost:8000/api/media/trending/?type=movie | jq -e '.results'
 ```
 
 ## Anti-regression rules
@@ -39,4 +44,4 @@ curl -s http://localhost:8000/api/media/trending/?type=movie | jq -e '.results'
 - Never drop database tables
 - Never remove existing API endpoints without migration path
 - Never break session auth flow (session cookie + CSRF)
-- Never remove Redis cache gracefully (it should still work without it)
+- Redis must stay optional; services must degrade gracefully without it

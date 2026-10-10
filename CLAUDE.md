@@ -16,4 +16,6 @@ This file is kept for compatibility. The canonical harness workflow now lives in
 - `docs/architecture.md`
 - `docs/conventions.md`
 - `docs/verification.md`
+- `docs/import-pipeline.md`
+- `SECURITY.md`
 - `CHECKPOINTS.md`

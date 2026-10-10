@@ -20,7 +20,7 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 
 ## Real project shape (verified)
 
-- Django app lives in `src/`; settings and URLs are `src/arxmedia/settings.py` and `src/arxmedia/urls.py`.
+- Django app lives in `src/`; settings are the `src/arxmedia/settings/` package and URLs are `src/arxmedia/urls.py`.
 - UI source is embedded at `src/web/ui/src`; built assets output to `src/web/static/web` via Vite.
 - API mounts: `/api/auth`, `/api/media`, `/api/tracking`, `/api/social`, `/api/calendar`; all non-API routes fall back to SPA.
 - Docker services in `compose.yaml`: `app`, `db`, `redis`, `worker`, `beat`, `ui`.

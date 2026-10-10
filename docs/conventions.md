@@ -8,7 +8,7 @@ Code style, patterns, and no-gos for this project.
 - 4-space indentation, no tabs
 - Snake_case for variables and functions
 - PascalCase for classes and models
-- Max line length: 120 (black compatible)
+- Max line length: 120 (enforced by ruff)
 
 ### Patterns
 - Use `django.conf.settings` for config, never hardcode
@@ -18,7 +18,7 @@ Code style, patterns, and no-gos for this project.
 - Wrap external API calls in try/except with fallback
 - Use Docker Compose: `docker compose exec app ...`
 - Use `uv` for app tooling inside Docker (`docker compose exec app uv ...`)
-- Add new Django settings in `src/arxmedia/settings/` by domain (`base`, `security`, `django_core`, `database`, `static_media`, `api`, `integrations`, `celery`, `logging_conf`), not in a monolithic file
+- Add new Django settings in `src/arxmedia/settings/` by domain (`base`, `security`, `django_core`, `database`, `static_media`, `api`, `integrations`, `caching`, `celery`, `logging_conf`), not in a monolithic file
 - Keep `src/arxmedia/settings/__init__.py` as the only aggregation entrypoint that exports uppercase settings loaded from those modules
 
 ### No-gos
@@ -45,13 +45,13 @@ Code style, patterns, and no-gos for this project.
 ### No-gos
 - No Option API (`data()`, `methods`, etc.)
 - No jQuery
-- No inline styles — use Tailwind classes
-- No Vue Router navigation without auth guard
+- No inline styles — use Tailwind classes (a few data-driven exceptions exist, e.g. heatmap cells)
+- No Vue Router navigation without auth guard (guest routes `/`, `/login`, `/register`, `/offline` are intentionally public)
 
 ## Testing
 
-- App: pytest with pytest-django (if tests exist)
-- UI: Vitest (if tests exist)
+- App: Django test runner (`docker compose exec app python manage.py test`)
+- UI: Vitest (`docker compose exec ui sh -lc "pnpm test"`)
 - Minimum coverage: models, views, serializers, critical paths
 
 ## Git conventions

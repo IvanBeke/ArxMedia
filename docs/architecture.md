@@ -45,6 +45,7 @@ What "good work" means for this project.
 - `src/arxmedia/settings/static_media.py` contains static/media paths and storages
 - `src/arxmedia/settings/api.py` contains password validators, DRF, and CSRF trusted origins
 - `src/arxmedia/settings/integrations.py` contains TMDB, TVMaze, and Django Vite integration settings
+- `src/arxmedia/settings/caching.py` contains the Django cache setup (Redis via django-redis when `REDIS_URL` is set, in-memory otherwise; tests always use in-memory)
 - `src/arxmedia/settings/celery.py` contains Redis-derived Celery broker/backend and beat schedules
 - `src/arxmedia/settings/logging_conf.py` contains `LOG_LEVEL` and Django logging configuration
 
@@ -53,8 +54,15 @@ What "good work" means for this project.
 - Dark theme, purple brand (#9f42c6), Inter font
 - UI source lives under `src/web/ui/src/`
 - Built ui assets are served by Django from `src/web/static/web/`
-- OAuth endpoints live under `/oauth/*` and are handled fully in app
-- Routes: `/movies`, `/movies/:id`, `/tv`, `/tv/:id`, `/tv/:id/season/:seasonNumber`, `/search`, `/dashboard`, `/watchlist`, `/history`, `/profile/:username`, `/settings`
+- UI routes (all lazy-loaded; `/`, `/login`, `/register`, `/offline` are public, everything else requires auth):
+  - `/`, `/dashboard`, `/search`, `/watchlist`, `/history`, `/calendar`, `/settings`, `/offline`
+  - `/login`, `/register`
+  - `/my-shows`, `/my-movies`
+  - `/movies/:id`, `/tv/:id`, `/tv/:id/season/:seasonNumber`, `/tv/:id/season/:seasonNumber/episode/:episodeNumber`
+  - `/people/:id`
+  - `/lists`, `/lists/:id`
+  - `/profile/:username`, `/profile/:username/followers`, `/profile/:username/following`
+  - `/data` (import/export)
 
 ## Profile visibility and social graph contract
 
@@ -78,7 +86,7 @@ What "good work" means for this project.
 
 ## Database
 
-- SQLite for dev (default), PostgreSQL 17 for prod via `dj-database-url`
+- PostgreSQL 17 via `DATABASE_URL` when set; SQLite fallback when `DATABASE_URL` is empty (the `.env.example` default points at the compose `db` service)
 - Models under `src/*/models.py`
 - Migrations via `docker compose exec app python manage.py migrate`
 
@@ -87,6 +95,37 @@ What "good work" means for this project.
 - TMDB API required for all media search/trending/popular and catalog synchronization
 - TVMaze API provides optional TV schedule and runtime enrichment during catalog synchronization
 - Redis 7 caches TMDB responses for 7 days and TVMaze responses for 24 hours — optional
+
+## API reference
+
+All API routes require an authenticated session except `POST /api/auth/register/` and `POST /api/auth/login/`. Responses are paginated with `count`, `next`, `previous`, `results` (PAGE_SIZE=20) unless noted. Rate limits (per user unless noted): anon 60/min, authenticated 300/min, login 10/min, register 5/min, import 20/hour, export 10/hour, metadata refresh 60/hour.
+
+- Auth (`/api/auth/`): `register/`, `login/`, `logout/`, `me/` (GET/PATCH), `users/search/?q=`, `users/<username>/`, `users/<username>/activity/`, `users/<username>/followers/`, `users/<username>/following/`, `users/<username>/follow/`, `password/change/`
+- Media (`/api/media/`): `genres/`, `search/?q=&type=`, `trending/?type=&window=`, `popular/?type=`, `movies/<id>/` (+ `refresh/`, `credits/`, `external-ids/`, `recommendations/`), `collections/<id>/`, `people/search/`, `people/<id>/` (+ `credits/`, `external-ids/`), `tv/<id>/` (+ `refresh/`, `credits/`, `external-ids/`, `recommendations/`, `heatmap/`), `tv/<id>/seasons/<n>/` (+ `credits/`), `tv/<id>/seasons/<n>/episodes/<e>/credits/`, `.../external-ids/`
+- Tracking (`/api/tracking/`): `history/`, `history/<id>/`, `ratings/`, `watchlist/`, `watchlist/<id>/`, `reviews/`, `stats/`, `episodes/watched/`, `episodes/mark/`, `episodes/unmark/`, `seasons/mark/`, `seasons/unmark/`, `shows/mark/`, `shows/unmark/`, `up-next/`, `my-shows/`, `my-movies/`, `upcoming/`, `media/drop/`, `lists/`, `lists/<id>/`, `lists/<list_id>/items/`, `lists/<list_id>/items/<id>/`, `lists/<list_id>/items/reorder/`, `recommendations/`, `data/import/`, `data/export/`, `data/jobs/`, `data/jobs/<id>/`, `data/jobs/<id>/confirm/`, `data/jobs/<id>/cancel/`, `data/jobs/<id>/file/`
+- Social (`/api/social/feed/`), calendar (`/api/calendar/`), health (`GET /healthz/`, unauthenticated), admin (`/admin/`), PWA (`/manifest.webmanifest`, `/sw.js`)
+
+## Background tasks (Celery beat)
+
+- `tracking-heartbeat-hourly`: liveness heartbeat, every hour
+- `tracking-sync-tmdb-changed-items`: re-syncs locally stored movies/shows changed on TMDB in the last day, every 6 hours
+- `tracking-cleanup-data-transfer-jobs-daily`: retention for import/export jobs and files, daily 05:00
+- Task time limits default to 30 min soft / 35 min hard (`CELERY_TASK_SOFT_TIME_LIMIT`, `CELERY_TASK_TIME_LIMIT`); results are not stored (`CELERY_TASK_IGNORE_RESULT=True`)
+
+## Environment variables
+
+`.env.example` documents working local-dev defaults; `.env` overrides compose-file defaults. Beyond `SECRET_KEY`, `DEBUG`, `TMDB_API_KEY`, `FERNET_KEY`, and `DATABASE_URL`:
+
+- `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` (comma-separated; required for proxied HTTPS hosts)
+- `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS`, `SECURE_HSTS_PRELOAD`, `SECURE_PROXY_SSL_HEADER_VALUE` (take effect when `DEBUG=False`)
+- `USE_X_FORWARDED_HOST` (default `False`; enable behind a trusted proxy)
+- `TIME_ZONE` (default `Europe/Madrid`), `LOG_LEVEL` (default `INFO`), `GUNICORN_LOG_LEVEL`
+- `SESSION_COOKIE_AGE` (default 1209600 = 14 days)
+- `PUID`/`PGID` (file ownership inside containers, default 1000)
+- `GUNICORN_WORKERS`/`GUNICORN_THREADS` (default 3/4)
+- `REDIS_URL` (cache; Celery broker/backend derive DB 1 from it unless `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND` are set)
+- `CELERY_WORKER_CONCURRENCY`, `CELERY_WORKER_PREFETCH_MULTIPLIER`, `CELERY_WORKER_MAX_TASKS_PER_CHILD`
+- `DJANGO_VITE_DEV_MODE` + `DJANGO_VITE_DEV_SERVER_PROTOCOL/HOST/PORT`
 
 ## What "good" looks like
 
