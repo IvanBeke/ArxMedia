@@ -52,7 +52,7 @@ plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
 # responses as plain Django (no .data, Client without force_authenticate).
 # Source stays strict; tests are covered by execution instead.
 [[tool.mypy.overrides]]
-module = "*.tests"
+module = ["*.tests", "*.tests.*"]
 ignore_errors = true
 
 [tool.django-stubs]
