@@ -135,7 +135,7 @@ describe('TVDetailView hero progress', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getTV.mockResolvedValue(showPayload())
-    getTVCredits.mockResolvedValue({ cast: [], crew: [], guest_stars: [] })
+    getTVCredits.mockResolvedValue({ cast: [], crew: [] })
     getTVRecommendations.mockResolvedValue({ results: [] })
     getRatings.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
   })

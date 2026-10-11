@@ -167,7 +167,7 @@ import { episodeExternalLinks } from '@/utils/externalLinks'
 import { watchedTooltipText } from '@/utils/watchOptions'
 import { getEpisodeLink } from '@/utils/watchEntryLinks'
 
-import type { Credits, Episode, ExternalIds, Season, TVShow, WatchedEpisode } from '@/types/api'
+import type { Episode, EpisodeCredits, ExternalIds, Season, TVShow, WatchedEpisode } from '@/types/api'
 import type { WatchedAtOption } from '@/utils/watchOptions'
 
 type EpisodeNavigationTarget = {
@@ -188,7 +188,7 @@ const loading = ref(true)
 const loadError = ref('')
 const showData = ref<TVShow | null>(null)
 const episodeData = ref<Episode | null>(null)
-const creditsData = ref<Credits | null>(null)
+const creditsData = ref<EpisodeCredits | null>(null)
 const episodeCreditsError = ref(false)
 const episodeIds = ref<ExternalIds | null>(null)
 const previousEpisode = ref<EpisodeNavigationTarget | null>(null)

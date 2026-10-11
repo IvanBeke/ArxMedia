@@ -49,7 +49,7 @@ describe('detail tab scroll', () => {
       seasons: [{ season_number: 1, name: 'Season 1', overview: '', poster_path: null, poster_url: null, air_date: '2017-12-01', episode_count: 3, vote_average: 8.1, vote_count: 15 }],
       user_status: { status: 'watching' }, watch_providers: null,
     })
-    getTVCredits.mockResolvedValue({ cast: [], crew: [], guest_stars: [] })
+    getTVCredits.mockResolvedValue({ cast: [], crew: [] })
     getTVRecommendations.mockResolvedValue({ results: [] })
     getRatings.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
     getWatchedEpisodes.mockResolvedValue({ episodes: [] })

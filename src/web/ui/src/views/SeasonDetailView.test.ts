@@ -65,7 +65,7 @@ function seasonPayload(watchedCount: number, total = 50) {
     vote_average: 8.4,
     vote_count: 0,
     air_date: '2021-06-21',
-    credits: { cast: [{ id: 101, credit_id: 'c1', name: 'Season Star', character: 'Lead', profile_path: null }], crew: [], guest_stars: [] },
+    credits: { cast: [{ id: 101, credit_id: 'c1', name: 'Season Star', character: 'Lead', profile_path: null }], crew: [] },
     episodes: Array.from({ length: total }, (_, index) => ({
       episode_number: index + 1,
       name: `Episode ${index + 1}`,
@@ -164,7 +164,7 @@ describe('SeasonDetailView progress', () => {
 
   it('shows an unavailable notice with retry when credits fail to load', async () => {
     const payload = seasonPayload(12)
-    payload.credits = { cast: [], crew: [], guest_stars: [] }
+    payload.credits = { cast: [], crew: [] }
     getSeason.mockResolvedValue(payload)
     getSeasonCredits.mockRejectedValueOnce(new Error('credits down'))
     getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
@@ -290,7 +290,6 @@ describe('SeasonDetailView progress', () => {
     getSeasonCredits.mockResolvedValue({
       cast: [{ id: 102, credit_id: 'a1', name: 'Season Regular', character: 'Lead', profile_path: null, total_episode_count: 8 }],
       crew: [],
-      guest_stars: [],
     })
     getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
 

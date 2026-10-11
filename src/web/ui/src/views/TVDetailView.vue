@@ -359,7 +359,7 @@ import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
 import { temporalYear } from '@/utils/temporal'
 import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
 import type { WatchedAtOption } from '@/utils/watchOptions'
-import type { Credits, Episode, MediaResult, TVShow } from '@/types/api'
+import type { AggregateCredits, Episode, MediaResult, TVShow } from '@/types/api'
 import type { WatchEntryStatus } from '@/types/tracking'
 
 type ShowStatus = WatchEntryStatus | 'watchlist'
@@ -376,7 +376,7 @@ const historyFilter = computed(() => ({
 }))
 
 const show = ref<TVShow | null>(null)
-const aggregateCredits = ref<Credits | null>(null)
+const aggregateCredits = ref<AggregateCredits | null>(null)
 const loading = ref(true)
 const loadError = ref('')
 const loadingSeasons = ref(false)

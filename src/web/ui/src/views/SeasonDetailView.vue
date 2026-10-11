@@ -172,7 +172,7 @@ import { computeProgressPercent, formatProgressFraction } from '@/utils/progress
 import { seasonExternalLinks } from '@/utils/externalLinks'
 import { temporalYear } from '@/utils/temporal'
 import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
-import type { Credits, Season } from '@/types/api'
+import type { AggregateCredits, Season } from '@/types/api'
 import type { WatchedAtOption } from '@/utils/watchOptions'
 
 type EpisodeTarget = { episodeNumber: number }
@@ -189,7 +189,7 @@ const historyFilter = computed(() => ({
 }))
 const auth = useAuthStore()
 const season = ref<Season | null>(null)
-const aggregateCredits = ref<Credits | null>(null)
+const aggregateCredits = ref<AggregateCredits | null>(null)
 const creditsError = ref(false)
 const loading = ref(true)
 const showName = ref('TV Show')
@@ -217,7 +217,7 @@ const {
 const watchedEpisodesCount = ref(0)
 
 
-const seasonCredits = computed((): Credits | null => season.value?.credits ?? null)
+const seasonCredits = computed((): AggregateCredits | null => season.value?.credits ?? null)
 
 const displayCast = computed(() => {
   if (aggregateCredits.value?.cast?.length) return aggregateCredits.value.cast

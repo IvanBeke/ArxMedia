@@ -1474,7 +1474,26 @@ class MediaTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['cast'][0]['total_episode_count'], 8)
         self.assertEqual(response.data['crew'][0]['name'], 'Season Director')
+        self.assertNotIn('guest_stars', response.data)
         mock_credits.assert_called_once_with(1399, 1)
+
+    @patch('media.views.tmdb.get_tv_aggregate_credits')
+    def test_tv_credits_returns_whole_cast(self, mock_credits):
+        mock_credits.return_value = {
+            'cast': [
+                {'name': 'Series Regular', 'total_episode_count': 10},
+                {'name': 'One-Off', 'total_episode_count': 1},
+            ],
+            'crew': [{'name': 'Showrunner', 'job': 'Creator'}],
+        }
+
+        response = self.client.get('/api/media/tv/1399/credits/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['cast']), 2)
+        self.assertEqual(response.data['crew'][0]['name'], 'Showrunner')
+        self.assertNotIn('guest_stars', response.data)
+        mock_credits.assert_called_once_with(1399)
 
     @patch('media.views.tmdb.get_movie_recommendations')
     def test_movie_recommendations_annotates_media_type_and_status(self, mock_recs):

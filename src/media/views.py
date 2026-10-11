@@ -522,7 +522,6 @@ def season_detail(request, tmdb_id, season_number):
             season_data['credits'] = {
                 'cast': credits.get('cast') or [],
                 'crew': credits.get('crew') or [],
-                'guest_stars': [],
             }
             vote_average = live.get('vote_average')
             if isinstance(vote_average, (int, float)):
@@ -536,7 +535,7 @@ def season_detail(request, tmdb_id, season_number):
                 season_data['external_ids'] = merged_ids
     except Exception as exc:
         logger.warning('Failed to fetch season credits for show %s season %s: %s', tmdb_id, season_number, exc)
-        season_data.setdefault('credits', {'cast': [], 'crew': [], 'guest_stars': []})
+        season_data.setdefault('credits', {'cast': [], 'crew': []})
 
     season_status = annotate_season_user_status(
         request.user,
@@ -562,7 +561,6 @@ def season_credits(request, tmdb_id, season_number):
     return Response({
         'cast': data.get('cast', []) if isinstance(data, dict) else [],
         'crew': data.get('crew', []) if isinstance(data, dict) else [],
-        'guest_stars': [],
     })
 
 
@@ -632,16 +630,12 @@ def tv_credits(request, tmdb_id):
         logger.warning('Failed to fetch TV aggregate credits for show %s from TMDB', tmdb_id, exc_info=True)
         return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    cast = data.get('cast', [])
-    crew = data.get('crew', [])
-
-    main_cast = [c for c in cast if c.get('total_episode_count', 0) >= 3]
-    guest_stars = [c for c in cast if c.get('total_episode_count', 0) < 3]
+    cast = data.get('cast', []) if isinstance(data, dict) else []
+    crew = data.get('crew', []) if isinstance(data, dict) else []
 
     return Response({
-        'cast': main_cast,
+        'cast': cast,
         'crew': crew,
-        'guest_stars': guest_stars
     })
 
 

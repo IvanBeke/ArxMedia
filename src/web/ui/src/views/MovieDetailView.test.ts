@@ -119,7 +119,7 @@ describe('MovieDetailView history tab', () => {
       collection: null,
       user_status: { status: 'watched' },
     })
-    getMovieCredits.mockResolvedValue({ cast: [], crew: [], guest_stars: [] })
+    getMovieCredits.mockResolvedValue({ cast: [], crew: [] })
     getMovieRecommendations.mockResolvedValue({ results: [] })
     getCollection.mockResolvedValue(null)
     getHistory.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
@@ -141,7 +141,6 @@ describe('MovieDetailView history tab', () => {
     getMovieCredits.mockResolvedValue({
       cast: [],
       crew: [{ id: 9340, credit_id: 'c1', name: 'Lana Wachowski', job: 'Director' }],
-      guest_stars: [],
     })
     const wrapper = await mountView('overview')
 

@@ -262,7 +262,7 @@ import { formatHoursMinutes } from '@/utils/progress'
 import { movieExternalLinks } from '@/utils/externalLinks'
 import { instantEpochMs, instantFromEpochMs, temporalYear } from '@/utils/temporal'
 import { watchedTooltipText } from '@/utils/watchOptions'
-import type { CollectionDetail, Credits, MediaResult, Movie, PaginatedResponse, WatchEntry } from '@/types/api'
+import type { CollectionDetail, AggregateCredits, MediaResult, Movie, PaginatedResponse, WatchEntry } from '@/types/api'
 import type { WatchedAtOption } from '@/utils/watchOptions'
 
 const route = useRoute()
@@ -275,7 +275,7 @@ const historyFilter = computed(() => ({
 const auth = useAuthStore()
 const { t } = useI18n()
 const movie = ref<Movie | null>(null)
-const creditsData = ref<Credits | null>(null)
+const creditsData = ref<AggregateCredits | null>(null)
 const collectionDetail = ref<CollectionDetail | null>(null)
 const loading = ref(true)
 const loadError = ref('')
