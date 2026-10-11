@@ -1,10 +1,13 @@
 from django.db import IntegrityError, transaction
 from django.db.models import (
     Avg,
-    Count,
+    Exists,
     F,
+    OuterRef,
     Q,
+    Sum,
 )
+from django.db.models.functions import Coalesce
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -224,24 +227,63 @@ class ReviewListCreateView(generics.ListCreateAPIView):
         serializer.save(user=self.request.user)
 
 
+def compute_user_stats(user_id):
+    """Live dashboard counts: no caching, every query here is a cheap aggregate."""
+    watched = WatchEntry.objects.for_user(user_id)
+    show_statuses = UserMediaStatus.objects.for_user(user_id).shows()
+    avg_rating = Rating.objects.filter(user_id=user_id).aggregate(avg=Avg('score'))['avg']
+    return {
+        "movies_watched": watched.movies().values('tmdb_id').distinct().count(),
+        "shows_watching": show_statuses.watching().count(),
+        "shows_watched": show_statuses.watched().count(),
+        "episodes_watched": watched.episodes().count(),
+        "average_rating": round(avg_rating, 1) if avg_rating else None,
+        "watch_time_minutes": compute_watch_time_minutes(user_id),
+    }
+
+
+def compute_watch_time_minutes(user_id):
+    """Total runtime of distinct watched movies and episodes, in minutes.
+
+    Episode runtime falls back to the show's default runtime; entries with no
+    known runtime anywhere (or not synced locally) contribute 0. Two queries.
+    """
+    from media.models import Episode, Movie
+
+    movie_ids = WatchEntry.objects.filter(
+        user_id=user_id, media_type=WatchEntryMediaType.MOVIE
+    ).values_list('tmdb_id', flat=True)
+    movie_minutes = Movie.objects.filter(tmdb_id__in=movie_ids).aggregate(
+        total=Sum('runtime')
+    )['total'] or 0
+
+    watched_episodes = WatchEntry.objects.filter(user_id=user_id, media_type=WatchEntryMediaType.EPISODE)
+    episode_minutes = Episode.objects.annotate(
+        is_watched=Exists(
+            watched_episodes.filter(
+                tmdb_id=OuterRef('season__show__tmdb_id'),
+                season_number=OuterRef('season__season_number'),
+                episode_number=OuterRef('episode_number'),
+            )
+        )
+    ).filter(is_watched=True).aggregate(
+        total=Sum(Coalesce('runtime', 'season__show__episode_runtime'))
+    )['total'] or 0
+
+    return movie_minutes + episode_minutes
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def user_stats(request):
-    from ..cache import cache
+    return Response(compute_user_stats(request.user.id))
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def recent_activity(request):
     user = request.user
-    stats = cache.get_user_stats(user.id)
     entries = WatchEntry.objects.filter(user=user)
-
-    movie_ids = list(entries.filter(media_type=WatchEntryMediaType.MOVIE).values_list('tmdb_id', flat=True))
-    top_genres = []
-    if movie_ids:
-        from media.models import Genre
-        genre_counts = Genre.objects.filter(
-            movie__tmdb_id__in=movie_ids
-        ).annotate(count=Count('id')).order_by('-count')[:5]
-        top_genres = [{'name': g.name, 'count': g.count} for g in genre_counts]
-
-    avg_rating = Rating.objects.filter(user=user).aggregate(avg=Avg('score'))['avg']
 
     recent = list(entries.order_by(F('watched_at').desc(nulls_last=True), '-id')[:10])
     context = watch_entry_context(recent)
@@ -284,12 +326,4 @@ def user_stats(request):
             d['rating'] = rating_map.get((MediaType.TV, entry.tmdb_id))
         recent_data.append(d)
 
-    return Response({
-        'movies_watched': stats['movies'],
-        'shows_watching': stats['shows_watching'],
-        'shows_completed': stats['shows_completed'],
-        'episodes_watched': WatchEntry.objects.filter(user=user, media_type=WatchEntryMediaType.EPISODE).count(),
-        'average_rating': round(avg_rating, 1) if avg_rating else None,
-        'top_genres': top_genres,
-        'recent_activity': recent_data,
-    })
+    return Response(recent_data)

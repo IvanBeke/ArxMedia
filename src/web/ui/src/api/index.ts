@@ -42,8 +42,8 @@ import type {
 } from '@/types/api'
 
 export interface DashboardStats {
-  movies_watched: number; episodes_watched: number; shows_watching: number
-  average_rating: number | null; recent_activity: WatchEntry[]
+  movies_watched: number; episodes_watched: number; shows_watching: number; shows_watched: number
+  average_rating: number | null; watch_time_minutes: number
 }
 export interface UpNextItem {
   tmdb_id: number; show_name: string; poster_url: string; is_new: boolean; progress_percent: number
@@ -191,6 +191,7 @@ export const trackingAPI = {
   getRatings: (params?: QueryParams) => api.get<PaginatedResponse<Rating>>('/tracking/ratings/', { params }),
   rate: (data: MediaPayload & { score: number }) => api.post<Rating>('/tracking/ratings/', data),
   getStats: () => api.get<DashboardStats>('/tracking/stats/'),
+  getActivity: () => api.get<WatchEntry[]>('/tracking/activity/'),
   getUpNext: () => api.get<UpNextItem[]>('/tracking/up-next/'),
   getMyShows: (params?: QueryParams, options: RequestOptions = {}) =>
     api.get<PaginatedResponse<ShowProgressItem>>('/tracking/my-shows/', { params, ...options }),

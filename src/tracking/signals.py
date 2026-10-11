@@ -17,7 +17,7 @@ _suppress_state = threading.local()
 
 @contextmanager
 def suppress_watch_entry_delete_signals():
-    """Skip per-row delete handling; the caller refreshes caches and status once afterwards."""
+    """Skip per-row delete handling; the caller refreshes status once afterwards."""
     previous = getattr(_suppress_state, 'active', False)
     _suppress_state.active = True
     try:
@@ -36,11 +36,8 @@ def unmark_user_as_deleting(sender, instance, **kwargs):
     _deleting_user_ids.discard(instance.id)
 
 
-@receiver(post_save, sender=WatchEntry, dispatch_uid='tracking_watchentry_post_save_invalidate_cache')
-def invalidate_watchentry_cache_on_save(sender, instance, **kwargs):
-    from .cache import cache
-
-    cache.invalidate_user_stats(instance.user_id)
+@receiver(post_save, sender=WatchEntry, dispatch_uid='tracking_watchentry_post_save_sync_status')
+def sync_media_status_on_save(sender, instance, **kwargs):
     if instance.media_type == WatchEntryMediaType.MOVIE:
         watched_at = instance.watched_at
         UserMediaStatus.objects.update_or_create(
@@ -59,14 +56,11 @@ def invalidate_watchentry_cache_on_save(sender, instance, **kwargs):
         refresh_show_status(instance.user_id, instance.tmdb_id)
 
 
-@receiver(post_delete, sender=WatchEntry, dispatch_uid='tracking_watchentry_post_delete_invalidate_cache')
-def invalidate_watchentry_cache_on_delete(sender, instance, **kwargs):
+@receiver(post_delete, sender=WatchEntry, dispatch_uid='tracking_watchentry_post_delete_sync_status')
+def sync_media_status_on_delete(sender, instance, **kwargs):
     if instance.user_id in _deleting_user_ids or getattr(_suppress_state, 'active', False):
         return
 
-    from .cache import cache
-
-    cache.invalidate_user_stats(instance.user_id)
     if instance.media_type == WatchEntryMediaType.MOVIE:
         latest_movie_watch = WatchEntry.objects.filter(
             user_id=instance.user_id,

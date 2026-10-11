@@ -9,29 +9,18 @@
       </div>
     </Transition>
 
-    <!-- Weekly Pulse stats -->
-    <div v-if="loadingStats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
-      <div v-for="n in 4" :key="n" class="h-24 skeleton rounded-lg"></div>
+    <div v-if="loadingStats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
+      <div v-for="n in 6" :key="n" class="h-24 skeleton rounded-lg"></div>
     </div>
     <LoadError v-else-if="statsError" class="mb-10" :message="t('error_load_stats')" @retry="loadDashboard" />
 
-    <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
-      <div class="card p-4">
-        <p class="text-3xl font-display text-brand-500">{{ stats?.movies_watched || 0 }}</p>
-        <p class="text-muted text-xs mt-1">{{ t('dashboard_movies_watched') }}</p>
-      </div>
-      <div class="card p-4">
-        <p class="text-3xl font-display text-brand-500">{{ stats?.episodes_watched || 0 }}</p>
-        <p class="text-muted text-xs mt-1">{{ t('dashboard_episodes_watched') }}</p>
-      </div>
-      <div class="card p-4">
-        <p class="text-3xl font-display text-brand-500">{{ stats?.shows_watching || 0 }}</p>
-        <p class="text-muted text-xs mt-1">{{ t('dashboard_shows_watching') }}</p>
-      </div>
-      <div class="card p-4">
-        <p class="text-3xl font-display text-brand-500">{{ stats?.average_rating || '–' }}</p>
-        <p class="text-muted text-xs mt-1">{{ t('dashboard_avg_rating') }}</p>
-      </div>
+    <div v-else-if="stats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
+      <StatCard :value="stats.movies_watched" :title="t('dashboard_movies_watched')" />
+      <StatCard :value="stats.shows_watched" :title="t('dashboard_shows_watched')" />
+      <StatCard :value="stats.episodes_watched" :title="t('dashboard_episodes_watched')" />
+      <StatCard :value="stats.shows_watching" :title="t('dashboard_shows_watching')" />
+      <StatCard :value="formatHoursMinutes(stats.watch_time_minutes)" :title="t('dashboard_watch_time')" />
+      <StatCard :value="stats.average_rating ?? '–'" :title="t('dashboard_avg_rating')" />
     </div>
 
     <!-- Up Next Row -->
@@ -121,13 +110,13 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
       </RouterLink>
-      <div v-if="loadingStats" class="space-y-2">
+      <div v-if="loadingActivity" class="space-y-2">
         <div v-for="n in 5" :key="n" class="h-14 skeleton rounded-lg"></div>
       </div>
-      <p v-else-if="statsError" class="text-muted text-sm">{{ t('error_recent_activity_unavailable') }}</p>
-      <div v-else-if="stats?.recent_activity?.length" class="flex gap-4 overflow-x-auto pb-2">
+      <LoadError v-else-if="activityError" :message="t('error_recent_activity_unavailable')" @retry="loadDashboard" />
+      <div v-else-if="activity?.length" class="flex gap-4 overflow-x-auto pb-2">
         <HistoryMediaCard
-          v-for="entry in stats.recent_activity"
+          v-for="entry in activity"
           :key="entry.id"
           :entry="entry"
           :link-to="getWatchEntryLink(entry)"
@@ -153,23 +142,29 @@ import { trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import LoadError from '@/components/LoadError.vue'
+import StatCard from '@/components/StatCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useI18n } from '@/i18n'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { getApiErrorMessage } from '@/utils/errors'
+import { formatHoursMinutes } from '@/utils/progress'
 import { getEpisodeLink, getShowLink, getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import type { DashboardStats, UpNextItem, UpcomingItem } from '@/api'
+import type { WatchEntry } from '@/types/api'
 
 const auth = useAuthStore()
 const stats = ref<DashboardStats | null>(null)
+const activity = ref<WatchEntry[] | null>(null)
 const { t } = useI18n()
 const loadingStats = ref(true)
+const loadingActivity = ref(true)
 const upNext = ref<UpNextItem[] | null>(null)
 const loadingUpNext = ref(true)
 const upcoming = ref<UpcomingItem[] | null>(null)
 const loadingUpcoming = ref(true)
 const statsError = ref(false)
+const activityError = ref(false)
 const upNextError = ref(false)
 const upcomingError = ref(false)
 const { errorMsg: actionError, showError: showActionError } = useFlashMessages()
@@ -190,12 +185,14 @@ function formatUpcomingDateTime(value: string | null): string {
 }
 
 async function refreshTrackingLists() {
-  const [upNextRes, statsRes] = await Promise.all([
+  const [upNextRes, statsRes, activityRes] = await Promise.all([
     trackingAPI.getUpNext(),
     trackingAPI.getStats(),
+    trackingAPI.getActivity(),
   ])
   upNext.value = upNextRes
   stats.value = statsRes
+  activity.value = activityRes
 }
 
 async function markNextEpisodeWatched(item: UpNextItem) {
@@ -221,11 +218,12 @@ const { deletingEntryId, deleteEntry: removeRecentEntry } = useHistoryDelete({
 })
 
 async function loadDashboard() {
-  loadingStats.value = loadingUpNext.value = loadingUpcoming.value = true
-  const [statsRes, upNextRes, upcomingRes] = await Promise.allSettled([
+  loadingStats.value = loadingUpNext.value = loadingUpcoming.value = loadingActivity.value = true
+  const [statsRes, upNextRes, upcomingRes, activityRes] = await Promise.allSettled([
     trackingAPI.getStats(),
     trackingAPI.getUpNext(),
     trackingAPI.getUpcoming(),
+    trackingAPI.getActivity(),
   ])
 
   statsError.value = statsRes.status === 'rejected'
@@ -239,6 +237,10 @@ async function loadDashboard() {
   upcomingError.value = upcomingRes.status === 'rejected'
   if (upcomingRes.status === 'fulfilled') upcoming.value = upcomingRes.value
   loadingUpcoming.value = false
+
+  activityError.value = activityRes.status === 'rejected'
+  if (activityRes.status === 'fulfilled') activity.value = activityRes.value
+  loadingActivity.value = false
 }
 
 onMounted(loadDashboard)

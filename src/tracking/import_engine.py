@@ -10,7 +10,6 @@ from django.db import transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
-from .cache import cache as tracking_cache
 from .choices import DataImportMode, MediaType, TvShowStatus, WatchEntryMediaType
 from .import_records import (
     LISTS_COLLECTION,
@@ -426,9 +425,6 @@ def reconcile_user_media_status(
         winner = winners.get((MediaType.TV, tmdb_id))
         if winner is not None:
             _apply_status_winner(user, winner, skip_existing=new_only)
-
-    # Bulk writes skip signals, so cached stats/progress must be dropped here.
-    tracking_cache.invalidate_user_stats(user.id)
 
 
 def _apply_status_winner(user, record: StatusRecord, skip_existing: bool = False):

@@ -282,16 +282,16 @@ class SeasonTests(BaseTestCase):
             UserMediaStatus.objects.shows().filter(user=self.user, tmdb_id=321, status='watched').exists()
         )
 
-    def test_mark_season_watched_invalidates_user_stats(self):
+    def test_mark_season_watched_updates_user_stats(self):
         show = TVShow.objects.create(tmdb_id=322, name='Stats Show')
         season = Season.objects.create(show=show, tmdb_id=3221, season_number=1, name='Season 1')
         Episode.objects.create(season=season, tmdb_id=32211, episode_number=1, name='E1')
 
-        with patch('tracking.views.episodes.cache.invalidate_user_stats') as invalidate:
-            response = self.client.post('/api/tracking/seasons/mark/', {'tmdb_id': 322, 'season_number': 1})
+        response = self.client.post('/api/tracking/seasons/mark/', {'tmdb_id': 322, 'season_number': 1})
 
         self.assertEqual(response.status_code, 200)
-        invalidate.assert_called_once_with(self.user.id)
+        stats = self.client.get('/api/tracking/stats/')
+        self.assertEqual(stats.data['shows_watching'], 1)
 
     def test_unmark_show_watched_requires_tmdb_id(self):
         response = self.client.post('/api/tracking/shows/unmark/', {})

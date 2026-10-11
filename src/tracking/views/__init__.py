@@ -14,6 +14,7 @@ from .history import (
     ReviewListCreateView,
     WatchEntryDetailView,
     WatchEntryListCreateView,
+    recent_activity,
     user_stats,
 )
 from .library import (
@@ -70,6 +71,7 @@ __all__ = [
     'mark_show_watched',
     'my_movies_list',
     'my_shows_list',
+    'recent_activity',
     'recommendations',
     'unmark_episode_watched',
     'unmark_season_watched',

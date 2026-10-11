@@ -843,9 +843,9 @@ class SeasonPosterCardsTests(BaseTestCase):
             episode_number=1,
         )
 
-        response = self.client.get('/api/tracking/stats/')
+        response = self.client.get('/api/tracking/activity/')
         self.assertEqual(response.status_code, 200)
-        recent = response.data['recent_activity']
+        recent = response.data
         self.assertEqual(len(recent), 1)
         self.assertEqual(recent[0]['poster_path'], '/season1-poster.jpg')
         self.assertEqual(recent[0]['poster_url'], 'https://image.tmdb.org/t/p/w500/season1-poster.jpg')

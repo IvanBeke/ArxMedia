@@ -4,7 +4,6 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from ..cache import cache
 from ..choices import WatchEntryMediaType
 from ..models import WatchEntry
 from ..signals import suppress_watch_entry_delete_signals
@@ -16,8 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _refresh_after_bulk_change(user_id, tmdb_id):
-    """Bulk writes skip (or suppress) per-row signals, so refresh cached stats and show status once."""
-    cache.invalidate_user_stats(user_id)
+    """Bulk writes skip (or suppress) per-row signals, so refresh show status once."""
     refresh_show_status(user_id, tmdb_id)
 
 

@@ -91,7 +91,7 @@ class UnknownWatchDateTests(BaseTestCase):
         dated = WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=363, watched_at=timezone.now() - timedelta(days=30))
         unknown = WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=364, watched_at=None)
 
-        recent = self.client.get('/api/tracking/stats/').data['recent_activity']
+        recent = self.client.get('/api/tracking/activity/').data
 
         self.assertEqual([row['id'] for row in recent], [dated.id, unknown.id])
 
