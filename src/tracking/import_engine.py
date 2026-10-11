@@ -22,7 +22,8 @@ from .import_records import (
     WatchEntryRecord,
 )
 from .models import CustomList, ListItem, Rating, UserMediaStatus, WatchEntry
-from .status_sync import refresh_show_status
+from .signals import suppress_watch_entry_delete_signals
+from .status_sync import refresh_movie_status, refresh_show_status
 
 _STATUS_FIELD_BY_STATE: dict[str, str] = {
     TvShowStatus.WATCHED: 'completed_at',
@@ -476,14 +477,28 @@ def delete_missing_rows(user, parsed: ParsedImport):
     collections_present = parsed.collections_present
 
     if WATCH_HISTORY_COLLECTION in collections_present:
-        stale_ids = [
-            entry.id
+        stale = [
+            entry
             for entry in WatchEntry.objects.filter(user=user)
             if (entry.media_type, entry.tmdb_id, entry.season_number, entry.episode_number) not in watch_keys
         ]
-        if stale_ids:
-            deleted[WATCH_HISTORY_COLLECTION] = len(stale_ids)
-            WatchEntry.objects.filter(id__in=stale_ids).delete()
+        if stale:
+            deleted[WATCH_HISTORY_COLLECTION] = len(stale)
+            affected_movies = set()
+            affected_shows = set()
+            for entry in stale:
+                if entry.media_type == WatchEntryMediaType.EPISODE:
+                    affected_shows.add(entry.tmdb_id)
+                else:
+                    affected_movies.add(entry.tmdb_id)
+            # Skip the per-row post_delete handler; refresh each affected
+            # title once instead.
+            with suppress_watch_entry_delete_signals():
+                WatchEntry.objects.filter(id__in=[entry.id for entry in stale]).delete()
+            for tmdb_id in affected_movies:
+                refresh_movie_status(user.id, tmdb_id)
+            for tmdb_id in affected_shows:
+                refresh_show_status(user.id, tmdb_id)
 
     if WATCHLIST_COLLECTION in collections_present:
         stale_ids = [

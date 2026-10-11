@@ -431,6 +431,38 @@ class DataImportExportTests(BaseTestCase):
         self.assertFalse(UserMediaStatus.objects.filter(id=stale_watchlist.id).exists())
         self.assertFalse(Rating.objects.filter(id=stale_rating.id).exists())
 
+    def test_mirror_delete_refreshes_statuses_without_per_row_signals(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from tracking.import_engine import delete_missing_rows
+        from tracking.import_records import WATCH_HISTORY_COLLECTION, ParsedImport
+
+        show = TVShow.objects.create(tmdb_id=9201, name='Mirror Show')
+        season = Season.objects.create(show=show, tmdb_id=92011, season_number=1, name='S1')
+        for i in range(1, 11):
+            Episode.objects.create(season=season, tmdb_id=9201100 + i, episode_number=i, name=f'E{i}')
+            WatchEntry.objects.create(
+                user=self.user, media_type='episode', tmdb_id=9201,
+                season_number=1, episode_number=i, watched_at=timezone.now(),
+            )
+        WatchEntry.objects.create(user=self.user, media_type='movie', tmdb_id=9202, watched_at=timezone.now())
+        parsed = ParsedImport(
+            records=(),
+            collections_present=frozenset({WATCH_HISTORY_COLLECTION}),
+            invalid_count=0,
+            report={},
+        )
+
+        with CaptureQueriesContext(connection) as ctx:
+            deleted = delete_missing_rows(self.user, parsed)
+
+        self.assertEqual(deleted[WATCH_HISTORY_COLLECTION], 11)
+        # One bulk delete plus one refresh per title: far below per-row signal cost.
+        self.assertLess(len(ctx), 40)
+        self.assertFalse(WatchEntry.objects.filter(user=self.user).exists())
+        self.assertFalse(UserMediaStatus.objects.filter(user=self.user, tmdb_id=9201).exists())
+        self.assertFalse(UserMediaStatus.objects.filter(user=self.user, tmdb_id=9202).exists())
+
     def test_plan_to_watch_import_writes_no_watch_dates(self):
         from tracking.import_engine import _apply_status_winner, _upsert_status
         from tracking.import_records import StatusRecord

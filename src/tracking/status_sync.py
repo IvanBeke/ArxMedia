@@ -2,12 +2,12 @@ from datetime import datetime
 from functools import partial
 
 from django.db import transaction
-from django.db.models import Max, Min
+from django.db.models import F, Max, Min
 from django.utils import timezone
 
 from media.models import Episode, TVShow
 
-from .choices import MediaType, TvShowStatus
+from .choices import MediaType, TvShowStatus, WatchEntryMediaType
 from .models import UserMediaStatus, WatchEntry
 
 
@@ -73,6 +73,42 @@ def calculate_show_progress(user_id: int, tmdb_id: int, now=None) -> dict:
         'time_left_minutes': sum(row['runtime'] for row in remaining_rows if row['runtime'] is not None),
         'time_left_has_unknown': any(row['runtime'] is None for row in remaining_rows),
     }
+
+
+def refresh_movie_status(user_id: int, tmdb_id: int):
+    """Reconcile one movie's status row after its entries changed (bulk-safe)."""
+    latest_movie_watch = WatchEntry.objects.filter(
+        user_id=user_id,
+        media_type=WatchEntryMediaType.MOVIE,
+        tmdb_id=tmdb_id,
+    ).order_by(F('watched_at').desc(nulls_last=True), '-created_at', '-id').first()
+    movie_status = UserMediaStatus.objects.filter(
+        user_id=user_id,
+        media_type=MediaType.MOVIE,
+        tmdb_id=tmdb_id,
+    ).first()
+    if latest_movie_watch:
+        watched_at = latest_movie_watch.watched_at
+        UserMediaStatus.objects.update_or_create(
+            user_id=user_id,
+            media_type=MediaType.MOVIE,
+            tmdb_id=tmdb_id,
+            defaults={
+                'status': 'watched',
+                'completed_at': watched_at,
+                'last_watched_at': watched_at,
+                'status_changed_at': watched_at or timezone.now(),
+                'progress_percent': 100,
+            },
+        )
+    elif movie_status and movie_status.status == 'plan_to_watch':
+        pass
+    else:
+        UserMediaStatus.objects.filter(
+            user_id=user_id,
+            media_type=MediaType.MOVIE,
+            tmdb_id=tmdb_id,
+        ).delete()
 
 
 def refresh_show_status(user_id: int, tmdb_id: int):
