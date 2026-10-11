@@ -170,6 +170,10 @@
               <div class="card p-4">
                 <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">{{ t('show_details') }}</p>
                 <dl class="text-sm space-y-1.5">
+                  <div v-if="show.original_title && show.original_title !== show.name" class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">{{ t('show_original_title') }}</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.original_title }}</dd>
+                  </div>
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('show_status') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.status || '—' }}</dd>
@@ -192,7 +196,7 @@
                   </div>
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('show_language') }}</dt>
-                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.language || '—' }}</dd>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.language_name || show.language || '—' }}</dd>
                   </div>
                 </dl>
               </div>

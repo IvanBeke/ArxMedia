@@ -1369,6 +1369,89 @@ class MediaTests(TestCase):
         self.assertIn('metadata_updated_at', movie_response.data)
         self.assertIn('metadata_updated_at', tv_response.data)
 
+    def test_sync_movie_stores_original_title_and_language_name(self):
+        def payload(endpoint, params=None, **kwargs):
+            if endpoint == '/movie/550':
+                return {
+                    'id': 550,
+                    'title': 'El club de la lucha',
+                    'original_title': 'Fight Club',
+                    'original_language': 'en',
+                    'spoken_languages': [
+                        {'iso_639_1': 'en', 'english_name': 'English', 'name': 'English'},
+                        {'iso_639_1': 'es', 'english_name': 'Spanish', 'name': 'Español'},
+                    ],
+                    'genres': [],
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=payload):
+            movie = tmdb.sync_movie(550)
+
+        self.assertEqual(movie.original_title, 'Fight Club')
+        self.assertEqual(movie.language, 'en')
+        self.assertEqual(movie.language_name, 'English')
+
+    def test_sync_movie_leaves_language_name_empty_without_spoken_match(self):
+        def payload(endpoint, params=None, **kwargs):
+            if endpoint == '/movie/550':
+                return {
+                    'id': 550,
+                    'title': 'Dark',
+                    'original_title': 'Dark',
+                    'original_language': 'de',
+                    'spoken_languages': [],
+                    'genres': [],
+                }
+            return {}
+
+        with patch('media.tmdb.TMDBService._get', side_effect=payload) as mock_get:
+            movie = tmdb.sync_movie(550)
+
+        self.assertEqual(movie.language, 'de')
+        self.assertEqual(movie.language_name, '')
+        self.assertNotIn('/configuration/languages', [call.args[0] for call in mock_get.call_args_list])
+
+    def test_sync_tv_show_stores_original_title_and_language_name(self):
+        with patch.object(tmdb, 'get_tv_details', return_value={
+            'id': 1399,
+            'name': 'Juego de tronos',
+            'original_name': 'Game of Thrones',
+            'original_language': 'en',
+            'spoken_languages': [
+                {'iso_639_1': 'en', 'english_name': 'English', 'name': 'English'},
+            ],
+            'genres': [],
+            'networks': [],
+            'number_of_seasons': 0,
+            'number_of_episodes': 0,
+        }), patch.object(tmdb, '_resolve_tvmaze', return_value=(None, [])):
+            show = tmdb.sync_tv_show(1399, recompute_user_statuses=False)
+
+        self.assertEqual(show.original_title, 'Game of Thrones')
+        self.assertEqual(show.language_name, 'English')
+
+    def test_movie_and_tv_detail_expose_original_title_and_language_name(self):
+        Movie.objects.create(
+            tmdb_id=777, title='El club de la lucha', original_title='Fight Club',
+            language='en', language_name='English',
+        )
+        show = TVShow.objects.create(
+            tmdb_id=888, name='Dark', original_title='Dark',
+            language='de', language_name='German',
+            number_of_seasons=1, number_of_episodes=1,
+        )
+        season = show.seasons.create(tmdb_id=8881, season_number=1, name='Season 1')
+        season.episodes.create(tmdb_id=88811, episode_number=1, name='Ep 1')
+
+        movie_response = self.client.get('/api/media/movies/777/')
+        tv_response = self.client.get('/api/media/tv/888/')
+
+        self.assertEqual(movie_response.data['original_title'], 'Fight Club')
+        self.assertEqual(movie_response.data['language_name'], 'English')
+        self.assertEqual(tv_response.data['original_title'], 'Dark')
+        self.assertEqual(tv_response.data['language_name'], 'German')
+
     @staticmethod
     def _show_payload(tmdb_id, season_numbers):
         return {

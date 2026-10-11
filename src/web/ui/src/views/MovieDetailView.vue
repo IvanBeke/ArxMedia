@@ -148,6 +148,10 @@
               <div class="card p-4">
                 <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">{{ t('movie_details') }}</p>
                 <dl class="text-sm space-y-1.5">
+                  <div v-if="movie.original_title && movie.original_title !== movie.title" class="flex justify-between gap-2">
+                    <dt class="text-muted shrink-0">{{ t('movie_original_title') }}</dt>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.original_title }}</dd>
+                  </div>
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('movie_status') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.status || '—' }}</dd>
@@ -162,7 +166,7 @@
                   </div>
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('movie_language') }}</dt>
-                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.language || '—' }}</dd>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.language_name || movie.language || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('movie_post_credits') }}</dt>

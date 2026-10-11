@@ -267,6 +267,39 @@ describe('TVDetailView hero progress', () => {
     expect(text).toContain('1/2 watched')
   })
 
+  it('shows original title and stored language name when they differ', async () => {
+    getTV.mockResolvedValueOnce({
+      ...showPayload(),
+      name: 'Oscura',
+      original_title: 'Dark',
+      language: 'de',
+      language_name: 'German',
+    })
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView(true)
+
+    expect(wrapper.text()).toContain('Original title')
+    expect(wrapper.text()).toContain('Dark')
+    expect(wrapper.text()).toContain('German')
+  })
+
+  it('hides original title when identical and falls back to language code', async () => {
+    getTV.mockResolvedValueOnce({
+      ...showPayload(),
+      name: 'Dark',
+      original_title: 'Dark',
+      language: 'de',
+      language_name: '',
+    })
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView(true)
+
+    expect(wrapper.text()).not.toContain('Original title')
+    expect(wrapper.text()).toContain('de')
+  })
+
   it('shows a history tab scoped to the show', async () => {
     getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1]]))
     getHistory.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })

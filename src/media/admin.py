@@ -17,17 +17,17 @@ class GenreAdmin(admin.ModelAdmin):
 @admin.register(Movie)
 class MovieAdmin(admin.ModelAdmin):
     list_display = [
-        'title', 'tmdb_id', 'release_date', 'status', 'language', 'vote_average', 'vote_count',
+        'title', 'tmdb_id', 'release_date', 'status', 'language', 'language_name', 'vote_average', 'vote_count',
         'updated_at',
     ]
-    search_fields = ['title', 'tagline', 'overview', 'tmdb_id', 'language', 'status']
+    search_fields = ['title', 'original_title', 'tagline', 'overview', 'tmdb_id', 'language', 'language_name', 'status']
     list_filter = ['genres', 'status', 'language', 'release_date']
     ordering = ['title']
     readonly_fields = ['created_at', 'updated_at', 'poster_url', 'backdrop_url']
     fieldsets = (
-        ('Identity', {'fields': ('title', 'tmdb_id', 'tagline', 'overview')}),
+        ('Identity', {'fields': ('title', 'original_title', 'tmdb_id', 'tagline', 'overview')}),
         ('Release and classification', {
-            'fields': ('release_date', 'runtime', 'language', 'status', 'genres'),
+            'fields': ('release_date', 'runtime', 'language', 'language_name', 'status', 'genres'),
         }),
         ('Ratings', {'fields': ('vote_average', 'vote_count')}),
         ('Artwork', {'fields': ('poster_path', 'poster_url', 'backdrop_path', 'backdrop_url')}),
@@ -41,15 +41,15 @@ class TVShowAdmin(admin.ModelAdmin):
         'name', 'tmdb_id', 'first_air_date', 'last_air_date', 'status',
         'number_of_seasons', 'number_of_episodes', 'vote_average', 'updated_at',
     ]
-    search_fields = ['name', 'overview', 'tmdb_id', 'language', 'status', 'networks']
+    search_fields = ['name', 'original_title', 'overview', 'tmdb_id', 'language', 'language_name', 'status', 'networks']
     list_filter = ['genres', 'status', 'language', 'first_air_date', 'last_air_date']
     ordering = ['name']
     readonly_fields = ['created_at', 'updated_at', 'poster_url', 'backdrop_url']
     fieldsets = (
-        ('Identity', {'fields': ('name', 'tmdb_id', 'overview')}),
+        ('Identity', {'fields': ('name', 'original_title', 'tmdb_id', 'overview')}),
         ('Broadcast metadata', {
             'fields': (
-                'first_air_date', 'last_air_date', 'status', 'language', 'networks',
+                'first_air_date', 'last_air_date', 'status', 'language', 'language_name', 'networks',
                 'episode_runtime', 'number_of_seasons', 'number_of_episodes',
             ),
         }),

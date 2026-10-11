@@ -18,9 +18,9 @@ class MovieSerializer(serializers.ModelSerializer):
     class Meta:
         model = Movie
         fields = [
-            'id', 'tmdb_id', 'title', 'overview', 'poster_path', 'backdrop_path',
+            'id', 'tmdb_id', 'title', 'original_title', 'overview', 'poster_path', 'backdrop_path',
             'poster_url', 'backdrop_url', 'release_date', 'runtime',
-            'vote_average', 'vote_count', 'genres', 'language', 'tagline', 'status',
+            'vote_average', 'vote_count', 'genres', 'language', 'language_name', 'tagline', 'status',
             'has_postcredits_scene', 'metadata_updated_at'
         ]
 
@@ -34,10 +34,10 @@ class TVShowSerializer(serializers.ModelSerializer):
     class Meta:
         model = TVShow
         fields = [
-            'id', 'tmdb_id', 'name', 'overview', 'poster_path', 'backdrop_path',
+            'id', 'tmdb_id', 'name', 'original_title', 'overview', 'poster_path', 'backdrop_path',
             'poster_url', 'backdrop_url', 'first_air_date', 'last_air_date',
             'number_of_seasons', 'number_of_episodes', 'vote_average', 'vote_count',
-            'genres', 'language', 'status', 'networks', 'episode_runtime',
+            'genres', 'language', 'language_name', 'status', 'networks', 'episode_runtime',
             'external_ids', 'metadata_updated_at'
         ]
 

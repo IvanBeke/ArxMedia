@@ -291,11 +291,25 @@ class TMDBService:
             seasons[number] = {**summary, **payload} if isinstance(summary, dict) else payload
         return seasons
 
+    @staticmethod
+    def _resolve_language_name(data):
+        """Map ``original_language`` code to its display name from the detail payload."""
+        code = (data.get('original_language') or '').strip()
+        if not code:
+            return ''
+        for entry in data.get('spoken_languages') or []:
+            if not isinstance(entry, dict):
+                continue
+            if (entry.get('iso_639_1') or '').strip().lower() == code.lower():
+                return (entry.get('english_name') or entry.get('name') or '').strip()
+        return ''
+
     def sync_movie(self, tmdb_id, *, use_cache=True):
         """Fetch movie from TMDB and save/update locally."""
         data = self.get_movie_details(tmdb_id, use_cache=use_cache)
         movie_defaults = {
             'title': data.get('title', ''),
+            'original_title': data.get('original_title', ''),
             'overview': data.get('overview', ''),
             'poster_path': data.get('poster_path', '') or '',
             'backdrop_path': data.get('backdrop_path', '') or '',
@@ -304,6 +318,7 @@ class TMDBService:
             'vote_average': data.get('vote_average', 0),
             'vote_count': data.get('vote_count', 0),
             'language': data.get('original_language', ''),
+            'language_name': self._resolve_language_name(data),
             'tagline': data.get('tagline', ''),
             'status': data.get('status', ''),
         }
@@ -410,13 +425,15 @@ class TMDBService:
         runtimes = data.get('episode_run_time') or []
         episode_runtime = next((r for r in runtimes if isinstance(r, int) and r > 0), None)
         defaults = {
-            'name': data.get('name', ''), 'overview': data.get('overview', ''),
+            'name': data.get('name', ''), 'original_title': data.get('original_name', ''),
+            'overview': data.get('overview', ''),
             'poster_path': data.get('poster_path', '') or '', 'backdrop_path': data.get('backdrop_path', '') or '',
             'first_air_date': _parse_date(data.get('first_air_date')),
             'last_air_date': _parse_date(data.get('last_air_date')),
             'number_of_seasons': data.get('number_of_seasons', 0), 'number_of_episodes': data.get('number_of_episodes', 0),
             'vote_average': data.get('vote_average', 0), 'vote_count': data.get('vote_count', 0),
-            'language': data.get('original_language', ''), 'status': data.get('status', ''),
+            'language': data.get('original_language', ''), 'language_name': self._resolve_language_name(data),
+            'status': data.get('status', ''),
             'networks': ', '.join(n['name'] for n in data.get('networks', [])),
             'external_ids': external_ids, 'episode_runtime': episode_runtime,
         }

@@ -176,6 +176,60 @@ describe('MovieDetailView history tab', () => {
     expect(wrapper.text()).not.toContain('unavailable')
   })
 
+  it('shows original title and stored language name when they differ', async () => {
+    getMovie.mockResolvedValueOnce({
+      id: TMDB_ID,
+      media_type: MEDIA_TYPE.MOVIE,
+      tmdb_id: TMDB_ID,
+      title: 'El club de la lucha',
+      original_title: 'Fight Club',
+      overview: 'A hacker learns the truth.',
+      genres: [],
+      poster_url: null,
+      backdrop_url: null,
+      runtime: 136,
+      language: 'en',
+      language_name: 'English',
+      tagline: '',
+      status: 'Released',
+      metadata_updated_at: '',
+      collection: null,
+      user_status: { status: 'watched' },
+    })
+    const wrapper = await mountView('overview')
+
+    expect(wrapper.text()).toContain('Original title')
+    expect(wrapper.text()).toContain('Fight Club')
+    expect(wrapper.text()).toContain('English')
+    expect(wrapper.text()).not.toMatch(/(^|\s)en(\s|$)/)
+  })
+
+  it('hides original title when identical and falls back to language code', async () => {
+    getMovie.mockResolvedValueOnce({
+      id: TMDB_ID,
+      media_type: MEDIA_TYPE.MOVIE,
+      tmdb_id: TMDB_ID,
+      title: 'The Matrix',
+      original_title: 'The Matrix',
+      overview: 'A hacker learns the truth.',
+      genres: [],
+      poster_url: null,
+      backdrop_url: null,
+      runtime: 136,
+      language: 'en',
+      language_name: '',
+      tagline: '',
+      status: 'Released',
+      metadata_updated_at: '',
+      collection: null,
+      user_status: { status: 'watched' },
+    })
+    const wrapper = await mountView('overview')
+
+    expect(wrapper.text()).not.toContain('Original title')
+    expect(wrapper.text()).toContain('en')
+  })
+
   it('flags a failed collection load on the collection tab', async () => {
     getMovie.mockResolvedValueOnce({
       id: TMDB_ID,
