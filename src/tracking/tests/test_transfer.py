@@ -434,6 +434,7 @@ class DataImportExportTests(BaseTestCase):
     def test_mirror_delete_refreshes_statuses_without_per_row_signals(self):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
+
         from tracking.import_engine import delete_missing_rows
         from tracking.import_records import WATCH_HISTORY_COLLECTION, ParsedImport
 
