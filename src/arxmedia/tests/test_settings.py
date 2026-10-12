@@ -3,10 +3,11 @@ import os
 import sys
 from unittest.mock import patch
 
+import pytest
 from django.contrib import admin
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import User
@@ -23,21 +24,29 @@ from tracking.models import (
     WatchEntry,
 )
 
+pytestmark = pytest.mark.django_db
 
-class DatabaseSettingsTests(TestCase):
+class DatabaseSettingsTests:
     def test_atomic_requests_enabled(self):
-        self.assertIs(connection.settings_dict['ATOMIC_REQUESTS'], True)
+        assert connection.settings_dict['ATOMIC_REQUESTS'] is True
 
 
-class ProductionSettingsGuardTests(SimpleTestCase):
+class ProductionSettingsGuardTests:
     STRONG_KEY = 'k' * 50
+
+    @pytest.fixture(autouse=True)
+    def _reload_stack(self, request):
+        self._reload_modules = []
+        yield
+        for module in self._reload_modules:
+            importlib.reload(module)
 
     def _load(self, module_name, env, *, argv=None):
         """Reload settings modules under `env`; `argv` simulates a non-test process."""
         names = ['base', 'caching', module_name] if module_name == 'celery' else ['base', module_name]
         modules = [importlib.import_module(f'arxmedia.settings.{name}') for name in names]
         for module in modules:
-            self.addCleanup(importlib.reload, module)
+            self._reload_modules.append(module)
         with patch.dict(os.environ, env, clear=True), patch('sys.argv', argv or sys.argv):
             for module in modules:
                 importlib.reload(module)
@@ -45,29 +54,29 @@ class ProductionSettingsGuardTests(SimpleTestCase):
 
     def test_weak_secret_key_rejected_without_debug(self):
         for key in ('short', 'change-me-to-a-long-random-string' + 'x' * 30, 'django-insecure-' + 'x' * 50):
-            with self.subTest(key=key), self.assertRaises(ImproperlyConfigured):
+            with pytest.raises(ImproperlyConfigured):
                 self._load('base', {'DEBUG': 'False', 'SECRET_KEY': key})
 
     def test_weak_secret_key_allowed_in_debug(self):
         base = self._load('base', {'DEBUG': 'True'})
-        self.assertTrue(base.DEBUG)
+        assert base.DEBUG
 
     def test_database_url_required_without_debug(self):
-        with self.assertRaises(ImproperlyConfigured):
+        with pytest.raises(ImproperlyConfigured):
             self._load('database', {'DEBUG': 'False', 'SECRET_KEY': self.STRONG_KEY})
 
     def test_broker_required_without_debug_outside_tests(self):
         env = {'DEBUG': 'False', 'SECRET_KEY': self.STRONG_KEY}
-        with self.assertRaisesMessage(ImproperlyConfigured, 'CELERY_BROKER_URL'):
+        with pytest.raises(ImproperlyConfigured, match='CELERY_BROKER_URL'):
             self._load('celery', env, argv=['gunicorn'])
         celery = self._load('celery', {**env, 'REDIS_URL': 'redis://redis:6379/0'}, argv=['gunicorn'])
-        self.assertEqual(celery.CELERY_BROKER_URL, 'redis://redis:6379/1')
+        assert celery.CELERY_BROKER_URL == 'redis://redis:6379/1'
 
     def test_celery_tasks_have_time_limits_and_ignore_results(self):
         celery = self._load('celery', {'DEBUG': 'True'})
-        self.assertTrue(celery.CELERY_TASK_IGNORE_RESULT)
-        self.assertEqual((celery.CELERY_TASK_SOFT_TIME_LIMIT, celery.CELERY_TASK_TIME_LIMIT), (1800, 2100))
-        self.assertEqual(celery.CELERY_BEAT_SCHEDULE['tracking-heartbeat-hourly']['schedule'], 60 * 60)
+        assert celery.CELERY_TASK_IGNORE_RESULT
+        assert (celery.CELERY_TASK_SOFT_TIME_LIMIT, celery.CELERY_TASK_TIME_LIMIT) == (1800, 2100)
+        assert celery.CELERY_BEAT_SCHEDULE['tracking-heartbeat-hourly']['schedule'] == 60 * 60
 
     def test_celery_time_limits_read_from_env(self):
         celery = self._load('celery', {
@@ -75,20 +84,20 @@ class ProductionSettingsGuardTests(SimpleTestCase):
             'CELERY_TASK_SOFT_TIME_LIMIT': '60',
             'CELERY_TASK_TIME_LIMIT': '90',
         })
-        self.assertEqual((celery.CELERY_TASK_SOFT_TIME_LIMIT, celery.CELERY_TASK_TIME_LIMIT), (60, 90))
+        assert (celery.CELERY_TASK_SOFT_TIME_LIMIT, celery.CELERY_TASK_TIME_LIMIT) == (60, 90)
 
     def test_forwarded_host_not_trusted_by_default(self):
         security = self._load('security', {'DEBUG': 'True'})
-        self.assertFalse(security.USE_X_FORWARDED_HOST)
+        assert not security.USE_X_FORWARDED_HOST
 
 
-class TestIsolationSettingsTests(SimpleTestCase):
+class TestIsolationSettingsTests:
     def test_tests_never_use_shared_redis_or_the_real_broker(self):
         from django.conf import settings
 
-        self.assertTrue(settings.TESTING)
-        self.assertEqual(settings.CELERY_BROKER_URL, 'memory://')
-        self.assertEqual(settings.CACHES['default']['BACKEND'], 'django.core.cache.backends.locmem.LocMemCache')
+        assert settings.TESTING
+        assert settings.CELERY_BROKER_URL == 'memory://'
+        assert settings.CACHES['default']['BACKEND'] == 'django.core.cache.backends.locmem.LocMemCache'
 
 
 UNREACHABLE_REDIS_CACHES = {
@@ -100,8 +109,8 @@ UNREACHABLE_REDIS_CACHES = {
 }
 
 
-@override_settings(CACHES=UNREACHABLE_REDIS_CACHES)
-class RedisOutageTests(TestCase):
+class RedisOutageTests:
+    @override_settings(CACHES=UNREACHABLE_REDIS_CACHES)
     def test_login_session_and_throttled_api_work_without_redis(self):
         User.objects.create_user(username='offline', password='Offline-pass-123')
         client = APIClient()
@@ -110,10 +119,11 @@ class RedisOutageTests(TestCase):
         me = client.get('/api/auth/me/')
         stats = client.get('/api/tracking/stats/')
 
-        self.assertEqual(login.status_code, 200)
-        self.assertEqual(me.status_code, 200)
-        self.assertEqual(stats.status_code, 200)
+        assert login.status_code == 200
+        assert me.status_code == 200
+        assert stats.status_code == 200
 
+    @override_settings(CACHES=UNREACHABLE_REDIS_CACHES)
     def test_rate_limits_fail_open_without_redis(self):
         # The login throttle allows 10/minute; exhausting it must not lock
         # anyone out (or 500) when Redis is unreachable.
@@ -128,10 +138,10 @@ class RedisOutageTests(TestCase):
             for _ in range(15)
         }
 
-        self.assertEqual(statuses, {401})
+        assert statuses == {401}
 
 
-class AdminConfigurationTests(TestCase):
+class AdminConfigurationTests:
     def test_all_models_are_registered(self):
         models = [
             User,
@@ -153,8 +163,7 @@ class AdminConfigurationTests(TestCase):
         ]
 
         for model in models:
-            with self.subTest(model=model.__name__):
-                self.assertIn(model, admin.site._registry)
+            assert model in admin.site._registry
 
     def test_admins_expose_core_changelist_configuration(self):
         models = [
@@ -176,18 +185,17 @@ class AdminConfigurationTests(TestCase):
 
         for model in models:
             model_admin = admin.site._registry[model]
-            with self.subTest(model=model.__name__):
-                self.assertTrue(model_admin.list_display)
-                self.assertTrue(model_admin.search_fields)
-                self.assertTrue(model_admin.list_filter)
-                self.assertTrue(model_admin.ordering)
-                self.assertTrue(model_admin.fieldsets)
+            assert model_admin.list_display
+            assert model_admin.search_fields
+            assert model_admin.list_filter
+            assert model_admin.ordering
+            assert model_admin.fieldsets
 
         genre_admin = admin.site._registry[Genre]
-        self.assertTrue(genre_admin.list_display)
-        self.assertTrue(genre_admin.search_fields)
-        self.assertTrue(genre_admin.ordering)
-        self.assertTrue(genre_admin.fieldsets)
+        assert genre_admin.list_display
+        assert genre_admin.search_fields
+        assert genre_admin.ordering
+        assert genre_admin.fieldsets
 
     def test_user_admin_includes_custom_profile_fields(self):
         user_admin = admin.site._registry[User]
@@ -197,22 +205,16 @@ class AdminConfigurationTests(TestCase):
             for field_name in options['fields']
         }
 
-        self.assertTrue({'bio', 'avatar', 'location', 'website', 'preferred_region', 'account_visibility'} <= field_names)
-        self.assertIn('created_at', field_names)
+        assert {'bio', 'avatar', 'location', 'website', 'preferred_region', 'account_visibility'} <= field_names
+        assert 'created_at' in field_names
 
     def test_requested_relationship_ordering(self):
         episode_ordering = ['season__show__name', 'season__season_number', 'episode_number']
-        self.assertEqual(
-            admin.site._registry[EpisodeCredit].ordering,
-            ['episode__season__show__name', 'episode__season__season_number', 'episode__episode_number'],
-        )
-        self.assertEqual(admin.site._registry[Episode].ordering, episode_ordering)
-        self.assertEqual(admin.site._registry[Season].ordering, ['show__name', 'season_number'])
-        self.assertEqual(admin.site._registry[ListCollaborator].ordering, ['custom_list'])
-        self.assertEqual(
-            admin.site._registry[ListItem].ordering,
-            ['custom_list__name', 'custom_order', 'added_at'],
-        )
+        assert admin.site._registry[EpisodeCredit].ordering == ['episode__season__show__name', 'episode__season__season_number', 'episode__episode_number']
+        assert admin.site._registry[Episode].ordering == episode_ordering
+        assert admin.site._registry[Season].ordering == ['show__name', 'season_number']
+        assert admin.site._registry[ListCollaborator].ordering == ['custom_list']
+        assert admin.site._registry[ListItem].ordering == ['custom_list__name', 'custom_order', 'added_at']
 
     def test_season_admin_displays_related_episode_count(self):
         show = TVShow.objects.create(tmdb_id=910001, name='Admin Count Check')
@@ -230,10 +232,10 @@ class AdminConfigurationTests(TestCase):
         )
 
         season_admin = admin.site._registry[Season]
-        self.assertEqual(season_admin.episode_count_display(season), 1)
-        self.assertEqual(season.episode_count, 1)
-        self.assertIsNone(season.air_date)
+        assert season_admin.episode_count_display(season) == 1
+        assert season.episode_count == 1
+        assert season.air_date is None
 
         episode.air_date = '2024-01-15'
         episode.save(update_fields=['air_date'])
-        self.assertEqual(str(season.air_date), '2024-01-15')
+        assert str(season.air_date) == '2024-01-15'

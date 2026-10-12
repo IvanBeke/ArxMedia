@@ -1,10 +1,10 @@
 [project]
 name = "arxmedia-app"
 version = "0.1.0"
-requires-python = ">=3.14"
+requires-python = ">=3.14,<3.15"
 dependencies = [
-    "Django==6.1.1",
-    "djangorestframework==3.18.1",
+    "Django==6.1.2",
+    "djangorestframework==3.18.3",
     "Pillow==12.3.0",
     "requests==2.34.2",
     "dj-database-url==3.1.2",
@@ -13,19 +13,25 @@ dependencies = [
     "gunicorn==26.2.0",
     "psycopg2-binary==2.9.13",
     "celery==5.6.3",
-    "cryptography==50.0.1",
+    "cryptography==50.0.2",
     "django-vite==3.2.0",
     "whitenoise==6.12.0",
-    "django-stubs-ext==6.1.1",
+    "django-stubs-ext==6.1.2",
     "celery-types==0.26.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "ruff==0.16.9",
+    "ruff==0.17.0",
     "mypy==2.3.1",
-    "django-stubs[compatible-mypy]==6.1.1",
+    "django-stubs[compatible-mypy]==6.1.2",
     "djangorestframework-stubs[compatible-mypy]==3.18.1",
+    "pytest==9.1.1",
+    "pytest-django==4.14.0",
+    "pytest-xdist==3.8.0",
+    "factory-boy==3.3.3",
+    "pytest-mock==3.16.0",
+    "pytest-cov==7.1.0",
 ]
 
 [tool.ruff]
@@ -35,9 +41,9 @@ exclude = ["migrations", ".venv", "manage.py", "node_modules"]
 src = ["."]
 
 [tool.ruff.lint]
-extend-select = ["DJ", "I", "UP", "B", "SIM", "RET", "PERF", "G"]
+extend-select = ["DJ", "I", "UP", "B", "SIM", "RET", "PERF", "G", "PT"]
 extend-ignore = ["EXE002", "BLE001"]
-per-file-ignores = { "*/admin.py" = ["RUF012"], "*/models.py" = ["RUF012"], "*/serializers.py" = ["RUF012"], "*/views.py" = ["RUF012"], "*/views/*.py" = ["RUF012"] }
+per-file-ignores = { "*/admin.py" = ["RUF012"], "*/models.py" = ["RUF012"], "*/serializers.py" = ["RUF012"], "*/views.py" = ["RUF012"], "*/views/*.py" = ["RUF012"], "*/tests/*.py" = ["PT012"], "*/tests.py" = ["PT012"], "*/conftest.py" = ["PT012"], "*/factories.py" = ["RUF012"] }
 
 [tool.mypy]
 python_version = "3.14"
@@ -52,8 +58,31 @@ plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
 # responses as plain Django (no .data, Client without force_authenticate).
 # Source stays strict; tests are covered by execution instead.
 [[tool.mypy.overrides]]
-module = ["*.tests", "*.tests.*"]
+module = ["*.tests", "*.tests.*", "conftest", "*.conftest", "*.factories", "*.factories.*"]
 ignore_errors = true
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "arxmedia.settings"
+pythonpath = ["."]
+testpaths = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*", "*Tests"]
+python_functions = ["test_*"]
+addopts = "-n logical --dist loadfile -q --cov=. --cov-report=term-missing:skip-covered --cov-fail-under=0"
+markers = [
+    "django_db: database access",
+    "unfaked_tmdb_get: exercise TMDBService._get itself instead of the fake (HTTP still mocked)",
+]
 
 [tool.django-stubs]
 django_settings_module = "arxmedia.settings"
+
+[dependency-groups]
+dev = [
+    "factory-boy==3.3.3",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "pytest-django==4.14.0",
+    "pytest-mock==3.16.0",
+    "pytest-xdist==3.8.0",
+]

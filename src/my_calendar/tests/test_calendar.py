@@ -1,49 +1,40 @@
 from datetime import timedelta
 
-from django.contrib.auth import get_user_model
-from django.test import TestCase
+import pytest
 from django.utils import timezone
-from rest_framework.test import APIClient
 
 from media.models import Episode, Movie, Season, TVShow
 from tracking.models import UserMediaStatus, WatchEntry
 
-User = get_user_model()
+pytestmark = pytest.mark.django_db
 
 
-class CalendarTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(username='caluser', email='cal@example.com', password='testpass123')
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
+class TestCalendar:
+    def test_calendar_requires_auth(self, api_client):
+        response = api_client.get('/api/calendar/?days=30')
+        assert response.status_code == 401
 
-    def test_calendar_requires_auth(self):
-        anon = APIClient()
-        response = anon.get('/api/calendar/?days=30')
-        self.assertEqual(response.status_code, 401)
+    @pytest.mark.parametrize('start', ['not-a-date', '2026-02-30', '2026-13-01'])
+    def test_calendar_rejects_invalid_start_date(self, auth_client, start):
+        response = auth_client.get('/api/calendar/', {'start': start})
+        assert response.status_code == 400
+        assert 'start' in response.data
 
-    def test_calendar_rejects_invalid_start_date(self):
-        for start in ('not-a-date', '2026-02-30', '2026-13-01'):
-            with self.subTest(start=start):
-                response = self.client.get('/api/calendar/', {'start': start})
-                self.assertEqual(response.status_code, 400)
-                self.assertIn('start', response.data)
-
-    def test_my_calendar_includes_watchlist_movies(self):
+    def test_my_calendar_includes_watchlist_movies(self, user, auth_client):
         movie = Movie.objects.create(
             tmdb_id=301,
             title='My Watchlist Movie',
             release_date=timezone.localdate() + timedelta(days=3),
         )
-        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=movie.tmdb_id, status='plan_to_watch')
+        UserMediaStatus.objects.create(user=user, media_type='movie', tmdb_id=movie.tmdb_id, status='plan_to_watch')
 
-        response = self.client.get('/api/calendar/?days=30')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data['results']), 1)
-        self.assertEqual(response.data['results'][0]['kind'], 'movie')
-        self.assertEqual(response.data['results'][0]['tmdb_id'], movie.tmdb_id)
+        response = auth_client.get('/api/calendar/?days=30')
+        assert response.status_code == 200
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['kind'] == 'movie'
+        assert response.data['results'][0]['tmdb_id'] == movie.tmdb_id
 
-    def test_my_calendar_includes_watched_show_episodes(self):
+    def test_my_calendar_includes_watched_show_episodes(self, user, auth_client):
         watched_show = TVShow.objects.create(tmdb_id=401, name='Watched Show')
         watched_season = Season.objects.create(show=watched_show, tmdb_id=402, season_number=1, name='Season 1')
         Episode.objects.create(
@@ -65,14 +56,14 @@ class CalendarTests(TestCase):
         )
 
         WatchEntry.objects.create(
-            user=self.user,
+            user=user,
             media_type='episode',
             tmdb_id=watched_show.tmdb_id,
             season_number=1,
             episode_number=1,
         )
         UserMediaStatus.objects.create(
-            user=self.user,
+            user=user,
             media_type='tv',
             tmdb_id=dropped_show.tmdb_id,
             status='dropped',
@@ -83,19 +74,19 @@ class CalendarTests(TestCase):
             status_changed_at=timezone.now(),
         )
 
-        response = self.client.get('/api/calendar/?days=30')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data['results']), 1)
-        self.assertEqual(response.data['results'][0]['kind'], 'episode')
-        self.assertEqual(response.data['results'][0]['tmdb_id'], watched_show.tmdb_id)
+        response = auth_client.get('/api/calendar/?days=30')
+        assert response.status_code == 200
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['kind'] == 'episode'
+        assert response.data['results'][0]['tmdb_id'] == watched_show.tmdb_id
 
-    def test_my_calendar_mixes_movies_and_broadcast_episodes(self):
+    def test_my_calendar_mixes_movies_and_broadcast_episodes(self, user, auth_client):
         movie = Movie.objects.create(
             tmdb_id=701,
             title='Mixed Watchlist Movie',
             release_date=timezone.localdate() + timedelta(days=3),
         )
-        UserMediaStatus.objects.create(user=self.user, media_type='movie', tmdb_id=movie.tmdb_id, status='plan_to_watch')
+        UserMediaStatus.objects.create(user=user, media_type='movie', tmdb_id=movie.tmdb_id, status='plan_to_watch')
 
         show = TVShow.objects.create(tmdb_id=702, name='Mixed Broadcast Show')
         season = Season.objects.create(show=show, tmdb_id=703, season_number=1, name='Season 1')
@@ -108,7 +99,7 @@ class CalendarTests(TestCase):
             broadcast_start=timezone.now() + timedelta(days=3),
         )
         UserMediaStatus.objects.create(
-            user=self.user,
+            user=user,
             media_type='tv',
             tmdb_id=show.tmdb_id,
             status='watching',
@@ -116,7 +107,7 @@ class CalendarTests(TestCase):
             total_episodes=2,
         )
         WatchEntry.objects.create(
-            user=self.user,
+            user=user,
             media_type='episode',
             tmdb_id=show.tmdb_id,
             season_number=1,
@@ -124,14 +115,14 @@ class CalendarTests(TestCase):
         )
 
         start = (timezone.localdate() + timedelta(days=1)).isoformat()
-        response = self.client.get(f'/api/calendar/?start={start}&days=30')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data['results']), 2)
+        response = auth_client.get(f'/api/calendar/?start={start}&days=30')
+        assert response.status_code == 200
+        assert len(response.data['results']) == 2
         by_kind = {item['kind']: item for item in response.data['results']}
-        self.assertTrue(by_kind['episode']['air_time'])
-        self.assertNotIn('air_time', by_kind['movie'])
+        assert by_kind['episode']['air_time']
+        assert 'air_time' not in by_kind['movie']
 
-    def test_my_calendar_excludes_specials_season(self):
+    def test_my_calendar_excludes_specials_season(self, user, auth_client):
         show = TVShow.objects.create(tmdb_id=601, name='Watching Show With Specials')
         main_season = Season.objects.create(show=show, tmdb_id=602, season_number=1, name='Season 1')
         specials_season = Season.objects.create(show=show, tmdb_id=603, season_number=0, name='Specials')
@@ -150,7 +141,7 @@ class CalendarTests(TestCase):
             air_date=timezone.localdate() + timedelta(days=7),
         )
         UserMediaStatus.objects.create(
-            user=self.user,
+            user=user,
             media_type='tv',
             tmdb_id=show.tmdb_id,
             status='watching',
@@ -158,15 +149,15 @@ class CalendarTests(TestCase):
             total_episodes=1,
         )
         WatchEntry.objects.create(
-            user=self.user,
+            user=user,
             media_type='episode',
             tmdb_id=show.tmdb_id,
             season_number=1,
             episode_number=1,
         )
 
-        response = self.client.get('/api/calendar/?days=30')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data['results']), 1)
-        self.assertEqual(response.data['results'][0]['season_number'], 1)
-        self.assertEqual(response.data['results'][0]['episode_name'], 'Regular Episode')
+        response = auth_client.get('/api/calendar/?days=30')
+        assert response.status_code == 200
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['season_number'] == 1
+        assert response.data['results'][0]['episode_name'] == 'Regular Episode'

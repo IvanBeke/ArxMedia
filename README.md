@@ -19,7 +19,7 @@ ArxMedia is a self-hosted media tracking app built with Django REST Framework an
 - Runtime: Python 3.14, Node 26 (pnpm 12)
 - Data: PostgreSQL 17 via `DATABASE_URL` (SQLite when `DATABASE_URL` is empty)
 - Services: Redis 7, Celery worker, Celery beat
-- Tooling: Vitest, `vite-plugin-pwa`, ruff, mypy
+- Tooling: pytest, Vitest, `vite-plugin-pwa`, ruff, mypy
 
 ## Quick start (Docker)
 
@@ -78,7 +78,7 @@ docker compose exec app python manage.py showmigrations
 docker compose exec app python manage.py <command>
 
 # run focused tests
-docker compose exec app python manage.py test
+docker compose exec app uv run --extra dev pytest
 
 # lint and types (backend)
 docker compose exec app uv run ruff check . --fix

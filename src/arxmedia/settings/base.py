@@ -14,7 +14,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-me-in-production')
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 # Test runs must never touch shared Redis state or the real Celery broker.
-TESTING = sys.argv[1:2] == ['test']
+# Covers `manage.py test` and `pytest` (pytest-django imports settings after
+# pytest itself is already in sys.modules). The `gunicorn` carve-out keeps
+# ProductionSettingsGuardTests able to simulate a non-test process by patching
+# sys.argv: reloading settings under argv=['gunicorn'] must see TESTING=False.
+_RUNNER = os.path.basename(sys.argv[0])
+TESTING = (
+    sys.argv[1:2] == ['test']
+    or _RUNNER.startswith(('pytest', 'py.test'))
+    or ('pytest' in sys.modules and _RUNNER != 'gunicorn')
+)
 ALLOWED_HOSTS = [
     host.strip() for host in os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',') if host.strip()
 ]

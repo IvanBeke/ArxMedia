@@ -50,7 +50,8 @@ Code style, patterns, and no-gos for this project.
 
 ## Testing
 
-- App: Django test runner (`docker compose exec app python manage.py test`)
+- App: pytest with pytest-django (`docker compose exec app uv run --extra dev pytest`, parallel by default via xdist)
+- App fixtures live in `src/conftest.py` (`user`, `auth_client`, `tmdb_noop`); model factories in `*/tests/factories.py` (factory-boy)
 - UI: Vitest (`docker compose exec ui sh -lc "pnpm test"`)
 - Minimum coverage: models, views, serializers, critical paths
 

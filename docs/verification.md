@@ -47,7 +47,7 @@ curl -s -b "$JAR" "http://localhost:8000/api/media/trending/?type=movie" | jq -e
 ### 5. Backend checks
 
 ```bash
-docker compose exec app python manage.py test
+docker compose exec app uv run --extra dev pytest
 docker compose exec app uv run ruff check . --fix
 docker compose exec app uv run mypy .
 ```

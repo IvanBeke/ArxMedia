@@ -39,7 +39,7 @@ docker compose exec app python manage.py showmigrations
 Then run focused ad-hoc checks for the behavior you changed. Examples:
 
 ```bash
-docker compose exec app python manage.py test
+docker compose exec app uv run --extra dev pytest
 # Authenticated API check (session cookie jar; full flow in docs/verification.md step 4)
 curl -s -b "$JAR" "http://localhost:8000/api/media/search/?q=inception&type=movie" | jq -e '.results'
 ```

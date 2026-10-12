@@ -68,7 +68,7 @@ jobs:
         run: docker compose exec -T app python manage.py showmigrations
 
       - name: App tests
-        run: docker compose exec -T app python manage.py test
+        run: docker compose exec -T app uv run --extra dev pytest
 
       - name: Tear down
         if: always()

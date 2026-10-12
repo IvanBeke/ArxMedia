@@ -34,7 +34,7 @@ Only keep changes minimal and scoped. If the user instruction conflicts with rep
 - App command: `docker compose exec app python manage.py <command>`
 - Project lint: `docker compose exec app uv run ruff check . --fix`
 - Project types: `docker compose exec app uv run mypy .`
-- Full test suite (non-interactive-safe): `docker compose exec app python manage.py test`
+- Full test suite: `docker compose exec app uv run --extra dev pytest` (parallel via xdist; `-n0` to disable)
 - UI production build (required path):
   `docker compose exec ui sh -lc "pnpm install && pnpm build"`
 - UI type check: `docker compose exec ui sh -lc "pnpm typecheck"`
