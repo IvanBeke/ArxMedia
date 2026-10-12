@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="relative">
     <div v-if="$slots.default" class="flex flex-wrap gap-2 mb-4">
       <slot />
     </div>

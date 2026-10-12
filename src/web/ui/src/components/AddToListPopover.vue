@@ -1,5 +1,5 @@
 <template>
-  <div class="relative" ref="rootRef">
+  <div class="relative max-sm:static" ref="rootRef">
     <button
       v-if="!modalMode"
       type="button"
@@ -24,7 +24,7 @@
     <div
       v-if="open"
       class="rounded-lg border border-surface-200 bg-surface-100 p-2"
-      :class="modalMode ? 'w-full' : 'absolute right-0 mt-2 w-72 shadow-xl z-[120]'"
+      :class="modalMode ? 'w-full' : 'absolute right-0 mt-2 w-72 max-sm:inset-x-0 max-sm:bottom-full max-sm:mb-2 max-sm:mt-0 max-sm:w-auto shadow-xl z-[120]'"
     >
       <p class="text-xs text-muted px-2 py-1">{{ t('list_popover_existing') }}</p>
       <div class="max-h-40 overflow-y-auto">
