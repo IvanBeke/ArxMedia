@@ -49,6 +49,7 @@
                   :tmdb-id="item.tmdb_id"
                   :start-open="true"
                   @added="onListAdded"
+                  @removed="onListAdded"
                 />
               </div>
               <p class="show-percent text-2xl font-display text-primary font-semibold">{{ progressPercent(item) }}%</p>

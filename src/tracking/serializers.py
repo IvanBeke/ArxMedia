@@ -226,6 +226,8 @@ class CustomListSerializer(serializers.ModelSerializer):
     item_count = serializers.SerializerMethodField()
     collaborators = serializers.SerializerMethodField()
     collaborator_users = serializers.SerializerMethodField()
+    contains_item = serializers.SerializerMethodField()
+    contains_item_id = serializers.SerializerMethodField()
     collaborator_ids = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=get_user_model().objects.filter(is_active=True),
@@ -237,9 +239,10 @@ class CustomListSerializer(serializers.ModelSerializer):
         model = CustomList
         fields = [
             'id', 'username', 'name', 'description', 'privacy', 'item_count',
-            'collaborators', 'collaborator_users', 'collaborator_ids', 'created_at', 'updated_at',
+            'collaborators', 'collaborator_users', 'collaborator_ids',
+            'contains_item', 'contains_item_id', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'username', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'username', 'contains_item', 'contains_item_id', 'created_at', 'updated_at']
 
     def get_item_count(self, obj):
         item_total = getattr(obj, 'item_total', None)
@@ -254,6 +257,18 @@ class CustomListSerializer(serializers.ModelSerializer):
             {'id': collaboratorship.user.id, 'username': collaboratorship.user.username}
             for collaboratorship in obj.collaboratorships.all()
         ]
+
+    def get_contains_item(self, obj):
+        membership = self.context.get('membership_map')
+        if membership is None:
+            return False
+        return obj.pk in membership
+
+    def get_contains_item_id(self, obj):
+        membership = self.context.get('membership_map')
+        if membership is None:
+            return None
+        return membership.get(obj.pk)
 
     def _save_collaborators(self, custom_list, collaborators):
         owner_id = custom_list.user_id

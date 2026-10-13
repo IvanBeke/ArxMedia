@@ -32,14 +32,22 @@
           v-for="item in lists"
           :key="item.id"
           type="button"
-          class="w-full text-left px-2 py-1.5 text-sm rounded-md hover:bg-surface-200 transition-colors"
-          :disabled="submitting"
-          @click="addToExisting(item.id)"
+          class="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-surface-200 transition-colors"
+          :disabled="submitting || togglingId === item.id"
+          :aria-pressed="item.contains_item"
+          :aria-label="toggleLabel(item)"
+          @click="toggleList(item)"
         >
-          <span class="text-primary">{{ item.name }}</span>
-          <span class="text-[11px] text-muted ml-1">({{ item.privacy }})</span>
+          <span
+            class="flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors"
+            :class="item.contains_item ? 'border-brand-500 bg-brand-500 text-white' : 'border-surface-300 text-transparent'"
+            aria-hidden="true"
+          >
+            <Check v-if="item.contains_item" class="h-3 w-3" :stroke-width="3" />
+          </span>
+          <span class="text-primary"><Lock v-if="item.privacy === LIST_PRIVACY.PRIVATE" class="inline h-3.5 w-3.5" aria-hidden="true" /> <LockOpen v-else class="inline h-3.5 w-3.5" aria-hidden="true" /> {{ item.name }}</span>
         </button>
-        <p v-if="!lists.length" class="px-2 py-2 text-xs text-muted">{{ t('list_popover_empty') }}</p>
+        <p v-if="!lists.length && !loading" class="px-2 py-2 text-xs text-muted">{{ t('list_popover_empty') }}</p>
       </div>
 
       <div class="mt-2 border-t border-surface-200 pt-2 px-1">
@@ -71,8 +79,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { onClickOutside } from '@vueuse/core'
+import { Check, Lock, LockOpen } from '@lucide/vue'
 import { trackingAPI } from '@/api'
 import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
@@ -98,13 +107,14 @@ const props = withDefaults(defineProps<{
 const open = ref(props.modalMode || props.startOpen)
 const loading = ref(false)
 const submitting = ref(false)
+const togglingId = ref<number | null>(null)
 const lists = ref<CustomList[]>([])
 const newListName = ref('')
 const { t } = useI18n()
 const { successMsg, errorMsg, showSuccess: setSuccess, showError: setError } = useFlashMessages({ successDurationMs: 1800 })
 const rootRef = ref<HTMLElement | null>(null)
 
-const emit = defineEmits<{ added: [] }>()
+const emit = defineEmits<{ added: []; removed: [] }>()
 
 onClickOutside(rootRef, () => {
   if (props.modalMode) return
@@ -120,12 +130,25 @@ onMounted(async () => {
 async function loadLists() {
   loading.value = true
   try {
-    const data = await trackingAPI.getLists()
+    const data = await trackingAPI.getLists({ media_type: props.mediaType, tmdb_id: props.tmdbId })
     lists.value = normalizePagedResponse<CustomList>(data).items
   } finally {
     loading.value = false
   }
 }
+
+function toggleLabel(item: CustomList) {
+  const action = item.contains_item ? 'Remove from' : 'Add to'
+  return `${action} ${item.name} (${item.privacy} list)`
+}
+
+watch(() => [props.mediaType, props.tmdbId], async () => {
+  if (open.value) {
+    await loadLists()
+  } else {
+    lists.value = []
+  }
+})
 
 async function toggleOpen() {
   if (props.modalMode) return
@@ -135,17 +158,35 @@ async function toggleOpen() {
   }
 }
 
-async function addToExisting(listId: number) {
-  if (submitting.value) return
-  submitting.value = true
+async function toggleList(item: CustomList) {
+  if (submitting.value || togglingId.value !== null) return
+  togglingId.value = item.id
   try {
-    await trackingAPI.addToList(listId, { media_type: props.mediaType, tmdb_id: props.tmdbId })
-    setSuccess(t('list_added_short'))
-    emit('added')
+    if (item.contains_item) {
+      if (item.contains_item_id == null) {
+        await loadLists()
+        return
+      }
+      await trackingAPI.removeFromList(item.id, item.contains_item_id)
+      item.contains_item = false
+      item.contains_item_id = null
+      setSuccess(t('list_removed_short'))
+      emit('removed')
+    } else {
+      const created = await trackingAPI.addToList(item.id, { media_type: props.mediaType, tmdb_id: props.tmdbId })
+      item.contains_item = true
+      item.contains_item_id = created.id
+      setSuccess(t('list_added_short'))
+      emit('added')
+    }
   } catch (error) {
-    setError(getApiErrorMessage(error, t('list_popover_add_failed')))
+    if (item.contains_item) {
+      setError(getApiErrorMessage(error, t('list_popover_remove_failed')))
+    } else {
+      setError(getApiErrorMessage(error, t('list_popover_add_failed')))
+    }
   } finally {
-    submitting.value = false
+    togglingId.value = null
   }
 }
 

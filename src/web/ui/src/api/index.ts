@@ -198,7 +198,7 @@ export const trackingAPI = {
   getMyMovies: (params?: QueryParams, options: RequestOptions = {}) => api.get<PaginatedResponse<MediaCard>>('/tracking/my-movies/', { params, ...options }),
   getUpcoming: () => api.get<UpcomingItem[]>('/tracking/upcoming/'),
   dropMedia: (data: MediaPayload) => api.post<Record<string, unknown>>('/tracking/media/drop/', data),
-  getLists: () => api.get<PaginatedResponse<CustomList>>('/tracking/lists/'),
+  getLists: (params?: QueryParams) => api.get<PaginatedResponse<CustomList>>('/tracking/lists/', { params }),
   createList: (data: { name: string; description?: string; privacy?: CustomList['privacy']; collaborator_ids?: number[] }) =>
     api.post<CustomList>('/tracking/lists/', data),
   getList: (id: string | number) => api.get<CustomList>('/tracking/lists/' + id + '/'),

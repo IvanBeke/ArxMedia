@@ -127,7 +127,6 @@
           <AddToListPopover
             :media-type="MEDIA_TYPE.TV"
             :tmdb-id="tmdbId"
-            @added="() => showSuccess(t('list_added_short'))"
           />
           <template #rating>
             <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />

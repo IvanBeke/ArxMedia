@@ -57,6 +57,29 @@ class CustomListTests:
         assert response.status_code == 200
         assert len(response.data['results']) == 1
 
+    def test_lists_annotate_membership_for_item(self, user, auth_client, user2, tmdb_noop):
+        contained = CustomList.objects.create(user=user, name='Contained')
+        other = CustomList.objects.create(user=user, name='Other')
+        item = ListItem.objects.create(custom_list=contained, media_type='movie', tmdb_id=123)
+
+        response = auth_client.get('/api/tracking/lists/', {'media_type': 'movie', 'tmdb_id': 123})
+
+        assert response.status_code == 200
+        by_id = {row['id']: row for row in response.data['results']}
+        assert by_id[contained.id]['contains_item'] is True
+        assert by_id[contained.id]['contains_item_id'] == item.id
+        assert by_id[other.id]['contains_item'] is False
+        assert by_id[other.id]['contains_item_id'] is None
+
+    def test_lists_membership_ignores_invalid_params(self, user, auth_client, user2, tmdb_noop):
+        CustomList.objects.create(user=user, name='My List')
+
+        response = auth_client.get('/api/tracking/lists/', {'media_type': 'movie'})
+
+        assert response.status_code == 200
+        assert response.data['results'][0]['contains_item'] is False
+        assert response.data['results'][0]['contains_item_id'] is None
+
     def test_update_list_as_owner(self, user, auth_client, user2, tmdb_noop):
         lst = CustomList.objects.create(user=user, name='Test List')
         data = {'name': 'Updated List', 'privacy': 'private'}

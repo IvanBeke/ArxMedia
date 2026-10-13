@@ -100,7 +100,6 @@
           <AddToListPopover
             :media-type="MEDIA_TYPE.MOVIE"
             :tmdb-id="Number(route.params.id)"
-            @added="() => showSuccess(t('list_added_short'))"
           />
           <template #rating>
             <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />

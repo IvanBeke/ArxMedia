@@ -32,6 +32,7 @@
               :tmdb-id="item.tmdb_id"
               :start-open="true"
               @added="onListAdded"
+              @removed="onListAdded"
             />
           </div>
         </div>

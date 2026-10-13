@@ -80,7 +80,7 @@ export interface ActivityDay { date: string; count: number; items: ActivityItem[
 export interface UserActivityHeatmap { days: ActivityDay[]; total: number }
 export interface EpisodeWatchPayload { tmdb_id: number | string; season_number: number | string; episode_number: number | string; watched_at?: string | null }
 export interface SeasonWatchPayload { tmdb_id: number | string; season_number: number | string; watched_at?: string }
-export interface CustomList { id: number; username: string; name: string; description: string; privacy: 'public' | 'private'; item_count: number; collaborators: number[]; collaborator_users: UserCard[]; created_at: string; updated_at: string }
+export interface CustomList { id: number; username: string; name: string; description: string; privacy: 'public' | 'private'; item_count: number; collaborators: number[]; collaborator_users: UserCard[]; contains_item?: boolean; contains_item_id?: number | null; created_at: string; updated_at: string }
 export interface ListItem extends MediaCard { custom_order: number }
 export interface ListItemsResponse extends PaginatedResponse<ListItem> {
   total_runtime_minutes?: number

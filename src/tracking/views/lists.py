@@ -63,6 +63,21 @@ def _with_list_summary(queryset):
     )
 
 
+def _parse_membership_params(request):
+    """Return (media_type, tmdb_id) when the caller asks which lists contain an item.
+
+    Invalid or partial params return None so plain list responses stay unchanged.
+    """
+    media_type = (request.query_params.get('media_type') or '').strip().lower()
+    if media_type not in (MediaType.MOVIE, MediaType.TV):
+        return None
+    try:
+        tmdb_id = int(str(request.query_params.get('tmdb_id') or '').strip())
+    except (TypeError, ValueError):
+        return None
+    return media_type, tmdb_id
+
+
 class CustomListListCreateView(generics.ListCreateAPIView):
     serializer_class = CustomListSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -90,6 +105,23 @@ class CustomListListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    def get_serializer_context(self):
+        context = dict(super().get_serializer_context())
+        parsed = _parse_membership_params(self.request)
+        if parsed is None:
+            return context
+        media_type, tmdb_id = parsed
+        # Single query for all visible lists; lazily nests the list queryset as a subquery.
+        membership = dict(
+            ListItem.objects.filter(
+                custom_list__in=self.get_queryset().values('id'),
+                media_type=media_type,
+                tmdb_id=tmdb_id,
+            ).values_list('custom_list_id', 'id')
+        )
+        context['membership_map'] = membership
+        return context
 
 
 class CustomListDetailView(generics.RetrieveUpdateDestroyAPIView):
