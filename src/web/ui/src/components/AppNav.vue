@@ -105,6 +105,19 @@
                 <RouterLink to="/calendar" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_calendar') }}</RouterLink>
                 <RouterLink to="/data" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_data') }}</RouterLink>
                 <RouterLink to="/settings" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_settings') }}</RouterLink>
+                <a
+                  v-if="auth.user?.is_staff"
+                  href="/admin/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="dropdown-item"
+                  @click="showUserMenu = false"
+                >
+                  <span class="inline-flex items-center gap-2">
+                    <ExternalLink class="w-4 h-4" aria-hidden="true" />
+                    {{ t('nav_admin') }}
+                  </span>
+                </a>
                 <hr class="border-surface-200 my-1" />
                 <button @click="logout" class="dropdown-item w-full text-left text-red-400 hover:text-red-300">Sign Out</button>
               </div>
@@ -135,6 +148,17 @@
               <RouterLink to="/calendar" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_calendar') }}</RouterLink>
               <RouterLink to="/data" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_data') }}</RouterLink>
               <RouterLink to="/settings" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_settings') }}</RouterLink>
+              <a
+                v-if="auth.user?.is_staff"
+                href="/admin/"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="mobile-nav-link inline-flex items-center gap-2"
+                @click="showMobileMenu = false"
+              >
+                <ExternalLink class="w-4 h-4" aria-hidden="true" />
+                {{ t('nav_admin') }}
+              </a>
               <RouterLink :to="`/profile/${auth.user?.username}`" @click="showMobileMenu = false" class="mobile-nav-link">Profile</RouterLink>
               <button @click="logout" class="mobile-nav-link text-left text-red-400 hover:text-red-300">Sign Out</button>
             </template>
@@ -153,6 +177,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ExternalLink } from '@lucide/vue'
 import { onClickOutside } from '@vueuse/core'
 import SearchBar from '@/components/SearchBar.vue'
 import { useAuthStore } from '@/stores/auth'

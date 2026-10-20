@@ -38,9 +38,9 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'bio', 'avatar', 'location',
             'website', 'preferred_region', 'account_visibility', 'followers_count', 'following_count',
-            'total_watched_movies', 'total_watched_episodes', 'created_at'
+            'total_watched_movies', 'total_watched_episodes', 'is_staff', 'created_at'
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'is_staff', 'created_at']
 
     def validate_preferred_region(self, value):
         region = (value or '').strip().upper()

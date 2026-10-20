@@ -117,6 +117,25 @@ class AccountTests:
         assert response.status_code == 401
         assert 'Incorrect username or password.' in str(response.data)
 
+    def test_me_exposes_staff_flag(self, user, auth_client):
+        response = auth_client.get('/api/auth/me/')
+        assert response.status_code == 200
+        assert response.data['is_staff'] is False
+
+        user.is_staff = True
+        user.save(update_fields=['is_staff'])
+
+        response = auth_client.get('/api/auth/me/')
+        assert response.data['is_staff'] is True
+
+    def test_me_cannot_update_staff_flag(self, user, auth_client):
+        response = auth_client.patch('/api/auth/me/', {'is_staff': True}, format='json')
+
+        assert response.status_code == 200
+        assert response.data['is_staff'] is False
+        user.refresh_from_db()
+        assert user.is_staff is False
+
     def test_get_profile(self, user, auth_client):
         response = auth_client.get(f'/api/auth/users/{user.username}/')
         assert response.status_code == 200

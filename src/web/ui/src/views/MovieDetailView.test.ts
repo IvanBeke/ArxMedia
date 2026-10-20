@@ -49,6 +49,7 @@ const TEST_USER: User = {
   following_count: 0,
   total_watched_movies: 0,
   total_watched_episodes: 0,
+  is_staff: false,
   created_at: '',
 }
 

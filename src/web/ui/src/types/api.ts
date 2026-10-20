@@ -10,7 +10,8 @@ export type ApiError = Record<string, unknown> & { detail?: string; non_field_er
 export interface User {
   id: number; username: string; email: string; bio: string; avatar: string | null; location: string
   website: string; preferred_region: string; account_visibility: 'public' | 'private' | 'friends_only'
-  followers_count: number; following_count: number; total_watched_movies: number; total_watched_episodes: number; created_at: string
+  followers_count: number; following_count: number; total_watched_movies: number; total_watched_episodes: number
+  is_staff: boolean; created_at: string
 }
 export interface UserProfile extends User {
   permissions?: { can_view_activity: boolean; can_view_lists: boolean }
