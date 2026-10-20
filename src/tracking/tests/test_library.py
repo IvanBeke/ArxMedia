@@ -265,6 +265,40 @@ class UpNextTests:
         assert item['runtime_left_has_unknown'] == True
         assert item['progress_percent'] == 33
 
+    def test_up_next_uses_show_runtime_when_episode_runtime_is_missing(self, user, auth_client, user2, tmdb_noop):
+        today = timezone.now().date()
+        show = TVShow.objects.create(tmdb_id=779, name='Fallback Runtime Show', episode_runtime=45)
+        season = Season.objects.create(show=show, tmdb_id=7791, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=77911, episode_number=1, name='Episode 1', air_date=today - timedelta(days=5), runtime=20)
+        Episode.objects.create(season=season, tmdb_id=77912, episode_number=2, name='Episode 2', air_date=today - timedelta(days=4))
+        Episode.objects.create(season=season, tmdb_id=77913, episode_number=3, name='Episode 3', air_date=today - timedelta(days=2))
+
+        WatchEntry.objects.create(
+            user=user,
+            media_type='episode',
+            tmdb_id=779,
+            season_number=1,
+            episode_number=1,
+        )
+
+        response = auth_client.get('/api/tracking/up-next/')
+        assert response.status_code == 200
+        item = next(entry for entry in response.data if entry['tmdb_id'] == 779)
+
+        assert item['next_episode']['episode_number'] == 2
+        assert item['next_episode']['runtime'] == 45
+        assert item['runtime_left_minutes'] == 90
+        assert item['runtime_left_has_unknown'] is False
+
+        response = auth_client.get('/api/tracking/my-shows/?search=Fallback Runtime Show')
+        assert response.status_code == 200
+        item = response.data['results'][0]
+
+        assert item['next_episode']['runtime'] == 45
+        assert item['runtime_left_minutes'] == 90
+        assert item['runtime_left_has_unknown'] is False
+        assert response.data['total_runtime_minutes'] == 110
+
     def test_up_next_season_boundary(self, user, auth_client, user2, tmdb_noop):
         # Create season 1 and 2 with episodes
         show = TVShow.objects.create(tmdb_id=456, name='Test Show 2')

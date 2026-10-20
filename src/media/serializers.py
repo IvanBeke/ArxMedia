@@ -46,6 +46,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
     still_url = serializers.ReadOnlyField()
     air_time = serializers.ReadOnlyField()
     air_date = serializers.ReadOnlyField(source='display_air_date')
+    runtime = serializers.IntegerField(source='effective_runtime', read_only=True)
     cast = serializers.SerializerMethodField()
     guest_stars = serializers.SerializerMethodField()
     crew = serializers.SerializerMethodField()

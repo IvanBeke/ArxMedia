@@ -111,6 +111,7 @@ def _next_episode_candidates(now):
         season__show__tmdb_id=OuterRef('tmdb_id'),
     ).filter(Episode.released_q(now)).filter(~Exists(watched_episode)).annotate(
         schedule_at=Coalesce('broadcast_start', Cast('air_date', output_field=models.DateTimeField())),
+        resolved_runtime=Episode.effective_runtime_expression(),
     ).order_by('schedule_at', 'season__season_number', 'episode_number', 'id')
 
 
@@ -175,7 +176,7 @@ class UserMediaStatusQuerySet(models.QuerySet):
             'next_still_path': 'still_path',
             'next_air_date': 'air_date',
             'next_broadcast_start': 'broadcast_start',
-            'next_runtime': 'runtime',
+            'next_runtime': 'resolved_runtime',
             'next_episode_type': 'episode_type',
             'next_vote_average': 'vote_average',
             'next_vote_count': 'vote_count',

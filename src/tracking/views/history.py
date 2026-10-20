@@ -7,7 +7,6 @@ from django.db.models import (
     Q,
     Sum,
 )
-from django.db.models.functions import Coalesce
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -267,7 +266,7 @@ def compute_watch_time_minutes(user_id):
             )
         )
     ).filter(is_watched=True).aggregate(
-        total=Sum(Coalesce('runtime', 'season__show__episode_runtime'))
+        total=Sum(Episode.effective_runtime_expression())
     )['total'] or 0
 
     return movie_minutes + episode_minutes

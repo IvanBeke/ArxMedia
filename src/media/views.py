@@ -499,11 +499,11 @@ def season_detail(request, tmdb_id, season_number):
             logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
             return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    season = show.seasons.filter(season_number=season_number).prefetch_related('episodes__credits').first()
+    season = show.seasons.filter(season_number=season_number).select_related('show').prefetch_related('episodes__credits').first()
     if season is None or not season.episodes.exists():
         try:
             _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=[season_number])
-            season = show.seasons.filter(season_number=season_number).prefetch_related('episodes__credits').first()
+            season = show.seasons.filter(season_number=season_number).select_related('show').prefetch_related('episodes__credits').first()
         except Exception:
             logger.warning('Failed to fetch season %s for show %s from TMDB', season_number, tmdb_id, exc_info=True)
             return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)

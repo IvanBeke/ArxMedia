@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 
@@ -178,6 +179,16 @@ class Episode(models.Model):
         if self.still_path:
             return f'https://image.tmdb.org/t/p/w300{self.still_path}'
         return None
+
+    @staticmethod
+    def effective_runtime_expression():
+        """ORM expression mirroring effective_runtime for annotations and aggregates."""
+        return Coalesce('runtime', 'season__show__episode_runtime')
+
+    @property
+    def effective_runtime(self):
+        """Episode runtime with the show's default episode runtime as fallback."""
+        return self.runtime or self.season.show.episode_runtime
 
     @property
     def local_broadcast_datetime(self):

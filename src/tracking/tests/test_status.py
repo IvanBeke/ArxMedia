@@ -1,4 +1,6 @@
 
+from datetime import timedelta
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -202,6 +204,29 @@ class RefreshAllShowStatusesTests:
         mock_refresh_show_status.assert_not_called()
         assert mock_delay.call_count == 2
         assert {tuple(call.args) for call in mock_delay.call_args_list} == {(7771, user.id), (7771, user2.id)}
+
+    def test_refresh_uses_show_runtime_when_episode_runtime_is_missing(self, user, user2, tmdb_noop):
+        show = TVShow.objects.create(tmdb_id=7773, name='Runtime Fallback Show', status='Returning Series', episode_runtime=25)
+        season = Season.objects.create(show=show, tmdb_id=77731, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=777311, episode_number=1, name='Episode 1', air_date=timezone.localdate() - timedelta(days=2))
+        Episode.objects.create(season=season, tmdb_id=777312, episode_number=2, name='Episode 2', air_date=timezone.localdate() - timedelta(days=1))
+        WatchEntry.objects.create(
+            user=user,
+            media_type='episode',
+            tmdb_id=7773,
+            season_number=1,
+            episode_number=1,
+        )
+        UserMediaStatus.objects.filter(user=user, media_type='tv', tmdb_id=7773).update(
+            time_left_minutes=0,
+            time_left_has_unknown=True,
+        )
+
+        refresh_all_statuses_for_show(7773, current_user_id=user.id)
+
+        row = UserMediaStatus.objects.get(user=user, media_type='tv', tmdb_id=7773)
+        assert row.time_left_minutes == 25
+        assert row.time_left_has_unknown is False
 
     def test_watchlist_only_users_are_not_refreshed(self, mocker, user, user2, tmdb_noop):
         mock_refresh_show_status = mocker.patch('tracking.status_sync.refresh_show_status')

@@ -283,7 +283,7 @@ def _attach_my_shows_next_episodes(rows):
     next_ids = {row['next_episode_id'] for row in rows if row['next_episode_id'] is not None}
     episodes = {
         episode.id: episode
-        for episode in Episode.objects.filter(id__in=next_ids).select_related('season')
+        for episode in Episode.objects.filter(id__in=next_ids).select_related('season__show')
     }
     for row in rows:
         episode = episodes.get(row['next_episode_id'])
@@ -294,7 +294,7 @@ def _attach_my_shows_next_episodes(rows):
             'next_still_path': episode.still_path if episode else None,
             'next_air_date': episode.air_date if episode else None,
             'next_broadcast_start': episode.broadcast_start if episode else None,
-            'next_runtime': episode.runtime if episode else None,
+            'next_runtime': episode.effective_runtime if episode else None,
             'next_episode_type': episode.episode_type if episode else None,
             'next_vote_average': episode.vote_average if episode else None,
             'next_vote_count': episode.vote_count if episode else None,
@@ -587,7 +587,9 @@ def my_shows_list(request):
         for row in Episode.objects.filter(
             season__show__tmdb_id__in=filtered_ids,
             season__season_number__gt=0,
-        ).values('season__show__tmdb_id').annotate(total=Sum('runtime'))
+        ).values('season__show__tmdb_id').annotate(
+            total=Sum(Episode.effective_runtime_expression())
+        )
     }
     total_runtime_minutes = sum(total_runtime_by_show.get(tmdb_id, 0) for tmdb_id in filtered_ids)
 

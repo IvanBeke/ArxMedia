@@ -47,9 +47,11 @@ def _is_final_tmdb_show_status(tmdb_id: int) -> bool:
 def calculate_show_progress(user_id: int, tmdb_id: int, now=None) -> dict:
     """Calculate progress from released catalog episodes and valid watch keys."""
     now = now or timezone.now()
-    released_rows = list(_released_episode_queryset(tmdb_id, now).values(
-        'id', 'season__season_number', 'episode_number', 'runtime',
-    ))
+    released_rows = list(
+        _released_episode_queryset(tmdb_id, now)
+        .annotate(resolved_runtime=Episode.effective_runtime_expression())
+        .values('id', 'season__season_number', 'episode_number', 'runtime', 'resolved_runtime')
+    )
     released_keys = {
         (row['season__season_number'], row['episode_number'])
         for row in released_rows
@@ -70,8 +72,8 @@ def calculate_show_progress(user_id: int, tmdb_id: int, now=None) -> dict:
         'watched_episodes': len(valid_watched_keys),
         'total_episodes': len(released_rows),
         'episodes_left': len(remaining_rows),
-        'time_left_minutes': sum(row['runtime'] for row in remaining_rows if row['runtime'] is not None),
-        'time_left_has_unknown': any(row['runtime'] is None for row in remaining_rows),
+        'time_left_minutes': sum(row['resolved_runtime'] for row in remaining_rows if row['resolved_runtime'] is not None),
+        'time_left_has_unknown': any(row['resolved_runtime'] is None for row in remaining_rows),
     }
 
 

@@ -181,6 +181,20 @@ class MediaTests:
 
         assert show.seasons.get(season_number=1).episodes.get(episode_number=1).runtime == 47
 
+    def test_episode_effective_runtime_falls_back_to_show_runtime(self):
+        show = TVShow.objects.create(tmdb_id=995, name='Effective Runtime Show', episode_runtime=45)
+        season = Season.objects.create(show=show, tmdb_id=9951, season_number=1, name='Season 1')
+        episode = Episode.objects.create(season=season, tmdb_id=99511, episode_number=1, name='No runtime')
+
+        assert episode.effective_runtime == 45
+
+        episode.runtime = 30
+        assert episode.effective_runtime == 30
+
+        episode.runtime = None
+        show.episode_runtime = None
+        assert episode.effective_runtime is None
+
     def test_episode_runtime_keeps_tmdb_value_over_tvmaze_runtime(self):
         show = TVShow.objects.create(tmdb_id=991, name='Runtime Precedence Show')
         season_data = {
@@ -387,6 +401,17 @@ class MediaTests:
         response = auth_client.get('/api/media/tv/1399/seasons/1/')
         assert response.status_code == 200
         assert response.data['episodes'][0]['episode_type'] == 'finale'
+
+    def test_season_detail_uses_show_runtime_when_episode_runtime_is_missing(self, auth_client):
+        show = TVShow.objects.create(tmdb_id=996, name='Show Runtime Fallback', episode_runtime=47)
+        season = Season.objects.create(show=show, tmdb_id=9961, season_number=1, name='Season 1')
+        Episode.objects.create(season=season, tmdb_id=99611, episode_number=1, name='No runtime')
+        Episode.objects.create(season=season, tmdb_id=99612, episode_number=2, name='Has runtime', runtime=30)
+
+        response = auth_client.get(f'/api/media/tv/{show.tmdb_id}/seasons/1/')
+
+        assert response.status_code == 200
+        assert [episode['runtime'] for episode in response.data['episodes']] == [47, 30]
 
     def test_episode_detail(self, auth_client):
         response = auth_client.get('/api/media/tv/1399/seasons/1/episodes/1/credits/')

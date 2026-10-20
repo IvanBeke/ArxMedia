@@ -122,6 +122,18 @@ class WatchlistTests:
         assert entry['user_status']['status'] == 'plan_to_watch'
         assert str(entry['release_date']) == '2023-08-10'
 
+    def test_watchlist_total_runtime_falls_back_to_show_runtime(self, user, auth_client, user2, tmdb_noop):
+        show = TVShowFactory(tmdb_id=2203, name='Fallback Runtime Watchlist Show', episode_runtime=46)
+        season = SeasonFactory(show=show, tmdb_id=3203, season_number=1, name='Season 1')
+        EpisodeFactory(season=season, tmdb_id=32031, episode_number=1, name='Episode 1', runtime=None)
+        EpisodeFactory(season=season, tmdb_id=32032, episode_number=2, name='Episode 2', runtime=None)
+        UserMediaStatusFactory(user=user, media_type='tv', tmdb_id=2203, status_changed_at=timezone.now())
+
+        response = auth_client.get('/api/tracking/watchlist/?media_type=tv')
+
+        assert response.status_code == 200
+        assert response.data['total_runtime_minutes'] == 92
+
     def test_watchlist_list_filters_genres(self, user, auth_client, user2, tmdb_noop):
         drama = Genre.objects.create(tmdb_id=901, name='Drama')
         comedy = Genre.objects.create(tmdb_id=902, name='Comedy')
