@@ -258,6 +258,397 @@ class MediaTests:
 
         assert show.episode_runtime == 52
 
+    def test_season_context_overrides_parent_tvmaze_mapping_for_split_show(self):
+        show = TVShow.objects.create(
+            tmdb_id=105248,
+            name='Cyberpunk: Edgerunners',
+            external_ids={'tvmaze_id': 48945},
+        )
+        season = show.seasons.create(
+            tmdb_id=1052482,
+            season_number=2,
+            name='Cyberpunk: Edgerunners 2',
+            external_ids={'tvmaze_id': 48945},
+        )
+        split_show = {'id': 88337, 'name': 'Cyberpunk: Edgerunners 2'}
+        split_episodes = [
+            {'id': 3707058, 'season': 1, 'number': 1, 'name': 'Episode 1', 'airdate': '2026-10-20', 'airtime': '', 'runtime': 25},
+            {'id': 3707059, 'season': 1, 'number': 2, 'name': 'Episode 2', 'airdate': '2026-10-20', 'airtime': '', 'runtime': 25},
+        ]
+        payloads = {
+            1: {'episode_number': 1, 'name': 'Episode 1', 'air_date': '2026-10-20'},
+            2: {'episode_number': 2, 'name': 'Episode 2', 'air_date': '2026-10-20'},
+        }
+
+        def get_episodes(tvmaze_id):
+            return split_episodes if tvmaze_id == 88337 else []
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', return_value={'id': 48945, 'name': 'Cyberpunk: Edgerunners'}),
+            patch.object(tvmaze, 'lookup_season_show', return_value=split_show) as mock_season_lookup,
+            patch.object(tvmaze, 'get_show_episodes', side_effect=get_episodes),
+        ):
+            resolved, episodes = tmdb._season_tvmaze_context(show, season, {}, None, None, payloads=payloads)
+
+        assert resolved['id'] == 88337
+        assert episodes == split_episodes
+        assert season.external_ids['tvmaze_id'] == 88337
+        mock_season_lookup.assert_called_once_with(
+            external_ids=None,
+            season_name='Cyberpunk: Edgerunners 2',
+            year=None,
+        )
+
+    def test_split_season_matches_tvmaze_episodes_with_restarted_numbering(self):
+        show = TVShow.objects.create(
+            tmdb_id=105248,
+            name='Cyberpunk: Edgerunners',
+            external_ids={'tvmaze_id': 48945},
+        )
+        tvmaze_show = {'id': 88337, 'name': 'Cyberpunk: Edgerunners 2'}
+        tvmaze_episodes = [
+            {'id': 3707058 + index, 'season': 1, 'number': index + 1, 'name': 'TBA', 'airdate': '2026-10-20', 'airtime': '', 'runtime': 25}
+            for index in range(2)
+        ]
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', return_value={'id': 48945, 'name': 'Cyberpunk: Edgerunners'}),
+            patch.object(tvmaze, 'lookup_season_show', return_value=tvmaze_show),
+            patch.object(tvmaze, 'get_show_episodes', return_value=tvmaze_episodes),
+        ):
+            tmdb._upsert_season(
+                show,
+                2,
+                {
+                    'id': 1052482,
+                    'season_number': 2,
+                    'name': 'Cyberpunk: Edgerunners 2',
+                    'air_date': '2026-10-20',
+                    'episodes': [
+                        {'id': 10524821 + index, 'episode_number': index + 1, 'name': f'Episode {index + 1}', 'air_date': '2026-10-20'}
+                        for index in range(2)
+                    ],
+                },
+                tvmaze_context={},
+            )
+
+        season = show.seasons.get(season_number=2)
+        assert season.external_ids['tvmaze_id'] == 88337
+        assert list(season.episodes.order_by('episode_number').values_list('external_ids', flat=True)) == [
+            {'tvmaze_id': 3707058, 'tvmaze_show_id': 88337},
+            {'tvmaze_id': 3707059, 'tvmaze_show_id': 88337},
+        ]
+        assert list(season.episodes.order_by('episode_number').values_list('runtime', flat=True)) == [25, 25]
+
+    def test_named_season_with_parent_episode_coverage_stays_on_parent(self):
+        show = TVShow.objects.create(
+            tmdb_id=111110,
+            name='ONE PIECE',
+            external_ids={'tvmaze_id': 46065},
+        )
+        tvmaze_show = {'id': 46065, 'name': 'ONE PIECE'}
+        tvmaze_episodes = [
+            {'id': 1, 'season': 1, 'number': 1, 'name': 'Romance Dawn', 'airdate': '2023-08-31'},
+            {'id': 2, 'season': 2, 'number': 1, 'name': 'THE BEGINNING AND THE END', 'airdate': '2026-03-10'},
+            {'id': 3, 'season': 2, 'number': 2, 'name': 'GOOD WHALE HUNTING', 'airdate': '2026-03-10'},
+        ]
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', return_value=tvmaze_show),
+            patch.object(tvmaze, 'get_show_episodes', return_value=tvmaze_episodes),
+            patch.object(tvmaze, 'lookup_season_show') as mock_season_search,
+        ):
+            tmdb._upsert_season(
+                show,
+                2,
+                {
+                    'id': 400466,
+                    'season_number': 2,
+                    'name': 'Into the Grand Line',
+                    'air_date': '2026-03-10',
+                    'episodes': [
+                        {'id': 40046601, 'episode_number': 1, 'name': 'THE BEGINNING AND THE END', 'air_date': '2026-03-10'},
+                        {'id': 40046602, 'episode_number': 2, 'name': 'GOOD WHALE HUNTING', 'air_date': '2026-03-10'},
+                    ],
+                },
+                tvmaze_context={},
+            )
+
+        season = show.seasons.get(season_number=2)
+        assert season.external_ids['tvmaze_id'] == 46065
+        assert list(season.episodes.order_by('episode_number').values_list('external_ids', flat=True)) == [
+            {'tvmaze_id': 2, 'tvmaze_show_id': 46065},
+            {'tvmaze_id': 3, 'tvmaze_show_id': 46065},
+        ]
+        mock_season_search.assert_not_called()
+
+    def test_named_season_rejects_unrelated_tvmaze_show(self):
+        show = TVShow.objects.create(
+            tmdb_id=111110,
+            name='ONE PIECE',
+            external_ids={'tvmaze_id': 46065},
+        )
+        parent_show = {'id': 46065, 'name': 'ONE PIECE'}
+        parent_episodes = [
+            {'id': 1, 'season': 2, 'number': 1, 'name': 'THE BEGINNING AND THE END', 'airdate': '2026-03-10'},
+        ]
+        unrelated_show = {'id': 99999, 'name': 'The Battle of Alabasta'}
+        unrelated_episodes = [
+            {'id': 999, 'season': 1, 'number': 1, 'name': 'Something Else', 'airdate': '2020-01-01'},
+        ]
+
+        def get_episodes(tvmaze_id):
+            return unrelated_episodes if tvmaze_id == 99999 else parent_episodes
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', return_value=parent_show),
+            patch.object(tvmaze, 'get_show_episodes', side_effect=get_episodes),
+            patch.object(tvmaze, 'lookup_season_show', return_value=unrelated_show),
+        ):
+            tmdb._upsert_season(
+                show,
+                3,
+                {
+                    'id': 503369,
+                    'season_number': 3,
+                    'name': 'The Battle of Alabasta',
+                    'air_date': None,
+                    'episodes': [
+                        {'id': 50336901, 'episode_number': 1, 'name': "WHERE THERE'S SMOKE", 'air_date': None},
+                    ],
+                },
+                tvmaze_context={},
+            )
+
+        season = show.seasons.get(season_number=3)
+        episode = season.episodes.get(episode_number=1)
+        assert season.external_ids['tvmaze_id'] == 46065
+        assert episode.external_ids == {}
+
+    def test_stored_nonparent_tvmaze_id_with_matching_payloads_is_trusted(self):
+        show = TVShow.objects.create(
+            tmdb_id=105248,
+            name='Cyberpunk: Edgerunners',
+            external_ids={'tvmaze_id': 48945},
+        )
+        season = show.seasons.create(
+            tmdb_id=1052482,
+            season_number=2,
+            name='Cyberpunk: Edgerunners 2',
+            external_ids={'tvmaze_id': 88337},
+        )
+        stored_episodes = [
+            {'id': 3707058, 'season': 1, 'number': 1, 'name': 'Episode 1', 'airdate': '2026-10-20', 'airtime': '', 'runtime': 25},
+            {'id': 3707059, 'season': 1, 'number': 2, 'name': 'Episode 2', 'airdate': '2026-10-20', 'airtime': '', 'runtime': 25},
+        ]
+        payloads = {
+            1: {'episode_number': 1, 'name': 'Episode 1', 'air_date': '2026-10-20'},
+            2: {'episode_number': 2, 'name': 'Episode 2', 'air_date': '2026-10-20'},
+        }
+
+        def get_episodes(tvmaze_id):
+            return stored_episodes if tvmaze_id == 88337 else []
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', side_effect=lambda value: {'id': value, 'name': 'Stored Show'}),
+            patch.object(tvmaze, 'get_show_episodes', side_effect=get_episodes),
+            patch.object(tvmaze, 'lookup_season_show') as mock_season_search,
+        ):
+            resolved, episodes = tmdb._season_tvmaze_context(show, season, {}, None, None, payloads=payloads)
+
+        assert resolved['id'] == 88337
+        assert episodes == stored_episodes
+        assert season.external_ids['tvmaze_id'] == 88337
+        mock_season_search.assert_not_called()
+
+    def test_stored_nonparent_tvmaze_id_with_mismatched_payloads_searches(self):
+        show = TVShow.objects.create(
+            tmdb_id=105248,
+            name='Cyberpunk: Edgerunners',
+            external_ids={'tvmaze_id': 48945},
+        )
+        season = show.seasons.create(
+            tmdb_id=1052482,
+            season_number=2,
+            name='Cyberpunk: Edgerunners 2',
+            external_ids={'tvmaze_id': 99999},
+        )
+        stored_episodes = [
+            {'id': 999, 'season': 1, 'number': 1, 'name': 'Different Episode', 'airdate': '2020-01-01', 'airtime': '', 'runtime': 25},
+        ]
+        candidate_show = {'id': 88337, 'name': 'Cyberpunk: Edgerunners 2'}
+        candidate_episodes = [
+            {'id': 3707058, 'season': 1, 'number': 1, 'name': 'Episode 1', 'airdate': '2026-10-20', 'airtime': '', 'runtime': 25},
+            {'id': 3707059, 'season': 1, 'number': 2, 'name': 'Episode 2', 'airdate': '2026-10-20', 'airtime': '', 'runtime': 25},
+        ]
+        payloads = {
+            1: {'episode_number': 1, 'name': 'Episode 1', 'air_date': '2026-10-20'},
+            2: {'episode_number': 2, 'name': 'Episode 2', 'air_date': '2026-10-20'},
+        }
+
+        def get_episodes(tvmaze_id):
+            if tvmaze_id == 99999:
+                return stored_episodes
+            if tvmaze_id == 88337:
+                return candidate_episodes
+            return []
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', side_effect=lambda value: {'id': value, 'name': 'Stored Show'}),
+            patch.object(tvmaze, 'get_show_episodes', side_effect=get_episodes),
+            patch.object(tvmaze, 'lookup_season_show', return_value=candidate_show) as mock_season_search,
+        ):
+            resolved, episodes = tmdb._season_tvmaze_context(show, season, {}, None, None, payloads=payloads)
+
+        assert resolved['id'] == 88337
+        assert episodes == candidate_episodes
+        assert season.external_ids['tvmaze_id'] == 88337
+        mock_season_search.assert_called_once()
+
+    def test_empty_payloads_do_not_trigger_name_search(self):
+        show = TVShow.objects.create(
+            tmdb_id=105248,
+            name='Cyberpunk: Edgerunners',
+            external_ids={'tvmaze_id': 48945},
+        )
+        season = show.seasons.create(
+            tmdb_id=1052482,
+            season_number=2,
+            name='Cyberpunk: Edgerunners 2',
+        )
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', return_value={'id': 48945, 'name': 'Cyberpunk: Edgerunners'}),
+            patch.object(tvmaze, 'get_show_episodes', return_value=[]),
+            patch.object(tvmaze, 'lookup_season_show') as mock_season_search,
+        ):
+            resolved, episodes = tmdb._season_tvmaze_context(show, season, {}, None, None, payloads={})
+
+        assert resolved['id'] == 48945
+        assert episodes == []
+        mock_season_search.assert_not_called()
+
+    def test_stored_nonparent_tvmaze_id_with_partial_overlap_is_rejected(self):
+        show = TVShow.objects.create(
+            tmdb_id=105248,
+            name='Cyberpunk: Edgerunners',
+            external_ids={'tvmaze_id': 48945},
+        )
+        season = show.seasons.create(
+            tmdb_id=1052482,
+            season_number=2,
+            name='Cyberpunk: Edgerunners 2',
+            external_ids={'tvmaze_id': 99999},
+        )
+        stored_episodes = [
+            {'id': 999, 'season': 1, 'number': 1, 'name': 'Episode 1', 'airdate': '2026-10-20', 'airtime': '', 'runtime': 25},
+        ]
+        payloads = {
+            1: {'episode_number': 1, 'name': 'Episode 1', 'air_date': '2026-10-20'},
+            2: {'episode_number': 2, 'name': 'Episode 2', 'air_date': '2026-10-20'},
+        }
+
+        def lookup_show(tvmaze_id):
+            return {'id': tvmaze_id, 'name': 'Stored Show'} if tvmaze_id == 99999 else {'id': 48945, 'name': 'Parent Show'}
+
+        def get_episodes(tvmaze_id):
+            return stored_episodes if tvmaze_id == 99999 else []
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', side_effect=lookup_show),
+            patch.object(tvmaze, 'get_show_episodes', side_effect=get_episodes),
+            patch.object(tvmaze, 'lookup_season_show', return_value=None),
+        ):
+            resolved, episodes = tmdb._season_tvmaze_context(show, season, {}, None, None, payloads=payloads)
+
+        assert resolved['id'] == 48945
+        assert episodes == []
+
+    def test_stored_nonparent_tvmaze_id_without_payloads_is_trusted(self):
+        show = TVShow.objects.create(
+            tmdb_id=105248,
+            name='Cyberpunk: Edgerunners',
+            external_ids={'tvmaze_id': 48945},
+        )
+        season = show.seasons.create(
+            tmdb_id=1052482,
+            season_number=2,
+            name='Cyberpunk: Edgerunners 2',
+            external_ids={'tvmaze_id': 99999},
+        )
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', return_value={'id': 99999, 'name': 'Stored Show'}),
+            patch.object(tvmaze, 'get_show_episodes', return_value=[]),
+            patch.object(tvmaze, 'lookup_season_show') as mock_season_search,
+        ):
+            resolved, episodes = tmdb._season_tvmaze_context(show, season, {}, None, None)
+
+        assert resolved['id'] == 99999
+        assert episodes == []
+        assert season.external_ids['tvmaze_id'] == 99999
+        mock_season_search.assert_not_called()
+
+    def test_parent_count_mismatch_with_matching_metadata_keeps_parent(self):
+        show = TVShow.objects.create(
+            tmdb_id=111110,
+            name='ONE PIECE',
+            external_ids={'tvmaze_id': 46065},
+        )
+        parent_show = {'id': 46065, 'name': 'ONE PIECE'}
+        parent_episodes = [
+            {'id': 1, 'season': 2, 'number': 1, 'name': 'THE BEGINNING AND THE END', 'airdate': '2026-03-10'},
+            {'id': 2, 'season': 2, 'number': 2, 'name': 'GOOD WHALE HUNTING', 'airdate': '2026-03-10'},
+            {'id': 3, 'season': 2, 'number': 3, 'name': 'WHISKY BUSINESS', 'airdate': '2026-03-10'},
+        ]
+
+        with (
+            patch.object(tvmaze, 'lookup_show_by_id', return_value=parent_show),
+            patch.object(tvmaze, 'get_show_episodes', return_value=parent_episodes),
+            patch.object(tvmaze, 'lookup_season_show') as mock_season_search,
+        ):
+            tmdb._upsert_season(
+                show,
+                2,
+                {
+                    'id': 400466,
+                    'season_number': 2,
+                    'name': 'Into the Grand Line',
+                    'air_date': '2026-03-10',
+                    'episodes': [
+                        {'id': 40046601, 'episode_number': 1, 'name': 'THE BEGINNING AND THE END', 'air_date': '2026-03-10'},
+                        {'id': 40046602, 'episode_number': 2, 'name': 'GOOD WHALE HUNTING', 'air_date': '2026-03-10'},
+                    ],
+                },
+                tvmaze_context={},
+            )
+
+        season = show.seasons.get(season_number=2)
+        assert season.external_ids['tvmaze_id'] == 46065
+        assert list(season.episodes.order_by('episode_number').values_list('external_ids', flat=True)) == [
+            {'tvmaze_id': 1, 'tvmaze_show_id': 46065},
+            {'tvmaze_id': 2, 'tvmaze_show_id': 46065},
+        ]
+        mock_season_search.assert_not_called()
+
+    def test_season_sync_preserves_stored_tvmaze_mapping(self):
+        show = TVShow.objects.create(tmdb_id=105248, name='Cyberpunk: Edgerunners')
+        season = show.seasons.create(
+            tmdb_id=1052482,
+            season_number=2,
+            name='Cyberpunk: Edgerunners 2',
+            external_ids={'tvmaze_id': 88337},
+        )
+
+        tmdb._upsert_season_record(
+            show,
+            2,
+            {'id': 1052482, 'name': 'Cyberpunk: Edgerunners 2', 'external_ids': {'tvdb_id': 2194943}},
+        )
+
+        season.refresh_from_db()
+        assert season.external_ids == {'tvmaze_id': 88337, 'tvdb_id': 2194943}
+
     def test_season_specific_tvmaze_show_matches_different_provider_numbering(self):
         show = TVShow.objects.create(tmdb_id=30984, name='Bleach')
         with patch.object(tvmaze, 'lookup_season_show', return_value={'id': 80375, 'network': {'country': {'timezone': 'Asia/Tokyo'}}}), patch.object(
@@ -283,6 +674,7 @@ class MediaTests:
         episode = season.episodes.get(episode_number=48)
         assert season.external_ids['tvmaze_id'] == 80375
         assert episode.external_ids['tvmaze_id'] == 3691961
+        assert episode.external_ids['tvmaze_show_id'] == 80375
         assert episode.local_broadcast_datetime.strftime('%H:%M') == '16:00'
 
     def test_unmatched_episode_uses_tvmaze_show_schedule(self):
