@@ -136,6 +136,30 @@ class MediaTests:
         assert result['id'] == 505
         assert mock_request.call_args_list[-1].args == ('/search/shows', {'q': 'Fallback Show'})
 
+    def test_tvmaze_404_is_negatively_cached(self, mocker):
+        service = TVMazeService()
+        response = MagicMock(status_code=404)
+        mock_get = mocker.patch.object(service._session, 'get', return_value=response)
+
+        assert service.lookup_show_by_id(999) is None
+        assert service.lookup_show_by_id(999) is None
+
+        mock_get.assert_called_once()
+
+    def test_tvmaze_timeout_stops_lookup_chain_and_opens_breaker(self, mocker):
+        service = TVMazeService()
+        mock_get = mocker.patch.object(service._session, 'get', side_effect=requests.Timeout('slow'))
+
+        result = service.lookup_show(
+            external_ids={'tvdb_id': 202, 'imdb_id': 'tt303', 'tvrage_id': 404},
+            show_name='Fallback Show',
+        )
+
+        assert result is None
+        mock_get.assert_called_once()
+        assert service.lookup_show_by_id(100) is None
+        mock_get.assert_called_once()
+
     def test_tvmaze_external_ids_are_persisted_with_tvmaze_id(self):
         with patch.object(tmdb, 'get_tv_details', return_value={
             'id': 888,

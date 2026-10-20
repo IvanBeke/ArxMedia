@@ -11,9 +11,27 @@ from .http import build_session, response_cache_key
 logger = logging.getLogger(__name__)
 
 
+class TVMazeError(requests.RequestException):
+    """Base class for TVMaze failures that callers should handle like request errors."""
+
+
+class TVMazeNotFound(TVMazeError):
+    """TVMaze returned a definitive 404 for this lookup."""
+
+
+class TVMazeUnavailable(TVMazeError):
+    """TVMaze timed out or was unreachable; further calls should be skipped briefly."""
+
+
 class TVMazeService:
     BASE_URL = getattr(settings, 'TVMAZE_BASE_URL', 'https://api.tvmaze.com')
     CACHE_TTL = 86400
+    MISSING_TTL = 86400
+    UNAVAILABLE_TTL = 60
+    REQUEST_TIMEOUT = 20
+    UNAVAILABLE_CACHE_KEY = 'tvmaze:unavailable'
+    _MISSING = '__tvmaze_missing__'
+    _UNAVAILABLE = '__tvmaze_unavailable__'
 
     def __init__(self):
         self._session = build_session()
@@ -22,10 +40,27 @@ class TVMazeService:
         params = params or {}
         cache_key = response_cache_key('tvmaze', path, params)
         cached = cache.get(cache_key)
+        if cached == self._MISSING:
+            raise TVMazeNotFound(f'TVMaze resource not found: {path}')
+        if cached == self._UNAVAILABLE:
+            raise TVMazeUnavailable(f'TVMaze unavailable: {path}')
         if cached is not None:
             return cached
+        if cache.get(self.UNAVAILABLE_CACHE_KEY):
+            raise TVMazeUnavailable(f'TVMaze temporarily unavailable before requesting {path}')
+
         url = f'{self.BASE_URL}{path}'
-        response = self._session.get(url, params=params, timeout=20)
+        try:
+            response = self._session.get(url, params=params, timeout=self.REQUEST_TIMEOUT)
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            cache.set(cache_key, self._UNAVAILABLE, self.UNAVAILABLE_TTL)
+            cache.set(self.UNAVAILABLE_CACHE_KEY, True, self.UNAVAILABLE_TTL)
+            raise TVMazeUnavailable(f'TVMaze request failed for {path}: {exc}') from exc
+
+        if response.status_code == 404:
+            cache.set(cache_key, self._MISSING, self.MISSING_TTL)
+            raise TVMazeNotFound(f'TVMaze resource not found: {path}')
+
         response.raise_for_status()
         data = response.json()
         cache.set(cache_key, data, self.CACHE_TTL)
@@ -52,6 +87,9 @@ class TVMazeService:
                 continue
             try:
                 show = self._request('/lookup/shows', {parameter: external_id})
+            except TVMazeUnavailable as exc:
+                logger.warning('TVMaze %s lookup unavailable for %s: %s', source, external_id, exc)
+                return None
             except requests.RequestException as exc:
                 logger.warning('TVMaze %s lookup failed for %s: %s', source, external_id, exc)
                 continue
@@ -62,6 +100,9 @@ class TVMazeService:
             return None
         try:
             results = self._request('/search/shows', {'q': show_name})
+        except TVMazeUnavailable as exc:
+            logger.warning('TVMaze search unavailable for %s: %s', show_name, exc)
+            return None
         except requests.RequestException as exc:
             logger.warning('TVMaze search failed for %s: %s', show_name, exc)
             return None
