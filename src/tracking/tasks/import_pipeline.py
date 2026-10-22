@@ -110,23 +110,34 @@ def _complete_pending(job_id: int, *, applied_delta: int = 0, progress_delta: in
         job = DataTransferJob.objects.select_for_update().filter(id=job_id).first()
         if job is None or job.status != DataTransferStatus.PROCESSING:
             return False
-        metadata = dict(job.metadata or {})
-        pipeline = dict(metadata.get('pipeline') or {})
-        if applied_delta:
-            pipeline['applied'] = pipeline.get('applied', 0) + applied_delta
-        if counter_deltas:
-            counters = dict(pipeline.get('metadata_counters') or {})
-            for name, delta in counter_deltas.items():
-                counters[name] = counters.get(name, 0) + delta
-            pipeline['metadata_counters'] = counters
-        pending = max(int(pipeline.get('pending') or 0) - 1, 0)
-        pipeline['pending'] = pending
-        metadata['pipeline'] = pipeline
-        job.metadata = metadata
-        if progress_delta:
-            job.processed_items = min(job.total_items, job.processed_items + progress_delta)
-        job.save(update_fields=['metadata', 'processed_items', 'updated_at'])
+        pending = _mark_subtask_finished(
+            job, applied_delta=applied_delta, progress_delta=progress_delta, counter_deltas=counter_deltas,
+        )
     return pending == 0
+
+
+def _mark_subtask_finished(job, *, applied_delta, progress_delta, counter_deltas) -> int:
+    metadata = dict(job.metadata or {})
+    pipeline = dict(metadata.get('pipeline') or {})
+    _merge_pipeline_counters(pipeline, applied_delta=applied_delta, counter_deltas=counter_deltas)
+    pending = max(int(pipeline.get('pending') or 0) - 1, 0)
+    pipeline['pending'] = pending
+    metadata['pipeline'] = pipeline
+    job.metadata = metadata
+    if progress_delta:
+        job.processed_items = min(job.total_items, job.processed_items + progress_delta)
+    job.save(update_fields=['metadata', 'processed_items', 'updated_at'])
+    return pending
+
+
+def _merge_pipeline_counters(pipeline, *, applied_delta, counter_deltas):
+    if applied_delta:
+        pipeline['applied'] = pipeline.get('applied', 0) + applied_delta
+    if counter_deltas:
+        counters = dict(pipeline.get('metadata_counters') or {})
+        for name, delta in counter_deltas.items():
+            counters[name] = counters.get(name, 0) + delta
+        pipeline['metadata_counters'] = counters
 
 
 def _load_resolved(job: DataTransferJob) -> ParsedImport:
@@ -158,26 +169,30 @@ def run_import_job(job_id: int) -> dict[str, str]:
         return {'status': job.status}
 
     try:
-        prepare_apply(job)
-        _ensure_processing(job)
-        candidates = _resolution_candidates(_load_parsed(job))
-        if not candidates:
-            return dispatch_import_items(job_id)
-        _start_pending(
-            job,
-            'resolving_episodes',
-            len(candidates),
-            metadata_counters={'metadata_fetches': 0, 'metadata_hits': 0, 'metadata_errors': 0},
-        )
-        for tmdb_id in candidates:
-            sync_import_show_metadata.delay(job_id, tmdb_id)
-        return {'status': job.status}
+        return _start_import(job)
     except ImportJobCancelled:
         job.refresh_from_db()
         return {'status': job.status}
     except Exception as exc:
         fail(job, _error_message(exc))
         return {'status': job.status}
+
+
+def _start_import(job: DataTransferJob) -> dict[str, str]:
+    prepare_apply(job)
+    _ensure_processing(job)
+    candidates = _resolution_candidates(_load_parsed(job))
+    if not candidates:
+        return dispatch_import_items(job.id)
+    _start_pending(
+        job,
+        'resolving_episodes',
+        len(candidates),
+        metadata_counters={'metadata_fetches': 0, 'metadata_hits': 0, 'metadata_errors': 0},
+    )
+    for tmdb_id in candidates:
+        sync_import_show_metadata.delay(job.id, tmdb_id)
+    return {'status': job.status}
 
 
 @shared_task(name='tracking.dispatch_import_items', acks_late=True, reject_on_worker_lost=True)
@@ -187,49 +202,60 @@ def dispatch_import_items(job_id: int) -> dict[str, str]:
     if job is None:
         return {'status': 'missing'}
     try:
-        _ensure_processing(job)
-        parsed = _load_resolved(job)
-        items = group_by_item(parsed)
-
-        # Snapshot status rows predating the import so NEW_ITEMS reconciliation
-        # can tell "already tracked, leave alone" from "just created, finalize".
-        touched = touched_status_keys(parsed)
-        condition = Q()
-        for media_type, tmdb_id in sorted(touched):
-            condition |= Q(media_type=media_type, tmdb_id=tmdb_id)
-        preexisting = (
-            set(
-                UserMediaStatus.objects.for_user(job.user)
-                .filter(condition)
-                .values_list('media_type', 'tmdb_id')
-            )
-            if touched
-            else set()
-        )
-        # Same number the confirmation recap showed: raw units from the file.
-        job.total_items = int(parsed.report.get('total_items') or 0)
-        job.processed_items = 0
-        job.save(update_fields=['total_items', 'processed_items', 'updated_at'])
-        _start_pending(
-            job,
-            'syncing',
-            len(items),
-            applied=0,
-            preexisting_statuses=sorted([list(key) for key in preexisting]),
-        )
-
-        if not items:
-            finish_import(job_id, parsed=parsed)
-        for item in items:
-            process_media_item.delay(job_id, item)
-        job.refresh_from_db()
-        return {'status': job.status}
+        return _dispatch_import_items(job)
     except ImportJobCancelled:
         job.refresh_from_db()
         return {'status': job.status}
     except Exception as exc:
         fail(job, _error_message(exc))
         return {'status': job.status}
+
+
+def _dispatch_import_items(job: DataTransferJob) -> dict[str, str]:
+    _ensure_processing(job)
+    parsed = _load_resolved(job)
+    items = group_by_item(parsed)
+
+    preexisting = _preexisting_status_keys(job, parsed)
+    # Same number the confirmation recap showed: raw units from the file.
+    job.total_items = int(parsed.report.get('total_items') or 0)
+    job.processed_items = 0
+    job.save(update_fields=['total_items', 'processed_items', 'updated_at'])
+    _start_pending(
+        job,
+        'syncing',
+        len(items),
+        applied=0,
+        preexisting_statuses=sorted([list(key) for key in preexisting]),
+    )
+
+    _fan_out_items(job, items, parsed)
+    job.refresh_from_db()
+    return {'status': job.status}
+
+
+def _fan_out_items(job, items, parsed):
+    if not items:
+        finish_import(job.id, parsed=parsed)
+        return
+    for item in items:
+        process_media_item.delay(job.id, item)
+
+
+def _preexisting_status_keys(job, parsed):
+    """Snapshot status rows predating the import so NEW_ITEMS reconciliation
+    can tell "already tracked, leave alone" from "just created, finalize"."""
+    touched = touched_status_keys(parsed)
+    if not touched:
+        return set()
+    condition = Q()
+    for media_type, tmdb_id in sorted(touched):
+        condition |= Q(media_type=media_type, tmdb_id=tmdb_id)
+    return set(
+        UserMediaStatus.objects.for_user(job.user)
+        .filter(condition)
+        .values_list('media_type', 'tmdb_id')
+    )
 
 
 @shared_task(name='tracking.finish_import_job', acks_late=True, reject_on_worker_lost=True)
@@ -249,8 +275,6 @@ def finish_import_job(job_id: int) -> dict[str, str]:
 @shared_task(name='tracking.process_media_item', acks_late=True, reject_on_worker_lost=True)
 def process_media_item(job_id: int, item: dict, recompute_status: bool = False):
     """Sync TMDB catalog data and TVMaze TV enrichment, then apply tracking records."""
-    from media.tmdb import tmdb
-
     job = DataTransferJob.objects.filter(id=job_id).first()
     if job is None or job.status != DataTransferStatus.PROCESSING:
         return
@@ -258,38 +282,53 @@ def process_media_item(job_id: int, item: dict, recompute_status: bool = False):
     applied = 0
     sync_error = False
     try:
-        if not _has_local_metadata(item['media_type'], item['tmdb_id']):
-            try:
-                if item['media_type'] == 'movie':
-                    tmdb.sync_movie(item['tmdb_id'])
-                else:
-                    # recompute_status=False: reconciliation owns final statuses.
-                    tmdb.sync_tv_show(item['tmdb_id'], recompute_user_statuses=recompute_status)
-            except Exception as exc:
-                # A bad id must never discard tracking data; count and continue.
-                logger.warning('TMDB/TVMaze sync failed for %s %s: %s', item['media_type'], item['tmdb_id'], exc)
-                sync_error = True
-
-        job.refresh_from_db()
-        if job.status != DataTransferStatus.PROCESSING:
-            return
-        applied = apply_item_records(
-            job.user, item['media_type'], item['tmdb_id'], item['records'], job.import_mode
-        )
+        sync_error = _sync_item_metadata(item, recompute_status)
+        applied = _apply_item_if_processing(job, item)
     except Exception:
         logger.exception('Failed processing %s %s for job %s', item['media_type'], item['tmdb_id'], job_id)
         sync_error = True
     finally:
-        # Progress tracks the file's own records: items with big histories
-        # move the bar proportionally; metadata-only items add 0.
-        finished = _complete_pending(
-            job_id,
-            applied_delta=applied,
-            progress_delta=len(item['records']),
-            counter_deltas={'metadata_errors': 1} if sync_error else None,
-        )
-        if finished:
-            finish_import_job.delay(job_id)
+        _finish_item_stage(job_id, applied, len(item['records']), sync_error)
+
+
+def _sync_item_metadata(item, recompute_status: bool) -> bool:
+    """Fetch missing catalog metadata for one item; True on sync failure."""
+    from media.tmdb import tmdb
+
+    if _has_local_metadata(item['media_type'], item['tmdb_id']):
+        return False
+    try:
+        if item['media_type'] == 'movie':
+            tmdb.sync_movie(item['tmdb_id'])
+        else:
+            tmdb.sync_tv_show(item['tmdb_id'], recompute_user_statuses=recompute_status)
+        return False
+    except Exception as exc:
+        # A bad id must never discard tracking data; count and continue.
+        logger.warning('TMDB/TVMaze sync failed for %s %s: %s', item['media_type'], item['tmdb_id'], exc)
+        return True
+
+
+def _apply_item_if_processing(job, item) -> int:
+    """Apply the item's tracking records, unless the job left its stage."""
+    job.refresh_from_db()
+    if job.status != DataTransferStatus.PROCESSING:
+        return 0
+    return apply_item_records(
+        job.user, item['media_type'], item['tmdb_id'], item['records'], job.import_mode
+    )
+
+
+def _finish_item_stage(job_id: int, applied: int, record_count: int, sync_error: bool) -> None:
+    # Progress tracks the file's own records: items with big histories
+    # move the bar proportionally; metadata-only items add 0.
+    if _complete_pending(
+        job_id,
+        applied_delta=applied,
+        progress_delta=record_count,
+        counter_deltas={'metadata_errors': 1} if sync_error else None,
+    ):
+        finish_import_job.delay(job_id)
 
 
 def _has_local_metadata(media_type: str, tmdb_id: int) -> bool:

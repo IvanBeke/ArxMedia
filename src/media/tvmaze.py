@@ -39,24 +39,26 @@ class TVMazeService:
     def _request(self, path, params=None):
         params = params or {}
         cache_key = response_cache_key('tvmaze', path, params)
+        self._raise_for_cached_marker(cache_key, path)
+        if (cached := cache.get(cache_key)) is not None:
+            return cached
+        self._raise_unavailable_short_circuit(path)
+
+        return self._fetch_and_cache(path, params, cache_key)
+
+    def _raise_for_cached_marker(self, cache_key, path):
         cached = cache.get(cache_key)
         if cached == self._MISSING:
             raise TVMazeNotFound(f'TVMaze resource not found: {path}')
         if cached == self._UNAVAILABLE:
             raise TVMazeUnavailable(f'TVMaze unavailable: {path}')
-        if cached is not None:
-            return cached
+
+    def _raise_unavailable_short_circuit(self, path):
         if cache.get(self.UNAVAILABLE_CACHE_KEY):
             raise TVMazeUnavailable(f'TVMaze temporarily unavailable before requesting {path}')
 
-        url = f'{self.BASE_URL}{path}'
-        try:
-            response = self._session.get(url, params=params, timeout=self.REQUEST_TIMEOUT)
-        except (requests.Timeout, requests.ConnectionError) as exc:
-            cache.set(cache_key, self._UNAVAILABLE, self.UNAVAILABLE_TTL)
-            cache.set(self.UNAVAILABLE_CACHE_KEY, True, self.UNAVAILABLE_TTL)
-            raise TVMazeUnavailable(f'TVMaze request failed for {path}: {exc}') from exc
-
+    def _fetch_and_cache(self, path, params, cache_key):
+        response = self._get_response(path, params, cache_key)
         if response.status_code == 404:
             cache.set(cache_key, self._MISSING, self.MISSING_TTL)
             raise TVMazeNotFound(f'TVMaze resource not found: {path}')
@@ -65,6 +67,15 @@ class TVMazeService:
         data = response.json()
         cache.set(cache_key, data, self.CACHE_TTL)
         return data
+
+    def _get_response(self, path, params, cache_key):
+        url = f'{self.BASE_URL}{path}'
+        try:
+            return self._session.get(url, params=params, timeout=self.REQUEST_TIMEOUT)
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            cache.set(cache_key, self._UNAVAILABLE, self.UNAVAILABLE_TTL)
+            cache.set(self.UNAVAILABLE_CACHE_KEY, True, self.UNAVAILABLE_TTL)
+            raise TVMazeUnavailable(f'TVMaze request failed for {path}: {exc}') from exc
 
     def lookup_show_by_id(self, tvmaze_id):
         try:
@@ -75,7 +86,12 @@ class TVMazeService:
         return show if isinstance(show, dict) else None
 
     def lookup_show(self, external_ids=None, show_name=None, year=None):
-        external_ids = external_ids or {}
+        show = self._lookup_by_external_ids(external_ids or {})
+        if show:
+            return show
+        return self._lookup_by_name(show_name, year)
+
+    def _lookup_by_external_ids(self, external_ids):
         lookup_sources = (
             ('tvdb_id', 'thetvdb'),
             ('imdb_id', 'imdb'),
@@ -86,20 +102,37 @@ class TVMazeService:
             if not external_id:
                 continue
             try:
-                show = self._request('/lookup/shows', {parameter: external_id})
-            except TVMazeUnavailable as exc:
-                logger.warning('TVMaze %s lookup unavailable for %s: %s', source, external_id, exc)
+                show = self._lookup_show_by_source(source, external_id, parameter)
+            except TVMazeUnavailable:
                 return None
-            except requests.RequestException as exc:
-                logger.warning('TVMaze %s lookup failed for %s: %s', source, external_id, exc)
-                continue
-            if isinstance(show, dict) and show.get('id'):
+            if show:
                 return show
+        return None
 
+    def _lookup_show_by_source(self, source, external_id, parameter):
+        try:
+            show = self._request('/lookup/shows', {parameter: external_id})
+        except TVMazeUnavailable as exc:
+            logger.warning('TVMaze %s lookup unavailable for %s: %s', source, external_id, exc)
+            raise
+        except requests.RequestException as exc:
+            logger.warning('TVMaze %s lookup failed for %s: %s', source, external_id, exc)
+            return None
+        return show if isinstance(show, dict) and show.get('id') else None
+
+    def _lookup_by_name(self, show_name, year):
         if not show_name:
             return None
+        results = self._search_shows(show_name)
+        for result in results or []:
+            show = self._search_result_show(result, year)
+            if show:
+                return show
+        return None
+
+    def _search_shows(self, show_name):
         try:
-            results = self._request('/search/shows', {'q': show_name})
+            return self._request('/search/shows', {'q': show_name})
         except TVMazeUnavailable as exc:
             logger.warning('TVMaze search unavailable for %s: %s', show_name, exc)
             return None
@@ -107,16 +140,15 @@ class TVMazeService:
             logger.warning('TVMaze search failed for %s: %s', show_name, exc)
             return None
 
-        for result in results:
-            show = result.get('show') or result
-            if not isinstance(show, dict):
-                continue
-            if year:
-                premiered = show.get('premiered')
-                if premiered and premiered[:4] != str(year):
-                    continue
-            return show
-        return None
+    @staticmethod
+    def _search_result_show(result, year):
+        show = result.get('show') or result
+        if not isinstance(show, dict):
+            return None
+        premiered = show.get('premiered')
+        if year and premiered and premiered[:4] != str(year):
+            return None
+        return show
 
     def lookup_season_show(self, external_ids=None, season_name=None, year=None):
         return self.lookup_show(external_ids=external_ids, show_name=season_name, year=year)
@@ -138,27 +170,26 @@ class TVMazeService:
     def parse_air_datetime(air_date, air_time, timezone_name):
         if not air_date:
             return None
-        if air_time:
-            try:
-                naive = datetime.fromisoformat(f'{air_date}T{air_time}')
-            except ValueError:
-                return None
-        else:
-            try:
-                naive = datetime.fromisoformat(f'{air_date}T00:00:00')
-            except ValueError:
-                return None
+        naive = TVMazeService._parse_local_datetime(air_date, air_time)
+        if naive is None:
+            return None
+        return TVMazeService._make_aware(naive, timezone_name)
 
-        if not timezone_name:
-            return timezone.make_aware(naive, timezone.get_current_timezone())
+    @staticmethod
+    def _parse_local_datetime(air_date, air_time):
+        try:
+            return datetime.fromisoformat(f'{air_date}T{air_time or "00:00:00"}')
+        except ValueError:
+            return None
 
+    @staticmethod
+    def _make_aware(naive, timezone_name):
         try:
             from zoneinfo import ZoneInfo
             tz = ZoneInfo(timezone_name)
         except Exception:
-            return timezone.make_aware(naive, timezone.get_current_timezone())
-
-        return timezone.make_aware(naive, tz)
+            tz = None
+        return timezone.make_aware(naive, tz or timezone.get_current_timezone())
 
     @staticmethod
     def parse_show_schedule_datetime(show, air_date):

@@ -35,6 +35,10 @@ TRENDING_TIME_WINDOWS = ('day', 'week')
 # External ids are interpolated into the TMDB URL path, so only allow plain identifier characters.
 EXTERNAL_ID_RE = re.compile(r'^(?=.*[A-Za-z0-9])[A-Za-z0-9._-]{1,64}$')
 
+_NOT_FOUND = {'detail': 'Resource not found.'}
+_EMPTY_SEARCH = {'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0}
+_EMPTY_PREFIXED_SEARCH = {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
+
 TMDB_FIND_EXTERNAL_SOURCES = (
     'imdb_id',
     'facebook_id',
@@ -175,6 +179,24 @@ def _annotate_results_with_user_status(user, results):
             row['user_status'] = status_map[key]
 
 
+def _not_found():
+    return Response(_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+
+def _tag_media_type(data, media_type):
+    if media_type:
+        for item in data.get('results', []):
+            item['media_type'] = media_type
+
+
+def _decorate_media_results(request, data):
+    results = data.get('results', []) if isinstance(data, dict) else []
+    _normalize_media_release_date(results)
+    if request.user.is_authenticated:
+        _annotate_results_with_user_status(request.user, results)
+    return Response(data)
+
+
 def _normalize_media_release_date(results):
     for row in results:
         media_type = row.get('media_type')
@@ -188,22 +210,48 @@ def _normalize_media_release_date(results):
 def _search_by_prefixed_id(query, scope):
     raw_external_id = query[1:].strip()
     if not EXTERNAL_ID_RE.match(raw_external_id):
-        return {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
+        return dict(_EMPTY_PREFIXED_SEARCH)
 
+    merged_results = _direct_id_results(raw_external_id)
+    merged_results.extend(_find_source_results(raw_external_id))
+
+    scoped_results = _filter_by_scope(_dedupe_media_results(merged_results), scope)
+    return {
+        'results': scoped_results,
+        'page': 1,
+        'total_pages': 1,
+        'total_results': len(scoped_results),
+    }
+
+
+def _direct_id_results(raw_external_id):
+    if not raw_external_id.isdigit():
+        return []
+    return _direct_id_lookups(int(raw_external_id), raw_external_id)
+
+
+def _direct_id_lookups(tmdb_id, raw_external_id):
+    return [
+        match
+        for media_type, getter in ((MediaType.MOVIE, tmdb.get_movie), (MediaType.TV, tmdb.get_tv_show))
+        for match in _tagged_direct_lookup(media_type, getter, tmdb_id, raw_external_id)
+    ]
+
+
+def _tagged_direct_lookup(media_type, getter, tmdb_id, raw_external_id):
+    try:
+        payload = getter(tmdb_id)
+    except Exception as exc:
+        logger.warning('Failed direct %s lookup for #%s: %s', media_type, raw_external_id, exc)
+        return []
+    if isinstance(payload, dict) and payload.get('id'):
+        payload['media_type'] = media_type
+        return [payload]
+    return []
+
+
+def _find_source_results(raw_external_id):
     merged_results = []
-
-    if raw_external_id.isdigit():
-        tmdb_id = int(raw_external_id)
-        for media_type, getter in ((MediaType.MOVIE, tmdb.get_movie), (MediaType.TV, tmdb.get_tv_show)):
-            try:
-                payload = getter(tmdb_id)
-            except Exception as exc:
-                logger.warning('Failed direct %s lookup for #%s: %s', media_type, raw_external_id, exc)
-                continue
-            if isinstance(payload, dict) and payload.get('id'):
-                payload['media_type'] = media_type
-                merged_results.append(payload)
-
     for external_source in TMDB_FIND_EXTERNAL_SOURCES:
         try:
             payload = tmdb.find_by_external_id(raw_external_id, external_source)
@@ -213,15 +261,22 @@ def _search_by_prefixed_id(query, scope):
 
         merged_results.extend(payload.get('movie_results', []))
         merged_results.extend(payload.get('tv_results', []))
+    return merged_results
 
-    deduped = _dedupe_media_results(merged_results)
-    scoped_results = _filter_by_scope(deduped, scope)
-    return {
-        'results': scoped_results,
-        'page': 1,
-        'total_pages': 1,
-        'total_results': len(scoped_results),
-    }
+
+_SEARCH_BY_TYPE = {
+    'movie': (tmdb.search_movies, MediaType.MOVIE),
+    'tv': (tmdb.search_tv, MediaType.TV),
+}
+
+
+def _media_type_search_data(query, media_type, page):
+    if query.startswith('#'):
+        return _search_by_prefixed_id(query, media_type)
+    fetcher, tag = _SEARCH_BY_TYPE.get(media_type, (tmdb.search_multi, None))
+    data = fetcher(query, page)
+    _tag_media_type(data, tag)
+    return data
 
 
 @transaction.non_atomic_requests
@@ -235,32 +290,22 @@ def search(request):
         return error
 
     if not query:
-        return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
+        return Response(dict(_EMPTY_SEARCH))
 
     try:
-        if query.startswith('#'):
-            data = _search_by_prefixed_id(query, media_type)
-        else:
-            if media_type == 'movie':
-                data = tmdb.search_movies(query, page)
-                for item in data.get('results', []):
-                    item['media_type'] = MediaType.MOVIE
-            elif media_type == 'tv':
-                data = tmdb.search_tv(query, page)
-                for item in data.get('results', []):
-                    item['media_type'] = MediaType.TV
-            else:
-                data = tmdb.search_multi(query, page)
-
-        _normalize_media_release_date(data.get('results', []))
-
-        if request.user.is_authenticated:
-            _annotate_results_with_user_status(request.user, data.get('results', []))
-
-        return Response(data)
+        data = _media_type_search_data(query, media_type, page)
+        return _decorate_media_results(request, data)
     except Exception as e:
         logger.error("TMDB API error: %s", e)
-        return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
+        return Response(dict(_EMPTY_SEARCH))
+
+
+def _validate_trending_query(media_type, time_window):
+    if media_type not in TRENDING_MEDIA_TYPES:
+        return Response({'type': f'Must be one of: {", ".join(TRENDING_MEDIA_TYPES)}.'}, status=status.HTTP_400_BAD_REQUEST)
+    if time_window not in TRENDING_TIME_WINDOWS:
+        return Response({'window': f'Must be one of: {", ".join(TRENDING_TIME_WINDOWS)}.'}, status=status.HTTP_400_BAD_REQUEST)
+    return None
 
 
 @transaction.non_atomic_requests
@@ -269,24 +314,17 @@ def search(request):
 def trending(request):
     media_type = request.query_params.get('type', 'all')
     time_window = request.query_params.get('window', 'week')
-    if media_type not in TRENDING_MEDIA_TYPES:
-        return Response({'type': f'Must be one of: {", ".join(TRENDING_MEDIA_TYPES)}.'}, status=status.HTTP_400_BAD_REQUEST)
-    if time_window not in TRENDING_TIME_WINDOWS:
-        return Response({'window': f'Must be one of: {", ".join(TRENDING_TIME_WINDOWS)}.'}, status=status.HTTP_400_BAD_REQUEST)
+    error = _validate_trending_query(media_type, time_window)
+    if error:
+        return error
     try:
         data = tmdb.get_trending(media_type, time_window)
         if media_type in (MediaType.MOVIE, MediaType.TV):
-            for result in data.get('results', []):
-                result['media_type'] = media_type
-
-        _normalize_media_release_date(data.get('results', []))
-
-        if request.user.is_authenticated:
-            _annotate_results_with_user_status(request.user, data.get('results', []))
-        return Response(data)
+            _tag_media_type(data, media_type)
+        return _decorate_media_results(request, data)
     except Exception as e:
         logger.error("TMDB API error: %s", e)
-        return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
+        return Response(dict(_EMPTY_SEARCH))
 
 
 @transaction.non_atomic_requests
@@ -298,74 +336,86 @@ def popular(request):
     if error:
         return error
     try:
-        if media_type == 'tv':
-            data = tmdb.get_popular_tv(page)
-            resolved_media_type = MediaType.TV
-        else:
-            data = tmdb.get_popular_movies(page)
-            resolved_media_type = MediaType.MOVIE
-
-        for result in data.get('results', []):
-            result['media_type'] = resolved_media_type
-
-        _normalize_media_release_date(data.get('results', []))
-
-        if request.user.is_authenticated:
-            _annotate_results_with_user_status(request.user, data.get('results', []))
-
-        return Response(data)
+        data = tmdb.get_popular_tv(page) if media_type == 'tv' else tmdb.get_popular_movies(page)
+        _tag_media_type(data, MediaType.TV if media_type == 'tv' else MediaType.MOVIE)
+        return _decorate_media_results(request, data)
     except Exception as e:
         logger.error("TMDB API error: %s", e)
-        return Response({'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0})
+        return Response(dict(_EMPTY_SEARCH))
+
+
+def _load_movie(tmdb_id):
+    try:
+        return Movie.objects.get(tmdb_id=tmdb_id)
+    except Movie.DoesNotExist:
+        return _sync_movie(tmdb_id)
+
+
+def _sync_movie(tmdb_id):
+    try:
+        return tmdb.sync_movie(tmdb_id)
+    except Exception:
+        logger.warning('Failed to sync movie %s from TMDB', tmdb_id, exc_info=True)
+        return None
+
+
+def _safe_movie_details(tmdb_id):
+    try:
+        return tmdb.get_movie_details(tmdb_id)
+    except Exception as exc:
+        logger.warning('Failed to fetch movie details for %s: %s', tmdb_id, exc)
+        return {}
+
+
+def _collection_payload(collection):
+    if isinstance(collection, dict) and collection.get('id'):
+        return {
+            'id': collection.get('id'),
+            'name': collection.get('name', ''),
+            'poster_path': collection.get('poster_path'),
+            'backdrop_path': collection.get('backdrop_path'),
+        }
+    return None
+
+
+def _external_ids_payload(ids_payload):
+    return {
+        key: ids_payload[key]
+        for key in ('imdb_id', 'facebook_id', 'instagram_id', 'twitter_id', 'wikidata_id', 'youtube_id')
+        if ids_payload.get(key)
+    }
+
+
+def _attach_user_status(request, data, media_type, tmdb_id):
+    if not request.user.is_authenticated:
+        return
+    status_map = annotate_media_user_status(
+        request.user,
+        [{'media_type': media_type, 'tmdb_id': tmdb_id}],
+    )
+    key = (media_type, int(tmdb_id))
+    if key in status_map:
+        data['user_status'] = status_map[key]
+
+
+def _movie_payload(request, tmdb_id, movie):
+    details = _safe_movie_details(tmdb_id)
+    data = MovieSerializer(movie).data
+    data['watch_providers'] = _providers_for_region(details.get('watch/providers') or {}, _resolve_region(request))
+    data['collection'] = _collection_payload(details.get('belongs_to_collection'))
+    data['external_ids'] = _external_ids_payload(details.get('external_ids') or {})
+    _attach_user_status(request, data, MediaType.MOVIE, tmdb_id)
+    return data
 
 
 @transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def movie_detail(request, tmdb_id):
-    region = _resolve_region(request)
-    try:
-        movie = Movie.objects.get(tmdb_id=tmdb_id)
-    except Movie.DoesNotExist:
-        try:
-            movie = tmdb.sync_movie(tmdb_id)
-        except Exception:
-            logger.warning('Failed to sync movie %s from TMDB', tmdb_id, exc_info=True)
-            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
-    data = MovieSerializer(movie).data
-    try:
-        details = tmdb.get_movie_details(tmdb_id)
-    except Exception as exc:
-        logger.warning('Failed to fetch movie details for %s: %s', tmdb_id, exc)
-        details = {}
-    data['watch_providers'] = _providers_for_region(details.get('watch/providers') or {}, region)
-    collection = details.get('belongs_to_collection')
-    if isinstance(collection, dict) and collection.get('id'):
-        data['collection'] = {
-            'id': collection.get('id'),
-            'name': collection.get('name', ''),
-            'poster_path': collection.get('poster_path'),
-            'backdrop_path': collection.get('backdrop_path'),
-        }
-    else:
-        data['collection'] = None
-    ids_payload = details.get('external_ids') or {}
-    data['external_ids'] = {
-        key: ids_payload[key]
-        for key in ('imdb_id', 'facebook_id', 'instagram_id', 'twitter_id', 'wikidata_id', 'youtube_id')
-        if ids_payload.get(key)
-    }
-
-    if request.user.is_authenticated:
-        status_map = annotate_media_user_status(
-            request.user,
-            [{'media_type': MediaType.MOVIE, 'tmdb_id': tmdb_id}],
-        )
-        key = (MediaType.MOVIE, int(tmdb_id))
-        if key in status_map:
-            data['user_status'] = status_map[key]
-
-    return Response(data)
+    movie = _load_movie(tmdb_id)
+    if movie is None:
+        return _not_found()
+    return Response(_movie_payload(request, tmdb_id, movie))
 
 
 @transaction.non_atomic_requests
@@ -376,47 +426,56 @@ def movie_credits(request, tmdb_id):
     return Response(credits_data)
 
 
+def _sync_show_for_request(request, tmdb_id):
+    try:
+        return _sync_tv_for_read(tmdb_id, user_id=request.user.id)
+    except Exception:
+        logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
+        return None
+
+
+def _missing_season_numbers(show, required_seasons):
+    season_stats = dict(
+        show.seasons.filter(season_number__gte=1, season_number__lte=required_seasons)
+        .annotate(ep_count=models.Count('episodes'))
+        .values_list('season_number', 'ep_count')
+    )
+    return [n for n in range(1, required_seasons + 1) if season_stats.get(n, 0) == 0]
+
+
+def _sync_missing_seasons(show, request, tmdb_id):
+    missing = _missing_season_numbers(show, show.number_of_seasons or 0)
+    if not missing:
+        return show
+    return _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=missing)
+
+
+def _load_tv_show(request, tmdb_id):
+    show = TVShow.objects.filter(tmdb_id=tmdb_id).first()
+    if show is None:
+        return _sync_show_for_request(request, tmdb_id)
+    return _sync_missing_seasons(show, request, tmdb_id)
+
+
+def _tv_providers(tmdb_id):
+    try:
+        return tmdb.get_tv_details(tmdb_id).get('watch/providers') or {}
+    except Exception as exc:
+        logger.warning('Failed to fetch TV providers for %s: %s', tmdb_id, exc)
+        return {}
+
+
 @transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def tv_detail(request, tmdb_id):
-    region = _resolve_region(request)
-    try:
-        show = TVShow.objects.get(tmdb_id=tmdb_id)
-        required_seasons = show.number_of_seasons or 0
-        if required_seasons:
-            season_stats = dict(
-                show.seasons.filter(season_number__gte=1, season_number__lte=required_seasons)
-                .annotate(ep_count=models.Count('episodes'))
-                .values_list('season_number', 'ep_count')
-            )
-            missing = [n for n in range(1, required_seasons + 1) if season_stats.get(n, 0) == 0]
-            if missing:
-                show = _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=missing)
-    except TVShow.DoesNotExist:
-        try:
-            show = _sync_tv_for_read(tmdb_id, user_id=request.user.id)
-        except Exception:
-            logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
-            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    show = _load_tv_show(request, tmdb_id)
+    if show is None:
+        return _not_found()
 
     data = _serialize_tv_show_detail(show)
-    try:
-        providers = tmdb.get_tv_details(tmdb_id).get('watch/providers') or {}
-    except Exception as exc:
-        logger.warning('Failed to fetch TV providers for %s: %s', tmdb_id, exc)
-        providers = {}
-    data['watch_providers'] = _providers_for_region(providers, region)
-
-    if request.user.is_authenticated:
-        status_map = annotate_media_user_status(
-            request.user,
-            [{'media_type': MediaType.TV, 'tmdb_id': tmdb_id}],
-        )
-        key = (MediaType.TV, int(tmdb_id))
-        if key in status_map:
-            data['user_status'] = status_map[key]
-
+    data['watch_providers'] = _providers_for_region(_tv_providers(tmdb_id), _resolve_region(request))
+    _attach_user_status(request, data, MediaType.TV, tmdb_id)
     return Response(data)
 
 
@@ -483,6 +542,58 @@ def refresh_tv_metadata(request, tmdb_id):
     return Response(_serialize_tv_show_detail(show))
 
 
+def _season_with_episodes(show, season_number):
+    return show.seasons.filter(season_number=season_number).select_related('show').prefetch_related('episodes__credits').first()
+
+
+def _sync_missing_season(request, show, tmdb_id, season_number):
+    try:
+        _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=[season_number])
+    except Exception:
+        logger.warning('Failed to fetch season %s for show %s from TMDB', season_number, tmdb_id, exc_info=True)
+        return None
+    return _season_with_episodes(show, season_number)
+
+
+def _load_season_for_read(request, show, tmdb_id, season_number):
+    season = _season_with_episodes(show, season_number)
+    if season is not None and season.episodes.exists():
+        return season
+    return _sync_missing_season(request, show, tmdb_id, season_number)
+
+
+def _merge_live_season_fields(season_data, live):
+    credits = live.get('credits') or {}
+    season_data['credits'] = {
+        'cast': credits.get('cast') or [],
+        'crew': credits.get('crew') or [],
+    }
+    vote_average = live.get('vote_average')
+    if isinstance(vote_average, (int, float)):
+        season_data['vote_average'] = vote_average
+        vote_count = live.get('vote_count')
+        season_data['vote_count'] = vote_count if isinstance(vote_count, int) else 0
+    _merge_live_season_external_ids(season_data, live.get('external_ids') or {})
+
+
+def _merge_live_season_external_ids(season_data, live_external):
+    if live_external:
+        merged_ids = dict(season_data.get('external_ids') or {})
+        merged_ids.update({k: v for k, v in live_external.items() if v})
+        season_data['external_ids'] = merged_ids
+
+
+def _merge_live_season_data(season_data, tmdb_id, season_number):
+    try:
+        live = tmdb.get_season(tmdb_id, season_number)
+    except Exception as exc:
+        logger.warning('Failed to fetch season credits for show %s season %s: %s', tmdb_id, season_number, exc)
+        season_data.setdefault('credits', {'cast': [], 'crew': []})
+        return
+    if isinstance(live, dict):
+        _merge_live_season_fields(season_data, live)
+
+
 @transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -490,52 +601,18 @@ def season_detail(request, tmdb_id, season_number):
     tmdb_id = int(tmdb_id)
     season_number = int(season_number)
 
-    try:
-        show = TVShow.objects.get(tmdb_id=tmdb_id)
-    except TVShow.DoesNotExist:
-        try:
-            show = _sync_tv_for_read(tmdb_id, user_id=request.user.id)
-        except Exception:
-            logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
-            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    show = _load_tv_show(request, tmdb_id)
+    if show is None:
+        return _not_found()
 
-    season = show.seasons.filter(season_number=season_number).select_related('show').prefetch_related('episodes__credits').first()
-    if season is None or not season.episodes.exists():
-        try:
-            _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=[season_number])
-            season = show.seasons.filter(season_number=season_number).select_related('show').prefetch_related('episodes__credits').first()
-        except Exception:
-            logger.warning('Failed to fetch season %s for show %s from TMDB', season_number, tmdb_id, exc_info=True)
-            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
-
+    season = _load_season_for_read(request, show, tmdb_id, season_number)
     if season is None:
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
 
     season_data = SeasonSerializer(season).data
     season_data['show_name'] = show.name
     season_data['show_external_ids'] = show.external_ids or {}
-
-    try:
-        live = tmdb.get_season(tmdb_id, season_number)
-        if isinstance(live, dict):
-            credits = live.get('credits') or {}
-            season_data['credits'] = {
-                'cast': credits.get('cast') or [],
-                'crew': credits.get('crew') or [],
-            }
-            vote_average = live.get('vote_average')
-            if isinstance(vote_average, (int, float)):
-                season_data['vote_average'] = vote_average
-                vote_count = live.get('vote_count')
-                season_data['vote_count'] = vote_count if isinstance(vote_count, int) else 0
-            live_external = live.get('external_ids') or {}
-            if live_external:
-                merged_ids = dict(season_data.get('external_ids') or {})
-                merged_ids.update({k: v for k, v in live_external.items() if v})
-                season_data['external_ids'] = merged_ids
-    except Exception as exc:
-        logger.warning('Failed to fetch season credits for show %s season %s: %s', tmdb_id, season_number, exc)
-        season_data.setdefault('credits', {'cast': [], 'crew': []})
+    _merge_live_season_data(season_data, tmdb_id, season_number)
 
     season_status = annotate_season_user_status(
         request.user,
@@ -564,6 +641,49 @@ def season_credits(request, tmdb_id, season_number):
     })
 
 
+def _episode_for(show, season_number, episode_number):
+    season = show.seasons.filter(season_number=season_number).first()
+    return season.episodes.filter(episode_number=episode_number).first() if season else None
+
+
+def _sync_episode_for_read(request, show, tmdb_id, season_number, episode_number):
+    try:
+        _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=[season_number])
+    except Exception:
+        logger.warning(
+            'Failed to sync season %s for show %s while loading episode credits',
+            season_number,
+            tmdb_id,
+            exc_info=True,
+        )
+        return None
+    return _episode_for(show, season_number, episode_number)
+
+
+def _load_episode_for_read(request, show, tmdb_id, season_number, episode_number):
+    episode = _episode_for(show, season_number, episode_number)
+    if episode is not None:
+        return episode
+    return _sync_episode_for_read(request, show, tmdb_id, season_number, episode_number)
+
+
+def _episode_credits_for(show, tmdb_id, season_number, episode_number, episode):
+    credit = EpisodeCredit.objects.filter(episode=episode).first()
+    if credit is None:
+        try:
+            credit = tmdb.sync_episode_credits(tmdb_id, season_number, episode_number, show=show)
+        except Exception:
+            logger.warning(
+                'Failed to fetch episode credits for show %s season %s episode %s from TMDB',
+                tmdb_id,
+                season_number,
+                episode_number,
+                exc_info=True,
+            )
+            return _not_found()
+    return Response(_episode_credits_payload(credit))
+
+
 @transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -572,51 +692,15 @@ def episode_credits(request, tmdb_id, season_number, episode_number):
     season_number = int(season_number)
     episode_number = int(episode_number)
 
-    try:
-        show = TVShow.objects.get(tmdb_id=tmdb_id)
-    except TVShow.DoesNotExist:
-        try:
-            show = _sync_tv_for_read(tmdb_id, user_id=request.user.id)
-        except Exception:
-            logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
-            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    show = _load_tv_show(request, tmdb_id)
+    if show is None:
+        return _not_found()
 
-    season = show.seasons.filter(season_number=season_number).first()
-    episode = season.episodes.filter(episode_number=episode_number).first() if season else None
-
+    episode = _load_episode_for_read(request, show, tmdb_id, season_number, episode_number)
     if episode is None:
-        try:
-            _sync_tv_for_read(tmdb_id, user_id=request.user.id, only_seasons=[season_number])
-            season = show.seasons.filter(season_number=season_number).first()
-            episode = season.episodes.filter(episode_number=episode_number).first() if season else None
-        except Exception:
-            logger.warning(
-                'Failed to sync season %s for show %s while loading episode credits',
-                season_number,
-                tmdb_id,
-                exc_info=True,
-            )
+        return _not_found()
 
-    if episode is None:
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    credit = EpisodeCredit.objects.filter(episode=episode).first()
-    if credit:
-        return Response(_episode_credits_payload(credit))
-
-    try:
-        credit = tmdb.sync_episode_credits(tmdb_id, season_number, episode_number, show=show)
-    except Exception:
-        logger.warning(
-            'Failed to fetch episode credits for show %s season %s episode %s from TMDB',
-            tmdb_id,
-            season_number,
-            episode_number,
-            exc_info=True,
-        )
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    return Response(_episode_credits_payload(credit))
+    return _episode_credits_for(show, tmdb_id, season_number, episode_number, episode)
 
 
 @transaction.non_atomic_requests
@@ -763,17 +847,24 @@ def person_detail(request, person_id):
         data = tmdb.get_person(person_id)
     except Exception:
         logger.warning('Failed to fetch person %s from TMDB', person_id, exc_info=True)
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
     if not isinstance(data, dict) or not data.get('id'):
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
+    return _person_profile_response(person_id, data)
+
+
+def _try_merge_person_external_ids(person_id, data):
     try:
         ids_payload = tmdb.get_person_external_ids(person_id)
-        if isinstance(ids_payload, dict):
-            external_ids = {k: v for k, v in ids_payload.items() if v}
-            if external_ids:
-                data = {**data, 'external_ids': external_ids}
     except Exception as exc:
         logger.warning('Failed to fetch person external ids for %s: %s', person_id, exc)
+        return
+    if isinstance(ids_payload, dict) and (external_ids := {k: v for k, v in ids_payload.items() if v}):
+        data['external_ids'] = external_ids
+
+
+def _person_profile_response(person_id, data):
+    _try_merge_person_external_ids(person_id, data)
     data.setdefault('external_ids', {})
     data['profile_url'] = _person_profile_url(data.get('profile_path'))
     return Response(data)

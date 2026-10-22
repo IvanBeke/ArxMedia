@@ -91,37 +91,38 @@ class TMDBService:
         params = dict(params or {})
 
         cache_key = response_cache_key('tmdb', endpoint, params)
-        if use_cache:
-            cached = cache.get(cache_key)
-            if cached is not None:
-                return cached
+        if use_cache and (cached := cache.get(cache_key)) is not None:
+            return cached
 
         params['api_key'] = self.API_KEY
-
-        response_data = None
-        for attempt in range(self.REQUEST_RETRIES + 1):
-            try:
-                response = self._session.get(
-                    f'{self.BASE_URL}{endpoint}',
-                    params=params,
-                    timeout=self.REQUEST_TIMEOUT,
-                )
-                response.raise_for_status()
-                response_data = response.json()
-                break
-            except requests.RequestException as exc:
-                should_retry = self._should_retry_request(exc, endpoint)
-                if not should_retry or attempt >= self.REQUEST_RETRIES:
-                    raise
-                if self._is_server_error(exc) and attempt >= self.SERVER_ERROR_RETRIES:
-                    raise
-                time.sleep(min(30, 2**attempt))
-
-        if response_data is None:
-            raise RuntimeError(f'TMDB request failed without response payload for endpoint {endpoint}')
-
+        response_data = self._request_with_retries(endpoint, params)
         cache.set(cache_key, response_data, self.CACHE_TTL)
         return response_data
+
+    def _request_with_retries(self, endpoint, params):
+        for attempt in range(self.REQUEST_RETRIES + 1):
+            try:
+                return self._perform_request(endpoint, params)
+            except requests.RequestException as exc:
+                self._rethrow_request_error(exc, endpoint, attempt)
+        raise RuntimeError(f'TMDB request failed without response payload for endpoint {endpoint}')
+
+    def _perform_request(self, endpoint, params):
+        response = self._session.get(
+            f'{self.BASE_URL}{endpoint}',
+            params=params,
+            timeout=self.REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def _rethrow_request_error(self, exc, endpoint, attempt):
+        should_retry = self._should_retry_request(exc, endpoint)
+        if not should_retry or attempt >= self.REQUEST_RETRIES:
+            raise exc
+        if self._is_server_error(exc) and attempt >= self.SERVER_ERROR_RETRIES:
+            raise exc
+        time.sleep(min(30, 2**attempt))
 
     def _get_appended(self, endpoint, appends, *, use_cache=True):
         """Fetch ``endpoint`` with ``append_to_response``.
@@ -254,24 +255,35 @@ class TMDBService:
         calls = [partial(self._fetch_season_batch, tmdb_id, batch, use_cache) for batch in batches]
         results = run_parallel(calls + list(extra_calls))
 
+        seasons = self._collect_batch_results(tmdb_id, batches, results)
+        seasons = self._fetch_missing_seasons(tmdb_id, season_numbers, seasons, use_cache)
+        return seasons, results[len(batches):]
+
+    def _collect_batch_results(self, tmdb_id, batches, results):
         seasons = {}
         for batch, result in zip(batches, results, strict=False):
             if isinstance(result, Exception):
                 logger.warning('Season batch %s failed for tv %s: %s', batch, tmdb_id, result)
             else:
                 seasons.update(result)
+        return seasons
 
+    def _fetch_missing_seasons(self, tmdb_id, season_numbers, seasons, use_cache):
         leftovers = [number for number in season_numbers if number not in seasons]
         leftover_results = run_parallel([
             partial(self.get_season, tmdb_id, number, use_cache=use_cache, include_credits=False)
             for number in leftovers
         ])
         for number, result in zip(leftovers, leftover_results, strict=True):
-            if isinstance(result, Exception):
-                logger.warning('Failed to fetch season %s for tv %s: %s', number, tmdb_id, result)
-            elif isinstance(result, dict) and result:
-                seasons[number] = result
-        return seasons, results[len(batches):]
+            self._store_fetched_season(tmdb_id, seasons, number, result)
+        return seasons
+
+    @staticmethod
+    def _store_fetched_season(tmdb_id, seasons, number, result):
+        if isinstance(result, Exception):
+            logger.warning('Failed to fetch season %s for tv %s: %s', number, tmdb_id, result)
+        elif isinstance(result, dict) and result:
+            seasons[number] = result
 
     def _fetch_season_batch(self, tmdb_id, season_numbers, use_cache):
         data = self._get_appended(
@@ -362,52 +374,73 @@ class TMDBService:
         season_numbers = [int(n) for n in only_seasons] if only_seasons else self._season_numbers(data)
         show = self._upsert_show(tmdb_id, data)
 
-        stored_ids = dict(
-            show.seasons.filter(season_number__in=season_numbers).values_list('season_number', 'external_ids')
-        )
-        # Bundled season payloads carry no external ids; look them up only for
-        # seasons that have none stored, always through the cache.
-        needs_ids = [number for number in season_numbers if not stored_ids.get(number)]
-        extra_calls = [partial(self.get_season_external_ids, tmdb_id, number) for number in needs_ids]
-        extra_calls.append(partial(self._resolve_tvmaze, show, include_episodes=False))
-        seasons, extra_results = self._fetch_seasons_with(tmdb_id, season_numbers, use_cache, extra_calls)
-        season_ids = {
-            number: _external_ids({'external_ids': result})
-            for number, result in zip(needs_ids, extra_results, strict=False)
-            if isinstance(result, dict)
-        }
-        tvmaze_result = extra_results[-1]
-        parent_tvmaze_show = tvmaze_result[0] if not isinstance(tvmaze_result, Exception) else None
-        self._apply_tvmaze_metadata(show, parent_tvmaze_show)
+        seasons, season_ids, parent_tvmaze_show = self._sync_seasons(show, tmdb_id, season_numbers, use_cache)
 
         tvmaze_context: dict[int | str, tuple[dict | None, list[dict]]] = {}
         with suppress_episode_signals():
             self._sync_genres(show, data.get('genres'))
-            for number in season_numbers:
-                if number not in seasons:
-                    continue
-                try:
-                    self._upsert_season(
-                        show, number, seasons[number],
-                        tvmaze_context=tvmaze_context, season_external_ids=season_ids.get(number),
-                        parent_tvmaze_show=parent_tvmaze_show,
-                    )
-                except Exception as exc:
-                    logger.warning('Failed to sync season %s for tv %s: %s', number, tmdb_id, exc)
+            self._upsert_synced_seasons(
+                show, tmdb_id, season_numbers, seasons, season_ids,
+                parent_tvmaze_show, tvmaze_context,
+            )
 
         if sync_credits:
             self.sync_show_episode_credits(show, use_cache=use_cache, season_numbers=season_numbers)
-
         if recompute_user_statuses:
-            try:
-                from tracking.status_sync import rebuild_episode_chain, refresh_all_statuses_for_show
-
-                rebuild_episode_chain(int(tmdb_id))
-                refresh_all_statuses_for_show(int(tmdb_id), current_user_id=user_id)
-            except Exception as exc:
-                logger.warning('Failed to refresh statuses for tv %s: %s', tmdb_id, exc)
-
+            self._refresh_user_statuses(tmdb_id, user_id)
         return show
+
+    def _sync_seasons(self, show, tmdb_id, season_numbers, use_cache):
+        """Fetch season payloads and TVMaze context, returning everything callers need."""
+        # Bundled season payloads carry no external ids; look them up only for
+        # seasons that have none stored, always through the cache.
+        stored_ids = self._stored_season_ids(show, season_numbers)
+        needs_ids = [number for number in season_numbers if not stored_ids.get(number)]
+        extra_calls = [partial(self.get_season_external_ids, tmdb_id, number) for number in needs_ids]
+        extra_calls.append(partial(self._resolve_tvmaze, show, include_episodes=False))
+        seasons, extra_results = self._fetch_seasons_with(tmdb_id, season_numbers, use_cache, extra_calls)
+        season_ids = self._season_ids_from_results(needs_ids, extra_results)
+        tvmaze_result = extra_results[-1]
+        parent_tvmaze_show = tvmaze_result[0] if not isinstance(tvmaze_result, Exception) else None
+        self._apply_tvmaze_metadata(show, parent_tvmaze_show)
+        return seasons, season_ids, parent_tvmaze_show
+
+    @staticmethod
+    def _stored_season_ids(show, season_numbers):
+        return dict(
+            show.seasons.filter(season_number__in=season_numbers).values_list('season_number', 'external_ids')
+        )
+
+    @staticmethod
+    def _season_ids_from_results(needs_ids, extra_results):
+        return {
+            number: _external_ids({'external_ids': result})
+            for number, result in zip(needs_ids, extra_results, strict=False)
+            if isinstance(result, dict)
+        }
+
+    def _upsert_synced_seasons(self, show, tmdb_id, season_numbers, seasons, season_ids, parent_tvmaze_show, tvmaze_context):
+        for number in season_numbers:
+            if number not in seasons:
+                continue
+            try:
+                self._upsert_season(
+                    show, number, seasons[number],
+                    tvmaze_context=tvmaze_context, season_external_ids=season_ids.get(number),
+                    parent_tvmaze_show=parent_tvmaze_show,
+                )
+            except Exception as exc:
+                logger.warning('Failed to sync season %s for tv %s: %s', number, tmdb_id, exc)
+
+    @staticmethod
+    def _refresh_user_statuses(tmdb_id, user_id):
+        try:
+            from tracking.status_sync import rebuild_episode_chain, refresh_all_statuses_for_show
+
+            rebuild_episode_chain(int(tmdb_id))
+            refresh_all_statuses_for_show(int(tmdb_id), current_user_id=user_id)
+        except Exception as exc:
+            logger.warning('Failed to refresh statuses for tv %s: %s', tmdb_id, exc)
 
     @staticmethod
     def _season_numbers(data):
@@ -491,28 +524,58 @@ class TMDBService:
     def _upsert_season(self, show, season_number: int, data: dict, *, tvmaze_context=None, tvmaze_show=None, tvmaze_episodes=None, season_external_ids=None, parent_tvmaze_show=None):
         """Persist one season and its episodes from a TMDB season payload in bulk."""
         season = self._upsert_season_record(show, season_number, data, season_external_ids)
-        payloads = {
-            ep['episode_number']: ep
-            for ep in data.get('episodes') or []
-            if isinstance(ep, dict) and ep.get('episode_number') is not None
-        }
+        payloads = self._episode_payloads(data)
         tvmaze_show, tvmaze_episodes = self._season_tvmaze_context(
             show, season, tvmaze_context, tvmaze_show, tvmaze_episodes, payloads=payloads,
             parent_tvmaze_show=parent_tvmaze_show,
         )
         tvmaze_episodes = tvmaze_episodes or []
+        allow_single_season_number = self._allow_single_season_number(show, tvmaze_show, tvmaze_episodes)
+        existing = self._existing_episodes(season)
+        to_create, to_update = self._collect_episode_changes(
+            season, existing, payloads, season_number=season_number,
+            tvmaze_show=tvmaze_show, tvmaze_episodes=tvmaze_episodes,
+            allow_single_season_number=allow_single_season_number,
+        )
+        Episode.objects.bulk_create(to_create)
+        Episode.objects.bulk_update(to_update, EPISODE_FIELDS)
+        self._cleanup_removed_episodes(show, season_number, payloads, existing)
+        return season
+
+    @staticmethod
+    def _existing_episodes(season):
+        return {episode.episode_number: episode for episode in season.episodes.all()}
+
+    @staticmethod
+    def _episode_payloads(data):
+        return {
+            ep['episode_number']: ep
+            for ep in data.get('episodes') or []
+            if isinstance(ep, dict) and ep.get('episode_number') is not None
+        }
+
+    @staticmethod
+    def _allow_single_season_number(show, tvmaze_show, tvmaze_episodes):
+        if not tvmaze_episodes or TMDBService._is_tvmaze_parent_show(show, tvmaze_show):
+            return False
+        return len({e.get('season') for e in tvmaze_episodes}) == 1
+
+    @staticmethod
+    def _is_tvmaze_parent_show(show, tvmaze_show):
         parent_tvmaze_id = (show.external_ids or {}).get('tvmaze_id')
-        is_parent_show = bool(
+        return bool(
             tvmaze_show
             and tvmaze_show.get('id') is not None
             and tvmaze_show.get('id') == parent_tvmaze_id
         )
-        allow_single_season_number = bool(
-            tvmaze_episodes
-            and not is_parent_show
-            and len({e.get('season') for e in tvmaze_episodes}) == 1
-        )
-        existing = {episode.episode_number: episode for episode in season.episodes.all()}
+
+    @staticmethod
+    def _cleanup_removed_episodes(show, season_number, payloads, existing):
+        removed = sorted(set(existing) - set(payloads))
+        if removed and payloads:
+            TMDBService._queue_removed_episode_cleanup(show.tmdb_id, season_number, removed)
+
+    def _collect_episode_changes(self, season, existing, payloads, *, season_number, tvmaze_show, tvmaze_episodes, allow_single_season_number):
         to_create, to_update = [], []
         for episode_number, ep_data in payloads.items():
             episode = existing.get(episode_number)
@@ -525,37 +588,49 @@ class TMDBService:
                     setattr(episode, field, value)
                 to_update.append(episode)
 
-            broadcast_start = episode.broadcast_start
-            remote_ep = self._find_tvmaze_episode(
-                season_number,
-                ep_data,
-                tvmaze_episodes,
-                allow_single_season_number=allow_single_season_number,
-                payloads=payloads,
+            self._apply_tvmaze_episode_match(
+                episode, season_number, ep_data,
+                tvmaze_show=tvmaze_show, tvmaze_episodes=tvmaze_episodes,
+                allow_single_season_number=allow_single_season_number, payloads=payloads,
             )
-            if remote_ep:
-                tvmaze_payload = tvmaze.normalize_episode_from_tvmaze(tvmaze_show, remote_ep)
-                if tvmaze_payload:
-                    episode.external_ids = dict(episode.external_ids or {})
-                    if remote_ep.get('id') is not None:
-                        episode.external_ids['tvmaze_id'] = remote_ep['id']
-                    if tvmaze_show and tvmaze_show.get('id') is not None:
-                        episode.external_ids['tvmaze_show_id'] = int(tvmaze_show['id'])
-                    broadcast_start = tvmaze_payload.get('broadcast_start')
-                    if not remote_ep.get('airtime'):
-                        broadcast_start = tvmaze.parse_show_schedule_datetime(tvmaze_show, ep_data.get('air_date'))
-                    episode.runtime = episode.runtime or tvmaze_payload.get('runtime')
-            elif tvmaze_show:
-                broadcast_start = tvmaze.parse_show_schedule_datetime(tvmaze_show, ep_data.get('air_date'))
-            episode.broadcast_start = broadcast_start
+        return to_create, to_update
 
-        Episode.objects.bulk_create(to_create)
-        Episode.objects.bulk_update(to_update, EPISODE_FIELDS)
+    def _apply_tvmaze_episode_match(self, episode, season_number, ep_data, *, tvmaze_show, tvmaze_episodes, allow_single_season_number, payloads):
+        """Update ``episode`` in place with TVMaze ids, broadcast time and runtime."""
+        remote_ep = self._find_tvmaze_episode(
+            season_number, ep_data, tvmaze_episodes,
+            allow_single_season_number=allow_single_season_number, payloads=payloads,
+        )
+        if remote_ep is None:
+            self._apply_schedule_fallback(episode, ep_data, tvmaze_show)
+            return
+        self._apply_tvmaze_match(episode, ep_data, tvmaze_show, remote_ep)
 
-        removed = sorted(set(existing) - set(payloads))
-        if removed and payloads:
-            self._queue_removed_episode_cleanup(show.tmdb_id, season_number, removed)
-        return season
+    @staticmethod
+    def _apply_schedule_fallback(episode, ep_data, tvmaze_show):
+        if tvmaze_show:
+            episode.broadcast_start = tvmaze.parse_show_schedule_datetime(tvmaze_show, ep_data.get('air_date'))
+
+    @staticmethod
+    def _apply_tvmaze_match(episode, ep_data, tvmaze_show, remote_ep):
+        tvmaze_payload = tvmaze.normalize_episode_from_tvmaze(tvmaze_show, remote_ep)
+        if not tvmaze_payload:
+            return
+        episode.external_ids = TMDBService._episode_tvmaze_ids(episode, remote_ep, tvmaze_show)
+        broadcast_start = tvmaze_payload.get('broadcast_start')
+        if not remote_ep.get('airtime'):
+            broadcast_start = tvmaze.parse_show_schedule_datetime(tvmaze_show, ep_data.get('air_date'))
+        episode.broadcast_start = broadcast_start
+        episode.runtime = episode.runtime or tvmaze_payload.get('runtime')
+
+    @staticmethod
+    def _episode_tvmaze_ids(episode, remote_ep, tvmaze_show):
+        external_ids = dict(episode.external_ids or {})
+        if remote_ep.get('id') is not None:
+            external_ids['tvmaze_id'] = remote_ep['id']
+        if tvmaze_show and tvmaze_show.get('id') is not None:
+            external_ids['tvmaze_show_id'] = int(tvmaze_show['id'])
+        return external_ids
 
     @staticmethod
     def _queue_removed_episode_cleanup(show_id, season_number, episode_numbers):
@@ -606,68 +681,113 @@ class TMDBService:
         }
 
     def _season_tvmaze_context(self, show, season, context, tvmaze_show, tvmaze_episodes, *, payloads=None, parent_tvmaze_show=None):
-        context = context if context is not None else {season.season_number: (tvmaze_show, tvmaze_episodes or [])}
-        if season.season_number not in context:
-            parent_tvmaze_id = (show.external_ids or {}).get('tvmaze_id')
-            parent_show = parent_tvmaze_show or (
-                tvmaze.lookup_show_by_id(parent_tvmaze_id) if parent_tvmaze_id else None
-            )
-            parent_episodes = self._cached_tvmaze_episodes(context, parent_show)
-            season_ids = season.external_ids or {}
-            stored_tvmaze_id = season_ids.get('tvmaze_id')
-            trusted_stored_id = bool(stored_tvmaze_id and stored_tvmaze_id != parent_tvmaze_id)
-            has_lookup_ids = any(season_ids.get(key) for key in EXTERNAL_ID_KEYS)
-            parent_covered = bool(
-                parent_show and self._tvmaze_show_covers_season(season.season_number, payloads, parent_episodes)
-            )
-
-            resolved = None
-            resolved_from_stored = False
-            if trusted_stored_id:
-                resolved = tvmaze.lookup_show_by_id(stored_tvmaze_id)
-                resolved_from_stored = resolved is not None
-                if resolved is not None and payloads:
-                    stored_episodes = self._cached_tvmaze_episodes(context, resolved)
-                    if not self._tvmaze_show_matches_season_episodes(
-                        season.season_number, payloads, stored_episodes
-                    ):
-                        resolved = None
-                        resolved_from_stored = False
-                if resolved is None and (has_lookup_ids or (payloads and parent_show is not None and not parent_covered)):
-                    resolved = self._resolve_tvmaze_season(show, season, use_stored_id=False)
-            elif parent_covered:
-                # A named season can still belong to the parent show (for
-                # example arc-based season names), so check its episodes first.
-                resolved = parent_show
-            elif has_lookup_ids or (payloads and parent_show is not None and not parent_covered):
-                # Seasons not covered by the parent are looked up concretely.
-                # Candidate acceptance still depends on episode metadata.
-                resolved = self._resolve_tvmaze_season(show, season, use_stored_id=False)
-            elif not season_ids:
-                # No season-level IDs to match on: reuse the parent show (or
-                # skip) instead of firing one TVMaze search per season.
-                resolved = parent_show
-
-            episodes = parent_episodes if resolved is parent_show else self._cached_tvmaze_episodes(context, resolved)
-            if (
-                resolved
-                and resolved is not parent_show
-                and not resolved_from_stored
-                and payloads
-                and not self._tvmaze_show_matches_season_episodes(season.season_number, payloads, episodes)
-            ):
-                resolved = parent_show
-                episodes = parent_episodes
-            if resolved is None and parent_show:
-                resolved = parent_show
-                episodes = parent_episodes
-            context[season.season_number] = (resolved, episodes)
-        resolved, episodes = context[season.season_number]
-        if resolved and resolved.get('id'):
-            season.external_ids = dict(season.external_ids or {})
-            season.external_ids['tvmaze_id'] = int(resolved['id'])
-            season.save(update_fields=['external_ids'])
+        season_key = season.season_number
+        if context is None:
+            context = {season_key: (tvmaze_show, tvmaze_episodes or [])}
+        if season_key not in context:
+            context[season_key] = self._load_season_tvmaze(show, season, context, payloads, parent_tvmaze_show)
+        resolved, episodes = context[season_key]
+        TMDBService._store_season_tvmaze_id(season, resolved)
         return resolved, episodes
+
+    @staticmethod
+    def _store_season_tvmaze_id(season, resolved):
+        if not (resolved and resolved.get('id')):
+            return
+        season.external_ids = dict(season.external_ids or {})
+        season.external_ids['tvmaze_id'] = int(resolved['id'])
+        season.save(update_fields=['external_ids'])
+
+    def _load_season_tvmaze(self, show, season, context, payloads, parent_tvmaze_show):
+        parent_show, parent_episodes = self._season_tvmaze_basics(show, context, parent_tvmaze_show)
+        parent_tvmaze_id = (show.external_ids or {}).get('tvmaze_id')
+        resolve, resolve_from_stored = self._resolve_for_season(
+            show, season, context, payloads, parent_show, parent_episodes, parent_tvmaze_id,
+        )
+        return self._validate_season_resolution(
+            season, context, payloads, resolve, resolve_from_stored, parent_show, parent_episodes,
+        )
+
+    def _season_tvmaze_basics(self, show, context, parent_tvmaze_show):
+        parent_tvmaze_id = (show.external_ids or {}).get('tvmaze_id')
+        parent_show = parent_tvmaze_show or (
+            tvmaze.lookup_show_by_id(parent_tvmaze_id) if parent_tvmaze_id else None
+        )
+        parent_episodes = self._cached_tvmaze_episodes(context, parent_show)
+        return parent_show, parent_episodes
+
+    def _resolve_for_season(self, show, season, context, payloads, parent_show, parent_episodes, parent_tvmaze_id):
+        parent_covered = self._parent_covers_season(season, payloads, parent_show, parent_episodes)
+        if self._trusted_stored_tvmaze_id(season, parent_tvmaze_id):
+            return self._resolve_with_stored_id(show, season, context, payloads, parent_show, parent_covered)
+        if parent_covered:
+            # A named season can still belong to the parent show (for
+            # example arc-based season names), so check its episodes first.
+            return parent_show, False
+        if self._consider_fallback_lookup(season, payloads, parent_show, parent_covered):
+            # Seasons not covered by the parent are looked up concretely.
+            # Candidate acceptance still depends on episode metadata.
+            return self._resolve_tvmaze_season(show, season, use_stored_id=False), False
+        if not (season.external_ids or {}):
+            # No season-level IDs to match on: reuse the parent show (or
+            # skip) instead of firing one TVMaze search per season.
+            return parent_show, False
+        return None, False
+
+    def _parent_covers_season(self, season, payloads, parent_show, parent_episodes):
+        return bool(
+            parent_show and self._tvmaze_show_covers_season(season.season_number, payloads, parent_episodes)
+        )
+
+    @staticmethod
+    def _trusted_stored_tvmaze_id(season, parent_tvmaze_id):
+        stored_tvmaze_id = (season.external_ids or {}).get('tvmaze_id')
+        return bool(stored_tvmaze_id and stored_tvmaze_id != parent_tvmaze_id)
+
+    @staticmethod
+    def _consider_fallback_lookup(season, payloads, parent_show, parent_covered):
+        season_ids = season.external_ids or {}
+        if any(season_ids.get(key) for key in EXTERNAL_ID_KEYS):
+            return True
+        return bool(parent_show) and bool(payloads) and not parent_covered
+
+    def _resolve_with_stored_id(self, show, season, context, payloads, parent_show, parent_covered):
+        resolved = tvmaze.lookup_show_by_id((season.external_ids or {})['tvmaze_id'])
+        resolved, resolved_from_stored = self._accepted_stored_id_resolution(season, context, payloads, resolved)
+        if resolved is not None:
+            return resolved, resolved_from_stored
+        if self._consider_fallback_lookup(season, payloads, parent_show, parent_covered):
+            return self._resolve_tvmaze_season(show, season, use_stored_id=False), False
+        return None, False
+
+    def _accepted_stored_id_resolution(self, season, context, payloads, resolved):
+        """Accept the stored-id resolution unless its episodes vote it out."""
+        if payloads and resolved is not None and not self._stored_id_show_matches(season, context, resolved, payloads):
+            return None, False
+        return resolved, resolved is not None
+
+    def _stored_id_show_matches(self, season, context, resolved, payloads):
+        stored_episodes = self._cached_tvmaze_episodes(context, resolved)
+        return self._tvmaze_show_matches_season_episodes(season.season_number, payloads, stored_episodes)
+
+    def _validate_season_resolution(self, season, context, payloads, resolved, resolved_from_stored, parent_show, parent_episodes):
+        episodes = parent_episodes if resolved is parent_show else self._cached_tvmaze_episodes(context, resolved)
+        if self._reject_unverified_candidate(
+            season.season_number, payloads, resolved, resolved_from_stored, parent_show, episodes,
+        ):
+            resolved, episodes = parent_show, parent_episodes
+        if resolved is None and parent_show:
+            resolved, episodes = parent_show, parent_episodes
+        return resolved, episodes
+
+    @staticmethod
+    def _reject_unverified_candidate(season_number, payloads, resolved, resolved_from_stored, parent_show, episodes):
+        if not resolved or resolved is parent_show or resolved_from_stored:
+            return False
+        return bool(
+            payloads
+            and not TMDBService._tvmaze_show_matches_season_episodes(season_number, payloads, episodes)
+        )
 
     @staticmethod
     def _cached_tvmaze_episodes(context, resolved):
@@ -708,18 +828,41 @@ class TMDBService:
         if episode_number is None:
             return None
         air_date = ep_data.get('air_date')
-        name = cls._normalize_title(ep_data.get('name'))
-        if air_date and name:
-            for remote in tvmaze_episodes:
-                if cls._episode_matches_airdate_and_name(remote, air_date, name):
-                    return remote
         if air_date:
-            match = cls._unique_airdate_match(tvmaze_episodes, air_date, payloads)
+            match = cls._match_by_airdate(
+                tvmaze_episodes, air_date, cls._normalize_title(ep_data.get('name')), payloads,
+            )
             if match is not None:
                 return match
-        if allow_single_season_number and len({remote.get('season') for remote in tvmaze_episodes}) == 1:
-            return cls._single_season_number_match(tvmaze_episodes, episode_number)
+        return cls._match_single_season_remote(
+            tvmaze_episodes, episode_number, allow_single_season_number,
+        )
+
+    @classmethod
+    def _match_by_airdate_and_name(cls, tvmaze_episodes, air_date, name):
+        if not (air_date and name):
+            return None
+        for remote in tvmaze_episodes:
+            if cls._episode_matches_airdate_and_name(remote, air_date, name):
+                return remote
         return None
+
+    @classmethod
+    def _match_by_airdate(cls, tvmaze_episodes, air_date, name, payloads):
+        named_match = cls._match_by_airdate_and_name(tvmaze_episodes, air_date, name)
+        if named_match:
+            return named_match
+        return cls._unique_airdate_match(tvmaze_episodes, air_date, payloads)
+
+    @staticmethod
+    def _match_single_season_remote(tvmaze_episodes, episode_number, allow_single_season_number):
+        single_season = (
+            allow_single_season_number
+            and len({remote.get('season') for remote in tvmaze_episodes}) == 1
+        )
+        if not single_season:
+            return None
+        return TMDBService._single_season_number_match(tvmaze_episodes, episode_number)
 
     @classmethod
     def _tvmaze_show_covers_season(cls, season_number, payloads, tvmaze_episodes):

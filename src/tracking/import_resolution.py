@@ -39,53 +39,60 @@ def resolve_episode_records(parsed: ParsedImport, parent_map: dict[int, frozense
 
     warnings = list(parsed.report.get('warnings') or [])
     records = list(parsed.records)
-    invalid_count = parsed.invalid_count
-    resolved_count = 0
-    unresolved_count = 0
+    invalid_count, resolved_count, unresolved_count = parsed.invalid_count, 0, 0
 
     for episode in parsed.unresolved_episodes:
-        parent_ids = parent_map.get(episode.episode_tmdb_id, frozenset())
         location = {
             'kind': 'csv_row',
             'file': episode.origin,
             'row': episode.row_number,
             'column': 'tmdb_id',
         }
-        if len(parent_ids) == 1:
-            records.append(
-                WatchEntryRecord(
-                    media_type=WatchEntryMediaType.EPISODE,
-                    tmdb_id=next(iter(parent_ids)),
-                    watched_at=episode.watched_at,
-                    season_number=episode.season_number,
-                    episode_number=episode.episode_number,
-                    origin=episode.origin,
-                )
-            )
+        if _resolve_single_parent(records, episode, parent_map):
             resolved_count += 1
             continue
-
-        invalid_count += 1
         unresolved_count += 1
-        if len(parent_ids) > 1:
-            add_import_warning(
-                warnings,
-                'ambiguous_episode_parent',
-                'The episode ID maps to more than one local parent show and was skipped.',
-                location,
-            )
-        else:
-            add_import_warning(
-                warnings,
-                'unresolved_episode',
-                'The episode ID could not be matched to a local parent show and was skipped.',
-                location,
-            )
+        _warn_unresolved_parent(warnings, episode, parent_map, location)
+    invalid_count += unresolved_count
+    return _resolved_parsed(parsed, records, warnings, invalid_count, resolved_count, unresolved_count)
 
-    collections = set(parsed.collections_present)
-    if not any(isinstance(record, WatchEntryRecord) for record in records):
-        collections.discard(WATCH_HISTORY_COLLECTION)
 
+def _resolve_single_parent(records, episode, parent_map: dict[int, frozenset[int]]) -> bool:
+    parent_ids = parent_map.get(episode.episode_tmdb_id, frozenset())
+    if len(parent_ids) != 1:
+        return False
+    records.append(
+        WatchEntryRecord(
+            media_type=WatchEntryMediaType.EPISODE,
+            tmdb_id=next(iter(parent_ids)),
+            watched_at=episode.watched_at,
+            season_number=episode.season_number,
+            episode_number=episode.episode_number,
+            origin=episode.origin,
+        )
+    )
+    return True
+
+
+def _warn_unresolved_parent(warnings, episode, parent_map, location):
+    parent_ids = parent_map.get(episode.episode_tmdb_id, frozenset())
+    if len(parent_ids) > 1:
+        add_import_warning(
+            warnings,
+            'ambiguous_episode_parent',
+            'The episode ID maps to more than one local parent show and was skipped.',
+            location,
+        )
+    else:
+        add_import_warning(
+            warnings,
+            'unresolved_episode',
+            'The episode ID could not be matched to a local parent show and was skipped.',
+            location,
+        )
+
+
+def _resolved_parsed(parsed, records, warnings, invalid_count, resolved_count, unresolved_count) -> ParsedImport:
     report = dict(parsed.report)
     summary = dict(report.get('summary') or {})
     summary['watch_history'] = sum(
@@ -102,9 +109,16 @@ def resolve_episode_records(parsed: ParsedImport, parent_map: dict[int, frozense
 
     return ParsedImport(
         records=tuple(records),
-        collections_present=frozenset(collections),
+        collections_present=_resolved_collections(records, parsed),
         invalid_count=invalid_count,
         report=report,
         prefetch_only_ids=parsed.prefetch_only_ids,
         lists=parsed.lists,
     )
+
+
+def _resolved_collections(records, parsed) -> frozenset:
+    collections = set(parsed.collections_present)
+    if not any(isinstance(record, WatchEntryRecord) for record in records):
+        collections.discard(WATCH_HISTORY_COLLECTION)
+    return frozenset(collections)

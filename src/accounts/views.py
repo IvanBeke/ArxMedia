@@ -173,6 +173,91 @@ class PasswordChangeView(APIView):
         return Response({'detail': 'Password updated successfully.'}, status=status.HTTP_200_OK)
 
 
+def _previous_year_start(today: date) -> date:
+    """Start date of the trailing year window, clamped for Feb 29."""
+    try:
+        return today.replace(year=today.year - 1)
+    except ValueError:
+        # Today is Feb 29 and last year is not a leap year.
+        return today.replace(year=today.year - 1, day=28)
+
+
+def _heatmap_rows(target):
+    # A timestamp range on watched_at lets Postgres read just this window from the index;
+    # entries with an unknown watch date (null) have no day, so they are left out.
+    tz = timezone.get_current_timezone()
+    today = timezone.localdate()
+    start = _previous_year_start(today)
+    window_start = timezone.make_aware(datetime.combine(start, time.min), tz)
+    window_end = timezone.make_aware(datetime.combine(today + timedelta(days=1), time.min), tz)
+    return list(
+        WatchEntry.objects
+        .filter(user=target)
+        .filter(watched_at__gte=window_start, watched_at__lt=window_end)
+        .annotate(day=TruncDate('watched_at'))
+        .values('day', 'media_type', 'tmdb_id', 'season_number', 'episode_number')
+        .order_by('day', 'id')
+    )
+
+
+def _heatmap_movie_item(row, movies):
+    movie_title, release_date = movies.get(row['tmdb_id'], (None, None))
+    return {
+        'media_type': 'movie',
+        'tmdb_id': row['tmdb_id'],
+        'title': movie_title or f"Movie #{row['tmdb_id']}",
+        'release_year': release_date.year if release_date else None,
+    }
+
+
+def _heatmap_episode_item(row, show_names):
+    season = row['season_number']
+    episode = row['episode_number']
+    return {
+        'media_type': 'episode',
+        'tmdb_id': row['tmdb_id'],
+        'title': show_names.get(row['tmdb_id']) or f"TV #{row['tmdb_id']}",
+        'season_number': season,
+        'episode_number': episode,
+        'episode_code': f"S{int(season or 0):02d}E{int(episode or 0):02d}",
+    }
+
+
+def _heatmap_items_by_day(rows):
+    movie_ids = {row['tmdb_id'] for row in rows if row['media_type'] == WatchEntryMediaType.MOVIE}
+    show_ids = {row['tmdb_id'] for row in rows if row['media_type'] != WatchEntryMediaType.MOVIE}
+    movies = {
+        tmdb_id: (title, release_date)
+        for tmdb_id, title, release_date in Movie.objects.filter(tmdb_id__in=movie_ids)
+        .values_list('tmdb_id', 'title', 'release_date')
+    }
+    show_names = dict(TVShow.objects.filter(tmdb_id__in=show_ids).values_list('tmdb_id', 'name'))
+
+    items_by_day: dict[date, list[dict]] = {}
+    for row in rows:
+        if row['media_type'] == WatchEntryMediaType.MOVIE:
+            item = _heatmap_movie_item(row, movies)
+        else:
+            item = _heatmap_episode_item(row, show_names)
+        items_by_day.setdefault(row['day'], []).append(item)
+    return items_by_day
+
+
+def _heatmap_day_entries(items_by_day, start, today):
+    days = []
+    total = 0
+    for offset in range((today - start).days + 1):
+        day = start + timedelta(days=offset)
+        items = items_by_day.get(day, [])
+        total += len(items)
+        days.append({
+            'date': day.isoformat(),
+            'count': len(items),
+            'items': items,
+        })
+    return days, total
+
+
 class UserActivityHeatmapView(APIView):
     """Daily watch-activity counts for a profile, GitHub-contribution style."""
 
@@ -185,67 +270,8 @@ class UserActivityHeatmapView(APIView):
             return Response({'days': [], 'total': 0})
 
         today = timezone.localdate()
-        try:
-            start = today.replace(year=today.year - 1)
-        except ValueError:
-            # Today is Feb 29 and last year is not a leap year.
-            start = today.replace(year=today.year - 1, day=28)
-
-        # A timestamp range on watched_at lets Postgres read just this window from the index;
-        # entries with an unknown watch date (null) have no day, so they are left out.
-        tz = timezone.get_current_timezone()
-        window_start = timezone.make_aware(datetime.combine(start, time.min), tz)
-        window_end = timezone.make_aware(datetime.combine(today + timedelta(days=1), time.min), tz)
-        rows = list(
-            WatchEntry.objects
-            .filter(user=target)
-            .filter(watched_at__gte=window_start, watched_at__lt=window_end)
-            .annotate(day=TruncDate('watched_at'))
-            .values('day', 'media_type', 'tmdb_id', 'season_number', 'episode_number')
-            .order_by('day', 'id')
-        )
-        movie_ids = {row['tmdb_id'] for row in rows if row['media_type'] == WatchEntryMediaType.MOVIE}
-        show_ids = {row['tmdb_id'] for row in rows if row['media_type'] != WatchEntryMediaType.MOVIE}
-        movies = {
-            tmdb_id: (title, release_date)
-            for tmdb_id, title, release_date in Movie.objects.filter(tmdb_id__in=movie_ids)
-            .values_list('tmdb_id', 'title', 'release_date')
-        }
-        show_names = dict(TVShow.objects.filter(tmdb_id__in=show_ids).values_list('tmdb_id', 'name'))
-
-        items_by_day: dict[date, list[dict]] = {}
-        for row in rows:
-            if row['media_type'] == WatchEntryMediaType.MOVIE:
-                movie_title, release_date = movies.get(row['tmdb_id'], (None, None))
-                item = {
-                    'media_type': 'movie',
-                    'tmdb_id': row['tmdb_id'],
-                    'title': movie_title or f"Movie #{row['tmdb_id']}",
-                    'release_year': release_date.year if release_date else None,
-                }
-            else:
-                season = row['season_number']
-                episode = row['episode_number']
-                item = {
-                    'media_type': 'episode',
-                    'tmdb_id': row['tmdb_id'],
-                    'title': show_names.get(row['tmdb_id']) or f"TV #{row['tmdb_id']}",
-                    'season_number': season,
-                    'episode_number': episode,
-                    'episode_code': f"S{int(season or 0):02d}E{int(episode or 0):02d}",
-                }
-            items_by_day.setdefault(row['day'], []).append(item)
-
-        days = []
-        total = 0
-        for offset in range((today - start).days + 1):
-            day = start + timedelta(days=offset)
-            items = items_by_day.get(day, [])
-            total += len(items)
-            days.append({
-                'date': day.isoformat(),
-                'count': len(items),
-                'items': items,
-            })
+        rows = _heatmap_rows(target)
+        items_by_day = _heatmap_items_by_day(rows)
+        days, total = _heatmap_day_entries(items_by_day, _previous_year_start(today), today)
 
         return Response({'days': days, 'total': total})

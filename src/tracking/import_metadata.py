@@ -42,30 +42,32 @@ def _parse_watched_at(value: str | None):
 
 
 def _ensure_tv_season_metadata(tmdb_id: int, season_number: int | None, state: dict):
-    if season_number is None:
+    if season_number is None or (tmdb_id, season_number) in state['season_checked']:
         return
     season_key = (tmdb_id, season_number)
-    if season_key in state['season_checked']:
-        return
-
     show = TVShow.objects.filter(tmdb_id=tmdb_id).first()
-    if not show:
-        state['metadata_errors'] += 1
-        state['season_checked'].add(season_key)
+    if show is None:
+        _count_season_metadata_error(season_key, state)
         return
-
     if Season.objects.filter(show=show, season_number=season_number).exists():
         state['metadata_hits'] += 1
-        state['season_checked'].add(season_key)
-        return
+    else:
+        _sync_season_metadata(show, tmdb_id, season_number, state)
+    state['season_checked'].add(season_key)
 
+
+def _count_season_metadata_error(season_key, state):
+    state['metadata_errors'] += 1
+    state['season_checked'].add(season_key)
+
+
+def _sync_season_metadata(show, tmdb_id: int, season_number: int, state: dict):
     try:
         tmdb.sync_season(show, season_number)
         state['metadata_fetches'] += 1
     except Exception as exc:
         state['metadata_errors'] += 1
         logger.warning('Failed season metadata sync for tv %s season %s: %s', tmdb_id, season_number, exc)
-    state['season_checked'].add(season_key)
 
 
 def _ensure_tmdb_metadata(media_type: str, tmdb_id: int | None) -> bool:
@@ -104,17 +106,20 @@ def _ensure_tmdb_metadata_for_import_item(media_type: str, tmdb_id: int | None, 
     key_media_type = MediaType.TV if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE) else media_type
     key = (key_media_type, tmdb_id)
     if key not in state['metadata_checked']:
-        if _has_tmdb_metadata(media_type, tmdb_id):
-            state['metadata_hits'] += 1
-        else:
-            if _ensure_tmdb_metadata(media_type, tmdb_id):
-                state['metadata_fetches'] += 1
-            else:
-                state['metadata_errors'] += 1
         state['metadata_checked'].add(key)
-
+        _count_metadata_outcome(media_type, tmdb_id, state)
     if media_type == WatchEntryMediaType.EPISODE:
         _ensure_tv_season_metadata(tmdb_id, season_number, state)
+
+
+def _count_metadata_outcome(media_type: str, tmdb_id: int, state: dict):
+    if _has_tmdb_metadata(media_type, tmdb_id):
+        state['metadata_hits'] += 1
+        return
+    if _ensure_tmdb_metadata(media_type, tmdb_id):
+        state['metadata_fetches'] += 1
+        return
+    state['metadata_errors'] += 1
 
 
 def new_metadata_state() -> dict:

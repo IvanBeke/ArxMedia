@@ -38,34 +38,34 @@ from ._helpers import (
 )
 
 
+def _filter_int_param(queryset, params, key: str):
+    value = params.get(key)
+    if value is not None:
+        return queryset.filter(**{key: _coerce_int(value, key)})
+    return queryset
+
+
+def _order_watch_entries(queryset, order: str):
+    if order == 'oldest':
+        # Unknown watch dates (null) sort as the oldest entries in both directions.
+        return queryset.order_by(F('watched_at').asc(nulls_first=True), 'id')
+    return queryset.order_by(F('watched_at').desc(nulls_last=True), '-id')
+
+
 class WatchEntryListCreateView(generics.ListCreateAPIView):
     serializer_class = WatchEntrySerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         qs = WatchEntry.objects.filter(user=authenticated_user(self.request))
-        media_type = self.request.query_params.get('media_type')
+        query_params = self.request.query_params
+        media_type = query_params.get('media_type')
         if media_type in (WatchEntryMediaType.MOVIE, WatchEntryMediaType.EPISODE):
             qs = qs.filter(media_type=media_type)
-
-        tmdb_id = self.request.query_params.get('tmdb_id')
-        if tmdb_id is not None:
-            qs = qs.filter(tmdb_id=_coerce_int(tmdb_id, 'tmdb_id'))
-
-        season_number = self.request.query_params.get('season_number')
-        if season_number is not None:
-            qs = qs.filter(season_number=_coerce_int(season_number, 'season_number'))
-
-        episode_number = self.request.query_params.get('episode_number')
-        if episode_number is not None:
-            qs = qs.filter(episode_number=_coerce_int(episode_number, 'episode_number'))
-
-
-        order = (self.request.query_params.get('order') or 'newest').lower()
-        if order == 'oldest':
-            # Unknown watch dates (null) sort as the oldest entries in both directions.
-            return qs.order_by(F('watched_at').asc(nulls_first=True), 'id')
-        return qs.order_by(F('watched_at').desc(nulls_last=True), '-id')
+        qs = _filter_int_param(qs, query_params, 'tmdb_id')
+        qs = _filter_int_param(qs, query_params, 'season_number')
+        qs = _filter_int_param(qs, query_params, 'episode_number')
+        return _order_watch_entries(qs, (query_params.get('order') or 'newest').lower())
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -278,6 +278,49 @@ def user_stats(request):
     return Response(compute_user_stats(request.user.id))
 
 
+def _recent_media_ids(recent) -> tuple[set[int], set[int]]:
+    movie_ids: set[int] = set()
+    tv_ids: set[int] = set()
+    for entry in recent:
+        if entry.media_type == WatchEntryMediaType.MOVIE:
+            movie_ids.add(entry.tmdb_id)
+        elif entry.media_type == WatchEntryMediaType.EPISODE:
+            tv_ids.add(entry.tmdb_id)
+    return movie_ids, tv_ids
+
+
+def _recent_movie_row(d: dict, entry, context: dict, rating_map: dict) -> dict:
+    movie = context['movie_map'].get(entry.tmdb_id)
+    d['title'] = movie.title if movie else f'Movie #{entry.tmdb_id}'
+    d['poster_path'] = movie.poster_path if movie else ''
+    d['show_title'] = None
+    d['episode_title'] = None
+    d['rating'] = rating_map.get((MediaType.MOVIE, entry.tmdb_id))
+    return d
+
+
+def _recent_episode_row(d: dict, entry, context: dict, rating_map: dict) -> dict:
+    season = context['season_map'].get((entry.tmdb_id, entry.season_number))
+    if season:
+        ep = context['episode_map'].get((entry.tmdb_id, entry.season_number, entry.episode_number))
+        d['show_title'] = season.show.name
+        d['episode_title'] = ep.name if ep else f'Episode {entry.episode_number}'
+    else:
+        d['show_title'] = None
+        d['episode_title'] = f'Episode {entry.episode_number}' if entry.episode_number is not None else f'Episode #{entry.tmdb_id}'
+    d['title'] = d['episode_title']
+    d['rating'] = rating_map.get((MediaType.TV, entry.tmdb_id))
+    return d
+
+
+def _fill_recent_entry(d: dict, entry, context: dict, rating_map: dict) -> dict:
+    if entry.media_type == WatchEntryMediaType.MOVIE:
+        return _recent_movie_row(d, entry, context, rating_map)
+    if entry.media_type == WatchEntryMediaType.EPISODE:
+        return _recent_episode_row(d, entry, context, rating_map)
+    return d
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def recent_activity(request):
@@ -287,42 +330,14 @@ def recent_activity(request):
     recent = list(entries.order_by(F('watched_at').desc(nulls_last=True), '-id')[:10])
     context = watch_entry_context(recent)
 
-    recent_movie_ids = set()
-    recent_tv_ids = set()
-    for entry in recent:
-        if entry.media_type == WatchEntryMediaType.MOVIE:
-            recent_movie_ids.add(entry.tmdb_id)
-        elif entry.media_type == WatchEntryMediaType.EPISODE:
-            recent_tv_ids.add(entry.tmdb_id)
-
+    movie_ids, tv_ids = _recent_media_ids(recent)
     ratings_qs = Rating.objects.filter(user=user).filter(
-        Q(media_type=MediaType.MOVIE, tmdb_id__in=recent_movie_ids)
-        | Q(media_type=MediaType.TV, tmdb_id__in=recent_tv_ids)
+        Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
+        | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
     ).values('media_type', 'tmdb_id', 'score')
     rating_map = {(row['media_type'], row['tmdb_id']): row['score'] for row in ratings_qs}
 
-    recent_data = []
-    for entry in recent:
-        d = WatchEntrySerializer(entry, context=context).data
-        if entry.media_type == WatchEntryMediaType.MOVIE:
-            movie = context['movie_map'].get(entry.tmdb_id)
-            d['title'] = movie.title if movie else f'Movie #{entry.tmdb_id}'
-            d['poster_path'] = movie.poster_path if movie else ''
-            d['show_title'] = None
-            d['episode_title'] = None
-            d['rating'] = rating_map.get((MediaType.MOVIE, entry.tmdb_id))
-        elif entry.media_type == WatchEntryMediaType.EPISODE:
-            season = context['season_map'].get((entry.tmdb_id, entry.season_number))
-            if season:
-                ep = context['episode_map'].get((entry.tmdb_id, entry.season_number, entry.episode_number))
-                d['show_title'] = season.show.name
-                d['episode_title'] = ep.name if ep else f'Episode {entry.episode_number}'
-                d['title'] = d['episode_title']
-            else:
-                d['show_title'] = None
-                d['episode_title'] = f'Episode {entry.episode_number}' if entry.episode_number is not None else f'Episode #{entry.tmdb_id}'
-                d['title'] = d['episode_title']
-            d['rating'] = rating_map.get((MediaType.TV, entry.tmdb_id))
-        recent_data.append(d)
-
-    return Response(recent_data)
+    return Response([
+        _fill_recent_entry(WatchEntrySerializer(entry, context=context).data, entry, context, rating_map)
+        for entry in recent
+    ])

@@ -105,94 +105,87 @@ def _episode_candidates(user, now, *, aired):
     )
 
 
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def up_next(request):
-    """Get next episodes for currently watching shows."""
-    from django.utils import timezone
+def _watched_show_rows(user) -> list[dict]:
+    return list(
+        UserMediaStatus.objects.for_user(user).shows().active().with_watched_episodes().with_next_episode().filter(
+            next_episode_id__isnull=False,
+        ).annotate(
+            unknown_runtime_count=Case(
+                When(time_left_has_unknown=True, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            ),
+        ).values(
+            'tmdb_id',
+            'last_watched_at',
+            'progress_percent',
+            'next_season_number',
+            'next_episode_number',
+            'next_episode_name',
+            'next_still_path',
+            'next_air_date',
+            'next_broadcast_start',
+            'next_runtime',
+            'next_episode_type',
+            'episodes_left',
+            'time_left_minutes',
+            'unknown_runtime_count',
+        ).order_by('-last_watched_at', '-tmdb_id')
+    )
 
+
+def _up_next_maps(watched_show_rows: list[dict]) -> tuple[dict, dict]:
     from media.models import TVShow
-
-    now = timezone.now()
-    today = now.date()
-
-    watched_show_ids = UserMediaStatus.objects.for_user(request.user).shows().active().with_watched_episodes().with_next_episode().filter(
-        next_episode_id__isnull=False,
-    ).annotate(
-        unknown_runtime_count=Case(
-            When(time_left_has_unknown=True, then=Value(1)),
-            default=Value(0),
-            output_field=IntegerField(),
-        ),
-    ).values(
-        'tmdb_id',
-        'last_watched_at',
-        'progress_percent',
-        'next_season_number',
-        'next_episode_number',
-        'next_episode_name',
-        'next_still_path',
-        'next_air_date',
-        'next_broadcast_start',
-        'next_runtime',
-        'next_episode_type',
-        'episodes_left',
-        'time_left_minutes',
-        'unknown_runtime_count',
-    ).order_by('-last_watched_at', '-tmdb_id')
-
-    watched_show_rows = list(watched_show_ids)
 
     shows_by_tmdb_id = {
         show.tmdb_id: show
         for show in TVShow.objects.filter(tmdb_id__in=[item['tmdb_id'] for item in watched_show_rows]).only('tmdb_id', 'name', 'poster_path')
     }
-
     next_season_map = build_season_map(
         (item['tmdb_id'], item['next_season_number'])
         for item in watched_show_rows
         if item['next_season_number'] is not None
     )
+    return shows_by_tmdb_id, next_season_map
 
-    up_next_data = []
-    new_threshold = today - timedelta(days=7)
-    for show_item in watched_show_rows:
-        show = shows_by_tmdb_id.get(show_item['tmdb_id'])
-        if show is None:
-            continue
-        progress_percent = show_item.get('progress_percent')
-        next_season = next_season_map.get((show_item['tmdb_id'], show_item['next_season_number']))
-        next_broadcast_start = show_item.get('next_broadcast_start')
-        next_air_date = show_item.get('next_air_date')
-        next_episode_local_dt = _episode_local_datetime({'air_date': next_air_date, 'broadcast_start': next_broadcast_start})
 
-        up_next_data.append({
-            'tmdb_id': show_item['tmdb_id'],
-            'show_name': show.name,
-            'poster_path': (next_season.poster_path if next_season else '') or show.poster_path,
-            'poster_url': (next_season.poster_url if next_season else None) or show.poster_url,
-            'last_watched_at': show_item['last_watched_at'],
-            'progress_percent': progress_percent if progress_percent is not None else 0,
-            'episodes_left': show_item['episodes_left'],
-            'runtime_left_minutes': show_item['time_left_minutes'],
-            'runtime_left_has_unknown': show_item['unknown_runtime_count'] > 0,
-            'next_episode': {
-                'season_number': show_item['next_season_number'],
-                'episode_number': show_item['next_episode_number'],
-                'name': show_item['next_episode_name'],
-                'still_path': show_item['next_still_path'],
-                'still_url': f"https://image.tmdb.org/t/p/w300{show_item['next_still_path']}" if show_item['next_still_path'] else None,
-                'air_date': _episode_display_air_date({'air_date': next_air_date, 'broadcast_start': next_broadcast_start}),
-                'broadcast_start': next_broadcast_start,
-                'local_broadcast_datetime': next_episode_local_dt,
-                'runtime': show_item['next_runtime'],
-                'episode_type': show_item['next_episode_type'],
-            }
-        })
+def _up_next_episode_entry(show_item: dict, next_air_date, next_broadcast_start) -> dict:
+    return {
+        'season_number': show_item['next_season_number'],
+        'episode_number': show_item['next_episode_number'],
+        'name': show_item['next_episode_name'],
+        'still_path': show_item['next_still_path'],
+        'still_url': f"https://image.tmdb.org/t/p/w300{show_item['next_still_path']}" if show_item['next_still_path'] else None,
+        'air_date': _episode_display_air_date({'air_date': next_air_date, 'broadcast_start': next_broadcast_start}),
+        'broadcast_start': next_broadcast_start,
+        'local_broadcast_datetime': _episode_local_datetime({'air_date': next_air_date, 'broadcast_start': next_broadcast_start}),
+        'runtime': show_item['next_runtime'],
+        'episode_type': show_item['next_episode_type'],
+    }
 
+
+def _up_next_entry(show_item: dict, show, next_season) -> dict:
+    next_air_date = show_item.get('next_air_date')
+    next_broadcast_start = show_item.get('next_broadcast_start')
+    progress_percent = show_item.get('progress_percent')
+    return {
+        'tmdb_id': show_item['tmdb_id'],
+        'show_name': show.name,
+        'poster_path': (next_season.poster_path if next_season else '') or show.poster_path,
+        'poster_url': (next_season.poster_url if next_season else None) or show.poster_url,
+        'last_watched_at': show_item['last_watched_at'],
+        'progress_percent': progress_percent if progress_percent is not None else 0,
+        'episodes_left': show_item['episodes_left'],
+        'runtime_left_minutes': show_item['time_left_minutes'],
+        'runtime_left_has_unknown': show_item['unknown_runtime_count'] > 0,
+        'next_episode': _up_next_episode_entry(show_item, next_air_date, next_broadcast_start),
+    }
+
+
+def _split_new_up_next(items, new_threshold, today) -> tuple[list, list]:
     new_items = []
     old_items = []
-    for item in up_next_data:
+    for item in items:
         air_date = item.get('next_episode', {}).get('local_broadcast_datetime', item.get('next_episode', {}).get('air_date'))
         if isinstance(air_date, datetime):
             air_date = air_date.date()
@@ -202,15 +195,43 @@ def up_next(request):
             new_items.append(item)
         else:
             old_items.append(item)
+    return new_items, old_items
 
-    new_items.sort(
+
+def _sort_new_up_next(new_items: list) -> list:
+    return sorted(
+        new_items,
         key=lambda item: (
             item['next_episode'].get('local_broadcast_datetime') or item['next_episode'].get('air_date') or date.max,
             item['show_name'].lower(),
         ),
         reverse=True,
     )
-    ordered_items = new_items + old_items
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def up_next(request):
+    """Get next episodes for currently watching shows."""
+    from django.utils import timezone
+
+    now = timezone.now()
+    today = now.date()
+    new_threshold = today - timedelta(days=7)
+
+    watched_show_rows = _watched_show_rows(request.user)
+    shows_by_tmdb_id, next_season_map = _up_next_maps(watched_show_rows)
+
+    up_next_data = []
+    for show_item in watched_show_rows:
+        show = shows_by_tmdb_id.get(show_item['tmdb_id'])
+        if show is None:
+            continue
+        next_season = next_season_map.get((show_item['tmdb_id'], show_item['next_season_number']))
+        up_next_data.append(_up_next_entry(show_item, show, next_season))
+
+    new_items, old_items = _split_new_up_next(up_next_data, new_threshold, today)
+    ordered_items = _sort_new_up_next(new_items) + old_items
 
     for item in ordered_items:
         item.pop('last_watched_at', None)
@@ -218,42 +239,68 @@ def up_next(request):
     return Response(ordered_items)
 
 
-def _apply_progress_filters(items, request):
-    params = request.query_params
-    search = (params.get('search') or '').strip().lower()
-    provider_status_values = {value.lower() for value in _parse_multi_param(params, 'provider_status')}
-    selected_genres = {value.lower() for value in _parse_multi_param(params, 'genres')}
-    has_upcoming = _parse_bool_param(params.get('has_upcoming'))
-    is_new = _parse_bool_param(params.get('is_new'))
-    missing_rating = _parse_bool_param(params.get('missing_rating'))
-    has_next_episode = _parse_bool_param(params.get('has_next_episode'))
+def _progress_filter_state(params) -> dict[str, Any]:
+    return {
+        'search': (params.get('search') or '').strip().lower(),
+        'provider_status_values': {value.lower() for value in _parse_multi_param(params, 'provider_status')},
+        'selected_genres': {value.lower() for value in _parse_multi_param(params, 'genres')},
+        'has_upcoming': _parse_bool_param(params.get('has_upcoming')),
+        'is_new': _parse_bool_param(params.get('is_new')),
+        'missing_rating': _parse_bool_param(params.get('missing_rating')),
+        'has_next_episode': _parse_bool_param(params.get('has_next_episode')),
+    }
 
-    filtered = []
-    for item in items:
-        if search and search not in item['show_name'].lower():
-            continue
-        if provider_status_values:
-            provider_status = str(item.get('provider_status') or '').strip().lower()
-            if provider_status not in provider_status_values:
-                continue
-        if selected_genres:
-            item_genres = {genre.lower() for genre in (item.get('genres') or [])}
-            if item_genres.isdisjoint(selected_genres):
-                continue
-        if has_upcoming is not None and item.get('has_upcoming_episode', False) != has_upcoming:
-            continue
-        if is_new is not None and item.get('is_new', False) != is_new:
-            continue
-        if missing_rating is True and item['user_rating'] is not None:
-            continue
-        if missing_rating is True and item.get('status') == 'plan_to_watch':
-            continue
-        if has_next_episode is not None:
-            has_episode = item.get('next_episode') is not None
-            if has_episode != has_next_episode:
-                continue
-        filtered.append(item)
-    return filtered
+
+def _progress_search_ok(item, fs: dict[str, Any]) -> bool:
+    return not fs['search'] or fs['search'] in item['show_name'].lower()
+
+
+def _progress_provider_ok(item, fs: dict[str, Any]) -> bool:
+    if not fs['provider_status_values']:
+        return True
+    provider_status = str(item.get('provider_status') or '').strip().lower()
+    return provider_status in fs['provider_status_values']
+
+
+def _progress_genres_ok(item, fs: dict[str, Any]) -> bool:
+    if not fs['selected_genres']:
+        return True
+    item_genres = {genre.lower() for genre in (item.get('genres') or [])}
+    return not item_genres.isdisjoint(fs['selected_genres'])
+
+
+def _progress_bool_filter_ok(item, flag_value, actual) -> bool:
+    """A ``None`` flag means the filter is not applied."""
+    return flag_value is None or actual == flag_value
+
+
+def _progress_flag_filters_ok(item, fs: dict[str, Any]) -> bool:
+    if not _progress_bool_filter_ok(item, fs['has_upcoming'], item.get('has_upcoming_episode', False)):
+        return False
+    if not _progress_bool_filter_ok(item, fs['is_new'], item.get('is_new', False)):
+        return False
+    return _progress_bool_filter_ok(item, fs['has_next_episode'], item.get('next_episode') is not None)
+
+
+def _progress_rating_ok(item, missing_rating) -> bool:
+    if missing_rating is not True:
+        return True
+    return item['user_rating'] is None and item.get('status') != 'plan_to_watch'
+
+
+def _progress_matches_all(item, fs: dict[str, Any]) -> bool:
+    return (
+        _progress_search_ok(item, fs)
+        and _progress_provider_ok(item, fs)
+        and _progress_genres_ok(item, fs)
+        and _progress_flag_filters_ok(item, fs)
+        and _progress_rating_ok(item, fs['missing_rating'])
+    )
+
+
+def _apply_progress_filters(items, request):
+    fs = _progress_filter_state(request.query_params)
+    return [item for item in items if _progress_matches_all(item, fs)]
 
 
 def _annotate_my_shows_episodes(status_queryset, user, now):
@@ -384,7 +431,140 @@ def _build_my_show_item(tmdb_id, show, row, user_rating, new_threshold, today):
     return item
 
 
-def _sort_progress_items(items, sort_by: str, direction: str):
+def _sorted_by_timestamp(items, field: str, title_field: str, desc: bool) -> list:
+    def ts_of(item):
+        value = item.get(field)
+        return value.timestamp() if value is not None else None
+
+    if desc:
+        return sorted(
+            items,
+            key=lambda item: (ts_of(item) is None, -(ts_of(item) or 0), item[title_field].lower()),
+        )
+    return sorted(
+        items,
+        key=lambda item: (ts_of(item) is None, ts_of(item) or 0, item[title_field].lower()),
+    )
+
+
+def _sorted_by_number_or_zero(items, field: str, title_field: str, desc: bool) -> list:
+    return sorted(
+        items,
+        key=lambda item: (item.get(field) or 0, item[title_field].lower()),
+        reverse=desc,
+    )
+
+
+def _sorted_by_nullable_number(items, field: str, title_field: str, desc: bool) -> list:
+    return sorted(
+        items,
+        key=lambda item: (item.get(field) is None, item.get(field) or 0, item[title_field].lower()),
+        reverse=desc,
+    )
+
+
+def _extract_movie_release_date(item):
+    return item['release_date']
+
+
+def _extract_next_episode_air_date(item):
+    return (item.get('next_episode') or {}).get('air_date')
+
+
+def _sorted_by_nullable_value(items, value_of, title_field: str, desc: bool) -> list:
+    return sorted(
+        items,
+        key=lambda item: (value_of(item) is None, value_of(item) or date.max, item[title_field].lower()),
+        reverse=desc,
+    )
+
+
+def _positive_or_sentinel(value) -> int:
+    return value if value > 0 else 10**9
+
+
+def _progress_left_of(item) -> int:
+    return item.get('episodes_left') or 0
+
+
+def _episodes_left_key(item) -> tuple:
+    left = _progress_left_of(item)
+    return (
+        left <= 0,
+        _positive_or_sentinel(left),
+        _positive_or_sentinel(item.get('runtime_left_minutes') or 0),
+        item['show_name'].lower(),
+    )
+
+
+def _time_left_key(item) -> tuple:
+    left = _progress_left_of(item)
+    return (
+        left <= 0,
+        _positive_or_sentinel(item.get('runtime_left_minutes') or 0),
+        _positive_or_sentinel(left),
+        item['show_name'].lower(),
+    )
+
+
+def _sorted_by_title(items, title_field: str, desc: bool) -> list:
+    return sorted(items, key=lambda item: item[title_field].lower(), reverse=desc)
+
+
+def _handle_last_watched_sort(items, desc: bool) -> list:
+    return _sorted_by_timestamp(items, 'last_watched_at', 'show_name', desc)
+
+
+def _handle_started_date_sort(items, desc: bool) -> list:
+    return _sorted_by_timestamp(items, 'started_at', 'show_name', desc)
+
+
+def _handle_progress_release_date_sort(items, desc: bool) -> list:
+    return _sorted_by_nullable_value(items, _extract_movie_release_date, 'show_name', desc)
+
+
+def _handle_next_episode_date_sort(items, desc: bool) -> list:
+    return _sorted_by_nullable_value(items, _extract_next_episode_air_date, 'show_name', desc)
+
+
+def _handle_progress_user_rating_sort(items, desc: bool) -> list:
+    return _sorted_by_number_or_zero(items, 'user_rating', 'show_name', desc)
+
+
+def _handle_progress_provider_rating_sort(items, desc: bool) -> list:
+    return _sorted_by_number_or_zero(items, 'vote_average', 'show_name', desc)
+
+
+def _handle_title_sort(items, desc: bool) -> list:
+    return _sorted_by_title(items, 'show_name', desc)
+
+
+def _handle_episodes_left_sort(items, desc: bool) -> list:
+    return sorted(items, key=_episodes_left_key, reverse=desc)
+
+
+def _handle_time_left_sort(items, desc: bool) -> list:
+    return sorted(items, key=_time_left_key, reverse=desc)
+
+
+def _progress_percent_handler(items, desc: bool) -> list:
+    return _sorted_by_number_or_zero(items, 'progress_percent', 'show_name', desc)
+
+
+_PROGRESS_SORT_HANDLERS = {
+    'last_watched': _handle_last_watched_sort,
+    'progress_percent': _progress_percent_handler,
+    'provider_rating': _handle_progress_provider_rating_sort,
+    'user_rating': _handle_progress_user_rating_sort,
+    'title': _handle_title_sort,
+    'next_episode_date': _handle_next_episode_date_sort,
+    'release_date': _handle_progress_release_date_sort,
+    'started_date': _handle_started_date_sort,
+    'episodes_left': _handle_episodes_left_sort,
+}
+
+
+def _progress_sort_meta(sort_by: str, direction: str) -> tuple[str, str]:
     sort_key = (sort_by or 'last_watched').strip().lower()
     direction_key = (direction or '').strip().lower()
     default_direction_by_sort = {
@@ -396,118 +576,12 @@ def _sort_progress_items(items, sort_by: str, direction: str):
     }
     default_direction = default_direction_by_sort.get(sort_key, 'asc')
     final_direction = direction_key if direction_key in ('asc', 'desc') else default_direction
+    return sort_key, final_direction
 
-    if sort_key == 'last_watched':
-        def watched_ts(item):
-            value = item.get('last_watched_at')
-            return value.timestamp() if value is not None else None
 
-        if final_direction == 'desc':
-            return sorted(
-                items,
-                key=lambda item: (
-                    watched_ts(item) is None,
-                    -(watched_ts(item) or 0),
-                    item['show_name'].lower(),
-                ),
-            )
-        return sorted(
-            items,
-            key=lambda item: (
-                watched_ts(item) is None,
-                watched_ts(item) or 0,
-                item['show_name'].lower(),
-            ),
-        )
-
-    if sort_key == 'progress_percent':
-        return sorted(
-            items,
-            key=lambda item: ((item.get('progress_percent') or 0), item['show_name'].lower()),
-            reverse=final_direction == 'desc',
-        )
-
-    if sort_key in ('provider_rating', 'user_rating'):
-        rating_key = 'vote_average' if sort_key == 'provider_rating' else 'user_rating'
-        return sorted(
-            items,
-            key=lambda item: (
-                item.get(rating_key) or 0,
-                item['show_name'].lower(),
-            ),
-            reverse=final_direction == 'desc',
-        )
-
-    if sort_key == 'title':
-        return sorted(items, key=lambda item: item['show_name'].lower(), reverse=final_direction == 'desc')
-
-    if sort_key == 'next_episode_date':
-        return sorted(
-            items,
-            key=lambda item: (
-                (item.get('next_episode') or {}).get('air_date') is None,
-                (item.get('next_episode') or {}).get('air_date') or date.max,
-                item['show_name'].lower(),
-            ),
-            reverse=final_direction == 'desc',
-        )
-
-    if sort_key == 'release_date':
-        return sorted(
-            items,
-            key=lambda item: (
-                item['release_date'] is None,
-                item['release_date'] or date.max,
-                item['show_name'].lower(),
-            ),
-            reverse=final_direction == 'desc',
-        )
-
-    if sort_key == 'started_date':
-        def started_ts(item):
-            value = item.get('started_at')
-            return value.timestamp() if value is not None else None
-
-        if final_direction == 'desc':
-            return sorted(
-                items,
-                key=lambda item: (
-                    started_ts(item) is None,
-                    -(started_ts(item) or 0),
-                    item['show_name'].lower(),
-                ),
-            )
-        return sorted(
-            items,
-            key=lambda item: (
-                started_ts(item) is None,
-                started_ts(item) or 0,
-                item['show_name'].lower(),
-            ),
-        )
-
-    if sort_key == 'episodes_left':
-        return sorted(
-            items,
-            key=lambda item: (
-                (item.get('episodes_left') or 0) <= 0,
-                (item.get('episodes_left') or 0) if (item.get('episodes_left') or 0) > 0 else 10**9,
-                (item.get('runtime_left_minutes') or 0) if (item.get('episodes_left') or 0) > 0 else 10**9,
-                item['show_name'].lower(),
-            ),
-            reverse=final_direction == 'desc',
-        )
-
-    return sorted(
-        items,
-        key=lambda item: (
-            (item.get('episodes_left') or 0) <= 0,
-            (item.get('runtime_left_minutes') or 0) if (item.get('episodes_left') or 0) > 0 else 10**9,
-            (item.get('episodes_left') or 0) if (item.get('episodes_left') or 0) > 0 else 10**9,
-            item['show_name'].lower(),
-        ),
-        reverse=final_direction == 'desc',
-    )
+def _sort_progress_items(items, sort_by: str, direction: str):
+    sort_key, final_direction = _progress_sort_meta(sort_by, direction)
+    return _PROGRESS_SORT_HANDLERS.get(sort_key, _handle_time_left_sort)(items, final_direction == 'desc')
 
 
 def _paginated_library_response(request, items, **extras):
@@ -602,30 +676,49 @@ def my_shows_list(request):
     )
 
 
+def _movie_filter_state(params) -> dict[str, Any]:
+    return {
+        'search': (params.get('search') or '').strip().lower(),
+        'status_values': {value.lower() for value in _parse_multi_param(params, 'status')},
+        'selected_genres': {value.lower() for value in _parse_multi_param(params, 'genres')},
+        'missing_rating': _parse_bool_param(params.get('missing_rating')),
+    }
+
+
+def _movie_search_ok(item, fs: dict[str, Any]) -> bool:
+    return not fs['search'] or fs['search'] in item['title'].lower()
+
+
+def _movie_status_ok(item, fs: dict[str, Any]) -> bool:
+    return not fs['status_values'] or item['status'] in fs['status_values']
+
+
+def _movie_genres_ok(item, fs: dict[str, Any]) -> bool:
+    if not fs['selected_genres']:
+        return True
+    item_genres = {genre.lower() for genre in (item.get('genres') or [])}
+    return not item_genres.isdisjoint(fs['selected_genres'])
+
+
+def _movie_missing_rating_ok(item, missing_rating) -> bool:
+    return missing_rating is not True or item['user_rating'] is None
+
+
+def _movie_matches_all(item, fs: dict[str, Any]) -> bool:
+    return (
+        _movie_search_ok(item, fs)
+        and _movie_status_ok(item, fs)
+        and _movie_genres_ok(item, fs)
+        and _movie_missing_rating_ok(item, fs['missing_rating'])
+    )
+
+
 def _apply_movie_filters(items, request):
-    params = request.query_params
-    search = (params.get('search') or '').strip().lower()
-    status_values = {value.lower() for value in _parse_multi_param(params, 'status')}
-    selected_genres = {value.lower() for value in _parse_multi_param(params, 'genres')}
-    missing_rating = _parse_bool_param(params.get('missing_rating'))
-
-    filtered = []
-    for item in items:
-        if search and search not in item['title'].lower():
-            continue
-        if status_values and item['status'] not in status_values:
-            continue
-        if selected_genres:
-            item_genres = {genre.lower() for genre in (item.get('genres') or [])}
-            if item_genres.isdisjoint(selected_genres):
-                continue
-        if missing_rating is True and item['user_rating'] is not None:
-            continue
-        filtered.append(item)
-    return filtered
+    fs = _movie_filter_state(request.query_params)
+    return [item for item in items if _movie_matches_all(item, fs)]
 
 
-def _sort_movie_items(items, sort_by: str, direction: str):
+def _movie_sort_meta(sort_by: str, direction: str) -> tuple[str, str]:
     sort_key = (sort_by or 'watched_date').strip().lower()
     direction_key = (direction or '').strip().lower()
     default_direction_by_sort = {
@@ -635,65 +728,52 @@ def _sort_movie_items(items, sort_by: str, direction: str):
         'watched_date': 'desc',
     }
     final_direction = direction_key if direction_key in ('asc', 'desc') else default_direction_by_sort.get(sort_key, 'asc')
+    return sort_key, final_direction
 
-    def title_key(item):
-        return item['title'].lower()
 
-    if sort_key == 'release_date':
-        return sorted(
-            items,
-            key=lambda item: (
-                item['release_date'] is None,
-                item['release_date'] or date.max,
-                title_key(item),
-            ),
-            reverse=final_direction == 'desc',
-        )
+def _handle_movie_release_date_sort(items, desc: bool) -> list:
+    return _sorted_by_nullable_value(items, _extract_movie_release_date, 'title', desc)
 
-    if sort_key == 'user_rating':
-        def rating_value(item):
-            score = item.get('user_rating')
-            return -(score or 0) if final_direction == 'desc' else (score or 0)
 
-        return sorted(
-            items,
-            key=lambda item: (rating_value(item), title_key(item)),
-        )
+def _handle_movie_watched_date_sort(items, desc: bool) -> list:
+    return _sorted_by_timestamp(items, 'last_watched_at', 'title', desc)
 
-    if sort_key == 'provider_rating':
-        return sorted(
-            items,
-            key=lambda item: (item.get('vote_average') is None, item.get('vote_average') or 0, title_key(item)),
-            reverse=final_direction == 'desc',
-        )
 
-    if sort_key == 'runtime':
-        return sorted(
-            items,
-            key=lambda item: (
-                item.get('runtime') is None,
-                item.get('runtime') or 0,
-                title_key(item),
-            ),
-            reverse=final_direction == 'desc',
-        )
+def _handle_movie_provider_rating_sort(items, desc: bool) -> list:
+    return _sorted_by_nullable_number(items, 'vote_average', 'title', desc)
 
-    if sort_key == 'watched_date':
-        def watched_ts(item):
-            value = item.get('last_watched_at')
-            return value.timestamp() if value is not None else None
 
-        if final_direction == 'desc':
-            return sorted(
-                items,
-                key=lambda item: (watched_ts(item) is None, -(watched_ts(item) or 0), title_key(item)),
-            )
-        return sorted(
-            items,
-            key=lambda item: (watched_ts(item) is None, watched_ts(item) or 0, title_key(item)),
-        )
+def _handle_movie_runtime_sort(items, desc: bool) -> list:
+    return _sorted_by_nullable_number(items, 'runtime', 'title', desc)
 
-    return sorted(items, key=title_key, reverse=final_direction == 'desc')
+
+def _handle_movie_title_sort(items, desc: bool) -> list:
+    return _sorted_by_title(items, 'title', desc)
+
+
+def _handle_movie_user_rating_desc_sort(items, desc: bool) -> list:
+    def rating_value(item):
+        score = item.get('user_rating')
+        return -(score or 0) if desc else (score or 0)
+
+    return sorted(
+        items,
+        key=lambda item: (rating_value(item), item['title'].lower()),
+    )
+
+
+_MOVIE_SORT_HANDLERS = {
+    'release_date': _handle_movie_release_date_sort,
+    'user_rating': _handle_movie_user_rating_desc_sort,
+    'provider_rating': _handle_movie_provider_rating_sort,
+    'runtime': _handle_movie_runtime_sort,
+    'watched_date': _handle_movie_watched_date_sort,
+}
+
+
+def _sort_movie_items(items, sort_by: str, direction: str):
+    sort_key, final_direction = _movie_sort_meta(sort_by, direction)
+    return _MOVIE_SORT_HANDLERS.get(sort_key, _handle_movie_title_sort)(items, final_direction == 'desc')
 
 
 @api_view(['GET'])

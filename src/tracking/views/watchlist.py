@@ -2,7 +2,6 @@ import logging
 
 from django.db.models import (
     DateTimeField,
-    Q,
 )
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -25,14 +24,15 @@ from ..models import (
 from ..serializers import WatchlistSerializer
 from ..status_annotations import annotate_media_user_status
 from ._helpers import (
+    _apply_media_search_filters,
+    _apply_media_type_filter,
     _apply_missing_rating_filter,
     _apply_secondary_title_ordering,
     _coerce_int,
     _compute_mixed_runtime_and_counts,
     _ensure_local_metadata,
-    _normalize_sort,
     _parse_bool_param,
-    _parse_multi_param,
+    _validated_sort,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,54 +43,32 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        query_params = self.request.query_params
         qs = UserMediaStatus.objects.for_user(self.request.user).planning().annotate(
             added_at=Coalesce('status_changed_at', 'created_at', output_field=DateTimeField())
         )
-        media_type = (self.request.query_params.get('media_type') or '').strip().lower()
-        if media_type in (MediaType.MOVIE, MediaType.TV):
-            qs = qs.filter(media_type=media_type)
+        qs = _apply_media_type_filter(qs, query_params)
 
-        tmdb_id = self.request.query_params.get('tmdb_id')
+        tmdb_id = query_params.get('tmdb_id')
         if tmdb_id is not None:
             qs = qs.filter(tmdb_id=_coerce_int(tmdb_id, 'tmdb_id'))
 
-        search = (self.request.query_params.get('search') or '').strip()
-        if search:
-            from media.models import Movie, TVShow
-            movie_ids = Movie.objects.filter(title__icontains=search).values_list('tmdb_id', flat=True)
-            tv_ids = TVShow.objects.filter(name__icontains=search).values_list('tmdb_id', flat=True)
-            qs = qs.filter(
-                Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
-                | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
-            ).distinct()
+        qs = _apply_media_search_filters(qs, query_params)
 
-        selected_genres = _parse_multi_param(self.request.query_params, 'genres')
-        if selected_genres:
-            from media.models import Movie, TVShow
-            movie_ids = Movie.objects.filter(genres__name__in=selected_genres).values_list('tmdb_id', flat=True)
-            tv_ids = TVShow.objects.filter(genres__name__in=selected_genres).values_list('tmdb_id', flat=True)
-            qs = qs.filter(
-                Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
-                | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
-            ).distinct()
-
-        missing_rating = _parse_bool_param(self.request.query_params.get('missing_rating'))
+        missing_rating = _parse_bool_param(query_params.get('missing_rating'))
         if missing_rating is True:
             qs = _apply_missing_rating_filter(qs, self.request.user)
 
-        sort_key, direction = _normalize_sort(
+        sort_key, direction = _validated_sort(
             self.request.query_params.get('sort'),
             self.request.query_params.get('direction'),
             default_sort='added_at',
-            default_direction='asc',
+            valid_sorts={
+                'added_at', 'title', 'release_date',
+                'provider_rating', 'user_rating', 'runtime', 'total_episodes', 'vote_count',
+                'watched_date', 'started_date', 'last_watched', 'progress_percent', 'episodes_left', 'time_left', 'next_episode_date'
+            },
         )
-        valid_sorts = {
-            'added_at', 'title', 'release_date',
-            'provider_rating', 'user_rating', 'runtime', 'total_episodes', 'vote_count',
-            'watched_date', 'started_date', 'last_watched', 'progress_percent', 'episodes_left', 'time_left', 'next_episode_date'
-        }
-        if sort_key not in valid_sorts:
-            sort_key = 'added_at'
 
         return _apply_secondary_title_ordering(qs, sort_key, direction, user=self.request.user)
 

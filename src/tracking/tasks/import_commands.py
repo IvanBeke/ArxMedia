@@ -32,12 +32,22 @@ class ConfirmImportCommand:
         self.import_mode = import_mode
 
     def execute(self):
-        if self.job.job_type != DataTransferJobType.IMPORT:
-            raise ImportDomainError(
-                code=ImportErrorCode.IMPORT_CONFIRM_NOT_ALLOWED,
-                message='Only import jobs can be confirmed.',
-            )
+        self._validate_job_type()
+        self._validate_source()
+        self._validate_import_mode()
 
+        overwrite_existing = self.import_mode in (DataImportMode.UPDATE_EXISTING, DataImportMode.MIRROR_IMPORTED_SET)
+        confirm_transition(self.job, self.import_mode, overwrite_existing)
+
+    def _validate_job_type(self):
+        if self.job.job_type == DataTransferJobType.IMPORT:
+            return
+        raise ImportDomainError(
+            code=ImportErrorCode.IMPORT_CONFIRM_NOT_ALLOWED,
+            message='Only import jobs can be confirmed.',
+        )
+
+    def _validate_source(self):
         expected_formats = expected_formats_for_source(self.job.source)
         if expected_formats is None:
             raise ImportDomainError(
@@ -54,12 +64,11 @@ class ConfirmImportCommand:
                 code=ImportErrorCode.IMPORT_CONFIRM_NOT_ALLOWED,
                 message='Import source does not support confirmation.',
             )
+
+    def _validate_import_mode(self):
         if self.import_mode not in DataImportMode.values:
             raise ImportDomainError(
                 code=ImportErrorCode.IMPORT_MODE_INVALID,
                 message='import_mode must be new_items, update_existing, or mirror_imported_set',
                 field='import_mode',
             )
-
-        overwrite_existing = self.import_mode in (DataImportMode.UPDATE_EXISTING, DataImportMode.MIRROR_IMPORTED_SET)
-        confirm_transition(self.job, self.import_mode, overwrite_existing)

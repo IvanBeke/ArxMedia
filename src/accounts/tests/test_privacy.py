@@ -96,7 +96,7 @@ class TestVisibleOwnerQuery:
         )
         expected = {
             user.id
-            for name, user in users.items()
+            for user in users.values()
             if can_view_account_content(
                 user.account_visibility, get_viewer_relationship(viewer, user)
             )

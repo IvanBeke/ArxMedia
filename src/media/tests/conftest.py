@@ -2,66 +2,67 @@
 
 import pytest
 
+_EMPTY_LIST = {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
+
+_MOVIE_550 = {
+    'id': 550,
+    'title': 'Fight Club',
+    'overview': 'Mocked movie',
+    'release_date': '1999-10-15',
+    'genres': [],
+    'keywords': {
+        'keywords': [
+            {'id': 179430, 'name': 'after credits stinger'},
+        ],
+    },
+}
+
+_TV_1399 = {
+    'id': 1399,
+    'name': 'Game of Thrones',
+    'overview': 'Mocked show',
+    'first_air_date': '2011-04-17',
+    'number_of_seasons': 1,
+    'number_of_episodes': 1,
+    'episode_run_time': [57],
+    'genres': [],
+    'networks': [],
+}
+
+_SEASON_1 = {
+    'id': 139901,
+    'season_number': 1,
+    'name': 'Season 1',
+    'episode_count': 1,
+    'episodes': [
+        {
+            'id': 13990101,
+            'episode_number': 1,
+            'name': 'Winter Is Coming',
+            'air_date': '2011-04-17',
+            'episode_type': 'finale',
+        }
+    ],
+}
+
+_MOCK_ENDPOINTS = {
+    '/movie/550': _MOVIE_550,
+    '/movie/550/watch/providers': {'results': {}},
+    '/tv/1399': _TV_1399,
+    '/tv/1399/watch/providers': {'results': {}},
+    '/tv/1399/season/1': _SEASON_1,
+    '/tv/1399/season/1/episode/1/credits': {'cast': [], 'crew': []},
+}
+
+_LIST_ENDPOINTS = ('/movie/popular', '/tv/popular', '/search/multi')
+
 
 def fake_tmdb_get(endpoint, params=None, **kwargs):
-    if endpoint == '/movie/popular':
-        return {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
-    if endpoint == '/tv/popular':
-        return {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
-    if endpoint == '/search/multi':
-        return {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
-    if endpoint.startswith('/trending/'):
-        return {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
-
-    if endpoint == '/movie/550':
-        return {
-            'id': 550,
-            'title': 'Fight Club',
-            'overview': 'Mocked movie',
-            'release_date': '1999-10-15',
-            'genres': [],
-            'keywords': {
-                'keywords': [
-                    {'id': 179430, 'name': 'after credits stinger'},
-                ],
-            },
-        }
-    if endpoint == '/movie/550/watch/providers':
-        return {'results': {}}
-
-    if endpoint == '/tv/1399':
-        return {
-            'id': 1399,
-            'name': 'Game of Thrones',
-            'overview': 'Mocked show',
-            'first_air_date': '2011-04-17',
-            'number_of_seasons': 1,
-            'number_of_episodes': 1,
-            'episode_run_time': [57],
-            'genres': [],
-            'networks': [],
-        }
-    if endpoint == '/tv/1399/watch/providers':
-        return {'results': {}}
-    if endpoint == '/tv/1399/season/1':
-        return {
-            'id': 139901,
-            'season_number': 1,
-            'name': 'Season 1',
-            'episode_count': 1,
-            'episodes': [
-                {
-                    'id': 13990101,
-                    'episode_number': 1,
-                    'name': 'Winter Is Coming',
-                    'air_date': '2011-04-17',
-                    'episode_type': 'finale',
-                }
-            ],
-        }
-    if endpoint == '/tv/1399/season/1/episode/1/credits':
-        return {'cast': [], 'crew': []}
-
+    payload = _MOCK_ENDPOINTS.get(endpoint)
+    if payload is not None:
+        return payload
+    if endpoint in _LIST_ENDPOINTS or endpoint.startswith('/trending/'):
+        return _EMPTY_LIST
     return {}
 
 

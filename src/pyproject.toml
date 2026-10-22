@@ -39,11 +39,60 @@ line-length = 120
 target-version = "py314"
 exclude = ["migrations", ".venv", "manage.py", "node_modules"]
 src = ["."]
+preview = true
 
 [tool.ruff.lint]
-extend-select = ["DJ", "I", "UP", "B", "SIM", "RET", "PERF", "G", "PT"]
+extend-select = [
+    "DJ",
+    "I",
+    "UP",
+    "B",
+    "SIM",
+    "RET",
+    "PERF",
+    "G",
+    "PT",
+    "C901",
+    "PLR0911", # too-many-return-statements
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR0917", # too-many-positional-arguments
+]
+# Keep the preview blast radius to rules we explicitly listed (PLR0917).
+explicit-preview-rules = true
 extend-ignore = ["EXE002", "BLE001"]
-per-file-ignores = { "*/admin.py" = ["RUF012"], "*/models.py" = ["RUF012"], "*/serializers.py" = ["RUF012"], "*/views.py" = ["RUF012"], "*/views/*.py" = ["RUF012"], "*/tests/*.py" = ["PT012"], "*/tests.py" = ["PT012"], "*/conftest.py" = ["PT012"], "*/factories.py" = ["RUF012"] }
+per-file-ignores = { "*/admin.py" = [
+    "RUF012",
+], "*/models.py" = [
+    "RUF012",
+], "*/serializers.py" = [
+    "RUF012",
+], "*/views.py" = [
+    "RUF012",
+], "*/views/*.py" = [
+    "RUF012",
+], "*/tests/*.py" = [
+    "PT012",
+    "PLR0915",
+], "*/tests.py" = [
+    "PT012",
+    "PLR0915",
+], "*/conftest.py" = [
+    "PT012",
+], "*/factories.py" = [
+    "RUF012",
+] }
+
+[tool.ruff.lint.mccabe]
+max-complexity = 5
+
+[tool.ruff.lint.pylint]
+max-statements = 45
+max-branches = 10
+max-args = 10
+max-positional-args = 7
+max-returns = 6
 
 [tool.mypy]
 python_version = "3.14"
@@ -58,7 +107,14 @@ plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
 # responses as plain Django (no .data, Client without force_authenticate).
 # Source stays strict; tests are covered by execution instead.
 [[tool.mypy.overrides]]
-module = ["*.tests", "*.tests.*", "conftest", "*.conftest", "*.factories", "*.factories.*"]
+module = [
+    "*.tests",
+    "*.tests.*",
+    "conftest",
+    "*.conftest",
+    "*.factories",
+    "*.factories.*",
+]
 ignore_errors = true
 
 [tool.pytest.ini_options]

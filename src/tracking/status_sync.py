@@ -1,4 +1,3 @@
-from datetime import datetime
 from functools import partial
 
 from django.db import transaction
@@ -113,15 +112,59 @@ def refresh_movie_status(user_id: int, tmdb_id: int):
         ).delete()
 
 
+def _tv_candidate_status(has_watched_entries, watched_episodes, total_episodes, is_final):
+    if not has_watched_entries:
+        return None
+    if total_episodes > 0 and watched_episodes >= total_episodes and is_final:
+        return TvShowStatus.WATCHED
+    return TvShowStatus.WATCHING
+
+
+def _resolved_tv_status(candidate_status, dropped_at, last_watched_at):
+    """A stale dropped overlay survives; otherwise the derived status wins."""
+    if dropped_at and (last_watched_at is None or last_watched_at <= dropped_at):
+        return TvShowStatus.DROPPED, dropped_at
+    if candidate_status in (TvShowStatus.WATCHED, TvShowStatus.WATCHING):
+        return candidate_status, last_watched_at
+    return candidate_status, None
+
+
+def _keep_or_clear_statusless_row(user_id, tmdb_id, existing, watched_episodes, total_episodes, progress, *, first_watched_at, last_watched_at):
+    if existing and existing.status == TvShowStatus.PLAN_TO_WATCH:
+        _keep_planning_row(existing, watched_episodes, total_episodes, progress, first_watched_at, last_watched_at)
+        return
+    UserMediaStatus.objects.filter(user_id=user_id, media_type=MediaType.TV, tmdb_id=tmdb_id).delete()
+
+
+def _keep_planning_row(existing, watched_episodes, total_episodes, progress, first_watched_at, last_watched_at):
+    UserMediaStatus.objects.filter(id=existing.id).update(
+        watched_episodes=watched_episodes,
+        total_episodes=total_episodes,
+        progress_percent=_percent(watched_episodes, total_episodes),
+        episodes_left=len(progress['remaining_rows']),
+        time_left_minutes=progress['time_left_minutes'],
+        time_left_has_unknown=progress['time_left_has_unknown'],
+        started_at=first_watched_at,
+        last_watched_at=last_watched_at,
+        completed_at=None,
+    )
+
+
+def _refresh_show_row(existing, user_id, tmdb_id, fields):
+    UserMediaStatus.objects.update_or_create(
+        user_id=user_id,
+        media_type=MediaType.TV,
+        tmdb_id=tmdb_id,
+        defaults=fields,
+    )
+
+
 def refresh_show_status(user_id: int, tmdb_id: int):
     existing = UserMediaStatus.objects.shows().filter(user_id=user_id, tmdb_id=tmdb_id).first()
 
     progress = calculate_show_progress(user_id, tmdb_id)
-    remaining_rows = progress['remaining_rows']
     watched_episodes = progress['watched_episodes']
     total_episodes = progress['total_episodes']
-    time_left_minutes = progress['time_left_minutes']
-    time_left_has_unknown = progress['time_left_has_unknown']
     watched_data = WatchEntry.objects.for_user(user_id).for_show(tmdb_id).filter(
         season_number__gt=0,
     ).aggregate(
@@ -133,70 +176,33 @@ def refresh_show_status(user_id: int, tmdb_id: int):
     has_watched_entries = bool(progress['valid_watched_keys'] or progress['orphan_watched_keys'])
     first_watched_at = watched_data.get('first_watched_at')
     last_watched_at = watched_data.get('last_watched_at')
-
     dropped_at = existing.dropped_at if existing else None
-
     is_final = _is_final_tmdb_show_status(tmdb_id)
-    if has_watched_entries:
-        if total_episodes > 0 and watched_episodes >= total_episodes and is_final:
-            candidate_status = TvShowStatus.WATCHED
-        else:
-            candidate_status = TvShowStatus.WATCHING
-    else:
-        candidate_status = None
 
-    status_value: str | None = None
-    status_changed_at: datetime | None = None
-    if dropped_at and (last_watched_at is None or last_watched_at <= dropped_at):
-        status_value = TvShowStatus.DROPPED
-        status_changed_at = dropped_at
-    else:
-        status_value = candidate_status
-        if status_value == TvShowStatus.WATCHED or status_value == TvShowStatus.WATCHING:
-            status_changed_at = last_watched_at
-        else:
-            status_changed_at = None
-
+    candidate_status = _tv_candidate_status(has_watched_entries, watched_episodes, total_episodes, is_final)
+    status_value, status_changed_at = _resolved_tv_status(candidate_status, dropped_at, last_watched_at)
     if status_value is None:
-        if existing and existing.status == TvShowStatus.PLAN_TO_WATCH:
-            UserMediaStatus.objects.filter(id=existing.id).update(
-                watched_episodes=watched_episodes,
-                total_episodes=total_episodes,
-                progress_percent=_percent(watched_episodes, total_episodes),
-                episodes_left=len(remaining_rows),
-                time_left_minutes=time_left_minutes,
-                time_left_has_unknown=time_left_has_unknown,
-                started_at=first_watched_at,
-                last_watched_at=last_watched_at,
-                completed_at=None,
-            )
-            return
-        UserMediaStatus.objects.filter(user_id=user_id, media_type=MediaType.TV, tmdb_id=tmdb_id).delete()
+        _keep_or_clear_statusless_row(user_id, tmdb_id, existing, watched_episodes, total_episodes, progress, first_watched_at=first_watched_at, last_watched_at=last_watched_at)
         return
 
     completed_at = None
     if watched_episodes > 0 and total_episodes > 0 and is_final and watched_episodes >= total_episodes:
         completed_at = last_watched_at
 
-    UserMediaStatus.objects.update_or_create(
-        user_id=user_id,
-        media_type=MediaType.TV,
-        tmdb_id=tmdb_id,
-        defaults={
-            'status': status_value,
-            'watched_episodes': watched_episodes,
-            'total_episodes': total_episodes,
-            'progress_percent': _percent(watched_episodes, total_episodes),
-            'episodes_left': len(remaining_rows),
-            'time_left_minutes': time_left_minutes,
-            'time_left_has_unknown': time_left_has_unknown,
-            'started_at': first_watched_at,
-            'completed_at': completed_at,
-            'dropped_at': dropped_at,
-            'last_watched_at': last_watched_at,
-            'status_changed_at': status_changed_at,
-        },
-    )
+    _refresh_show_row(existing, user_id, tmdb_id, {
+        'status': status_value,
+        'watched_episodes': watched_episodes,
+        'total_episodes': total_episodes,
+        'progress_percent': _percent(watched_episodes, total_episodes),
+        'episodes_left': len(progress['remaining_rows']),
+        'time_left_minutes': progress['time_left_minutes'],
+        'time_left_has_unknown': progress['time_left_has_unknown'],
+        'started_at': first_watched_at,
+        'completed_at': completed_at,
+        'dropped_at': dropped_at,
+        'last_watched_at': last_watched_at,
+        'status_changed_at': status_changed_at,
+    })
 
 
 def refresh_all_statuses_for_show(tmdb_id: int, current_user_id: int | None = None):

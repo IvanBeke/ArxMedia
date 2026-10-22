@@ -79,26 +79,49 @@ def _user_status_exists(user, media_type: str, status: str):
     )
 
 
+def _normalized_statuses(selected_statuses: list[str]) -> set[str]:
+    return {value.strip().lower() for value in selected_statuses if value and value.strip()}
+
+
+def _plan_to_watch_q(user) -> Q:
+    return Q(
+        _user_status_exists(user, MediaType.MOVIE, TvShowStatus.PLAN_TO_WATCH), media_type=MediaType.MOVIE,
+    ) | Q(_user_status_exists(user, MediaType.TV, TvShowStatus.PLAN_TO_WATCH), media_type=MediaType.TV)
+
+
+def _watching_q(user) -> Q:
+    return Q(_user_status_exists(user, MediaType.TV, TvShowStatus.WATCHING), media_type=MediaType.TV)
+
+
+def _watched_q(user) -> Q:
+    movie_watched = Exists(
+        WatchEntry.objects.filter(user=user, media_type=WatchEntryMediaType.MOVIE, tmdb_id=OuterRef('tmdb_id'))
+    )
+    return Q(movie_watched, media_type=MediaType.MOVIE) | Q(_user_status_exists(user, MediaType.TV, TvShowStatus.WATCHED), media_type=MediaType.TV)
+
+
+def _dropped_q(user) -> Q:
+    return Q(_user_status_exists(user, MediaType.TV, TvShowStatus.DROPPED), media_type=MediaType.TV)
+
+
+_STATUS_FILTER_TABLE = {
+    'plan_to_watch': _plan_to_watch_q,
+    'watching': _watching_q,
+    'watched': _watched_q,
+    'dropped': _dropped_q,
+}
+
+
 def _apply_status_filter(queryset, user, selected_statuses: list[str]):
-    normalized = {value.strip().lower() for value in selected_statuses if value and value.strip()}
+    normalized = _normalized_statuses(selected_statuses)
     if not normalized:
         return queryset
 
     # Correlated EXISTS checks keep the whole filter in one SQL query (no id lists round-tripped through Python).
     status_q = Q()
-    if 'plan_to_watch' in normalized:
-        status_q |= Q(_user_status_exists(user, MediaType.MOVIE, TvShowStatus.PLAN_TO_WATCH), media_type=MediaType.MOVIE)
-        status_q |= Q(_user_status_exists(user, MediaType.TV, TvShowStatus.PLAN_TO_WATCH), media_type=MediaType.TV)
-    if 'watching' in normalized:
-        status_q |= Q(_user_status_exists(user, MediaType.TV, TvShowStatus.WATCHING), media_type=MediaType.TV)
-    if 'watched' in normalized:
-        movie_watched = Exists(
-            WatchEntry.objects.filter(user=user, media_type=WatchEntryMediaType.MOVIE, tmdb_id=OuterRef('tmdb_id'))
-        )
-        status_q |= Q(movie_watched, media_type=MediaType.MOVIE)
-        status_q |= Q(_user_status_exists(user, MediaType.TV, TvShowStatus.WATCHED), media_type=MediaType.TV)
-    if 'dropped' in normalized:
-        status_q |= Q(_user_status_exists(user, MediaType.TV, TvShowStatus.DROPPED), media_type=MediaType.TV)
+    for key, build_q in _STATUS_FILTER_TABLE.items():
+        if key in normalized:
+            status_q |= build_q(user)
 
     if not status_q:
         return queryset.none()
@@ -122,6 +145,46 @@ def _apply_in_watchlist_filter(queryset, user):
     return queryset.filter(
         media_ids_q(movie_ids, tv_ids)
     )
+
+
+def _apply_media_type_filter(queryset, query_params):
+    media_type = (query_params.get('media_type') or '').strip().lower()
+    if media_type in (MediaType.MOVIE, MediaType.TV):
+        return queryset.filter(media_type=media_type)
+    return queryset
+
+
+def _search_media_by_title(queryset, search: str):
+    from media.models import Movie, TVShow
+
+    movie_ids = Movie.objects.filter(title__icontains=search).values_list('tmdb_id', flat=True)
+    tv_ids = TVShow.objects.filter(name__icontains=search).values_list('tmdb_id', flat=True)
+    return queryset.filter(
+        Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
+        | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
+    ).distinct()
+
+
+def _filter_media_by_genres(queryset, selected_genres: list[str]):
+    from media.models import Movie, TVShow
+
+    movie_ids = Movie.objects.filter(genres__name__in=selected_genres).values_list('tmdb_id', flat=True)
+    tv_ids = TVShow.objects.filter(genres__name__in=selected_genres).values_list('tmdb_id', flat=True)
+    return queryset.filter(
+        Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
+        | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
+    ).distinct()
+
+
+def _apply_media_search_filters(queryset, query_params):
+    """Title search and genre filters, each narrowing to movies OR shows matched per ID."""
+    search = (query_params.get('search') or '').strip()
+    if search:
+        queryset = _search_media_by_title(queryset, search)
+    selected_genres = _parse_multi_param(query_params, 'genres')
+    if selected_genres:
+        queryset = _filter_media_by_genres(queryset, selected_genres)
+    return queryset
 
 
 def _build_tv_runtime_map(tmdb_ids: list[int]) -> dict[int, int]:
@@ -171,6 +234,13 @@ def _normalize_sort(sort_raw: str | None, direction_raw: str | None, default_sor
         direction = default_direction
 
     return sort_value, direction
+
+
+def _validated_sort(sort_raw, direction_raw, *, default_sort: str, valid_sorts: set) -> tuple[str, str]:
+    sort_key, direction = _normalize_sort(sort_raw, direction_raw, default_sort=default_sort, default_direction='asc')
+    if sort_key not in valid_sorts:
+        return default_sort, direction
+    return sort_key, direction
 
 
 def _alias_media_sort_fields(queryset, user=None):
@@ -273,67 +343,91 @@ def _alias_media_sort_fields(queryset, user=None):
     )
 
 
-def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_desc: bool = False, user=None):
-    if sort_key == 'custom_order':
-        if direction == 'desc':
-            return queryset.order_by(F('custom_order').desc(nulls_last=True), 'id')
-        return queryset.order_by(F('custom_order').asc(nulls_last=True), 'id')
+def _id_order_suffix(id_desc: bool) -> str:
+    return '-id' if id_desc else 'id'
 
-    queryset = _alias_media_sort_fields(queryset, user=user)
 
-    id_order = '-id' if id_desc else 'id'
+def _resolved_date_field(sort_key: str) -> str:
+    if sort_key == 'next_episode_date':
+        return 'resolved_next_episode_date'
+    if sort_key in ('watched_date', 'last_watched'):
+        return 'resolved_watched_date'
+    if sort_key == 'started_date':
+        return 'resolved_started_date'
+    return 'resolved_date'
 
-    if sort_key == 'title':
-        if direction == 'desc':
-            return queryset.order_by('-resolved_title', id_order)
-        return queryset.order_by('resolved_title', id_order)
 
-    if sort_key == 'media_type':
-        if direction == 'desc':
-            return queryset.order_by('-media_type', 'resolved_title', id_order)
-        return queryset.order_by('media_type', 'resolved_title', id_order)
+def _order_by_custom_order(queryset, direction: str):
+    if direction == 'desc':
+        return queryset.order_by(F('custom_order').desc(nulls_last=True), 'id')
+    return queryset.order_by(F('custom_order').asc(nulls_last=True), 'id')
 
-    if sort_key in ('release_date', 'next_episode_date', 'watched_date', 'started_date', 'last_watched'):
-        date_field = 'resolved_date'
-        if sort_key == 'next_episode_date':
-            date_field = 'resolved_next_episode_date'
-        elif sort_key in ('watched_date', 'last_watched'):
-            date_field = 'resolved_watched_date'
-        elif sort_key == 'started_date':
-            date_field = 'resolved_started_date'
-        if direction == 'desc':
-            return queryset.order_by(F(date_field).desc(nulls_last=True), 'resolved_title', id_order)
 
-        if sort_key == 'next_episode_date':
-            return queryset.order_by(
-                Case(
-                    When(resolved_next_episode_date__isnull=True, then=Value(1)),
-                    default=Value(0),
-                    output_field=IntegerField(),
-                ),
-                F(date_field).asc(nulls_last=True),
-                'resolved_title',
-                id_order,
-            )
-        return queryset.order_by(F(date_field).asc(nulls_last=True), 'resolved_title', id_order)
+def _order_by_secondary_title(queryset, direction: str, id_order: str):
+    if direction == 'desc':
+        return queryset.order_by('-resolved_title', id_order)
+    return queryset.order_by('resolved_title', id_order)
 
-    field_by_sort = {
-        'runtime': 'resolved_runtime',
-        'total_episodes': 'resolved_total_episodes',
-        'provider_rating': 'resolved_vote_average',
-        'user_rating': 'resolved_user_rating',
-        'vote_average': 'resolved_vote_average',
-        'vote_count': 'resolved_vote_count',
-        'added_at': 'added_at',
-        'progress_percent': 'resolved_progress_percent',
-        'episodes_left': 'resolved_episodes_left',
-        'time_left': 'resolved_time_left',
-    }
-    field_name = field_by_sort.get(sort_key, 'added_at')
 
+def _order_by_media_type_title(queryset, direction: str, id_order: str):
+    if direction == 'desc':
+        return queryset.order_by('-media_type', 'resolved_title', id_order)
+    return queryset.order_by('media_type', 'resolved_title', id_order)
+
+
+def _order_by_resolved_date(queryset, sort_key: str, direction: str, id_order: str):
+    date_field = _resolved_date_field(sort_key)
+    if direction == 'desc':
+        return queryset.order_by(F(date_field).desc(nulls_last=True), 'resolved_title', id_order)
+    if sort_key == 'next_episode_date':
+        return queryset.order_by(
+            Case(
+                When(resolved_next_episode_date__isnull=True, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            ),
+            F(date_field).asc(nulls_last=True),
+            'resolved_title',
+            id_order,
+        )
+    return queryset.order_by(F(date_field).asc(nulls_last=True), 'resolved_title', id_order)
+
+
+_SORT_FIELD_ALIASES = {
+    'runtime': 'resolved_runtime',
+    'total_episodes': 'resolved_total_episodes',
+    'provider_rating': 'resolved_vote_average',
+    'user_rating': 'resolved_user_rating',
+    'vote_average': 'resolved_vote_average',
+    'vote_count': 'resolved_vote_count',
+    'added_at': 'added_at',
+    'progress_percent': 'resolved_progress_percent',
+    'episodes_left': 'resolved_episodes_left',
+    'time_left': 'resolved_time_left',
+}
+
+
+def _order_by_generic_field(queryset, sort_key: str, direction: str, id_order: str):
+    field_name = _SORT_FIELD_ALIASES.get(sort_key, 'added_at')
     if direction == 'desc':
         return queryset.order_by(F(field_name).desc(nulls_last=True), 'resolved_title', id_order)
     return queryset.order_by(F(field_name).asc(nulls_last=True), 'resolved_title', id_order)
+
+
+def _apply_secondary_title_ordering(queryset, sort_key: str, direction: str, id_desc: bool = False, user=None):
+    if sort_key == 'custom_order':
+        return _order_by_custom_order(queryset, direction)
+
+    queryset = _alias_media_sort_fields(queryset, user=user)
+    id_order = _id_order_suffix(id_desc)
+
+    if sort_key == 'title':
+        return _order_by_secondary_title(queryset, direction, id_order)
+    if sort_key == 'media_type':
+        return _order_by_media_type_title(queryset, direction, id_order)
+    if sort_key in ('release_date', 'next_episode_date', 'watched_date', 'started_date', 'last_watched'):
+        return _order_by_resolved_date(queryset, sort_key, direction, id_order)
+    return _order_by_generic_field(queryset, sort_key, direction, id_order)
 
 
 def _ensure_local_metadata(media_type: str, tmdb_id: int) -> None:

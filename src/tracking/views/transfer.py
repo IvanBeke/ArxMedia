@@ -28,28 +28,42 @@ def _raise_import_error(code: str, message: str, field: str = 'job') -> NoReturn
     raise_import_validation_error(ImportDomainError(code=code, message=message, field=field))
 
 
+def _import_upload_format(request) -> str:
+    fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.ZIP)).lower()
+    if fmt not in (DataTransferFormat.CSV, DataTransferFormat.ZIP):
+        raise ValidationError({'format': 'format must be csv or zip'})
+    return fmt
+
+
+def _validated_upload(request):
+    uploaded = request.FILES.get('file')
+    if not uploaded:
+        raise ValidationError({'file': 'file is required'})
+    if uploaded.size > MAX_IMPORT_UPLOAD_BYTES:
+        raise ValidationError({'file': f'file must be at most {MAX_IMPORT_UPLOAD_BYTES // (1024 * 1024)} MB'})
+    return uploaded
+
+
+def _validated_import_source(request) -> tuple[str, tuple[str, ...]]:
+    source = (request.query_params.get('source') or '').strip().lower()
+    supported_sources = supported_import_sources()
+    if not source:
+        raise ValidationError({'source': f"source is required ({', '.join(supported_sources)})."})
+    expected_formats = expected_formats_for_source(source)
+    if expected_formats is None:
+        raise ValidationError({'source': f"source must be {', '.join(supported_sources)}"})
+    return source, expected_formats
+
+
 class DataImportView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     throttle_classes = [UserRateThrottle, ScopedRateThrottle]
     throttle_scope = 'data_import'
 
     def post(self, request, *args, **kwargs):
-        fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.ZIP)).lower()
-        if fmt not in (DataTransferFormat.CSV, DataTransferFormat.ZIP):
-            raise ValidationError({'format': 'format must be csv or zip'})
-        source = (request.query_params.get('source') or '').strip().lower()
-        uploaded = request.FILES.get('file')
-        if not uploaded:
-            raise ValidationError({'file': 'file is required'})
-        if uploaded.size > MAX_IMPORT_UPLOAD_BYTES:
-            raise ValidationError({'file': f'file must be at most {MAX_IMPORT_UPLOAD_BYTES // (1024 * 1024)} MB'})
-
-        supported_sources = supported_import_sources()
-        if not source:
-            raise ValidationError({'source': f"source is required ({', '.join(supported_sources)})."})
-        expected_formats = expected_formats_for_source(source)
-        if expected_formats is None:
-            raise ValidationError({'source': f"source must be {', '.join(supported_sources)}"})
+        fmt = _import_upload_format(request)
+        uploaded = _validated_upload(request)
+        source, expected_formats = _validated_import_source(request)
         if fmt not in expected_formats:
             expected = ' or '.join(expected_formats)
             raise ValidationError({'format': f'format must be {expected} for source={source}.'})

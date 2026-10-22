@@ -63,6 +63,35 @@ def annotate_media_user_status(user, media_items):
     if not user or not user.is_authenticated:
         return {}
 
+    normalized_items, movie_ids, tv_ids = _normalize_media_items(media_items)
+    if not normalized_items:
+        return {}
+
+    maps = _status_maps(user, movie_ids, tv_ids)
+    results = {}
+    for media_type, tmdb_id in normalized_items:
+        results[(media_type, tmdb_id)] = _media_status_result(media_type, tmdb_id, maps)
+    return results
+
+
+def _media_status_result(media_type, tmdb_id, maps):
+    rating_data = maps['ratings'].get((media_type, tmdb_id), {})
+    if media_type == MediaType.MOVIE:
+        return _movie_status_result(tmdb_id, maps['movie_status'], maps['movie_watched'], rating_data)
+    return _tv_status_result(tmdb_id, maps['tv_status'], rating_data)
+
+
+def _status_maps(user, movie_ids, tv_ids):
+    """All per-user status/rating lookups in one place, batched by media type."""
+    return {
+        'ratings': _rating_map(user, movie_ids, tv_ids),
+        'movie_status': _movie_status_map(user, movie_ids),
+        'movie_watched': _movie_watched_map(user, movie_ids),
+        'tv_status': _tv_status_map(user, tv_ids),
+    }
+
+
+def _normalize_media_items(media_items):
     normalized_items = []
     movie_ids = set()
     tv_ids = set()
@@ -76,16 +105,16 @@ def annotate_media_user_status(user, media_items):
             movie_ids.add(tmdb_id)
         else:
             tv_ids.add(tmdb_id)
+    return normalized_items, movie_ids, tv_ids
 
-    if not normalized_items:
-        return {}
 
+def _rating_map(user, movie_ids, tv_ids):
     rating_rows = Rating.objects.filter(
         user=user,
         media_type__in=(MediaType.MOVIE, MediaType.TV),
         tmdb_id__in=movie_ids | tv_ids,
     ).values('media_type', 'tmdb_id', 'score', 'updated_at')
-    rating_map = {
+    return {
         (row['media_type'], row['tmdb_id']): {
             'rating': row['score'],
             'rated_at': row['updated_at'],
@@ -93,54 +122,99 @@ def annotate_media_user_status(user, media_items):
         for row in rating_rows
     }
 
+
+def _movie_status_result(tmdb_id, movie_status_map, movie_watched_map, rating_data):
+    show_status = movie_status_map.get(tmdb_id)
+    watched_at = movie_watched_map.get(tmdb_id)
+    status, status_changed_at = _resolve_movie_status(show_status, watched_at)
+
+    # Mirror the TV rule below: ratings are only reported for items
+    # with a status row that isn't plan_to_watch.
+    rated = show_status is not None and show_status['status'] != TvShowStatus.PLAN_TO_WATCH
+    return {
+        'status': status,
+        'status_changed_at': status_changed_at,
+        'watched_at': watched_at if status == TvShowStatus.WATCHED else None,
+        'rating': rating_data.get('rating') if rated else None,
+        'rated_at': rating_data.get('rated_at') if rated else None,
+    }
+
+
+def _movie_status_map(user, movie_ids):
     movie_status_rows = UserMediaStatus.objects.for_user(user).movies().filter(
         tmdb_id__in=movie_ids,
     ).values('tmdb_id', 'status', 'status_changed_at', 'last_watched_at')
-    movie_status_map = {row['tmdb_id']: row for row in movie_status_rows}
+    return {row['tmdb_id']: row for row in movie_status_rows}
 
-    tv_status_rows = UserMediaStatus.objects.for_user(user).shows().filter(
-        tmdb_id__in=tv_ids,
-    ).values('tmdb_id', 'status', 'status_changed_at', 'last_watched_at', 'watched_episodes', 'total_episodes', 'progress_percent')
-    tv_status_map = {row['tmdb_id']: row for row in tv_status_rows}
 
+def _movie_watched_map(user, movie_ids):
     movie_watched_rows = WatchEntry.objects.for_user(user).movies().filter(
         tmdb_id__in=movie_ids,
     ).values('tmdb_id').annotate(last_watched_at=Max('watched_at'))
-    movie_watched_map = {row['tmdb_id']: row['last_watched_at'] for row in movie_watched_rows}
+    return {row['tmdb_id']: row['last_watched_at'] for row in movie_watched_rows}
 
-    result = {}
-    for media_type, tmdb_id in normalized_items:
-        rating_data = rating_map.get((media_type, tmdb_id), {})
-        if media_type == MediaType.MOVIE:
-            show_status = movie_status_map.get(tmdb_id)
-            watched_at = movie_watched_map.get(tmdb_id)
-            status, status_changed_at = _resolve_movie_status(show_status, watched_at)
 
-            # Mirror the TV rule below: ratings are only reported for items
-            # with a status row that isn't plan_to_watch.
-            rated = show_status is not None and show_status['status'] != TvShowStatus.PLAN_TO_WATCH
-            result[(media_type, tmdb_id)] = {
-                'status': status,
-                'status_changed_at': status_changed_at,
-                'watched_at': watched_at if status == TvShowStatus.WATCHED else None,
-                'rating': rating_data.get('rating') if rated else None,
-                'rated_at': rating_data.get('rated_at') if rated else None,
-            }
-            continue
+def _tv_status_map(user, tv_ids):
+    tv_status_rows = UserMediaStatus.objects.for_user(user).shows().filter(
+        tmdb_id__in=tv_ids,
+    ).values('tmdb_id', 'status', 'status_changed_at', 'last_watched_at', 'watched_episodes', 'total_episodes', 'progress_percent')
+    return {row['tmdb_id']: row for row in tv_status_rows}
 
-        show_status = tv_status_map.get(tmdb_id)
-        if show_status and show_status['status'] != TvShowStatus.PLAN_TO_WATCH:
-            result[(media_type, tmdb_id)] = _build_tv_result_from_status_row(show_status, rating_data)
-        else:
-            result[(media_type, tmdb_id)] = _build_tv_result_without_status(show_status, rating_data)
 
-    return result
+def _tv_status_result(tmdb_id, tv_status_map, rating_data):
+    show_status = tv_status_map.get(tmdb_id)
+    if show_status and show_status['status'] != TvShowStatus.PLAN_TO_WATCH:
+        return _build_tv_result_from_status_row(show_status, rating_data)
+    return _build_tv_result_without_status(show_status, rating_data)
 
 
 def annotate_season_user_status(user, season_items):
     if not user or not user.is_authenticated:
         return {}
 
+    normalized_items = _normalize_season_items(season_items)
+    if not normalized_items:
+        return {}
+
+    watched_map, total_map, final_show_ids = _season_contexts(user, normalized_items)
+
+    result = {}
+    for key in normalized_items:
+        result[key] = _season_status_result(key, watched_map, total_map, final_show_ids)
+    return result
+
+
+def _season_status_result(key, watched_map, total_map, final_show_ids):
+    watched_data = watched_map.get(key)
+    watched_episodes = watched_data['watched_episodes'] if watched_data else 0
+    last_watched_at = watched_data['last_watched_at'] if watched_data else None
+    total_episodes = total_map.get(key, 0)
+
+    return {
+        'status': _season_status(watched_episodes, total_episodes, key[0] in final_show_ids),
+        'status_changed_at': last_watched_at if watched_episodes else None,
+        'watched_at': last_watched_at,
+        'rating': None,
+        'rated_at': None,
+        'progress': {
+            'watched_episodes': watched_episodes,
+            'total_episodes': total_episodes,
+            'percent': _percent(watched_episodes, total_episodes),
+        },
+    }
+
+
+def _season_status(watched_episodes: int, total_episodes: int, is_final: bool):
+    if watched_episodes <= 0:
+        return None
+    # A final show with nothing released yet, or fully watched, counts as watched.
+    finished = (total_episodes == 0 and is_final) or (watched_episodes >= total_episodes and is_final)
+    if finished:
+        return SeasonStatus.WATCHED
+    return SeasonStatus.WATCHING
+
+
+def _normalize_season_items(season_items):
     normalized_items = []
     for item in season_items:
         tmdb_id = _as_int(item.get('tmdb_id'))
@@ -148,14 +222,28 @@ def annotate_season_user_status(user, season_items):
         if tmdb_id is None or season_number is None:
             continue
         normalized_items.append((tmdb_id, season_number))
+    return normalized_items
 
-    if not normalized_items:
-        return {}
 
+def _season_contexts(user, normalized_items):
+    """Tuple (watched_map, total_map, final_show_ids) shared by all items."""
     tmdb_ids = {tmdb_id for tmdb_id, _ in normalized_items}
     season_numbers = {season_number for _, season_number in normalized_items}
 
-    released_episode_keys = set(
+    released_episode_keys = _released_episode_keys(tmdb_ids, season_numbers)
+    watched_map = _watched_map(user, tmdb_ids, season_numbers)
+
+    total_map: dict[tuple[int, int], int] = {}
+    for tmdb_id, season_number, _ in released_episode_keys:
+        key = (tmdb_id, season_number)
+        total_map[key] = total_map.get(key, 0) + 1
+
+    final_show_ids = _final_show_ids(tmdb_ids)
+    return watched_map, total_map, final_show_ids
+
+
+def _released_episode_keys(tmdb_ids, season_numbers):
+    return set(
         Episode.objects.filter(
             season__show__tmdb_id__in=tmdb_ids,
             season__season_number__in=season_numbers,
@@ -163,6 +251,9 @@ def annotate_season_user_status(user, season_items):
             'season__show__tmdb_id', 'season__season_number', 'episode_number'
         )
     )
+
+
+def _watched_map(user, tmdb_ids, season_numbers):
     watched_rows = WatchEntry.objects.for_user(user).episodes().filter(
         tmdb_id__in=tmdb_ids,
         season_number__in=season_numbers,
@@ -174,48 +265,12 @@ def annotate_season_user_status(user, season_items):
         first_watched_at=Min('watched_at'),
         last_watched_at=Max('watched_at'),
     )
-    watched_map = {(row['tmdb_id'], row['season_number']): row for row in watched_rows}
+    return {(row['tmdb_id'], row['season_number']): row for row in watched_rows}
 
-    total_map: dict[tuple[int, int], int] = {}
-    for tmdb_id, season_number, _ in released_episode_keys:
-        key = (tmdb_id, season_number)
-        total_map[key] = total_map.get(key, 0) + 1
 
-    final_show_ids = {
+def _final_show_ids(tmdb_ids):
+    return {
         tmdb_id
         for tmdb_id, status in TVShow.objects.filter(tmdb_id__in=tmdb_ids).values_list('tmdb_id', 'status')
         if (status or '').strip().lower() in TVShow.FINAL_STATUSES
     }
-
-    result = {}
-    for key in normalized_items:
-        watched_data = watched_map.get(key)
-        watched_episodes = watched_data['watched_episodes'] if watched_data else 0
-        last_watched_at = watched_data['last_watched_at'] if watched_data else None
-        total_episodes = total_map.get(key, 0)
-        is_final = key[0] in final_show_ids
-
-        if watched_episodes > 0:
-            if (total_episodes == 0 and is_final) or (watched_episodes >= total_episodes and is_final):
-                status_value = SeasonStatus.WATCHED
-            else:
-                status_value = SeasonStatus.WATCHING
-            status_changed_at = last_watched_at
-        else:
-            status_value = None
-            status_changed_at = None
-
-        result[key] = {
-            'status': status_value,
-            'status_changed_at': status_changed_at,
-            'watched_at': last_watched_at,
-            'rating': None,
-            'rated_at': None,
-            'progress': {
-                'watched_episodes': watched_episodes,
-                'total_episodes': total_episodes,
-                'percent': _percent(watched_episodes, total_episodes),
-            },
-        }
-
-    return result

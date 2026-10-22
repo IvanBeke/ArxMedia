@@ -36,29 +36,29 @@ class MediaCardSerializer(serializers.ModelSerializer):
         if cache_key in media_cache:
             return media_cache[cache_key]
 
+        media = self._resolved_media(obj, media_type)
+        media_cache[cache_key] = media
+        return media
+
+    def _resolved_media(self, obj, media_type):
         # A map supplied by the view is authoritative: a missing key means the media is not stored locally.
         movie_map = self.context.get('movie_map')
         tv_map = self.context.get('tv_map')
 
         if media_type == MediaType.MOVIE and movie_map is not None:
-            media_cache[cache_key] = movie_map.get(obj.tmdb_id)
-            return media_cache[cache_key]
+            return movie_map.get(obj.tmdb_id)
         if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE) and tv_map is not None:
-            media_cache[cache_key] = tv_map.get(obj.tmdb_id)
-            return media_cache[cache_key]
+            return tv_map.get(obj.tmdb_id)
+        return self._local_media(obj, media_type)
 
+    def _local_media(self, obj, media_type):
         from media.models import Movie, TVShow
 
-        media: Movie | TVShow | None
         if media_type == MediaType.MOVIE:
-            media = Movie.objects.filter(tmdb_id=obj.tmdb_id).first()
-        elif media_type in (MediaType.TV, WatchEntryMediaType.EPISODE):
-            media = TVShow.objects.filter(tmdb_id=obj.tmdb_id).first()
-        else:
-            media = None
-
-        media_cache[cache_key] = media
-        return media
+            return Movie.objects.filter(tmdb_id=obj.tmdb_id).first()
+        if media_type in (MediaType.TV, WatchEntryMediaType.EPISODE):
+            return TVShow.objects.filter(tmdb_id=obj.tmdb_id).first()
+        return None
 
     def _get_season(self, obj):
         media_type = getattr(obj, 'media_type', None)
@@ -137,29 +137,33 @@ class WatchEntrySerializer(MediaCardSerializer):
     def _get_episode(self, obj):
         if obj.media_type != WatchEntryMediaType.EPISODE or obj.season_number is None or obj.episode_number is None:
             return None
-
         season = self._get_season(obj)
         if season is None:
             return None
 
+        episode_cache = self._episode_cache_field()
+        cache_key = (season.id, obj.episode_number)
+        if cache_key in episode_cache:
+            return episode_cache[cache_key]
+
+        episode = self._resolved_episode(obj, season)
+        episode_cache[cache_key] = episode
+        return episode
+
+    def _episode_cache_field(self):
         cache = getattr(self, '_episode_cache', None)
         if cache is None:
             cache = {}
             self._episode_cache = cache
+        return cache
 
-        cache_key = (season.id, obj.episode_number)
-        if cache_key in cache:
-            return cache[cache_key]
-
+    def _resolved_episode(self, obj, season):
         episode_map = self.context.get('episode_map')
         if episode_map is not None:
-            episode = episode_map.get((obj.tmdb_id, obj.season_number, obj.episode_number))
-        else:
-            from media.models import Episode
+            return episode_map.get((obj.tmdb_id, obj.season_number, obj.episode_number))
+        from media.models import Episode
 
-            episode = Episode.objects.filter(season=season, episode_number=obj.episode_number).first()
-        cache[cache_key] = episode
-        return episode
+        return Episode.objects.filter(season=season, episode_number=obj.episode_number).first()
 
     def get_title(self, obj):
         if obj.media_type == WatchEntryMediaType.EPISODE:
