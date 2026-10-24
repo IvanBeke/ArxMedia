@@ -19,11 +19,11 @@
         <div class="space-y-4">
           <div>
             <label class="block text-xs text-gray-400 mb-1">Username</label>
-            <input v-model="form.username" type="text" class="input rounded-md" placeholder="cooluser123" @keydown.enter="submit" />
+            <input v-model="form.username" type="text" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" class="input rounded-md" placeholder="cooluser123" @keydown.enter="submit" />
           </div>
           <div>
             <label class="block text-xs text-gray-400 mb-1">Password</label>
-            <input v-model="form.password" type="password" class="input rounded-md" placeholder="••••••••" @keydown.enter="submit" />
+            <input v-model="form.password" type="password" name="password" autocomplete="current-password" class="input rounded-md" placeholder="••••••••" @keydown.enter="submit" />
           </div>
         </div>
 

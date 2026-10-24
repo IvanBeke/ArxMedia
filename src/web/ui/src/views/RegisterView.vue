@@ -19,19 +19,19 @@
         <div class="space-y-3">
           <div>
             <label class="block text-xs text-gray-400 mb-1">Username</label>
-            <input v-model="form.username" type="text" class="input rounded-md" placeholder="cooluser123" />
+            <input v-model="form.username" type="text" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" class="input rounded-md" placeholder="cooluser123" />
           </div>
           <div>
             <label class="block text-xs text-gray-400 mb-1">Email</label>
-            <input v-model="form.email" type="email" class="input rounded-md" placeholder="you@example.com" />
+            <input v-model="form.email" type="email" name="email" autocomplete="email" class="input rounded-md" placeholder="you@example.com" />
           </div>
           <div>
             <label class="block text-xs text-gray-400 mb-1">Password</label>
-            <input v-model="form.password" type="password" class="input rounded-md" placeholder="At least 8 characters" />
+            <input v-model="form.password" type="password" name="password" autocomplete="new-password" class="input rounded-md" placeholder="At least 8 characters" />
           </div>
           <div>
             <label class="block text-xs text-gray-400 mb-1">Confirm Password</label>
-            <input v-model="form.password2" type="password" class="input rounded-md" placeholder="••••••••" @keydown.enter="submit" />
+            <input v-model="form.password2" type="password" name="password2" autocomplete="new-password" class="input rounded-md" placeholder="••••••••" @keydown.enter="submit" />
           </div>
         </div>
 
