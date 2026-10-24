@@ -32,6 +32,9 @@ SESSION_COOKIE_HTTPONLY = True
 # The SPA reads the CSRF cookie and echoes it in the X-CSRFToken header.
 CSRF_COOKIE_HTTPONLY = False
 SESSION_COOKIE_SAMESITE = 'Lax'
+# Sliding/inactivity-based session expiry: each authenticated request refreshes
+# the cookie age, so the session expires after SESSION_COOKIE_AGE of inactivity.
+SESSION_SAVE_EVERY_REQUEST = True
 SESSION_COOKIE_AGE = int(os.environ.get('SESSION_COOKIE_AGE', str(60 * 60 * 24 * 14)))
 SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
 CSRF_COOKIE_SAMESITE = 'Lax'
