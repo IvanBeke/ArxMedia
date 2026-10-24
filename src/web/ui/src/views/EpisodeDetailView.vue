@@ -105,29 +105,29 @@
         </nav>
       </div>
 
-      <div class="grid md:grid-cols-3 gap-8 mt-10">
-        <div class="md:col-span-2 space-y-8">
-          <div v-if="episodeCast.length">
-            <h3 class="text-primary font-medium mb-3">{{ t('episode_cast') }}</h3>
-            <CastGrid :people="episodeCast" />
-          </div>
-          <p v-else-if="episodeCreditsError" class="text-sm text-muted">{{ t('common_credits_unavailable') }}
-            <button type="button" class="text-brand-400 hover:text-brand-300" @click="reloadEpisodeCredits">{{ t('action_try_again') }}</button>
-          </p>
-          <div v-if="creditsData?.guest_stars?.length">
-            <h3 class="text-primary font-medium mb-3">{{ t('episode_guest_stars') }}</h3>
-            <CastGrid :people="creditsData.guest_stars" empty-label="No guest stars listed." />
-          </div>
-        </div>
-        <div>
-          <div v-if="episodeCrew.length" class="card p-4">
-            <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">{{ t('person_crew') }}</p>
-            <div class="space-y-1.5 text-sm">
-              <div v-for="person in episodeCrew.slice(0, 8)" :key="person.credit_id" class="text-muted">
-                <span class="text-gray-500">{{ person.job }}:</span> <span class="text-secondary">{{ person.name }}</span>
-              </div>
+      <div class="mt-10 space-y-8">
+        <div v-if="episodeCrew.length">
+          <h3 class="text-primary font-medium mb-3">{{ t('person_crew') }}</h3>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <div v-for="person in episodeCrew" :key="person.credit_id" class="text-gray-400 max-w-full break-words">
+              <span class="text-gray-500">{{ person.job }}: </span>
+              <RouterLink
+                :to="`/people/${person.id}`"
+                class="text-secondary hover:text-brand-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 rounded-sm"
+              >{{ person.name }}</RouterLink>
             </div>
           </div>
+        </div>
+        <div v-if="episodeCast.length">
+          <h3 class="text-primary font-medium mb-3">{{ t('episode_cast') }}</h3>
+          <CastGrid :people="episodeCast" />
+        </div>
+        <p v-else-if="episodeCreditsError" class="text-sm text-muted">{{ t('common_credits_unavailable') }}
+          <button type="button" class="text-brand-400 hover:text-brand-300" @click="reloadEpisodeCredits">{{ t('action_try_again') }}</button>
+        </p>
+        <div v-if="creditsData?.guest_stars?.length">
+          <h3 class="text-primary font-medium mb-3">{{ t('episode_guest_stars') }}</h3>
+          <CastGrid :people="creditsData.guest_stars" empty-label="No guest stars listed." />
         </div>
       </div>
     </div>

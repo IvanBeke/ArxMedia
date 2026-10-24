@@ -1,5 +1,5 @@
 <template>
-  <div v-if="people.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 text-sm">
+  <div v-if="people.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-sm">
     <RouterLink
       v-for="person in people"
       :key="person.credit_id || `${person.id}-${person.character}`"
@@ -11,11 +11,11 @@
         v-if="person.profile_path"
         :src="tmdbImageUrl(person.profile_path, 'w92') || ''"
         :alt="person.name"
-        class="w-12 h-12 rounded-md object-cover shrink-0"
+        class="w-14 h-14 rounded-md object-cover shrink-0"
         loading="lazy"
         decoding="async"
       />
-      <div v-else class="w-12 h-12 rounded-md bg-surface-200 shrink-0 flex items-center justify-center text-muted text-xs font-medium">
+      <div v-else class="w-14 h-14 rounded-md bg-surface-200 shrink-0 flex items-center justify-center text-muted text-xs font-medium">
         {{ initials(person.name) }}
       </div>
       <div class="min-w-0">
