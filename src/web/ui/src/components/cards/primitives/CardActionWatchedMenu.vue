@@ -10,14 +10,13 @@
       menu-class="left-1/2 -translate-x-1/2 bottom-12 mt-0"
       @select="handleSelect"
     >
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-      </svg>
+      <Check class="w-4 h-4" :stroke-width="2.5" />
     </WatchMenu>
   </div>
 </template>
 
 <script setup lang="ts">
+import { Check } from '@lucide/vue'
 import WatchMenu from '@/components/WatchMenu.vue'
 import type { WatchedAtOption } from '@/utils/watchOptions'
 

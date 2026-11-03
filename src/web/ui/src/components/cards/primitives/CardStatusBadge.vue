@@ -6,9 +6,7 @@
     :aria-label="statusTooltip"
     tabindex="0"
   >
-    <svg v-if="statusValue === WATCH_ENTRY_STATUS.WATCHED" class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-    </svg>
+    <Check v-if="statusValue === WATCH_ENTRY_STATUS.WATCHED" class="w-4 h-4 text-white" :stroke-width="2.5" />
     <svg v-else-if="statusValue === WATCH_ENTRY_STATUS.WATCHING" class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -24,6 +22,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Check } from '@lucide/vue'
 import { WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import type { WatchEntryStatus } from '@/types/tracking'
 

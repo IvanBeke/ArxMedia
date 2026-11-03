@@ -12,18 +12,14 @@
       class="flex items-center justify-center w-8 h-8 rounded-md transition-colors duration-200"
       :class="watched ? 'bg-brand-500 text-white hover:bg-brand-600' : 'bg-surface-200 text-gray-500 hover:text-white hover:bg-surface-300'"
     >
-      <svg v-if="watched" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-      </svg>
-      <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-      </svg>
+      <Check class="w-4 h-4" :stroke-width="watched ? 2.5 : 2" />
     </span>
   </WatchMenu>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Check } from '@lucide/vue'
 import WatchMenu from '@/components/WatchMenu.vue'
 import { useI18n } from '@/i18n'
 import { watchedTooltipText } from '@/utils/watchOptions'
