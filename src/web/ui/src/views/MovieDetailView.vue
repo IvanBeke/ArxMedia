@@ -108,6 +108,7 @@
             @added="showSuccess(t('radarr_added', { title: movie.title }))"
             @removed="showSuccess(t('radarr_removed', { title: movie.title }))"
           />
+          <JellyfinLink v-if="auth.user?.integrations.jellyfin" :tmdb-id="Number(movieId)" scope="movie" />
           <template #rating>
             <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
             <p v-else class="text-xs text-muted">{{ t('rating_movie_requires_watched') }}</p>
@@ -249,6 +250,7 @@ import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import MovieUnwatchDialog from '@/components/MovieUnwatchDialog.vue'
 import RadarrAction from '@/components/RadarrAction.vue'
+import JellyfinLink from '@/components/JellyfinLink.vue'
 import DetailHero from '@/components/DetailHero.vue'
 import FlashToast from '@/components/FlashToast.vue'
 import LoadError from '@/components/LoadError.vue'

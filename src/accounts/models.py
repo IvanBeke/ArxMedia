@@ -22,6 +22,7 @@ class User(AbstractUser):
     class Meta(AbstractUser.Meta):
         permissions = [
             ('use_sonarr_radarr', 'Can add media to Sonarr and Radarr'),
+            ('use_jellyfin', 'Can open media in Jellyfin'),
         ]
 
     def __str__(self):

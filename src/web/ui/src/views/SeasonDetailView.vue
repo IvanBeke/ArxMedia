@@ -68,6 +68,7 @@
             @select="handleSeasonWatchOption"
           />
           <p v-else class="text-white text-lg font-medium">{{ seasonProgressFraction }}</p>
+          <JellyfinLink v-if="auth.user?.integrations.jellyfin" :tmdb-id="tmdbId" scope="season" :season-number="seasonNumber" />
         </div>
       </template>
       <template #belowActions>
@@ -158,6 +159,7 @@ import SeasonEpisodeList from '@/components/SeasonEpisodeList.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import ExternalLinks from '@/components/ExternalLinks.vue'
+import JellyfinLink from '@/components/JellyfinLink.vue'
 import CastGrid from '@/components/CastGrid.vue'
 import DetailHero from '@/components/DetailHero.vue'
 import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'

@@ -30,18 +30,20 @@ def _error_detail(response: requests.Response) -> str:
     return ''
 
 
-class ArrClient:
-    """Transport for the Sonarr/Radarr v3 REST API: authentication, errors and the shared options lookup."""
+class ServiceClient:
+    """Transport shared by every external service: session, authentication header, timeouts and error mapping."""
 
     SERVICE_NAME = ''
-    API_PREFIX = '/api/v3'
+    AUTH_HEADER = ''
+    AUTH_VALUE = '{key}'
+    API_PREFIX = ''
     REQUEST_TIMEOUT = 15
 
     def __init__(self, base_url: str, api_key: str, verify_ssl: bool = True, public_url: str = ''):
         self._base_url = base_url.rstrip('/')
         self._public_url = (public_url or base_url).rstrip('/')
         self._session = build_session(pool_size=2)
-        self._session.headers['X-Api-Key'] = api_key
+        self._session.headers[self.AUTH_HEADER] = self.AUTH_VALUE.format(key=api_key)
         self._session.verify = verify_ssl
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
@@ -64,6 +66,13 @@ class ArrClient:
             detail = _error_detail(response) or f'{self.SERVICE_NAME} could not process the request.'
             return IntegrationError(detail, status)
         return IntegrationError(f'{self.SERVICE_NAME} responded with an error (HTTP {status}).')
+
+
+class ArrClient(ServiceClient):
+    """The Sonarr/Radarr v3 REST API and the options lookup both share."""
+
+    AUTH_HEADER = 'X-Api-Key'
+    API_PREFIX = '/api/v3'
 
     def options(self) -> dict[str, list[dict[str, Any]]]:
         root_folders = self._request('GET', '/rootfolder')
@@ -167,6 +176,56 @@ class SonarrClient(ArrClient):
         }
 
 
+class JellyfinClient(ServiceClient):
+    SERVICE_NAME = 'Jellyfin'
+    AUTH_HEADER = 'Authorization'
+    AUTH_VALUE = 'MediaBrowser Token="{key}"'
+
+    def series_by_tmdb_id(self) -> dict[int, dict[str, str]]:
+        return self._items_by_tmdb_id('Series')
+
+    def movies_by_tmdb_id(self) -> dict[int, dict[str, str]]:
+        return self._items_by_tmdb_id('Movie')
+
+    def _items_by_tmdb_id(self, item_type: str) -> dict[int, dict[str, str]]:
+        response = self._request('GET', '/Items', params={
+            'includeItemTypes': item_type,
+            'recursive': 'true',
+            'hasTmdbId': 'true',
+            'fields': 'ProviderIds',
+            'enableImages': 'false',
+            'enableUserData': 'false',
+        })
+        items = {}
+        for item in (response or {}).get('Items', []):
+            tmdb_id = {key.lower(): value for key, value in (item.get('ProviderIds') or {}).items()}.get('tmdb')
+            if tmdb_id and str(tmdb_id).isdigit():
+                items[int(tmdb_id)] = self._item_ref(item)
+        return items
+
+    def seasons(self, series_id: str) -> dict[int, dict[str, str]]:
+        response = self._request('GET', f'/Shows/{series_id}/Seasons', params={'enableImages': 'false', 'enableUserData': 'false'})
+        return self._refs_by_index(response)
+
+    def episodes(self, series_id: str, season_number: int) -> dict[int, dict[str, str]]:
+        response = self._request('GET', f'/Shows/{series_id}/Episodes', params={
+            'season': season_number, 'enableImages': 'false', 'enableUserData': 'false',
+        })
+        return self._refs_by_index(response)
+
+    def item_url(self, item: dict[str, str]) -> str:
+        server = f'&serverId={item["server_id"]}' if item.get('server_id') else ''
+        return f'{self._public_url}/web/index.html#/details?id={item["id"]}{server}'
+
+    @staticmethod
+    def _item_ref(item: dict[str, Any]) -> dict[str, str]:
+        return {'id': item['Id'], 'server_id': item.get('ServerId', '')}
+
+    def _refs_by_index(self, response: Any) -> dict[int, dict[str, str]]:
+        items = (response or {}).get('Items', [])
+        return {item['IndexNumber']: self._item_ref(item) for item in items if item.get('IndexNumber') is not None}
+
+
 def radarr_credentials() -> tuple[str, str]:
     return getattr(settings, 'RADARR_URL', ''), getattr(settings, 'RADARR_API_KEY', '')
 
@@ -190,4 +249,17 @@ def sonarr_client() -> SonarrClient:
         raise IntegrationError('Sonarr is not configured.', 503)
     return SonarrClient(
         url, api_key, getattr(settings, 'SONARR_VERIFY_SSL', True), getattr(settings, 'SONARR_PUBLIC_URL', ''),
+    )
+
+
+def jellyfin_credentials() -> tuple[str, str]:
+    return getattr(settings, 'JELLYFIN_URL', ''), getattr(settings, 'JELLYFIN_API_KEY', '')
+
+
+def jellyfin_client() -> JellyfinClient:
+    url, api_key = jellyfin_credentials()
+    if not (url and api_key):
+        raise IntegrationError('Jellyfin is not configured.', 503)
+    return JellyfinClient(
+        url, api_key, getattr(settings, 'JELLYFIN_VERIFY_SSL', True), getattr(settings, 'JELLYFIN_PUBLIC_URL', ''),
     )

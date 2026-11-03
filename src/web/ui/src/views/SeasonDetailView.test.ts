@@ -11,17 +11,19 @@ import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types/api'
 
-const { getSeason, getSeasonCredits, getWatchedEpisodes, getHistory, markEpisodeWatched, markSeasonWatched } = vi.hoisted(() => ({
+const { getSeason, getSeasonCredits, getWatchedEpisodes, getHistory, markEpisodeWatched, markSeasonWatched, getJellyfinLinks } = vi.hoisted(() => ({
   getSeason: vi.fn(),
   getSeasonCredits: vi.fn(),
   getWatchedEpisodes: vi.fn(),
   getHistory: vi.fn(),
   markEpisodeWatched: vi.fn(),
   markSeasonWatched: vi.fn(),
+  getJellyfinLinks: vi.fn(),
 }))
 
 vi.mock('@/api', () => {
   return {
+    integrationsAPI: { getJellyfinLinks },
     mediaAPI: {
       getSeason,
       getSeasonCredits,
@@ -95,7 +97,7 @@ function watchedPayload(pairs: [number, number][]) {
   }
 }
 
-async function mountView(tab: string | null = 'episodes') {
+async function mountView(tab: string | null = 'episodes', { jellyfin = false } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -110,7 +112,7 @@ async function mountView(tab: string | null = 'episodes') {
 
   const pinia = createPinia()
   setActivePinia(pinia)
-  useAuthStore().user = TEST_USER
+  useAuthStore().user = { ...TEST_USER, integrations: { ...TEST_USER.integrations, jellyfin } }
 
   const wrapper = mount(SeasonDetailView, {
     global: {
@@ -133,6 +135,28 @@ describe('SeasonDetailView progress', () => {
     getSeasonCredits.mockResolvedValue(null)
     markEpisodeWatched.mockResolvedValue({ id: 1, created: true, watched_at: null })
     markSeasonWatched.mockResolvedValue({})
+  })
+
+  it('hides the Jellyfin link without the jellyfin integration', async () => {
+    getSeason.mockResolvedValue(seasonPayload(12))
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView()
+
+    expect(wrapper.findAll('a').some((link) => link.text().includes('Jellyfin'))).toBe(false)
+    expect(getJellyfinLinks).not.toHaveBeenCalled()
+  })
+
+  it('links the season to its Jellyfin page', async () => {
+    getSeason.mockResolvedValue(seasonPayload(12))
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+    getJellyfinLinks.mockResolvedValue({ show_url: 'https://jf/show', season_url: 'https://jf/season', episode_url: null })
+
+    const wrapper = await mountView('episodes', { jellyfin: true })
+
+    const link = wrapper.findAll('a').find((candidate) => candidate.text() === 'Open in Jellyfin')
+    expect(link?.attributes('href')).toBe('https://jf/season')
+    expect(getJellyfinLinks).toHaveBeenCalledWith(TMDB_ID, { season: SEASON_NUMBER, episode: undefined }, expect.any(Object))
   })
 
   it('renders the watched fraction and progress bar from backend user_status', async () => {

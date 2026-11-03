@@ -3,16 +3,20 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia } from 'pinia'
 import EpisodeDetailView from '@/views/EpisodeDetailView.vue'
+import { useAuthStore } from '@/stores/auth'
+import type { User } from '@/types/api'
 
-const { getTV, getSeason, getEpisodeCredits, getEpisodeExternalIds, getWatchedEpisodes } = vi.hoisted(() => ({
+const { getTV, getSeason, getEpisodeCredits, getEpisodeExternalIds, getWatchedEpisodes, getJellyfinLinks } = vi.hoisted(() => ({
   getTV: vi.fn(),
   getSeason: vi.fn(),
   getEpisodeCredits: vi.fn(),
   getEpisodeExternalIds: vi.fn().mockResolvedValue({}),
   getWatchedEpisodes: vi.fn(),
+  getJellyfinLinks: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
+  integrationsAPI: { getJellyfinLinks },
   mediaAPI: { getTV, getSeason, getEpisodeCredits, getEpisodeExternalIds },
   trackingAPI: {
     getWatchedEpisodes,
@@ -114,6 +118,7 @@ async function mountView(
   episodeNumber = 2,
   attachTo?: HTMLElement,
   keyed = true,
+  { jellyfin = false } = {},
 ) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -134,6 +139,7 @@ async function mountView(
   await router.isReady()
 
   const pinia = createPinia()
+  useAuthStore(pinia).user = { integrations: { radarr: false, sonarr: false, jellyfin } } as User
   const wrapper = mount(keyed ? routedEpisodeView : reusableEpisodeView, {
     attachTo,
     global: {
@@ -179,6 +185,23 @@ describe('EpisodeDetailView navigation', () => {
 
     expect(getEpisodeCredits).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).not.toContain('unavailable')
+  })
+
+  it('hides the Jellyfin link without the jellyfin integration', async () => {
+    const { wrapper } = await mountView(2, 2)
+
+    expect(wrapper.findAll('a').some((link) => link.text().includes('Jellyfin'))).toBe(false)
+    expect(getJellyfinLinks).not.toHaveBeenCalled()
+  })
+
+  it('links the episode to its Jellyfin page', async () => {
+    getJellyfinLinks.mockResolvedValue({ show_url: 'https://jf/show', season_url: 'https://jf/season', episode_url: 'https://jf/episode' })
+
+    const { wrapper } = await mountView(2, 2, undefined, true, { jellyfin: true })
+
+    const link = wrapper.findAll('a').find((candidate) => candidate.text() === 'Open in Jellyfin')
+    expect(link?.attributes('href')).toBe('https://jf/episode')
+    expect(getJellyfinLinks).toHaveBeenCalledWith(TMDB_ID, { season: 2, episode: 2 }, expect.any(Object))
   })
 
   it('links to the previous and next episodes across season boundaries', async () => {

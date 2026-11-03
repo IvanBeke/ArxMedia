@@ -19,6 +19,9 @@ import type {
   HeatmapSeason,
   ListItem,
   ListItemsResponse,
+  JellyfinEpisodeLink,
+  JellyfinEpisodeRef,
+  JellyfinLinks,
   LoginPayload,
   MediaCard,
   MediaSearchResponse,
@@ -246,6 +249,12 @@ export const integrationsAPI = {
     api.post<ArrItemState>('/integrations/sonarr/tv/' + tmdbId + '/', data),
   removeSonarrSeries: (tmdbId: string | number, data: ArrRemovePayload) =>
     api.delete<ArrItemState>('/integrations/sonarr/tv/' + tmdbId + '/', data),
+  getJellyfinLinks: (tmdbId: string | number, params: { season?: number; episode?: number } = {}, options: RequestOptions = {}) =>
+    api.get<JellyfinLinks>('/integrations/jellyfin/tv/' + tmdbId + '/links/', { params, ...options }),
+  getJellyfinMovieLink: (tmdbId: string | number, options: RequestOptions = {}) =>
+    api.get<{ url: string | null }>('/integrations/jellyfin/movies/' + tmdbId + '/link/', options),
+  getJellyfinEpisodeLinks: (items: JellyfinEpisodeRef[], options: RequestOptions = {}) =>
+    api.post<{ results: JellyfinEpisodeLink[] }>('/integrations/jellyfin/episodes/links/', { items }, options),
 }
 
 export const calendarAPI = { get: (params?: QueryParams) => api.get<{ results: CalendarItem[] }>('/calendar/', { params }) }

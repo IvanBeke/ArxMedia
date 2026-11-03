@@ -36,10 +36,11 @@
     </template>
 
     <template #actions>
-      <MediaCardActions :visible="showWatchAction" z-index-class="z-30">
+      <MediaCardActions :visible="showWatchAction || Boolean(jellyfinUrl)" z-index-class="z-30">
+        <CardActionOpenInJellyfin v-if="jellyfinUrl" :url="jellyfinUrl" />
         <CardActionMarkNextEpisodeWatched
+          v-if="showWatchAction"
           :loading="watchLoading"
-          aria-label="Mark next episode watched"
           @trigger="$emit('watch')"
         />
       </MediaCardActions>
@@ -92,6 +93,7 @@ import { computed } from 'vue'
 import MediaCardShell from '@/components/cards/MediaCardShell.vue'
 import MediaCardActions from '@/components/cards/MediaCardActions.vue'
 import CardActionMarkNextEpisodeWatched from '@/components/cards/primitives/CardActionMarkNextEpisodeWatched.vue'
+import CardActionOpenInJellyfin from '@/components/cards/primitives/CardActionOpenInJellyfin.vue'
 import CardEpisodeCodePill from '@/components/cards/primitives/CardEpisodeCodePill.vue'
 import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import { useMediaCardModel } from '@/composables/useMediaCardModel'
@@ -110,6 +112,7 @@ const props = withDefaults(defineProps<{
   showNewBadge?: boolean
   showWatchAction?: boolean
   watchLoading?: boolean
+  jellyfinUrl?: string
   metaText?: string
   progressPercent?: number | null
   episodeDurationMinutes?: number | null
@@ -118,7 +121,7 @@ const props = withDefaults(defineProps<{
   runtimeLeftHasUnknown?: boolean
 }>(), {
   episodeTitle: '', episodeType: '', posterUrl: '', titleLinkTo: '', showNewBadge: false,
-  showWatchAction: false, watchLoading: false, metaText: '', progressPercent: null,
+  showWatchAction: false, watchLoading: false, jellyfinUrl: '', metaText: '', progressPercent: null,
   episodeDurationMinutes: null, episodesLeft: null, runtimeLeftMinutes: null, runtimeLeftHasUnknown: false,
 })
 

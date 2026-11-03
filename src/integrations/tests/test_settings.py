@@ -4,7 +4,7 @@ import pytest
 
 from arxmedia.settings import integrations as integration_settings
 
-SERVICES = ['RADARR', 'SONARR']
+SERVICES = ['RADARR', 'SONARR', 'JELLYFIN']
 
 
 @pytest.fixture

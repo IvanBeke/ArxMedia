@@ -135,6 +135,7 @@
             @added="showSuccess(t('sonarr_added', { title: show.name }))"
             @removed="showSuccess(t('sonarr_removed', { title: show.name }))"
           />
+          <JellyfinLink v-if="auth.user?.integrations.jellyfin" :tmdb-id="tmdbId" scope="show" />
           <template #rating>
             <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
             <p v-else class="text-xs text-muted">{{ t('rating_show_requires_watching') }}</p>
@@ -336,6 +337,7 @@ import StarRating from '@/components/StarRating.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import AddToListPopover from '@/components/AddToListPopover.vue'
 import SonarrAction from '@/components/SonarrAction.vue'
+import JellyfinLink from '@/components/JellyfinLink.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import ActionGhostButton from '@/components/ActionGhostButton.vue'

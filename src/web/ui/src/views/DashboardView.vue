@@ -53,6 +53,7 @@
             :show-new-badge="item.is_new"
             :show-watch-action="true"
             :watch-loading="markingId === item.tmdb_id"
+            :jellyfin-url="jellyfinUrls[item.tmdb_id]"
             :progress-percent="item.progress_percent"
             :episode-duration-minutes="item.next_episode?.runtime"
             :episodes-left="item.episodes_left"
@@ -145,6 +146,7 @@ import LoadError from '@/components/LoadError.vue'
 import StatCard from '@/components/StatCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { useJellyfinUpNextLinks } from '@/composables/useJellyfinUpNextLinks'
 import { useI18n } from '@/i18n'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { getApiErrorMessage } from '@/utils/errors'
@@ -169,6 +171,7 @@ const upNextError = ref(false)
 const upcomingError = ref(false)
 const { errorMsg: actionError, showError: showActionError } = useFlashMessages()
 const markingId = ref<number | null>(null)
+const { urls: jellyfinUrls, load: loadJellyfinLinks } = useJellyfinUpNextLinks()
 
 const upcomingDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
@@ -193,6 +196,7 @@ async function refreshTrackingLists() {
   upNext.value = upNextRes
   stats.value = statsRes
   activity.value = activityRes
+  void loadJellyfinLinks(upNextRes)
 }
 
 async function markNextEpisodeWatched(item: UpNextItem) {
@@ -231,7 +235,10 @@ async function loadDashboard() {
   loadingStats.value = false
 
   upNextError.value = upNextRes.status === 'rejected'
-  if (upNextRes.status === 'fulfilled') upNext.value = upNextRes.value
+  if (upNextRes.status === 'fulfilled') {
+    upNext.value = upNextRes.value
+    void loadJellyfinLinks(upNextRes.value)
+  }
   loadingUpNext.value = false
 
   upcomingError.value = upcomingRes.status === 'rejected'

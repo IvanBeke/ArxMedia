@@ -136,3 +136,6 @@ export interface SonarrAddPayload {
   quality_profile_id: number; root_folder_path: string; series_type: SonarrSeriesType; monitor: SonarrMonitor
   monitored: boolean; season_folder: boolean; search_for_missing_episodes: boolean; tags: number[]
 }
+export interface JellyfinLinks { show_url: string | null; season_url: string | null; episode_url: string | null }
+export interface JellyfinEpisodeRef { tmdb_id: number; season_number: number; episode_number: number }
+export interface JellyfinEpisodeLink extends JellyfinEpisodeRef { url: string | null }

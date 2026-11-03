@@ -1,12 +1,13 @@
 <template>
-  <button
-    type="button"
+  <component
+    :is="href ? 'a' : 'button'"
+    v-bind="href ? { href, target: '_blank', rel: 'noopener noreferrer' } : { type: 'button' }"
     class="inline-flex items-center gap-2 h-9 px-4 text-sm font-medium rounded-lg border bg-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
     :class="active ? brand.activeClass : brand.idleClass"
   >
     <span>{{ label }}</span>
     <img :src="brand.icon" alt="" class="w-4 h-4 object-contain" aria-hidden="true">
-  </button>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -17,7 +18,8 @@ const props = withDefaults(defineProps<{
   service: IntegrationService
   label: string
   active?: boolean
-}>(), { active: false })
+  href?: string
+}>(), { active: false, href: '' })
 
 const brand = computed(() => INTEGRATION_BRANDS[props.service])
 </script>

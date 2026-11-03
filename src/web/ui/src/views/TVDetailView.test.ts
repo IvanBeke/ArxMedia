@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/auth'
 import SonarrAction from '@/components/SonarrAction.vue'
 import type { User } from '@/types/api'
 
-const { getTV, getTVCredits, getTVRecommendations, getRatings, getWatchedEpisodes, getHistory, getSonarrSeries, getSonarrOptions } = vi.hoisted(() => ({
+const { getTV, getTVCredits, getTVRecommendations, getRatings, getWatchedEpisodes, getHistory, getSonarrSeries, getSonarrOptions, getJellyfinLinks } = vi.hoisted(() => ({
   getTV: vi.fn(),
   getTVCredits: vi.fn(),
   getTVRecommendations: vi.fn(),
@@ -22,11 +22,12 @@ const { getTV, getTVCredits, getTVRecommendations, getRatings, getWatchedEpisode
   getHistory: vi.fn(),
   getSonarrSeries: vi.fn(),
   getSonarrOptions: vi.fn(),
+  getJellyfinLinks: vi.fn(),
 }))
 
 vi.mock('@/api', () => {
   return {
-    integrationsAPI: { getSonarrSeries, getSonarrOptions, addSonarrSeries: vi.fn(), removeSonarrSeries: vi.fn() },
+    integrationsAPI: { getSonarrSeries, getSonarrOptions, addSonarrSeries: vi.fn(), removeSonarrSeries: vi.fn(), getJellyfinLinks },
     mediaAPI: {
       getTV,
       getTVCredits,
@@ -103,7 +104,7 @@ function watchedPayload(pairs: [number, number][]) {
   }
 }
 
-async function mountView(authenticated: boolean, { sonarr = false } = {}) {
+async function mountView(authenticated: boolean, { sonarr = false, jellyfin = false } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -118,7 +119,7 @@ async function mountView(authenticated: boolean, { sonarr = false } = {}) {
   const pinia = createPinia()
   setActivePinia(pinia)
   if (authenticated) {
-    useAuthStore().user = { ...TEST_USER, integrations: { ...TEST_USER.integrations, sonarr } }
+    useAuthStore().user = { ...TEST_USER, integrations: { ...TEST_USER.integrations, sonarr, jellyfin } }
   }
 
   const wrapper = mount(TVDetailView, {
@@ -188,6 +189,26 @@ describe('TVDetailView hero progress', () => {
     wrapper.findComponent(SonarrAction).vm.$emit('removed')
     await flushPromises()
     expect(wrapper.text()).toContain('Dark removed from Sonarr')
+  })
+
+  it('hides the Jellyfin link without the jellyfin integration', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView(true)
+
+    expect(wrapper.findAll('a').some((link) => link.text().includes('Jellyfin'))).toBe(false)
+    expect(getJellyfinLinks).not.toHaveBeenCalled()
+  })
+
+  it('links the show to its Jellyfin page', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+    getJellyfinLinks.mockResolvedValue({ show_url: 'https://jellyfin.example.com/web/#/details?id=dark', season_url: null, episode_url: null })
+
+    const wrapper = await mountView(true, { jellyfin: true })
+
+    const link = wrapper.findAll('a').find((candidate) => candidate.text() === 'Open in Jellyfin')
+    expect(link?.attributes('href')).toBe('https://jellyfin.example.com/web/#/details?id=dark')
+    expect(getJellyfinLinks).toHaveBeenCalledWith(TMDB_ID, {}, expect.any(Object))
   })
 
   it('does not offer the watchlist or remove history for a show being watched', async () => {

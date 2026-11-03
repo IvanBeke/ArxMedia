@@ -10,7 +10,7 @@ import { MEDIA_TYPE } from '@/constants/tracking'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types/api'
 
-const { getMovie, getMovieCredits, getMovieRecommendations, getCollection, getHistory, getRatings, getRadarrMovie, getRadarrOptions } = vi.hoisted(() => ({
+const { getMovie, getMovieCredits, getMovieRecommendations, getCollection, getHistory, getRatings, getRadarrMovie, getRadarrOptions, getJellyfinMovieLink } = vi.hoisted(() => ({
   getMovie: vi.fn(),
   getMovieCredits: vi.fn(),
   getMovieRecommendations: vi.fn(),
@@ -19,10 +19,11 @@ const { getMovie, getMovieCredits, getMovieRecommendations, getCollection, getHi
   getRatings: vi.fn(),
   getRadarrMovie: vi.fn(),
   getRadarrOptions: vi.fn(),
+  getJellyfinMovieLink: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
-  integrationsAPI: { getRadarrMovie, getRadarrOptions, addRadarrMovie: vi.fn(), removeRadarrMovie: vi.fn() },
+  integrationsAPI: { getRadarrMovie, getRadarrOptions, addRadarrMovie: vi.fn(), removeRadarrMovie: vi.fn(), getJellyfinMovieLink },
   mediaAPI: {
     getMovie,
     getMovieCredits,
@@ -63,7 +64,7 @@ const MediaHistoryTabStub = {
   template: '<div class="history-tab-stub" />',
 }
 
-async function mountView(tab = 'history', { radarr = false, realActions = false } = {}) {
+async function mountView(tab = 'history', { radarr = false, jellyfin = false, realActions = false } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -77,7 +78,7 @@ async function mountView(tab = 'history', { radarr = false, realActions = false 
 
   const pinia = createPinia()
   setActivePinia(pinia)
-  useAuthStore().user = { ...TEST_USER, integrations: { ...TEST_USER.integrations, radarr } }
+  useAuthStore().user = { ...TEST_USER, integrations: { ...TEST_USER.integrations, radarr, jellyfin } }
 
   const wrapper = mount(MovieDetailView, {
     global: {
@@ -166,6 +167,32 @@ describe('MovieDetailView history tab', () => {
     wrapper.findComponent(AddToRadarrDialog).vm.$emit('added')
     await flushPromises()
     expect(wrapper.text()).toContain('The Matrix added to Radarr')
+  })
+
+  it('hides the Jellyfin link without the jellyfin integration', async () => {
+    const wrapper = await mountView('overview', { realActions: true })
+
+    expect(wrapper.findAll('a').some((link) => link.text().includes('Jellyfin'))).toBe(false)
+    expect(getJellyfinMovieLink).not.toHaveBeenCalled()
+  })
+
+  it('links the movie to its Jellyfin page', async () => {
+    getJellyfinMovieLink.mockResolvedValue({ url: 'https://jellyfin.example.com/web/#/details?id=matrix' })
+
+    const wrapper = await mountView('overview', { jellyfin: true, realActions: true })
+
+    const link = wrapper.findAll('a').find((candidate) => candidate.text() === 'Open in Jellyfin')
+    expect(link?.attributes('href')).toBe('https://jellyfin.example.com/web/#/details?id=matrix')
+    expect(link?.attributes('target')).toBe('_blank')
+    expect(getJellyfinMovieLink).toHaveBeenCalledWith(TMDB_ID, expect.any(Object))
+  })
+
+  it('shows no Jellyfin link when the movie is not in the library', async () => {
+    getJellyfinMovieLink.mockResolvedValue({ url: null })
+
+    const wrapper = await mountView('overview', { jellyfin: true, realActions: true })
+
+    expect(wrapper.findAll('a').some((link) => link.text().includes('Jellyfin'))).toBe(false)
   })
 
   it('links crew highlights to the person profile', async () => {

@@ -28,6 +28,7 @@ export default {
         },
         radarr: '#ffc230',
         sonarr: '#35c5f4',
+        jellyfin: '#aa5cc3',
         dark: {
           DEFAULT: '#111111',
           50: '#1a1a1a',

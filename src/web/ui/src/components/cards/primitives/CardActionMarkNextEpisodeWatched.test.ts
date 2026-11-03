@@ -1,8 +1,26 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import CardActionMarkNextEpisodeWatched from '@/components/cards/primitives/CardActionMarkNextEpisodeWatched.vue'
 
 describe('CardActionMarkNextEpisodeWatched', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('is labelled like every other watched action', () => {
+    const wrapper = mount(CardActionMarkNextEpisodeWatched)
+
+    expect(wrapper.get('button').attributes('aria-label')).toBe('Mark as watched')
+    expect(wrapper.get('button').attributes('title')).toBe('Mark as watched')
+  })
+
+  it('accepts a custom label', () => {
+    const wrapper = mount(CardActionMarkNextEpisodeWatched, { props: { ariaLabel: 'Watched it' } })
+
+    expect(wrapper.get('button').attributes('aria-label')).toBe('Watched it')
+  })
+
   it('uses the green watched style with a checkmark icon', () => {
     const wrapper = mount(CardActionMarkNextEpisodeWatched)
     const button = wrapper.get('button')

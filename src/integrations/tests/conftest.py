@@ -1,4 +1,5 @@
 import json
+from urllib.parse import urlsplit
 
 import pytest
 from django.contrib.auth.models import Permission
@@ -18,22 +19,24 @@ class FakeResponse:
 
 
 class FakeService:
-    """Routes requests.Session.request calls by method and path (after the /api/v3 prefix)."""
+    """Routes requests.Session.request calls by method and URL path (without the /api/v3 prefix)."""
 
     def __init__(self):
         self.routes = {}
         self.calls = []
 
     def on(self, method, path, body=None, status_code=200):
-        self.routes[(method, path)] = FakeResponse(body, status_code)
+        """Register a response; a callable body receives the request params and returns the JSON body."""
+        self.routes[(method, path)] = body if callable(body) else FakeResponse(body, status_code)
 
     def calls_to(self, method, path):
         return [call for call in self.calls if call['method'] == method and call['path'] == path]
 
     def __call__(self, session, method, url, **kwargs):
-        path = url.split('/api/v3', 1)[1]
+        path = urlsplit(url).path.removeprefix('/api/v3')
         self.calls.append({'method': method, 'path': path, 'url': url, 'headers': dict(session.headers), 'verify': session.verify, **kwargs})
-        return self.routes[(method, path)]
+        route = self.routes[(method, path)]
+        return FakeResponse(route(kwargs.get('params') or {})) if callable(route) else route
 
 
 @pytest.fixture
@@ -65,4 +68,25 @@ def arr_user(user):
 @pytest.fixture
 def arr_client(api_client, arr_user, arr_settings):
     api_client.force_authenticate(user=arr_user)
+    return api_client
+
+
+@pytest.fixture
+def jellyfin_settings(settings):
+    settings.JELLYFIN_URL = 'http://jellyfin.test:8096'
+    settings.JELLYFIN_API_KEY = 'jellyfin-key'
+    settings.JELLYFIN_PUBLIC_URL = settings.JELLYFIN_URL
+    settings.JELLYFIN_VERIFY_SSL = True
+    return settings
+
+
+@pytest.fixture
+def jellyfin_user(user):
+    user.user_permissions.add(Permission.objects.get(codename='use_jellyfin'))
+    return user
+
+
+@pytest.fixture
+def jellyfin_api(api_client, jellyfin_user, jellyfin_settings):
+    api_client.force_authenticate(user=jellyfin_user)
     return api_client

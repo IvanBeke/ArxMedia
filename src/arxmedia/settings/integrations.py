@@ -21,6 +21,11 @@ SONARR_API_KEY = os.environ.get('SONARR_API_KEY', '').strip()
 SONARR_PUBLIC_URL = os.environ.get('SONARR_PUBLIC_URL', '').strip().rstrip('/') or SONARR_URL
 SONARR_VERIFY_SSL = os.environ.get('SONARR_VERIFY_SSL', 'True').strip().lower() not in ('false', '0', 'no')
 
+JELLYFIN_URL = os.environ.get('JELLYFIN_URL', '').strip().rstrip('/')
+JELLYFIN_API_KEY = os.environ.get('JELLYFIN_API_KEY', '').strip()
+JELLYFIN_PUBLIC_URL = os.environ.get('JELLYFIN_PUBLIC_URL', '').strip().rstrip('/') or JELLYFIN_URL
+JELLYFIN_VERIFY_SSL = os.environ.get('JELLYFIN_VERIFY_SSL', 'True').strip().lower() not in ('false', '0', 'no')
+
 DJANGO_VITE = {
     'default': {
         'dev_mode': os.environ.get('DJANGO_VITE_DEV_MODE', 'False') == 'True',

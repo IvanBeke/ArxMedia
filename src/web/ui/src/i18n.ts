@@ -439,6 +439,7 @@ const messages = {
     sonarr_delete_files: 'Delete show files',
     sonarr_remove_failed: 'Could not remove the show from Sonarr.',
     sonarr_removed: '{title} removed from Sonarr',
+    jellyfin_open: 'Open in Jellyfin',
   },
   es: {
     nav_dashboard: 'Panel',
@@ -873,6 +874,7 @@ const messages = {
     sonarr_delete_files: 'Eliminar los archivos de la serie',
     sonarr_remove_failed: 'No se pudo quitar la serie de Sonarr.',
     sonarr_removed: '{title} quitada de Sonarr',
+    jellyfin_open: 'Abrir en Jellyfin',
   }
 }
 

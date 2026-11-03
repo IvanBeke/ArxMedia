@@ -1,6 +1,7 @@
 export const INTEGRATION_SERVICE = {
   RADARR: 'radarr',
   SONARR: 'sonarr',
+  JELLYFIN: 'jellyfin',
 } as const
 
 export type IntegrationService = (typeof INTEGRATION_SERVICE)[keyof typeof INTEGRATION_SERVICE]
@@ -24,5 +25,11 @@ export const INTEGRATION_BRANDS: Record<IntegrationService, IntegrationBrand> = 
     icon: '/static/branding/integrations/sonarr.webp',
     idleClass: 'border-sonarr/50 text-sonarr hover:bg-sonarr/10',
     activeClass: 'border-sonarr bg-sonarr/15 text-sonarr hover:bg-sonarr/25',
+  },
+  [INTEGRATION_SERVICE.JELLYFIN]: {
+    name: 'Jellyfin',
+    icon: '/static/branding/integrations/jellyfin.webp',
+    idleClass: 'border-jellyfin/50 text-jellyfin hover:bg-jellyfin/10',
+    activeClass: 'border-jellyfin bg-jellyfin/15 text-jellyfin hover:bg-jellyfin/25',
   },
 }

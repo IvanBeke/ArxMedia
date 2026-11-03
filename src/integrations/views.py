@@ -5,12 +5,20 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from .clients import IntegrationError, radarr_client, sonarr_client
+from .clients import IntegrationError, jellyfin_client, radarr_client, sonarr_client
+from .jellyfin_links import NO_LINKS, JellyfinLinks
 from .media_ids import tvdb_id_for_show
-from .permissions import CanUseSonarrRadarr
-from .serializers import ArrRemoveSerializer, RadarrAddSerializer, SonarrAddSerializer
+from .permissions import CanUseJellyfin, CanUseSonarrRadarr
+from .serializers import (
+    ArrRemoveSerializer,
+    JellyfinEpisodeLinksSerializer,
+    JellyfinLinksQuerySerializer,
+    RadarrAddSerializer,
+    SonarrAddSerializer,
+)
 
 ARR_PERMISSIONS = [permissions.IsAuthenticated, CanUseSonarrRadarr]
+JELLYFIN_PERMISSIONS = [permissions.IsAuthenticated, CanUseJellyfin]
 
 
 def integration_view(view):
@@ -97,3 +105,48 @@ def sonarr_series(request, tmdb_id):
     serializer.is_valid(raise_exception=True)
     added = client.add_series(tvdb_id, serializer.validated_data)
     return Response(client.series_state(added), status=status.HTTP_201_CREATED)
+
+
+@transaction.non_atomic_requests
+@api_view(['GET'])
+@permission_classes(JELLYFIN_PERMISSIONS)
+@integration_view
+def jellyfin_show_links(request, tmdb_id):
+    client = jellyfin_client()
+    query = JellyfinLinksQuerySerializer(data=request.query_params)
+    query.is_valid(raise_exception=True)
+    try:
+        links = JellyfinLinks(client).show_links(tmdb_id, query.validated_data.get('season'), query.validated_data.get('episode'))
+    except IntegrationError:
+        links = dict(NO_LINKS)
+    return Response(links)
+
+
+@transaction.non_atomic_requests
+@api_view(['GET'])
+@permission_classes(JELLYFIN_PERMISSIONS)
+@integration_view
+def jellyfin_movie_link(request, tmdb_id):
+    client = jellyfin_client()
+    try:
+        url = JellyfinLinks(client).movie_url(tmdb_id)
+    except IntegrationError:
+        url = None
+    return Response({'url': url})
+
+
+@transaction.non_atomic_requests
+@api_view(['POST'])
+@permission_classes(JELLYFIN_PERMISSIONS)
+@integration_view
+def jellyfin_episode_links(request):
+    client = jellyfin_client()
+    serializer = JellyfinEpisodeLinksSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    refs = serializer.validated_data['items']
+    keys = [(ref['tmdb_id'], ref['season_number'], ref['episode_number']) for ref in refs]
+    try:
+        urls = JellyfinLinks(client).episode_urls(keys)
+    except IntegrationError:
+        urls = [None] * len(keys)
+    return Response({'results': [{**ref, 'url': url} for ref, url in zip(refs, urls, strict=True)]})

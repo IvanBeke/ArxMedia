@@ -28,3 +28,18 @@ class SonarrAddSerializer(serializers.Serializer):
 class ArrRemoveSerializer(serializers.Serializer):
     delete_files = serializers.BooleanField()
     add_import_exclusion = serializers.BooleanField()
+
+
+class JellyfinLinksQuerySerializer(serializers.Serializer):
+    season = serializers.IntegerField(min_value=0, required=False)
+    episode = serializers.IntegerField(min_value=1, required=False)
+
+
+class JellyfinEpisodeRefSerializer(serializers.Serializer):
+    tmdb_id = serializers.IntegerField(min_value=1)
+    season_number = serializers.IntegerField(min_value=0)
+    episode_number = serializers.IntegerField(min_value=1)
+
+
+class JellyfinEpisodeLinksSerializer(serializers.Serializer):
+    items = serializers.ListField(child=JellyfinEpisodeRefSerializer(), max_length=50)

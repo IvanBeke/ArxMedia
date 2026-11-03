@@ -67,6 +67,13 @@
                 @trigger="handleWatchTrigger"
                 @select="handleWatchOption"
               />
+              <JellyfinLink
+                v-if="auth.user?.integrations.jellyfin"
+                :tmdb-id="tmdbId"
+                scope="episode"
+                :season-number="seasonNum"
+                :episode-number="episodeNum"
+              />
               <ExternalLinks
                 :tmdb-url="externalLinks.tmdbUrl"
                 :tvmaze-url="externalLinks.tvmazeUrl"
@@ -156,6 +163,8 @@ import RatingBadge from '@/components/RatingBadge.vue'
 import WatchedDateTimePicker from '@/components/WatchedDateTimePicker.vue'
 import EpisodeUnwatchDialog from '@/components/EpisodeUnwatchDialog.vue'
 import ExternalLinks from '@/components/ExternalLinks.vue'
+import JellyfinLink from '@/components/JellyfinLink.vue'
+import { useAuthStore } from '@/stores/auth'
 import CastGrid from '@/components/CastGrid.vue'
 import LoadError from '@/components/LoadError.vue'
 import { formatDateTimeByLocale, useI18n } from '@/i18n'
@@ -177,6 +186,7 @@ type EpisodeNavigationTarget = {
 }
 
 const route = useRoute()
+const auth = useAuthStore()
 
 const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10) || 0)
 const seasonNum = computed(() => Number.parseInt(String(route.params.seasonNumber), 10) || 0)

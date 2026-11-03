@@ -36,8 +36,8 @@ What "good work" means for this project.
 
 ## External service integrations
 
-- External services (currently Radarr and Sonarr; Jellyfin planned) are optional and configured only through env vars (`<SERVICE>_URL` + `<SERVICE>_API_KEY`, optional `<SERVICE>_VERIFY_SSL=False` for self-signed certificates; optional `<SERVICE>_PUBLIC_URL` is the browser-facing base used for links to the item and defaults to `<SERVICE>_URL`); a service with a missing URL or key is treated as not configured (API answers 503, UI hides its buttons)
-- Access is gated by Django permissions on `accounts.User` that are granted manually (Django admin); they are never granted automatically. Superusers have them implicitly. Currently: `use_sonarr_radarr`
+- External services (Radarr, Sonarr and Jellyfin) are optional and configured only through env vars (`<SERVICE>_URL` + `<SERVICE>_API_KEY`, optional `<SERVICE>_VERIFY_SSL=False` for self-signed certificates; optional `<SERVICE>_PUBLIC_URL` is the browser-facing base used for links to the item and defaults to `<SERVICE>_URL`); a service with a missing URL or key is treated as not configured (API answers 503, UI hides its buttons)
+- Access is gated by Django permissions on `accounts.User` that are granted manually (Django admin); they are never granted automatically. Superusers have them implicitly. Currently: `use_sonarr_radarr` (Sonarr and Radarr buttons) and `use_jellyfin` (Jellyfin links)
 - `GET /api/auth/me/` returns `integrations: {radarr, sonarr, jellyfin}`; a flag is true only when the user holds the permission and the service is configured, and the UI uses it to show or hide buttons
 - External calls live in `src/integrations/clients.py` (shared `requests` session helpers, timeouts, `IntegrationError` mapped to JSON error responses: 502 unreachable/rejected key, 503 not configured, upstream 400/404 passed through)
 
@@ -51,7 +51,7 @@ What "good work" means for this project.
 - `src/arxmedia/settings/database.py` contains `DATABASES` and `dj-database-url` fallback logic
 - `src/arxmedia/settings/static_media.py` contains static/media paths and storages
 - `src/arxmedia/settings/api.py` contains password validators, DRF, and CSRF trusted origins
-- `src/arxmedia/settings/integrations.py` contains TMDB, TVMaze, Radarr, Sonarr, and Django Vite integration settings
+- `src/arxmedia/settings/integrations.py` contains TMDB, TVMaze, Radarr, Sonarr, Jellyfin, and Django Vite integration settings
 - `src/arxmedia/settings/caching.py` contains the Django cache setup (Redis via django-redis when `REDIS_URL` is set, in-memory otherwise; tests always use in-memory)
 - `src/arxmedia/settings/celery.py` contains Redis-derived Celery broker/backend and beat schedules
 - `src/arxmedia/settings/logging_conf.py` contains `LOG_LEVEL` and Django logging configuration
@@ -111,6 +111,7 @@ All API routes require an authenticated session except `POST /api/auth/register/
 - Media (`/api/media/`): `genres/`, `search/?q=&type=`, `trending/?type=&window=`, `popular/?type=`, `movies/<id>/` (+ `refresh/`, `credits/`, `external-ids/`, `recommendations/`), `collections/<id>/`, `people/search/`, `people/<id>/` (+ `credits/`, `external-ids/`), `tv/<id>/` (+ `refresh/`, `credits/`, `external-ids/`, `recommendations/`, `heatmap/`), `tv/<id>/seasons/<n>/` (+ `credits/`), `tv/<id>/seasons/<n>/episodes/<e>/credits/`, `.../external-ids/`
 - Tracking (`/api/tracking/`): `history/`, `history/<id>/`, `ratings/`, `watchlist/`, `watchlist/<id>/`, `reviews/`, `stats/` (six card values only), `activity/` (recent activity list), `episodes/watched/`, `episodes/mark/`, `episodes/unmark/`, `seasons/mark/`, `seasons/unmark/`, `shows/mark/`, `shows/unmark/`, `up-next/`, `my-shows/`, `my-movies/`, `upcoming/`, `media/drop/`, `lists/`, `lists/<id>/`, `lists/<list_id>/items/`, `lists/<list_id>/items/<id>/`, `lists/<list_id>/items/reorder/`, `recommendations/`, `data/import/`, `data/export/`, `data/jobs/`, `data/jobs/<id>/`, `data/jobs/<id>/confirm/`, `data/jobs/<id>/cancel/`, `data/jobs/<id>/file/`
 - Integrations (`/api/integrations/`, requires the `accounts.use_sonarr_radarr` permission, 403 otherwise): `radarr/options/` (root folders, quality profiles, tags), `radarr/movies/<tmdb_id>/` (GET: `{added, path, monitored, url}`, `url` being the item's page in Radarr; POST: add the movie, 201, or 409 if already added; DELETE with `{delete_files, add_import_exclusion}`: remove it, 200 `{added: false}`, or 404 if not in Radarr; Radarr validation errors are passed through), `sonarr/options/` and `sonarr/tv/<tmdb_id>/` (same contract for shows; the show's TheTVDB id is resolved from the stored external ids or TMDB and a show without one answers 422; Sonarr validation errors are passed through)
+- Jellyfin (requires `accounts.use_jellyfin`, 403 otherwise): `jellyfin/tv/<tmdb_id>/links/?season=&episode=` returns `{show_url, season_url, episode_url}` (each a Jellyfin page URL or null), `jellyfin/movies/<tmdb_id>/link/` returns `{url}`, and `POST jellyfin/episodes/links/` with `{items: [{tmdb_id, season_number, episode_number}]}` (max 50) returns `{results: [{..., url}]}` in the same order. Shows are matched by TMDB id, library lookups are cached for 5 minutes, and a Jellyfin failure answers 200 with null links instead of an error (503 only when Jellyfin is not configured)
 - Social (`/api/social/feed/`), calendar (`/api/calendar/`), health (`GET /healthz/`, unauthenticated), admin (`/admin/`), PWA (`/manifest.webmanifest`, `/sw.js`)
 
 ## Background tasks (Celery beat)

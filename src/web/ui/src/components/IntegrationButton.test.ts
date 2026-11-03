@@ -33,6 +33,20 @@ describe('IntegrationButton', () => {
     expect(wrapper.get('button').classes()).not.toContain('text-radarr')
   })
 
+  it('renders as a new-tab link when given a URL', () => {
+    const wrapper = mount(IntegrationButton, {
+      props: { service: INTEGRATION_SERVICE.JELLYFIN, label: 'Open in Jellyfin', href: 'https://jellyfin.example.com/web/#/details?id=1' },
+    })
+
+    const link = wrapper.get('a')
+    expect(link.attributes('href')).toBe('https://jellyfin.example.com/web/#/details?id=1')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('rel')).toBe('noopener noreferrer')
+    expect(link.classes()).toContain('text-jellyfin')
+    expect(wrapper.get('img').attributes('src')).toBe('/static/branding/integrations/jellyfin.webp')
+    expect(wrapper.find('button').exists()).toBe(false)
+  })
+
   it('emits click events', async () => {
     const wrapper = mount(IntegrationButton, { props: { service: INTEGRATION_SERVICE.RADARR, label: 'Add to Radarr' } })
 
