@@ -27,6 +27,7 @@ export default {
           watchnow: '#6dc847',
         },
         radarr: '#ffc230',
+        sonarr: '#35c5f4',
         dark: {
           DEFAULT: '#111111',
           50: '#1a1a1a',

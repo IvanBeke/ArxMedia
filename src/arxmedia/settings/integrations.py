@@ -16,6 +16,11 @@ RADARR_API_KEY = os.environ.get('RADARR_API_KEY', '').strip()
 RADARR_PUBLIC_URL = os.environ.get('RADARR_PUBLIC_URL', '').strip().rstrip('/') or RADARR_URL
 RADARR_VERIFY_SSL = os.environ.get('RADARR_VERIFY_SSL', 'True').strip().lower() not in ('false', '0', 'no')
 
+SONARR_URL = os.environ.get('SONARR_URL', '').strip().rstrip('/')
+SONARR_API_KEY = os.environ.get('SONARR_API_KEY', '').strip()
+SONARR_PUBLIC_URL = os.environ.get('SONARR_PUBLIC_URL', '').strip().rstrip('/') or SONARR_URL
+SONARR_VERIFY_SSL = os.environ.get('SONARR_VERIFY_SSL', 'True').strip().lower() not in ('false', '0', 'no')
+
 DJANGO_VITE = {
     'default': {
         'dev_mode': os.environ.get('DJANGO_VITE_DEV_MODE', 'False') == 'True',

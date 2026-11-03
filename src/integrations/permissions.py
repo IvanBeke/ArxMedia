@@ -1,6 +1,6 @@
 from rest_framework import permissions
 
-from .clients import radarr_credentials
+from .clients import radarr_credentials, sonarr_credentials
 
 SONARR_RADARR_PERMISSION = 'accounts.use_sonarr_radarr'
 
@@ -17,6 +17,6 @@ def enabled_integrations(user) -> dict[str, bool]:
     can_use_arr = user.has_perm(SONARR_RADARR_PERMISSION)
     return {
         'radarr': can_use_arr and all(radarr_credentials()),
-        'sonarr': False,
+        'sonarr': can_use_arr and all(sonarr_credentials()),
         'jellyfin': False,
     }

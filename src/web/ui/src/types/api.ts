@@ -129,4 +129,10 @@ export interface RadarrAddPayload {
   quality_profile_id: number; root_folder_path: string; minimum_availability: RadarrMinimumAvailability
   monitored: boolean; search_for_movie: boolean; tags: number[]
 }
-export interface RadarrRemovePayload { delete_files: boolean; add_import_exclusion: boolean }
+export interface ArrRemovePayload { delete_files: boolean; add_import_exclusion: boolean }
+export type SonarrSeriesType = 'standard' | 'daily' | 'anime'
+export type SonarrMonitor = 'all' | 'future' | 'missing' | 'existing' | 'recent' | 'pilot' | 'firstSeason' | 'lastSeason' | 'none'
+export interface SonarrAddPayload {
+  quality_profile_id: number; root_folder_path: string; series_type: SonarrSeriesType; monitor: SonarrMonitor
+  monitored: boolean; season_folder: boolean; search_for_missing_episodes: boolean; tags: number[]
+}

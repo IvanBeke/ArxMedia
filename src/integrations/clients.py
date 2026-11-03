@@ -31,14 +31,15 @@ def _error_detail(response: requests.Response) -> str:
 
 
 class ArrClient:
-    """Shared plumbing for the Sonarr/Radarr v3 REST API."""
+    """Transport for the Sonarr/Radarr v3 REST API: authentication, errors and the shared options lookup."""
 
     SERVICE_NAME = ''
     API_PREFIX = '/api/v3'
     REQUEST_TIMEOUT = 15
 
-    def __init__(self, base_url: str, api_key: str, verify_ssl: bool = True):
+    def __init__(self, base_url: str, api_key: str, verify_ssl: bool = True, public_url: str = ''):
         self._base_url = base_url.rstrip('/')
+        self._public_url = (public_url or base_url).rstrip('/')
         self._session = build_session(pool_size=2)
         self._session.headers['X-Api-Key'] = api_key
         self._session.verify = verify_ssl
@@ -107,17 +108,86 @@ class RadarrClient(ArrClient):
         }
         self._request('DELETE', f'/movie/{radarr_id}', params=params)
 
+    def movie_state(self, movie: dict[str, Any] | None) -> dict[str, Any]:
+        if not movie:
+            return {'added': False}
+        slug = movie.get('titleSlug') or movie.get('tmdbId')
+        return {
+            'added': True,
+            'path': movie.get('path', ''),
+            'monitored': bool(movie.get('monitored')),
+            'url': f'{self._public_url}/movie/{slug}',
+        }
+
+
+class SonarrClient(ArrClient):
+    SERVICE_NAME = 'Sonarr'
+
+    def find_series(self, tvdb_id: int) -> dict[str, Any] | None:
+        series = self._request('GET', '/series', params={'tvdbId': tvdb_id})
+        return series[0] if series else None
+
+    def add_series(self, tvdb_id: int, data: dict[str, Any]) -> dict[str, Any]:
+        results = self._request('GET', '/series/lookup', params={'term': f'tvdb:{tvdb_id}'})
+        lookup = next((result for result in results or [] if result.get('tvdbId') == tvdb_id), None)
+        if not lookup:
+            raise IntegrationError('Series not found in Sonarr.', 404)
+        payload = {
+            **lookup,
+            'qualityProfileId': data['quality_profile_id'],
+            'rootFolderPath': data['root_folder_path'],
+            'seriesType': data['series_type'],
+            'seasonFolder': data['season_folder'],
+            'monitored': data['monitored'],
+            'tags': data['tags'],
+            'addOptions': {
+                'monitor': data['monitor'],
+                'searchForMissingEpisodes': data['search_for_missing_episodes'],
+            },
+        }
+        payload.pop('id', None)
+        return self._request('POST', '/series', json=payload)
+
+    def remove_series(self, sonarr_id: int, data: dict[str, Any]) -> None:
+        params = {
+            'deleteFiles': str(data['delete_files']).lower(),
+            'addImportListExclusion': str(data['add_import_exclusion']).lower(),
+        }
+        self._request('DELETE', f'/series/{sonarr_id}', params=params)
+
+    def series_state(self, series: dict[str, Any] | None) -> dict[str, Any]:
+        if not series:
+            return {'added': False}
+        slug = series.get('titleSlug') or series.get('tvdbId')
+        return {
+            'added': True,
+            'path': series.get('path', ''),
+            'monitored': bool(series.get('monitored')),
+            'url': f'{self._public_url}/series/{slug}',
+        }
+
 
 def radarr_credentials() -> tuple[str, str]:
     return getattr(settings, 'RADARR_URL', ''), getattr(settings, 'RADARR_API_KEY', '')
-
-
-def radarr_public_url() -> str:
-    return getattr(settings, 'RADARR_PUBLIC_URL', '')
 
 
 def radarr_client() -> RadarrClient:
     url, api_key = radarr_credentials()
     if not (url and api_key):
         raise IntegrationError('Radarr is not configured.', 503)
-    return RadarrClient(url, api_key, getattr(settings, 'RADARR_VERIFY_SSL', True))
+    return RadarrClient(
+        url, api_key, getattr(settings, 'RADARR_VERIFY_SSL', True), getattr(settings, 'RADARR_PUBLIC_URL', ''),
+    )
+
+
+def sonarr_credentials() -> tuple[str, str]:
+    return getattr(settings, 'SONARR_URL', ''), getattr(settings, 'SONARR_API_KEY', '')
+
+
+def sonarr_client() -> SonarrClient:
+    url, api_key = sonarr_credentials()
+    if not (url and api_key):
+        raise IntegrationError('Sonarr is not configured.', 503)
+    return SonarrClient(
+        url, api_key, getattr(settings, 'SONARR_VERIFY_SSL', True), getattr(settings, 'SONARR_PUBLIC_URL', ''),
+    )

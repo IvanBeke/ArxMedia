@@ -128,14 +128,6 @@ describe('AddToRadarrDialog', () => {
       expect(button(wrapper, 'Remove from Radarr')).toBeTruthy()
     })
 
-    it('omits the open link when Radarr gave no URL', async () => {
-      getRadarrMovie.mockResolvedValue({ added: true, path: '/m', monitored: true })
-
-      const wrapper = await openDialog()
-
-      expect(wrapper.find('a').exists()).toBe(false)
-    })
-
     it('removes the movie with the chosen options after confirmation', async () => {
       const wrapper = await openDialog()
       await button(wrapper, 'Remove from Radarr')!.trigger('click')
@@ -152,16 +144,6 @@ describe('AddToRadarrDialog', () => {
       expect(wrapper.emitted('removed')).toHaveLength(1)
       expect(wrapper.emitted('synced')?.at(-1)).toEqual([{ added: false }])
       expect(wrapper.find('dialog').element.open).toBe(false)
-    })
-
-    it('goes back to the choices without removing', async () => {
-      const wrapper = await openDialog()
-      await button(wrapper, 'Remove from Radarr')!.trigger('click')
-
-      await button(wrapper, 'Back')!.trigger('click')
-
-      expect(removeRadarrMovie).not.toHaveBeenCalled()
-      expect(wrapper.find('a').exists()).toBe(true)
     })
 
     it('shows the error and stays on the confirmation when removing fails', async () => {

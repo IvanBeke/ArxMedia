@@ -42,6 +42,10 @@ def arr_settings(settings):
     settings.RADARR_API_KEY = 'radarr-key'
     settings.RADARR_PUBLIC_URL = settings.RADARR_URL
     settings.RADARR_VERIFY_SSL = True
+    settings.SONARR_URL = 'http://sonarr.test:8989'
+    settings.SONARR_API_KEY = 'sonarr-key'
+    settings.SONARR_PUBLIC_URL = settings.SONARR_URL
+    settings.SONARR_VERIFY_SSL = True
     return settings
 
 

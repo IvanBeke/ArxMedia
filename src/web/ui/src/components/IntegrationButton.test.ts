@@ -25,6 +25,14 @@ describe('IntegrationButton', () => {
     expect(wrapper.get('button').classes()).toContain('bg-radarr/15')
   })
 
+  it('uses each service\'s own icon and colour', () => {
+    const wrapper = mount(IntegrationButton, { props: { service: INTEGRATION_SERVICE.SONARR, label: 'Add to Sonarr' } })
+
+    expect(wrapper.get('img').attributes('src')).toBe('/static/branding/integrations/sonarr.webp')
+    expect(wrapper.get('button').classes()).toContain('text-sonarr')
+    expect(wrapper.get('button').classes()).not.toContain('text-radarr')
+  })
+
   it('emits click events', async () => {
     const wrapper = mount(IntegrationButton, { props: { service: INTEGRATION_SERVICE.RADARR, label: 'Add to Radarr' } })
 

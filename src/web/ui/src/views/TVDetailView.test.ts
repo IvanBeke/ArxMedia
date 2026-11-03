@@ -10,19 +10,23 @@ import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import FlashToast from '@/components/FlashToast.vue'
 import DetailHero from '@/components/DetailHero.vue'
 import { useAuthStore } from '@/stores/auth'
+import SonarrAction from '@/components/SonarrAction.vue'
 import type { User } from '@/types/api'
 
-const { getTV, getTVCredits, getTVRecommendations, getRatings, getWatchedEpisodes, getHistory } = vi.hoisted(() => ({
+const { getTV, getTVCredits, getTVRecommendations, getRatings, getWatchedEpisodes, getHistory, getSonarrSeries, getSonarrOptions } = vi.hoisted(() => ({
   getTV: vi.fn(),
   getTVCredits: vi.fn(),
   getTVRecommendations: vi.fn(),
   getRatings: vi.fn(),
   getWatchedEpisodes: vi.fn(),
   getHistory: vi.fn(),
+  getSonarrSeries: vi.fn(),
+  getSonarrOptions: vi.fn(),
 }))
 
 vi.mock('@/api', () => {
   return {
+    integrationsAPI: { getSonarrSeries, getSonarrOptions, addSonarrSeries: vi.fn(), removeSonarrSeries: vi.fn() },
     mediaAPI: {
       getTV,
       getTVCredits,
@@ -99,7 +103,7 @@ function watchedPayload(pairs: [number, number][]) {
   }
 }
 
-async function mountView(authenticated: boolean) {
+async function mountView(authenticated: boolean, { sonarr = false } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -114,7 +118,7 @@ async function mountView(authenticated: boolean) {
   const pinia = createPinia()
   setActivePinia(pinia)
   if (authenticated) {
-    useAuthStore().user = TEST_USER
+    useAuthStore().user = { ...TEST_USER, integrations: { ...TEST_USER.integrations, sonarr } }
   }
 
   const wrapper = mount(TVDetailView, {
@@ -151,6 +155,39 @@ describe('TVDetailView hero progress', () => {
     const bars = wrapper.findAllComponents(ProgressBar)
     expect(bars.length).toBeGreaterThan(0)
     expect(bars[0]?.props('pct')).toBe(67)
+  })
+
+  it('hides the Sonarr button without the sonarr integration', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView(true)
+
+    expect(wrapper.findAll('button').some((button) => button.text().includes('Sonarr'))).toBe(false)
+    expect(wrapper.findComponent(SonarrAction).exists()).toBe(false)
+    expect(getSonarrSeries).not.toHaveBeenCalled()
+  })
+
+  it('opens the Sonarr dialog from the Sonarr button and shows its toasts', async () => {
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+    getSonarrSeries.mockResolvedValue({ added: false })
+    getSonarrOptions.mockResolvedValue({ root_folders: [], quality_profiles: [], tags: [] })
+
+    const wrapper = await mountView(true, { sonarr: true })
+    const button = wrapper.findAll('button').find((candidate) => candidate.text() === 'Add to Sonarr')
+    expect(button).toBeTruthy()
+    await button!.trigger('click')
+    await flushPromises()
+
+    expect(getSonarrSeries).toHaveBeenCalledWith(TMDB_ID, expect.any(Object))
+    expect(wrapper.findComponent(SonarrAction).find('dialog').element.open).toBe(true)
+
+    wrapper.findComponent(SonarrAction).vm.$emit('added')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Dark added to Sonarr')
+
+    wrapper.findComponent(SonarrAction).vm.$emit('removed')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Dark removed from Sonarr')
   })
 
   it('does not offer the watchlist or remove history for a show being watched', async () => {

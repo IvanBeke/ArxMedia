@@ -128,6 +128,13 @@
             :media-type="MEDIA_TYPE.TV"
             :tmdb-id="tmdbId"
           />
+          <SonarrAction
+            v-if="auth.user?.integrations.sonarr"
+            :tmdb-id="tmdbId"
+            :title="show.name"
+            @added="showSuccess(t('sonarr_added', { title: show.name }))"
+            @removed="showSuccess(t('sonarr_removed', { title: show.name }))"
+          />
           <template #rating>
             <StarRating v-if="canRate" v-model="userRating" @update:modelValue="submitRating" />
             <p v-else class="text-xs text-muted">{{ t('rating_show_requires_watching') }}</p>
@@ -328,6 +335,7 @@ import { useAuthStore } from '@/stores/auth'
 import StarRating from '@/components/StarRating.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import AddToListPopover from '@/components/AddToListPopover.vue'
+import SonarrAction from '@/components/SonarrAction.vue'
 import RatingBadge from '@/components/RatingBadge.vue'
 import WatchSplitButton from '@/components/WatchSplitButton.vue'
 import ActionGhostButton from '@/components/ActionGhostButton.vue'

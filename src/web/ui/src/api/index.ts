@@ -3,6 +3,7 @@ import type {
   ApiError,
   ArrItemState,
   ArrOptions,
+  ArrRemovePayload,
   CalendarItem,
   CollectionDetail,
   AggregateCredits,
@@ -30,12 +31,12 @@ import type {
   ProfileUpdatePayload,
   QueryParams,
   RadarrAddPayload,
-  RadarrRemovePayload,
   Rating,
   RegisterPayload,
   Season,
   SeasonWatchPayload,
   ShowProgressItem,
+  SonarrAddPayload,
   TVShow,
   User,
   UserActivityHeatmap,
@@ -236,8 +237,15 @@ export const integrationsAPI = {
     api.get<ArrItemState>('/integrations/radarr/movies/' + tmdbId + '/', options),
   addRadarrMovie: (tmdbId: string | number, data: RadarrAddPayload) =>
     api.post<ArrItemState>('/integrations/radarr/movies/' + tmdbId + '/', data),
-  removeRadarrMovie: (tmdbId: string | number, data: RadarrRemovePayload) =>
+  removeRadarrMovie: (tmdbId: string | number, data: ArrRemovePayload) =>
     api.delete<ArrItemState>('/integrations/radarr/movies/' + tmdbId + '/', data),
+  getSonarrOptions: (options: RequestOptions = {}) => api.get<ArrOptions>('/integrations/sonarr/options/', options),
+  getSonarrSeries: (tmdbId: string | number, options: RequestOptions = {}) =>
+    api.get<ArrItemState>('/integrations/sonarr/tv/' + tmdbId + '/', options),
+  addSonarrSeries: (tmdbId: string | number, data: SonarrAddPayload) =>
+    api.post<ArrItemState>('/integrations/sonarr/tv/' + tmdbId + '/', data),
+  removeSonarrSeries: (tmdbId: string | number, data: ArrRemovePayload) =>
+    api.delete<ArrItemState>('/integrations/sonarr/tv/' + tmdbId + '/', data),
 }
 
 export const calendarAPI = { get: (params?: QueryParams) => api.get<{ results: CalendarItem[] }>('/calendar/', { params }) }
