@@ -12,9 +12,11 @@ STORAGES = {
         'BACKEND': 'django.core.files.storage.FileSystemStorage',
     },
     'staticfiles': {
-        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        'BACKEND': 'arxmedia.storage.ViteAwareStaticFilesStorage',
     },
 }
+# Vite names its assets with a content hash, which WhiteNoise's default test doesn't recognize.
+WHITENOISE_IMMUTABLE_FILE_TEST = r'^/static/web/assets/|\.[0-9a-f]{12}\.'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media_uploads'
