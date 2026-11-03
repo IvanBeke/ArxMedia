@@ -82,7 +82,7 @@
             </div>
           </div>
 
-          <p class="mt-2 text-[11px] text-muted truncate">{{ genresText(item) }}<span v-if="networks(item).length"> · {{ networks(item).join(', ') }}</span></p>
+          <p class="mt-2 text-[11px] text-muted truncate">{{ genresText(item) }}</p>
         </div>
       </section>
 
@@ -330,10 +330,6 @@ function formatTimeLeft(item: ShowProgressItem) {
 
 function genresText(item: ShowProgressItem) {
   return item.genres.join(', ')
-}
-
-function networks(item: ShowProgressItem) {
-  return item.networks
 }
 
 function hasLastWatchedEpisodeCode(item: ShowProgressItem) {

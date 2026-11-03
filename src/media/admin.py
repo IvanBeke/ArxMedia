@@ -41,7 +41,7 @@ class TVShowAdmin(admin.ModelAdmin):
         'name', 'tmdb_id', 'first_air_date', 'last_air_date', 'status',
         'number_of_seasons', 'number_of_episodes', 'vote_average', 'updated_at',
     ]
-    search_fields = ['name', 'original_title', 'overview', 'tmdb_id', 'language', 'language_name', 'status', 'networks']
+    search_fields = ['name', 'original_title', 'overview', 'tmdb_id', 'language', 'language_name', 'status']
     list_filter = ['genres', 'status', 'language', 'first_air_date', 'last_air_date']
     ordering = ['name']
     readonly_fields = ['created_at', 'updated_at', 'poster_url', 'backdrop_url']
@@ -49,7 +49,7 @@ class TVShowAdmin(admin.ModelAdmin):
         ('Identity', {'fields': ('name', 'original_title', 'tmdb_id', 'overview')}),
         ('Broadcast metadata', {
             'fields': (
-                'first_air_date', 'last_air_date', 'status', 'language', 'language_name', 'networks',
+                'first_air_date', 'last_air_date', 'status', 'language', 'language_name',
                 'episode_runtime', 'number_of_seasons', 'number_of_episodes',
             ),
         }),

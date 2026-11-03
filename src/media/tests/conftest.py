@@ -26,7 +26,6 @@ _TV_1399 = {
     'number_of_episodes': 1,
     'episode_run_time': [57],
     'genres': [],
-    'networks': [],
 }
 
 _SEASON_1 = {

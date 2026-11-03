@@ -71,7 +71,6 @@ class TVShow(models.Model):
     language_name = models.CharField(max_length=100, blank=True)
     original_title = models.CharField(max_length=500, blank=True)
     status = models.CharField(max_length=50, blank=True)
-    networks = models.CharField(max_length=500, blank=True)
     external_ids = models.JSONField(default=dict, blank=True)
     episode_runtime = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

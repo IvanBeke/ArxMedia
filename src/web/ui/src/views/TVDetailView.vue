@@ -62,7 +62,6 @@
           <div class="flex items-center gap-4 mb-1 text-sm">
             <RatingBadge :value="show.vote_average ?? 0" :votes="show.vote_count" out-of-ten />
           </div>
-          <p v-if="show.networks" class="text-muted text-sm mt-2 break-words">{{ displayNetworks }}</p>
         </template>
       </template>
       <template #description>
@@ -184,10 +183,6 @@
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('show_status') }}</dt>
                     <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.status || '—' }}</dd>
-                  </div>
-                  <div class="flex justify-between gap-2">
-                    <dt class="text-muted shrink-0">{{ t('show_network') }}</dt>
-                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ displayNetworks || '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('show_first_aired') }}</dt>
@@ -478,12 +473,6 @@ const watchButtonLabel = computed(() => {
 const metadataUpdatedAtLabel = computed(() => formatUpdatedAtLabel(show.value?.metadata_updated_at))
 
 const externalLinks = computed(() => showExternalLinks(tmdbId.value, show.value?.external_ids))
-
-const displayNetworks = computed(() => {
-  const networks = show.value?.networks
-  if (Array.isArray(networks)) return networks.join(', ')
-  return networks || ''
-})
 
 const showWatchedCount = computed(() => {
   let count = 0

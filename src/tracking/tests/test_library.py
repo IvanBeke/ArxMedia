@@ -891,7 +891,6 @@ class ProgressListTests:
             name='Alpha Show',
             poster_path='/alpha.jpg',
             number_of_seasons=1,
-            networks='HBO, Max',
             episode_runtime=42,
             vote_count=150,
             status='Ended',
@@ -917,7 +916,6 @@ class ProgressListTests:
             name='Beta Show',
             poster_path='/beta.jpg',
             number_of_seasons=1,
-            networks='Netflix',
             vote_count=900,
             status='Ended',
         )
@@ -931,7 +929,6 @@ class ProgressListTests:
             name='Gamma Show',
             poster_path='/gamma.jpg',
             number_of_seasons=1,
-            networks='AMC',
             vote_count=80,
             status='Ended',
         )
@@ -945,7 +942,6 @@ class ProgressListTests:
             name='Delta Show',
             poster_path='/delta.jpg',
             number_of_seasons=1,
-            networks='',
             vote_count=0,
             status='Returning Series',
         )

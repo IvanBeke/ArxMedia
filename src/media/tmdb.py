@@ -469,7 +469,6 @@ class TMDBService:
             'vote_average': data.get('vote_average', 0), 'vote_count': data.get('vote_count', 0),
             'language': data.get('original_language', ''), 'language_name': self._resolve_language_name(data),
             'status': data.get('status', ''),
-            'networks': ', '.join(n['name'] for n in data.get('networks', [])),
             'external_ids': external_ids, 'episode_runtime': episode_runtime,
         }
         show, _ = TVShow.objects.update_or_create(

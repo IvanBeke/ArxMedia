@@ -84,7 +84,6 @@ function showPayload() {
     vote_count: 100,
     language: 'de',
     status: 'Ended',
-    networks: 'Netflix',
     episode_runtime: 60,
     seasons: [
       { season_number: 1, name: 'Season 1', overview: '', poster_path: null, poster_url: null, air_date: '2017-12-01', episode_count: 3, vote_average: 8.1, vote_count: 15 },

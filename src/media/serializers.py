@@ -37,7 +37,7 @@ class TVShowSerializer(serializers.ModelSerializer):
             'id', 'tmdb_id', 'name', 'original_title', 'overview', 'poster_path', 'backdrop_path',
             'poster_url', 'backdrop_url', 'first_air_date', 'last_air_date',
             'number_of_seasons', 'number_of_episodes', 'vote_average', 'vote_count',
-            'genres', 'language', 'language_name', 'status', 'networks', 'episode_runtime',
+            'genres', 'language', 'language_name', 'status', 'episode_runtime',
             'external_ids', 'metadata_updated_at'
         ]
 

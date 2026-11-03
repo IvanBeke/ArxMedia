@@ -174,7 +174,6 @@ class MediaTests:
                 'wikidata_id': 'Q123',
             },
             'genres': [],
-            'networks': [],
         }), patch.object(tmdb, '_resolve_tvmaze', return_value=({'id': 321}, [])):
             show = tmdb.sync_tv_show(888, recompute_user_statuses=False)
 
@@ -248,7 +247,6 @@ class MediaTests:
             'number_of_episodes': 0,
             'episode_run_time': [],
             'genres': [],
-            'networks': [],
         }
         with (
             patch.object(tmdb, 'get_tv_details', return_value=show_data),
@@ -1019,7 +1017,6 @@ class MediaTests:
             name='Game of Thrones',
             overview='Stored overview',
             status='Returning Series',
-            networks='HBO',
         )
 
         def sparse_payload(endpoint, params=None, **kwargs):
@@ -1028,7 +1025,6 @@ class MediaTests:
                     'id': 1399,
                     'name': 'Game of Thrones',
                     'overview': '',
-                    'networks': [],
                     'number_of_seasons': 0,
                     'genres': [],
                 }
@@ -1040,7 +1036,6 @@ class MediaTests:
         show.refresh_from_db()
         assert show.overview == 'Stored overview'
         assert show.status == 'Returning Series'
-        assert show.networks == 'HBO'
 
     def test_sync_season_preserves_episode_fields_when_tmdb_returns_empty(self):
         show = TVShow.objects.create(tmdb_id=1399, name='Game of Thrones')
@@ -1782,7 +1777,6 @@ class MediaTests:
                 {'iso_639_1': 'en', 'english_name': 'English', 'name': 'English'},
             ],
             'genres': [],
-            'networks': [],
             'number_of_seasons': 0,
             'number_of_episodes': 0,
         }), patch.object(tmdb, '_resolve_tvmaze', return_value=(None, [])):
@@ -1820,7 +1814,6 @@ class MediaTests:
             'first_air_date': '2020-01-01',
             'number_of_seasons': len(season_numbers),
             'genres': [],
-            'networks': [],
             'seasons': [{'season_number': number} for number in season_numbers],
         }
 
@@ -2301,7 +2294,6 @@ class TMDBUseCacheTests:
             'first_air_date': '2020-01-01',
             'number_of_seasons': 1,
             'genres': [],
-            'networks': [],
             'seasons': [{'season_number': 1}],
         }
         with (

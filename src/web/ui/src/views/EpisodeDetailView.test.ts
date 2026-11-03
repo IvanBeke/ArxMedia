@@ -76,7 +76,6 @@ function showPayload(seasonNumbers = [1, 2, 3]) {
     number_of_episodes: seasonNumbers.length * 2,
     language: 'en',
     status: 'Returning Series',
-    networks: [],
     episode_runtime: 45,
     metadata_updated_at: '',
     seasons: seasonNumbers.map((seasonNumber) => ({

@@ -15,7 +15,6 @@ function planToWatchItem(): ShowProgressItem {
     provider_status: 'Returning Series',
     user_rating: null,
     genres: ['Drama'],
-    networks: [],
     episode_runtime: 42,
     progress_percent: 0,
     watched_episodes: 0,

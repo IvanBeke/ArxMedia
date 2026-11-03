@@ -331,7 +331,6 @@ def _my_shows_status_rows(user, now, status_queryset):
 
 
 def _build_my_show_item(tmdb_id, show, row, user_rating, new_threshold, today):
-    raw_networks = [part.strip() for part in (show.networks or '').split(',') if part.strip()]
     next_air_date = row.get('next_air_date')
     next_broadcast_start = row.get('next_broadcast_start')
     next_local_air_date = _episode_local_date({'air_date': next_air_date, 'broadcast_start': next_broadcast_start})
@@ -349,7 +348,6 @@ def _build_my_show_item(tmdb_id, show, row, user_rating, new_threshold, today):
         'vote_average': show.vote_average,
         'vote_count': show.vote_count,
         'genres': [genre.name for genre in show.genres.all()],
-        'networks': raw_networks,
         'episode_runtime': show.episode_runtime,
     }
     upcoming_local_air_date = _episode_local_date({'air_date': row.get('upcoming_air_date'), 'broadcast_start': row.get('upcoming_broadcast_start')})

@@ -51,7 +51,7 @@ export interface Episode { id: number; tmdb_id: number; episode_number: number; 
 export interface SeasonBrief { id: number; season_number: number; name: string; overview?: string; poster_path: string | null; poster_url: string | null; air_date: string | null; episode_count: number; vote_average?: number; vote_count?: number }
 export interface SeasonProgress { watched_episodes?: number }
 export interface Season extends SeasonBrief { tmdb_id: number; overview: string; episodes: Episode[]; show_name?: string; show_external_ids?: ExternalIds; vote_average?: number; vote_count?: number; credits?: AggregateCredits; external_ids?: ExternalIds; user_status?: MediaUserStatus & { progress?: SeasonProgress } }
-export interface TVShow extends MediaResult { name: string; original_title: string; tmdb_id: number; genres: Genre[]; poster_url: string | null; backdrop_url: string | null; first_air_date: string | null; last_air_date: string | null; number_of_seasons: number; number_of_episodes: number; language: string; language_name: string; status: string; networks: string[]; episode_runtime: number | null; metadata_updated_at: string; seasons: SeasonBrief[]; watch_providers?: WatchProviders; external_ids?: ExternalIds }
+export interface TVShow extends MediaResult { name: string; original_title: string; tmdb_id: number; genres: Genre[]; poster_url: string | null; backdrop_url: string | null; first_air_date: string | null; last_air_date: string | null; number_of_seasons: number; number_of_episodes: number; language: string; language_name: string; status: string; episode_runtime: number | null; metadata_updated_at: string; seasons: SeasonBrief[]; watch_providers?: WatchProviders; external_ids?: ExternalIds }
 export interface WatchEntry { id: number; media_type: WatchEntryMediaType; tmdb_id: number; watched_at: string | null; season_number: number | null; episode_number: number | null; created_at: string; title: string; poster_path: string | null; poster_url: string | null; vote_average: number; show_name: string | null; episode_type: string; rating?: number | null }
 export interface MediaCard { id: number; media_type: MediaType; tmdb_id: number; title: string; poster_path: string | null; poster_url: string | null; vote_average: number; release_date: string | null; user_status: MediaUserStatus | null; added_at: string }
 export interface ShowProgressEpisode {
@@ -60,7 +60,7 @@ export interface ShowProgressEpisode {
 }
 export interface ShowProgressItem extends Pick<MediaCard, 'tmdb_id' | 'poster_url' | 'vote_average'> {
   show_name: string; number_of_seasons: number | null; status: WatchEntryStatus; provider_status: string | null
-  user_rating: number | null; genres: string[]; networks: string[]; episode_runtime: number | null
+  user_rating: number | null; genres: string[]; episode_runtime: number | null
   progress_percent: number | null; watched_episodes: number | null; total_episodes: number | null
   last_watched_at: string | null; started_at: string | null; episodes_left: number | null
   runtime_left_minutes: number | null; runtime_left_has_unknown: boolean; next_episode: ShowProgressEpisode | null

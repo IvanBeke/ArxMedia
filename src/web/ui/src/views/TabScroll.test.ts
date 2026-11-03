@@ -45,7 +45,7 @@ describe('detail tab scroll', () => {
       tmdb_id: 1399, name: 'Dark', overview: '', genres: [], poster_url: null,
       backdrop_url: null, first_air_date: '2017-12-01', last_air_date: '2020-06-27',
       number_of_seasons: 1, number_of_episodes: 3, vote_average: 8.4, vote_count: 100,
-      language: 'de', status: 'Ended', networks: 'Netflix', episode_runtime: 60,
+      language: 'de', status: 'Ended', episode_runtime: 60,
       seasons: [{ season_number: 1, name: 'Season 1', overview: '', poster_path: null, poster_url: null, air_date: '2017-12-01', episode_count: 3, vote_average: 8.1, vote_count: 15 }],
       user_status: { status: 'watching' }, watch_providers: null,
     })
