@@ -2,6 +2,9 @@ import pytest
 import requests
 from django.urls import reverse
 
+from integrations.clients import jellyfin_client
+from media.http import MAX_WORKERS
+
 SHOW_LINKS_URL = reverse('jellyfin_show_links', args=[1396])
 MOVIE_LINK_URL = reverse('jellyfin_movie_link', args=[603])
 EPISODE_LINKS_URL = reverse('jellyfin_episode_links')
@@ -288,6 +291,13 @@ class TestUpstreamFailures:
         )
 
         assert [result['url'] for result in response.data['results']] == [f'{PAGE}?id=ep-1-1&serverId=srv', None]
+
+
+class TestConnectionPool:
+    def test_the_pool_fits_every_parallel_lookup(self, jellyfin_settings):
+        adapter = jellyfin_client()._session.get_adapter('https://jellyfin.test')
+
+        assert adapter._pool_maxsize >= MAX_WORKERS
 
 
 class TestSslVerification:

@@ -4,7 +4,7 @@ from typing import Any
 import requests
 from django.conf import settings
 
-from media.http import build_session
+from media.http import MAX_WORKERS, build_session
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +38,12 @@ class ServiceClient:
     AUTH_VALUE = '{key}'
     API_PREFIX = ''
     REQUEST_TIMEOUT = 15
+    POOL_SIZE = 2
 
     def __init__(self, base_url: str, api_key: str, verify_ssl: bool = True, public_url: str = ''):
         self._base_url = base_url.rstrip('/')
         self._public_url = (public_url or base_url).rstrip('/')
-        self._session = build_session(pool_size=2)
+        self._session = build_session(pool_size=self.POOL_SIZE)
         self._session.headers[self.AUTH_HEADER] = self.AUTH_VALUE.format(key=api_key)
         self._session.verify = verify_ssl
 
@@ -180,6 +181,7 @@ class JellyfinClient(ServiceClient):
     SERVICE_NAME = 'Jellyfin'
     AUTH_HEADER = 'Authorization'
     AUTH_VALUE = 'MediaBrowser Token="{key}"'
+    POOL_SIZE = MAX_WORKERS
 
     def series_by_tmdb_id(self) -> dict[int, dict[str, str]]:
         return self._items_by_tmdb_id('Series')
