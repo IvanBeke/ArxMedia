@@ -33,6 +33,10 @@ from ..models import (
 )
 from ..query_helpers import build_season_map
 from ._helpers import (
+    _apply_media_search_filters,
+    _apply_missing_rating_filter,
+    _apply_provider_status_filter,
+    _available_provider_statuses,
     _parse_bool_param,
     _parse_multi_param,
 )
@@ -241,32 +245,10 @@ def up_next(request):
 
 def _progress_filter_state(params) -> dict[str, Any]:
     return {
-        'search': (params.get('search') or '').strip().lower(),
-        'provider_status_values': {value.lower() for value in _parse_multi_param(params, 'provider_status')},
-        'selected_genres': {value.lower() for value in _parse_multi_param(params, 'genres')},
         'has_upcoming': _parse_bool_param(params.get('has_upcoming')),
         'is_new': _parse_bool_param(params.get('is_new')),
-        'missing_rating': _parse_bool_param(params.get('missing_rating')),
         'has_next_episode': _parse_bool_param(params.get('has_next_episode')),
     }
-
-
-def _progress_search_ok(item, fs: dict[str, Any]) -> bool:
-    return not fs['search'] or fs['search'] in item['show_name'].lower()
-
-
-def _progress_provider_ok(item, fs: dict[str, Any]) -> bool:
-    if not fs['provider_status_values']:
-        return True
-    provider_status = str(item.get('provider_status') or '').strip().lower()
-    return provider_status in fs['provider_status_values']
-
-
-def _progress_genres_ok(item, fs: dict[str, Any]) -> bool:
-    if not fs['selected_genres']:
-        return True
-    item_genres = {genre.lower() for genre in (item.get('genres') or [])}
-    return not item_genres.isdisjoint(fs['selected_genres'])
 
 
 def _progress_bool_filter_ok(item, flag_value, actual) -> bool:
@@ -274,31 +256,16 @@ def _progress_bool_filter_ok(item, flag_value, actual) -> bool:
     return flag_value is None or actual == flag_value
 
 
-def _progress_flag_filters_ok(item, fs: dict[str, Any]) -> bool:
-    if not _progress_bool_filter_ok(item, fs['has_upcoming'], item.get('has_upcoming_episode', False)):
-        return False
-    if not _progress_bool_filter_ok(item, fs['is_new'], item.get('is_new', False)):
-        return False
-    return _progress_bool_filter_ok(item, fs['has_next_episode'], item.get('next_episode') is not None)
-
-
-def _progress_rating_ok(item, missing_rating) -> bool:
-    if missing_rating is not True:
-        return True
-    return item['user_rating'] is None and item.get('status') != 'plan_to_watch'
-
-
 def _progress_matches_all(item, fs: dict[str, Any]) -> bool:
     return (
-        _progress_search_ok(item, fs)
-        and _progress_provider_ok(item, fs)
-        and _progress_genres_ok(item, fs)
-        and _progress_flag_filters_ok(item, fs)
-        and _progress_rating_ok(item, fs['missing_rating'])
+        _progress_bool_filter_ok(item, fs['has_upcoming'], item.get('has_upcoming_episode', False))
+        and _progress_bool_filter_ok(item, fs['is_new'], item.get('is_new', False))
+        and _progress_bool_filter_ok(item, fs['has_next_episode'], item.get('next_episode') is not None)
     )
 
 
 def _apply_progress_filters(items, request):
+    """Filters derived from episode data; everything expressible on the status rows is applied in the database."""
     fs = _progress_filter_state(request.query_params)
     return [item for item in items if _progress_matches_all(item, fs)]
 
@@ -535,6 +502,18 @@ def _handle_progress_provider_rating_sort(items, desc: bool) -> list:
     return _sorted_by_number_or_zero(items, 'vote_average', 'show_name', desc)
 
 
+def _handle_progress_vote_count_sort(items, desc: bool) -> list:
+    return _sorted_by_number_or_zero(items, 'vote_count', 'show_name', desc)
+
+
+def _handle_progress_runtime_sort(items, desc: bool) -> list:
+    return _sorted_by_nullable_number(items, 'runtime_total_minutes', 'show_name', desc)
+
+
+def _handle_progress_episode_runtime_sort(items, desc: bool) -> list:
+    return _sorted_by_nullable_number(items, 'episode_runtime', 'show_name', desc)
+
+
 def _handle_title_sort(items, desc: bool) -> list:
     return _sorted_by_title(items, 'show_name', desc)
 
@@ -556,6 +535,9 @@ _PROGRESS_SORT_HANDLERS = {
     'progress_percent': _progress_percent_handler,
     'provider_rating': _handle_progress_provider_rating_sort,
     'user_rating': _handle_progress_user_rating_sort,
+    'vote_count': _handle_progress_vote_count_sort,
+    'runtime': _handle_progress_runtime_sort,
+    'episode_runtime': _handle_progress_episode_runtime_sort,
     'title': _handle_title_sort,
     'next_episode_date': _handle_next_episode_date_sort,
     'release_date': _handle_progress_release_date_sort,
@@ -573,6 +555,7 @@ def _progress_sort_meta(sort_by: str, direction: str) -> tuple[str, str]:
         'next_episode_date': 'desc',
         'provider_rating': 'desc',
         'user_rating': 'desc',
+        'vote_count': 'desc',
     }
     default_direction = default_direction_by_sort.get(sort_key, 'asc')
     final_direction = direction_key if direction_key in ('asc', 'desc') else default_direction
@@ -602,27 +585,58 @@ def _paginated_library_response(request, items, **extras):
     return response
 
 
+def _filter_by_status_param(status_queryset, request):
+    status_values = {value.lower() for value in _parse_multi_param(request.query_params, 'status')}
+    return status_queryset.filter(status__in=status_values) if status_values else status_queryset
+
+
+def _apply_library_filters(status_queryset, request):
+    """Title, genre and missing-rating filters, expressed on the user's status rows."""
+    queryset = _apply_media_search_filters(status_queryset, request.query_params)
+    if _parse_bool_param(request.query_params.get('missing_rating')) is True:
+        queryset = _apply_missing_rating_filter(queryset, request.user)
+    return queryset
+
+
+def _attach_show_runtime_totals(items) -> int:
+    """Attach each show's total runtime to its item and return the sum across all items."""
+    from media.models import Episode
+
+    total_by_show = {
+        row['season__show__tmdb_id']: row['total'] or 0
+        for row in Episode.objects.filter(
+            season__show__tmdb_id__in=[item['tmdb_id'] for item in items],
+            season__season_number__gt=0,
+        ).values('season__show__tmdb_id').annotate(
+            total=Sum(Episode.effective_runtime_expression())
+        )
+    }
+    for item in items:
+        item['runtime_total_minutes'] = total_by_show.get(item['tmdb_id'])
+    return sum(total_by_show.values())
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def my_shows_list(request):
-    from media.models import Episode, TVShow
+    from media.models import TVShow
 
     today = timezone.now().date()
     now = timezone.now()
 
-    status_queryset = UserMediaStatus.objects.for_user(request.user).shows()
-    status_values = {value.lower() for value in _parse_multi_param(request.query_params, 'status')}
-    if status_values:
-        status_queryset = status_queryset.filter(status__in=status_values)
+    status_queryset = _filter_by_status_param(UserMediaStatus.objects.for_user(request.user).shows(), request)
+    available_provider_statuses = _available_provider_statuses(status_queryset)
+    status_queryset = _apply_provider_status_filter(
+        _apply_library_filters(status_queryset, request), request.query_params,
+    )
     progress_tmdb_ids = set(status_queryset.values_list('tmdb_id', flat=True))
-
-    status_rows = _my_shows_status_rows(request.user, now, status_queryset)
 
     if not progress_tmdb_ids:
         return _paginated_library_response(
-            request, [], available_genres=[], available_provider_statuses=[], total_runtime_minutes=0,
+            request, [], available_provider_statuses=available_provider_statuses, total_runtime_minutes=0,
         )
 
+    status_rows = _my_shows_status_rows(request.user, now, status_queryset)
     status_row_by_tmdb_id = {row['tmdb_id']: row for row in status_rows}
     tmdb_ids = list(progress_tmdb_ids)
 
@@ -646,76 +660,16 @@ def my_shows_list(request):
         row = status_row_by_tmdb_id.get(tmdb_id)
         progress_items.append(_build_my_show_item(tmdb_id, show, row, rating_map.get(tmdb_id), new_threshold, today))
 
-    available_genres = sorted({genre for item in progress_items for genre in item['genres']})
-    available_provider_statuses = sorted({
-        str(item['provider_status']).strip()
-        for item in progress_items
-        if str(item.get('provider_status') or '').strip()
-    })
-
     filtered = _apply_progress_filters(progress_items, request)
+    total_runtime_minutes = _attach_show_runtime_totals(filtered)
     sorted_items = _sort_progress_items(filtered, request.query_params.get('sort'), request.query_params.get('direction'))
-    filtered_ids = [item['tmdb_id'] for item in filtered]
-    total_runtime_by_show = {
-        row['season__show__tmdb_id']: row['total'] or 0
-        for row in Episode.objects.filter(
-            season__show__tmdb_id__in=filtered_ids,
-            season__season_number__gt=0,
-        ).values('season__show__tmdb_id').annotate(
-            total=Sum(Episode.effective_runtime_expression())
-        )
-    }
-    total_runtime_minutes = sum(total_runtime_by_show.get(tmdb_id, 0) for tmdb_id in filtered_ids)
 
     return _paginated_library_response(
         request,
         sorted_items,
-        available_genres=available_genres,
         available_provider_statuses=available_provider_statuses,
         total_runtime_minutes=total_runtime_minutes,
     )
-
-
-def _movie_filter_state(params) -> dict[str, Any]:
-    return {
-        'search': (params.get('search') or '').strip().lower(),
-        'status_values': {value.lower() for value in _parse_multi_param(params, 'status')},
-        'selected_genres': {value.lower() for value in _parse_multi_param(params, 'genres')},
-        'missing_rating': _parse_bool_param(params.get('missing_rating')),
-    }
-
-
-def _movie_search_ok(item, fs: dict[str, Any]) -> bool:
-    return not fs['search'] or fs['search'] in item['title'].lower()
-
-
-def _movie_status_ok(item, fs: dict[str, Any]) -> bool:
-    return not fs['status_values'] or item['status'] in fs['status_values']
-
-
-def _movie_genres_ok(item, fs: dict[str, Any]) -> bool:
-    if not fs['selected_genres']:
-        return True
-    item_genres = {genre.lower() for genre in (item.get('genres') or [])}
-    return not item_genres.isdisjoint(fs['selected_genres'])
-
-
-def _movie_missing_rating_ok(item, missing_rating) -> bool:
-    return missing_rating is not True or item['user_rating'] is None
-
-
-def _movie_matches_all(item, fs: dict[str, Any]) -> bool:
-    return (
-        _movie_search_ok(item, fs)
-        and _movie_status_ok(item, fs)
-        and _movie_genres_ok(item, fs)
-        and _movie_missing_rating_ok(item, fs['missing_rating'])
-    )
-
-
-def _apply_movie_filters(items, request):
-    fs = _movie_filter_state(request.query_params)
-    return [item for item in items if _movie_matches_all(item, fs)]
 
 
 def _movie_sort_meta(sort_by: str, direction: str) -> tuple[str, str]:
@@ -724,6 +678,7 @@ def _movie_sort_meta(sort_by: str, direction: str) -> tuple[str, str]:
     default_direction_by_sort = {
         'provider_rating': 'desc',
         'user_rating': 'desc',
+        'vote_count': 'desc',
         'release_date': 'desc',
         'watched_date': 'desc',
     }
@@ -741,6 +696,10 @@ def _handle_movie_watched_date_sort(items, desc: bool) -> list:
 
 def _handle_movie_provider_rating_sort(items, desc: bool) -> list:
     return _sorted_by_nullable_number(items, 'vote_average', 'title', desc)
+
+
+def _handle_movie_vote_count_sort(items, desc: bool) -> list:
+    return _sorted_by_number_or_zero(items, 'vote_count', 'title', desc)
 
 
 def _handle_movie_runtime_sort(items, desc: bool) -> list:
@@ -766,6 +725,7 @@ _MOVIE_SORT_HANDLERS = {
     'release_date': _handle_movie_release_date_sort,
     'user_rating': _handle_movie_user_rating_desc_sort,
     'provider_rating': _handle_movie_provider_rating_sort,
+    'vote_count': _handle_movie_vote_count_sort,
     'runtime': _handle_movie_runtime_sort,
     'watched_date': _handle_movie_watched_date_sort,
 }
@@ -781,18 +741,13 @@ def _sort_movie_items(items, sort_by: str, direction: str):
 def my_movies_list(request):
     from media.models import Movie
 
-    status_rows = list(
-        UserMediaStatus.objects.movies().filter(user=request.user).values(
-            'tmdb_id',
-            'status',
-            'last_watched_at',
-        )
+    status_queryset = _apply_library_filters(
+        _filter_by_status_param(UserMediaStatus.objects.for_user(request.user).movies(), request), request,
     )
+    status_rows = list(status_queryset.values('tmdb_id', 'status', 'last_watched_at'))
 
     if not status_rows:
-        return _paginated_library_response(
-            request, [], available_genres=[], total_runtime_minutes=0,
-        )
+        return _paginated_library_response(request, [], total_runtime_minutes=0)
 
     status_row_by_tmdb_id = {row['tmdb_id']: row for row in status_rows}
     tmdb_ids = list(status_row_by_tmdb_id)
@@ -830,19 +785,12 @@ def my_movies_list(request):
             'last_watched_at': row['last_watched_at'],
         })
 
-    available_genres = sorted({genre for item in progress_items for genre in item['genres']})
-
-    filtered = _apply_movie_filters(progress_items, request)
-    sorted_items = _sort_movie_items(filtered, request.query_params.get('sort'), request.query_params.get('direction'))
-    total_runtime_minutes = sum(
-        item['runtime'] or 0
-        for item in filtered
-    )
+    sorted_items = _sort_movie_items(progress_items, request.query_params.get('sort'), request.query_params.get('direction'))
+    total_runtime_minutes = sum(item['runtime'] or 0 for item in progress_items)
 
     return _paginated_library_response(
         request,
         sorted_items,
-        available_genres=available_genres,
         total_runtime_minutes=total_runtime_minutes,
     )
 

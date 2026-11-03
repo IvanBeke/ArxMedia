@@ -2,6 +2,7 @@ import logging
 
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
+from django.utils.functional import cached_property
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -28,8 +29,10 @@ from ._helpers import (
     _apply_media_search_filters,
     _apply_media_type_filter,
     _apply_missing_rating_filter,
+    _apply_provider_status_filter,
     _apply_secondary_title_ordering,
     _apply_status_filter,
+    _available_provider_statuses,
     _compute_mixed_runtime_and_counts,
     _ensure_local_metadata,
     _parse_bool_param,
@@ -180,7 +183,7 @@ class CustomListDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 _LIST_ITEM_VALID_SORTS = {
     'added_at', 'custom_order', 'title', 'release_date',
-    'provider_rating', 'user_rating', 'runtime', 'total_episodes', 'vote_count',
+    'provider_rating', 'user_rating', 'runtime', 'episode_runtime', 'total_episodes', 'vote_count',
     'watched_date', 'started_date', 'last_watched', 'progress_percent', 'episodes_left', 'time_left', 'next_episode_date'
 }
 
@@ -200,14 +203,19 @@ class ListItemListCreateView(generics.ListCreateAPIView):
     serializer_class = ListItemSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        custom_list = _accessible_list(self.request.user, self.kwargs.get('list_id'))
-        queryset = ListItem.objects.filter(custom_list=custom_list).select_related('custom_list')
+    @cached_property
+    def custom_list(self):
+        return _accessible_list(self.request.user, self.kwargs.get('list_id'))
 
+    def base_queryset(self):
+        return ListItem.objects.filter(custom_list=self.custom_list).select_related('custom_list')
+
+    def get_queryset(self):
         query_params = self.request.query_params
-        queryset = _apply_media_type_filter(queryset, query_params)
+        queryset = _apply_media_type_filter(self.base_queryset(), query_params)
         # Search by title
         queryset = _apply_media_search_filters(queryset, query_params)
+        queryset = _apply_provider_status_filter(queryset, query_params)
         queryset = _list_item_status_and_flag_filters(queryset, self.request)
 
         sort_key, direction = _validated_sort(
@@ -258,11 +266,13 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
         total_runtime_minutes, counts = _compute_mixed_runtime_and_counts(queryset)
+        available_provider_statuses = _available_provider_statuses(self.base_queryset())
 
         if page is not None:
             response = self.get_paginated_response(serializer.data)
             response.data['total_runtime_minutes'] = total_runtime_minutes
             response.data['counts'] = counts
+            response.data['available_provider_statuses'] = available_provider_statuses
             return response
 
         return Response({
@@ -272,6 +282,7 @@ class ListItemListCreateView(generics.ListCreateAPIView):
             'previous': None,
             'total_runtime_minutes': total_runtime_minutes,
             'counts': counts,
+            'available_provider_statuses': available_provider_statuses,
         })
 
 

@@ -27,7 +27,9 @@ from ._helpers import (
     _apply_media_search_filters,
     _apply_media_type_filter,
     _apply_missing_rating_filter,
+    _apply_provider_status_filter,
     _apply_secondary_title_ordering,
+    _available_provider_statuses,
     _coerce_int,
     _compute_mixed_runtime_and_counts,
     _ensure_local_metadata,
@@ -42,18 +44,21 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
     serializer_class = WatchlistSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        query_params = self.request.query_params
-        qs = UserMediaStatus.objects.for_user(self.request.user).planning().annotate(
+    def base_queryset(self):
+        return UserMediaStatus.objects.for_user(self.request.user).planning().annotate(
             added_at=Coalesce('status_changed_at', 'created_at', output_field=DateTimeField())
         )
-        qs = _apply_media_type_filter(qs, query_params)
+
+    def get_queryset(self):
+        query_params = self.request.query_params
+        qs = _apply_media_type_filter(self.base_queryset(), query_params)
 
         tmdb_id = query_params.get('tmdb_id')
         if tmdb_id is not None:
             qs = qs.filter(tmdb_id=_coerce_int(tmdb_id, 'tmdb_id'))
 
         qs = _apply_media_search_filters(qs, query_params)
+        qs = _apply_provider_status_filter(qs, query_params)
 
         missing_rating = _parse_bool_param(query_params.get('missing_rating'))
         if missing_rating is True:
@@ -65,7 +70,7 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
             default_sort='added_at',
             valid_sorts={
                 'added_at', 'title', 'release_date',
-                'provider_rating', 'user_rating', 'runtime', 'total_episodes', 'vote_count',
+                'provider_rating', 'user_rating', 'runtime', 'episode_runtime', 'total_episodes', 'vote_count',
                 'watched_date', 'started_date', 'last_watched', 'progress_percent', 'episodes_left', 'time_left', 'next_episode_date'
             },
         )
@@ -91,11 +96,13 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
         context.update({'movie_map': movie_map, 'tv_map': tv_map, 'status_map': status_map})
         serializer = self.get_serializer(items, many=True, context=context)
         total_runtime_minutes, counts = _compute_mixed_runtime_and_counts(queryset)
+        available_provider_statuses = _available_provider_statuses(self.base_queryset())
 
         if page is not None:
             response = self.get_paginated_response(serializer.data)
             response.data['total_runtime_minutes'] = total_runtime_minutes
             response.data['counts'] = counts
+            response.data['available_provider_statuses'] = available_provider_statuses
             return response
 
         return Response({
@@ -105,6 +112,7 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
             'previous': None,
             'total_runtime_minutes': total_runtime_minutes,
             'counts': counts,
+            'available_provider_statuses': available_provider_statuses,
         })
 
     def perform_create(self, serializer):

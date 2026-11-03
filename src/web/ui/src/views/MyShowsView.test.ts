@@ -24,7 +24,6 @@ function showsPayload(count: number, rows: number) {
   return {
     count,
     results: Array.from({ length: rows }, (_, index) => ({ tmdb_id: index + 1 })),
-    available_genres: [],
     available_provider_statuses: [],
     total_runtime_minutes: 0,
   }

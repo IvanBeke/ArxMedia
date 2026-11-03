@@ -25,7 +25,6 @@ function moviesPayload(count: number, rows: number) {
   return {
     count,
     results: Array.from({ length: rows }, (_, index) => ({ tmdb_id: index + 1 })),
-    available_genres: [],
     total_watched_minutes: 0,
   }
 }

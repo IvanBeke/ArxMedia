@@ -1188,6 +1188,37 @@ class ProgressListTests:
         tmdb_ids = {item['tmdb_id'] for item in items}
         assert tmdb_ids == {4001, 4002, 4003, 4004}
 
+    def test_progress_list_filters_single_provider_status(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-shows/?provider_status=Returning%20Series')
+        assert [item['tmdb_id'] for item in response.data['results']] == [4004]
+        # Options stay complete so the filter can still be switched while one is applied.
+        assert response.data['available_provider_statuses'] == ['Ended', 'Returning Series']
+
+    def test_progress_list_unknown_provider_status_returns_no_items_but_keeps_options(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-shows/?provider_status=Pilot')
+        assert response.data['results'] == []
+        assert response.data['available_provider_statuses'] == ['Ended', 'Returning Series']
+
+    def test_progress_list_combines_database_filters(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-shows/?genres=Sci-Fi&search=beta&provider_status=Ended&status=watched')
+        assert [item['tmdb_id'] for item in response.data['results']] == [4002]
+        assert response.data['available_provider_statuses'] == ['Ended']
+
+        none = auth_client.get('/api/tracking/my-shows/?genres=Drama&provider_status=Ended&status=watched')
+        assert none.data['results'] == []
+
+    def test_progress_list_genre_filter_keeps_provider_status_options_complete(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-shows/?genres=Sci-Fi')
+        assert {item['tmdb_id'] for item in response.data['results']} == {4002, 4003}
+        assert response.data['available_provider_statuses'] == ['Ended', 'Returning Series']
+
+    def test_progress_list_filters_missing_rating_with_other_filters(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-shows/?missing_rating=true&genres=Drama')
+        assert {item['tmdb_id'] for item in response.data['results']} == {4001, 4003}
+
+        none = auth_client.get('/api/tracking/my-shows/?missing_rating=true&genres=Sci-Fi&status=watched')
+        assert none.data['results'] == []
+
     def test_progress_list_includes_available_provider_statuses(self, user, auth_client, user2, tmdb_noop):
         response = auth_client.get('/api/tracking/my-shows/')
         assert response.status_code == 200
@@ -1223,6 +1254,22 @@ class ProgressListTests:
         assert response.status_code == 200
         items = response.data['results']
         assert items[0]['tmdb_id'] == 4003
+
+    def test_progress_list_sorts_vote_count_desc_by_default(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-shows/?sort=vote_count')
+        assert [item['tmdb_id'] for item in response.data['results']] == [4002, 4001, 4003, 4004]
+
+    def test_progress_list_sorts_runtime_by_total_show_runtime(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-shows/?sort=runtime')
+        items = response.data['results']
+        # Totals: Gamma 60, Beta 110, Alpha 125; Delta has no episodes and sorts last.
+        assert [item['tmdb_id'] for item in items] == [4003, 4002, 4001, 4004]
+        assert [item['runtime_total_minutes'] for item in items] == [60, 110, 125, None]
+
+    def test_progress_list_sorts_episode_runtime(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-shows/?sort=episode_runtime')
+        # Only Alpha defines a show episode runtime; the rest tie and fall back to title.
+        assert [item['tmdb_id'] for item in response.data['results']] == [4001, 4002, 4004, 4003]
 
     def test_progress_list_aggregates_all_remaining_episodes_and_runtime(self, user, auth_client, user2, tmdb_noop):
         Episode.objects.filter(tmdb_id=4113).update(air_date=timezone.now().date() - timedelta(days=1))
@@ -1386,7 +1433,6 @@ class MyMoviesTests:
         assert response.status_code == 200
         assert response.data['results'] == []
         assert response.data['count'] == 0
-        assert response.data['available_genres'] == []
         assert response.data['total_runtime_minutes'] == 0
 
     def test_item_payload_fields(self, user, auth_client, user2, tmdb_noop):
@@ -1468,6 +1514,14 @@ class MyMoviesTests:
         assert items[0]['tmdb_id'] == 5001
         assert items[0]['last_watched_at'] is not None
 
+    def test_sorts_vote_count_desc_by_default(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-movies/?sort=vote_count')
+        assert [item['tmdb_id'] for item in response.data['results']] == [5002, 5001, 5003]
+
+    def test_sorts_vote_count_asc(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-movies/?sort=vote_count&direction=asc')
+        assert [item['tmdb_id'] for item in response.data['results']] == [5003, 5001, 5002]
+
     def test_total_runtime_minutes_sums_all_items(self, user, auth_client, user2, tmdb_noop):
         response = auth_client.get('/api/tracking/my-movies/')
         # Alpha 120 (watched) + Beta 90 (planned) + Gamma null (dropped, counts as 0).
@@ -1478,9 +1532,24 @@ class MyMoviesTests:
         item = response.data['results'][0]
         assert item['last_watched_at'] == timezone.make_aware(timezone.datetime(2026, 1, 5, 10, 0, 0))
 
-    def test_available_genres(self, user, auth_client, user2, tmdb_noop):
-        response = auth_client.get('/api/tracking/my-movies/')
-        assert response.data['available_genres'] == ['Action', 'Drama']
+    def test_combines_search_genre_and_status_filters(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-movies/?genres=Action&genres=Drama&search=movie&status=watched')
+        assert [item['tmdb_id'] for item in response.data['results']] == [5001]
+
+    def test_unknown_genre_returns_nothing(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-movies/?genres=Western')
+        assert response.data['results'] == []
+        assert response.data['total_runtime_minutes'] == 0
+
+    def test_missing_rating_excludes_unrated_plan_to_watch(self, user, auth_client, user2, tmdb_noop):
+        Movie.objects.create(tmdb_id=5004, title='Delta Movie', runtime=100)
+        UserMediaStatus.objects.create(user=user, media_type='movie', tmdb_id=5004, status='plan_to_watch')
+        response = auth_client.get('/api/tracking/my-movies/?missing_rating=true')
+        assert {item['tmdb_id'] for item in response.data['results']} == {5001, 5003}
+
+    def test_total_runtime_follows_the_filters(self, user, auth_client, user2, tmdb_noop):
+        response = auth_client.get('/api/tracking/my-movies/?genres=Drama')
+        assert response.data['total_runtime_minutes'] == 90
 
     def test_pagination_envelope(self, user, auth_client, user2, tmdb_noop):
         response = auth_client.get('/api/tracking/my-movies/?page=1')

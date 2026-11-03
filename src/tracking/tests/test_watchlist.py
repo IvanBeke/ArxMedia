@@ -134,6 +134,19 @@ class WatchlistTests:
         assert response.status_code == 200
         assert response.data['total_runtime_minutes'] == 92
 
+    def test_watchlist_total_runtime_excludes_specials(self, user, auth_client, user2, tmdb_noop):
+        show = TVShowFactory(tmdb_id=2204, name='Specials Watchlist Show', episode_runtime=40)
+        regular = SeasonFactory(show=show, tmdb_id=3204, season_number=1, name='Season 1')
+        specials = SeasonFactory(show=show, tmdb_id=3205, season_number=0, name='Specials')
+        EpisodeFactory(season=regular, tmdb_id=32041, episode_number=1, name='Episode 1', runtime=45)
+        EpisodeFactory(season=specials, tmdb_id=32051, episode_number=1, name='Special 1', runtime=90)
+        UserMediaStatusFactory(user=user, media_type='tv', tmdb_id=2204, status_changed_at=timezone.now())
+
+        response = auth_client.get('/api/tracking/watchlist/?media_type=tv')
+
+        assert response.status_code == 200
+        assert response.data['total_runtime_minutes'] == 45
+
     def test_watchlist_list_filters_genres(self, user, auth_client, user2, tmdb_noop):
         drama = Genre.objects.create(tmdb_id=901, name='Drama')
         comedy = Genre.objects.create(tmdb_id=902, name='Comedy')
@@ -152,6 +165,47 @@ class WatchlistTests:
         entries = filtered.data.get('results', filtered.data)
         assert len(entries) == 1
         assert entries[0]['tmdb_id'] == 2301
+
+    def test_watchlist_filters_provider_status(self, user, auth_client, user2, tmdb_noop):
+        MovieFactory(tmdb_id=2401, title='Planned Movie')
+        TVShowFactory(tmdb_id=2402, name='Ended Show', status='Ended')
+        TVShowFactory(tmdb_id=2403, name='Running Show', status='Returning Series')
+        UserMediaStatusFactory(user=user, tmdb_id=2401, status_changed_at=timezone.now())
+        UserMediaStatusFactory(user=user, media_type='tv', tmdb_id=2402, status_changed_at=timezone.now())
+        UserMediaStatusFactory(user=user, media_type='tv', tmdb_id=2403, status_changed_at=timezone.now())
+
+        response = auth_client.get('/api/tracking/watchlist/?provider_status=Ended')
+
+        assert response.status_code == 200
+        entries = response.data.get('results', response.data)
+        assert [(entry['media_type'], entry['tmdb_id']) for entry in entries] == [('tv', 2402)]
+        # Options come from the whole watchlist so the filter stays switchable while one is applied.
+        assert response.data['available_provider_statuses'] == ['Ended', 'Returning Series']
+
+    def test_watchlist_episode_runtime_sort_ignores_shows_sharing_a_movie_id(self, user, auth_client, user2, tmdb_noop):
+        MovieFactory(tmdb_id=2601, title='Movie With Shared Id')
+        TVShowFactory(tmdb_id=2601, name='Show With Shared Id', episode_runtime=90)
+        TVShowFactory(tmdb_id=2602, name='Other Show', episode_runtime=30)
+        UserMediaStatusFactory(user=user, tmdb_id=2601, status_changed_at=timezone.now())
+        UserMediaStatusFactory(user=user, media_type='tv', tmdb_id=2602, status_changed_at=timezone.now())
+
+        response = auth_client.get('/api/tracking/watchlist/?sort=episode_runtime&direction=desc')
+
+        assert response.status_code == 200
+        entries = response.data.get('results', response.data)
+        assert [(entry['media_type'], entry['tmdb_id']) for entry in entries] == [('tv', 2602), ('movie', 2601)]
+
+    def test_watchlist_sorts_episode_runtime(self, user, auth_client, user2, tmdb_noop):
+        TVShowFactory(tmdb_id=2501, name='Long Show', episode_runtime=60)
+        TVShowFactory(tmdb_id=2502, name='Short Show', episode_runtime=22)
+        UserMediaStatusFactory(user=user, media_type='tv', tmdb_id=2501, status_changed_at=timezone.now())
+        UserMediaStatusFactory(user=user, media_type='tv', tmdb_id=2502, status_changed_at=timezone.now())
+
+        response = auth_client.get('/api/tracking/watchlist/?media_type=tv&sort=episode_runtime&direction=asc')
+
+        assert response.status_code == 200
+        entries = response.data.get('results', response.data)
+        assert [entry['tmdb_id'] for entry in entries] == [2502, 2501]
 
     def test_watchlist_sort_uses_title_as_secondary_tiebreaker(self, user, auth_client, user2, tmdb_noop):
         MovieFactory(tmdb_id=3001, title='Beta Movie')

@@ -162,7 +162,7 @@ def _search_media_by_title(queryset, search: str):
     return queryset.filter(
         Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
         | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
-    ).distinct()
+    )
 
 
 def _filter_media_by_genres(queryset, selected_genres: list[str]):
@@ -173,7 +173,23 @@ def _filter_media_by_genres(queryset, selected_genres: list[str]):
     return queryset.filter(
         Q(media_type=MediaType.MOVIE, tmdb_id__in=movie_ids)
         | Q(media_type=MediaType.TV, tmdb_id__in=tv_ids)
-    ).distinct()
+    )
+
+
+def _filter_media_by_provider_status(queryset, provider_statuses: list[str]):
+    from media.models import TVShow
+
+    tv_ids = TVShow.objects.filter(status__in=provider_statuses).values_list('tmdb_id', flat=True)
+    return queryset.filter(media_type=MediaType.TV, tmdb_id__in=tv_ids)
+
+
+def _available_provider_statuses(queryset) -> list[str]:
+    """Distinct provider statuses of the shows in the queryset, for populating the filter."""
+    from media.models import TVShow
+
+    tv_ids = queryset.filter(media_type=MediaType.TV).values_list('tmdb_id', flat=True)
+    statuses = TVShow.objects.filter(tmdb_id__in=tv_ids).exclude(status='').values_list('status', flat=True)
+    return sorted(set(statuses))
 
 
 def _apply_media_search_filters(queryset, query_params):
@@ -187,6 +203,13 @@ def _apply_media_search_filters(queryset, query_params):
     return queryset
 
 
+def _apply_provider_status_filter(queryset, query_params):
+    provider_statuses = _parse_multi_param(query_params, 'provider_status')
+    if provider_statuses:
+        queryset = _filter_media_by_provider_status(queryset, provider_statuses)
+    return queryset
+
+
 def _build_tv_runtime_map(tmdb_ids: list[int]) -> dict[int, int]:
     if not tmdb_ids:
         return {}
@@ -194,7 +217,8 @@ def _build_tv_runtime_map(tmdb_ids: list[int]) -> dict[int, int]:
     from media.models import Episode
 
     rows = Episode.objects.filter(
-        season__show__tmdb_id__in=tmdb_ids
+        season__show__tmdb_id__in=tmdb_ids,
+        season__season_number__gt=0,
     ).values('season__show__tmdb_id').annotate(
         total_runtime=Sum(Episode.effective_runtime_expression())
     )
@@ -276,7 +300,8 @@ def _alias_media_sort_fields(queryset, user=None):
         movie_runtime=Subquery(movie_lookup.values('runtime')[:1]),
         tv_total_runtime=Subquery(
             Episode.objects.filter(
-                season__show__tmdb_id=OuterRef('tmdb_id')
+                season__show__tmdb_id=OuterRef('tmdb_id'),
+                season__season_number__gt=0,
             ).values('season__show__tmdb_id').annotate(
                 total_runtime=Sum(Episode.effective_runtime_expression())
             ).values('total_runtime')[:1]
@@ -306,6 +331,11 @@ def _alias_media_sort_fields(queryset, user=None):
         resolved_title=Lower(Coalesce('movie_title', 'tv_title', Value(''))),
         resolved_date=Coalesce('movie_release_date', 'tv_first_air_date'),
         resolved_runtime=Coalesce('movie_runtime', 'tv_total_runtime'),
+        resolved_episode_runtime=Case(
+            When(media_type=MediaType.TV, then='tv_episode_runtime'),
+            default=Value(None, output_field=IntegerField()),
+            output_field=IntegerField(),
+        ),
         resolved_total_episodes=Coalesce('movie_total_episodes', 'tv_total_episodes'),
         resolved_vote_average=Case(
             When(media_type=MediaType.MOVIE, then=Coalesce('movie_vote_average', Value(0.0))),
@@ -395,6 +425,7 @@ def _order_by_resolved_date(queryset, sort_key: str, direction: str, id_order: s
 
 _SORT_FIELD_ALIASES = {
     'runtime': 'resolved_runtime',
+    'episode_runtime': 'resolved_episode_runtime',
     'total_episodes': 'resolved_total_episodes',
     'provider_rating': 'resolved_vote_average',
     'user_rating': 'resolved_user_rating',

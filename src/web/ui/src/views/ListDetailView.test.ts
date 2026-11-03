@@ -167,12 +167,12 @@ function paged(items: TestListItem[]) {
   }
 }
 
-async function mountView(listId = '1') {
+async function mountView(listId = '1', query: Record<string, string | string[]> = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/lists/:id', name: 'list-detail', component: ListDetailView }],
   })
-  await router.push(`/lists/${listId}`)
+  await router.push({ path: `/lists/${listId}`, query })
   await router.isReady()
   setActivePinia(createPinia())
   const wrapper = mount(ListDetailView, {
@@ -227,6 +227,16 @@ describe('ListDetailView custom_order', () => {
     // MediaFilterBar should be initialized with custom_order
     expect(getListItems).toHaveBeenCalledWith('1', expect.objectContaining({ sort: 'custom_order', direction: 'asc' }), withSignal)
     expect(wrapper.text()).not.toContain('Could not load')
+  })
+
+  it('sends the show status filter with the list items request', async () => {
+    await mountView('1', { media_type: 'tv', provider_status: ['Ended'] })
+
+    expect(getListItems).toHaveBeenCalledWith(
+      '1',
+      expect.objectContaining({ media_type: 'tv', provider_status: ['Ended'] }),
+      withSignal,
+    )
   })
 
   it('defers collaborator changes until the list is saved', async () => {

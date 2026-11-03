@@ -14,20 +14,9 @@
     </div>
 
     <MediaFilterBar
+      kind="watchlist"
       media-type="all"
-      :show-status-filter="false"
-      :show-provider-status-filter="false"
-      :show-genre-filter="true"
-      :show-quick-filter-has-upcoming="false"
-      :show-quick-filter-new-only="false"
-      :show-quick-filter-missing-rating="false"
-      :show-quick-filter-in-watchlist="false"
-      :show-search="true"
-      :show-sort="true"
-      :show-direction="true"
-      :show-provider-rating-sort="true"
-      default-sort-key="added_at"
-      :apply-media-type-exclusive-sorts="false"
+      :provider-status-options="availableProviderStatuses"
       search-placeholder="Search by title"
       ref="filterBarRef"
       :page="currentPage"
@@ -88,7 +77,7 @@ interface MediaFilterState {
   missingRating: boolean; inWatchlist: boolean
 }
 interface MediaFilterChange { filters: MediaFilterState; source: 'hydrate' | 'interaction' }
-interface WatchlistResponseExtras { total_runtime_minutes?: number; counts?: { shows?: number; movies?: number } }
+interface WatchlistResponseExtras { total_runtime_minutes?: number; counts?: { shows?: number; movies?: number }; available_provider_statuses?: string[] }
 
 const items = ref<MediaCardItem[]>([])
 const loading = ref(true)
@@ -110,6 +99,7 @@ const count = ref(0)
 const lastLoadedCount = ref(0)
 const totalRuntimeMinutes = ref(0)
 const counts = ref({ shows: 0, movies: 0 })
+const availableProviderStatuses = ref<string[]>([])
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const { t } = useI18n()
 const route = useRoute()
@@ -144,6 +134,7 @@ async function load() {
     ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
     ...(filterState.search ? { search: filterState.search } : {}),
     ...(filterState.genres.length ? { genres: filterState.genres } : {}),
+    ...(filterState.providerStatuses.length ? { provider_status: filterState.providerStatuses } : {}),
     sort: filterState.sort,
     direction: filterState.direction,
     page,
@@ -158,6 +149,7 @@ async function load() {
     }
     const extras = data as typeof data & WatchlistResponseExtras
     totalRuntimeMinutes.value = Number.isFinite(extras.total_runtime_minutes) ? extras.total_runtime_minutes ?? 0 : 0
+    availableProviderStatuses.value = extras.available_provider_statuses ?? []
     counts.value = {
       shows: Number.isFinite(extras.counts?.shows) ? extras.counts?.shows ?? 0 : 0,
       movies: Number.isFinite(extras.counts?.movies) ? extras.counts?.movies ?? 0 : 0,

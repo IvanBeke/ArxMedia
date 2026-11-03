@@ -64,22 +64,9 @@
       </section>
 
       <MediaFilterBar
+        kind="list"
         media-type="all"
-        :show-status-filter="true"
-        :show-provider-status-filter="false"
-        :show-genre-filter="true"
-        :show-quick-filter-has-upcoming="false"
-        :show-quick-filter-new-only="false"
-        :show-quick-filter-missing-rating="true"
-        :show-quick-filter-in-watchlist="true"
-        :show-search="true"
-        :show-sort="true"
-        :show-direction="true"
-        :show-order-sort="true"
-        :show-provider-rating-sort="true"
-        :show-user-rating-sort="true"
-        default-sort-key="custom_order"
-        :apply-media-type-exclusive-sorts="true"
+        :provider-status-options="availableProviderStatuses"
         search-placeholder="Search list items by title"
         ref="filterBarRef"
         :page="currentPage"
@@ -503,6 +490,7 @@ const count = ref(0)
 const lastLoadedCount = ref(0)
 const totalRuntimeMinutes = ref(0)
 const counts = ref({ shows: 0, movies: 0 })
+const availableProviderStatuses = ref<string[]>([])
 const currentPage = useQueryPageSync(route)
 const hydrated = ref(false)
 const reorderMode = ref(false)
@@ -672,6 +660,7 @@ async function loadItems() {
       ...(filterState.mediaType !== 'all' ? { media_type: filterState.mediaType } : {}),
       ...(filterState.statuses.length ? { status: filterState.statuses } : {}),
       ...(filterState.genres.length ? { genres: filterState.genres } : {}),
+      ...(filterState.providerStatuses.length ? { provider_status: filterState.providerStatuses } : {}),
       ...(filterState.missingRating ? { missing_rating: true } : {}),
       ...(filterState.inWatchlist ? { in_watchlist: true } : {}),
     }
@@ -681,6 +670,7 @@ async function loadItems() {
     count.value = paged.count
     lastLoadedCount.value = paged.loadedCount
     totalRuntimeMinutes.value = Number.isFinite(data.total_runtime_minutes) ? data.total_runtime_minutes ?? 0 : 0
+    availableProviderStatuses.value = data.available_provider_statuses ?? []
     counts.value = {
       shows: Number.isFinite(data.counts?.shows) ? data.counts?.shows ?? 0 : 0,
       movies: Number.isFinite(data.counts?.movies) ? data.counts?.movies ?? 0 : 0,

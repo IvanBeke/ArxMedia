@@ -9,22 +9,9 @@
     </div>
 
     <MediaFilterBar
+      kind="library"
       media-type="movie"
-      :show-status-filter="true"
-      :show-provider-status-filter="false"
-      :show-genre-filter="true"
-      :show-quick-filter-has-upcoming="false"
-      :show-quick-filter-new-only="false"
-      :show-quick-filter-missing-rating="true"
-      :show-quick-filter-in-watchlist="false"
-      :show-search="true"
-      :show-sort="true"
-      :show-direction="true"
-      :show-provider-rating-sort="true"
-      :show-user-rating-sort="true"
-      default-sort-key="watched_date"
       search-placeholder="Search by movie title"
-      :genre-options="availableGenres"
       ref="filterBarRef"
       :page="currentPage"
       :sync-url="true"
@@ -66,7 +53,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import { trackingAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import MovieRow from '@/components/MovieRow.vue'
@@ -76,10 +62,8 @@ import { usePagedFilteredList } from '@/composables/usePagedFilteredList'
 import type { MediaCard, QueryParams } from '@/types/api'
 
 interface MovieFilterState { search: string; sort: string; direction: string; mediaType: string; statuses: string[]; genres: string[]; missingRating: boolean }
-interface MediaListExtras { available_genres?: string[]; total_runtime_minutes?: number }
 type MovieRowItem = MediaCard & { genres?: string[]; runtime?: number | null; last_watched_at?: string | null; user_rating?: number | null }
 
-const availableGenres = ref<string[]>([])
 
 const {
   loading, rows, errorMsg, count, totalRuntimeMinutes, currentPage, lastLoadedCount,
@@ -106,8 +90,5 @@ const {
     ...(filterState.genres.length ? { genres: filterState.genres } : {}),
   }),
   loadErrorMessage: 'Could not load My Movies.',
-  onExtras: (data) => {
-    availableGenres.value = (data as typeof data & MediaListExtras).available_genres ?? []
-  },
 })
 </script>

@@ -86,6 +86,7 @@ export interface ListItem extends MediaCard { custom_order: number }
 export interface ListItemsResponse extends PaginatedResponse<ListItem> {
   total_runtime_minutes?: number
   counts?: { shows?: number; movies?: number }
+  available_provider_statuses?: string[]
 }
 export type DataTransferStatus = 'pending' | 'processing' | 'awaiting_confirmation' | 'done' | 'failed' | 'cancelled'
 export type DataTransferJobType = 'import' | 'export'

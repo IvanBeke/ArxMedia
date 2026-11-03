@@ -5,7 +5,10 @@ import MediaFilterBar from '@/components/MediaFilterBar.vue'
 import { required } from '@/test-support/assertions'
 import type { VueWrapper } from '@vue/test-utils'
 
-type FilterChange = { source: 'hydrate' | 'interaction'; filters: { search: string; statuses: string[]; genres: string[]; sort: string } }
+type FilterChange = {
+  source: 'hydrate' | 'interaction'
+  filters: { search: string; statuses: string[]; providerStatuses: string[]; genres: string[]; sort: string; direction: string; mediaType: string; missingRating: boolean }
+}
 
 vi.mock('@/api', () => ({
   mediaAPI: {
@@ -23,14 +26,8 @@ async function createMountedBar(props = {}, initialQuery = {}) {
 
   const wrapper = mount(MediaFilterBar, {
     props: {
+      kind: 'library',
       mediaType: 'tv',
-      showStatusFilter: true,
-      showGenreFilter: false,
-      showProviderStatusFilter: false,
-      showSearch: true,
-      showSort: true,
-      showDirection: true,
-      defaultSortKey: 'added_at',
       syncUrl: true,
       ...props,
     },
@@ -51,6 +48,33 @@ function findAdvancedTrigger(wrapper: VueWrapper) {
   return wrapper
     .findAll('button')
     .find((button) => button.text().replace(/\s+/g, ' ').trim().startsWith('Advanced Filters'))
+}
+
+async function openAdvanced(wrapper: VueWrapper) {
+  await required(findAdvancedTrigger(wrapper), 'Advanced Filters trigger').trigger('click')
+}
+
+function sortLabels(wrapper: VueWrapper): string[] {
+  const sortDetails = wrapper.findAll('details').find((details) => details.text().includes('Sorted by'))
+  return required(sortDetails, 'Sort menu')
+    .findAll('button.control-option')
+    .map((button) => button.text().replace('✓', '').trim())
+}
+
+function sectionTitles(wrapper: VueWrapper): string[] {
+  return wrapper.findAll('p.text-muted').map((title) => title.text())
+}
+
+function quickFilterLabels(wrapper: VueWrapper): string[] {
+  return wrapper.findAll('button.chip-toggle').map((button) => button.text())
+}
+
+function statusChipLabels(wrapper: VueWrapper): string[] {
+  return wrapper.findAll('button.chip').map((button) => button.text().trim())
+}
+
+function lastChange(wrapper: VueWrapper): FilterChange {
+  return required(wrapper.emitted('change')?.at(-1), 'Last change event')[0] as FilterChange
 }
 
 async function applyStatusFilter(wrapper: VueWrapper, label: string) {
@@ -139,7 +163,7 @@ describe('MediaFilterBar URL sync', () => {
   })
 
   it('hydrates filter state from external query changes and emits hydrate', async () => {
-    const { wrapper, router } = await createMountedBar({ showGenreFilter: true })
+    const { wrapper, router } = await createMountedBar()
 
     await router.replace({ path: '/my-shows', query: { status: ['watching'], genres: ['Drama'] } })
     await flushPromises()
@@ -171,7 +195,7 @@ describe('MediaFilterBar URL sync', () => {
     expect(lastEvent.source).toBe('interaction')
     expect(lastEvent.filters.search).toBe('')
     expect(lastEvent.filters.statuses).toEqual([])
-    expect(lastEvent.filters.sort).toBe('added_at')
+    expect(lastEvent.filters.sort).toBe('last_watched')
   })
 
   it('preserves foreign query params it does not own', async () => {
@@ -184,7 +208,7 @@ describe('MediaFilterBar URL sync', () => {
   })
 
   it('supports the has next episode quick filter', async () => {
-    const { wrapper, router } = await createMountedBar({ showQuickFilterHasNextEpisode: true })
+    const { wrapper, router } = await createMountedBar()
     await required(findAdvancedTrigger(wrapper), 'Advanced Filters trigger').trigger('click')
     await required(findButtonByText(wrapper, 'Has Next Episode'), 'Has Next Episode filter').trigger('click')
     await required(findButtonByText(wrapper, 'Apply'), 'Apply button').trigger('click')
@@ -194,7 +218,7 @@ describe('MediaFilterBar URL sync', () => {
   })
 
   it('hydrates and clears the has next episode quick filter', async () => {
-    const { wrapper, router } = await createMountedBar({ showQuickFilterHasNextEpisode: true }, { has_next_episode: '1' })
+    const { wrapper, router } = await createMountedBar({}, { has_next_episode: '1' })
     const hydrate = [...(wrapper.emitted('change') || [])].reverse().find(([payload]) => (payload as FilterChange).source === 'hydrate')
     expect(hydrate).toBeTruthy()
 
@@ -204,86 +228,96 @@ describe('MediaFilterBar URL sync', () => {
   })
 })
 
-describe('MediaFilterBar movie profile', () => {
+describe('MediaFilterBar genres', () => {
+  it('offers the genres returned by the API', async () => {
+    const { mediaAPI } = await import('@/api')
+    vi.mocked(mediaAPI.genres).mockResolvedValueOnce([
+      { tmdb_id: 18, name: 'Drama' },
+      { tmdb_id: 28, name: 'Action' },
+    ])
+    const { wrapper } = await createMountedBar()
+
+    await openAdvanced(wrapper)
+
+    expect(statusChipLabels(wrapper)).toEqual(expect.arrayContaining(['Drama', 'Action']))
+  })
+})
+
+describe('MediaFilterBar library profile', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  async function createMovieBar(props = {}) {
-    return createMountedBar({
-      mediaType: 'movie',
-      defaultSortKey: 'title',
-      showProviderRatingSort: true,
-      showUserRatingSort: true,
-      ...props,
-    })
+  async function createMovieBar(props = {}, query = {}) {
+    return createMountedBar({ mediaType: 'movie', ...props }, query)
   }
 
   it('shows only the three movie status chips', async () => {
     const { wrapper } = await createMovieBar()
 
-    await required(findAdvancedTrigger(wrapper), 'Advanced Filters trigger').trigger('click')
+    await openAdvanced(wrapper)
 
-    const chips = wrapper
-      .findAll('button.chip')
-      .map((button) => button.text().trim())
-    expect(chips).toEqual(['Plan to watch', 'Watched', 'Dropped'])
-    expect(chips).not.toContain('Watching')
+    expect(statusChipLabels(wrapper)).toEqual(['Plan to watch', 'Watched', 'Dropped'])
   })
 
-  it('uses Watched as the canonical TV completion label', async () => {
-    const { wrapper } = await createMountedBar({ showQuickFilterHasNextEpisode: true })
-    await required(findAdvancedTrigger(wrapper), 'Advanced Filters trigger').trigger('click')
-    const chips = wrapper.findAll('button.chip').map((button) => button.text().trim())
-    expect(chips).toContain('Watched')
-    expect(chips).not.toContain('Completed')
+  it('keeps the tv status chips and the tv-only filters for tv', async () => {
+    const { wrapper } = await createMountedBar({ providerStatusOptions: ['Ended'] })
+
+    await openAdvanced(wrapper)
+
+    expect(statusChipLabels(wrapper).slice(0, 4)).toEqual(['Plan to watch', 'Watching', 'Watched', 'Dropped'])
+    expect(sectionTitles(wrapper)).toEqual(['Quick filters', 'User status', 'Show status', 'Genres'])
+    expect(quickFilterLabels(wrapper)).toEqual(['Has upcoming', 'New episodes', 'Missing rating', 'Has Next Episode'])
   })
 
-  it('offers the movie sort options without tv-only or date-added sorts', async () => {
+  it('offers no tv-only filters for movies', async () => {
     const { wrapper } = await createMovieBar()
 
-    const sortDetails = wrapper.findAll('details').find((details) => details.text().includes('Sorted by'))
-    await required(sortDetails, 'Sort menu').find('summary').trigger('click')
+    await openAdvanced(wrapper)
 
-    const labels = required(sortDetails, 'Sort menu')
-      .findAll('button.control-option')
-      .map((button) => button.text().replace('✓', '').trim())
-    expect(labels).toEqual(['Title', 'Runtime', 'Release date', 'Provider rating', 'User rating', 'Watched date'])
+    expect(sectionTitles(wrapper)).toEqual(['Quick filters', 'User status', 'Genres'])
+    expect(quickFilterLabels(wrapper)).toEqual(['Missing rating'])
   })
 
-  it('defaults both rating sorts to descending order', async () => {
+  it('offers the movie sorts', async () => {
     const { wrapper } = await createMovieBar()
-    const sortDetails = wrapper.findAll('details').find((details) => details.text().includes('Sorted by'))
-    await required(sortDetails, 'Sort menu').find('summary').trigger('click')
 
-    const providerRating = required(sortDetails, 'Sort menu')
-      .findAll('button.control-option')
-      .find((button) => button.text().includes('Provider rating'))
-    await required(providerRating, 'Provider rating option').trigger('click')
-    expect(wrapper.emitted('change')?.at(-1)?.[0]).toMatchObject({
-      filters: { sort: 'provider_rating', direction: 'desc' },
-    })
-
-    await required(sortDetails, 'Sort menu').find('summary').trigger('click')
-    const userRating = required(sortDetails, 'Sort menu')
-      .findAll('button.control-option')
-      .find((button) => button.text().includes('User rating'))
-    await required(userRating, 'User rating option').trigger('click')
-    expect(wrapper.emitted('change')?.at(-1)?.[0]).toMatchObject({
-      filters: { sort: 'user_rating', direction: 'desc' },
-    })
+    expect(sortLabels(wrapper)).toEqual([
+      'Title', 'Votes', 'Runtime', 'Release date', 'Provider rating', 'User rating', 'Watched date',
+    ])
+    expect(lastChange(wrapper).filters.sort).toBe('watched_date')
   })
 
-  it('allows provider rating without user rating', async () => {
-    const { wrapper } = await createMovieBar({ showUserRatingSort: false })
-    const sortDetails = wrapper.findAll('details').find((details) => details.text().includes('Sorted by'))
-    await required(sortDetails, 'Sort menu').find('summary').trigger('click')
+  it('offers the tv sorts', async () => {
+    const { wrapper } = await createMountedBar()
 
-    const labels = required(sortDetails, 'Sort menu')
-      .findAll('button.control-option')
-      .map((button) => button.text().replace('✓', '').trim())
-    expect(labels).toContain('Provider rating')
-    expect(labels).not.toContain('User rating')
+    expect(sortLabels(wrapper)).toEqual([
+      'Title', 'Votes', 'Runtime', 'Release date', 'Provider rating', 'User rating',
+      'Episode runtime', 'Last watched', 'Started date', 'Progress', 'Next episode date', 'Episodes left', 'Time left',
+    ])
+    expect(lastChange(wrapper).filters.sort).toBe('last_watched')
+  })
+
+  it('defaults votes and ratings to descending order', async () => {
+    const { wrapper } = await createMovieBar()
+    const sortDetails = required(wrapper.findAll('details').find((details) => details.text().includes('Sorted by')), 'Sort menu')
+
+    const expectations: [string, string][] = [['Provider rating', 'provider_rating'], ['User rating', 'user_rating'], ['Votes', 'vote_count']]
+    for (const [label, sort] of expectations) {
+      const option = sortDetails.findAll('button.control-option').find((button) => button.text().includes(label))
+      await required(option, `${label} option`).trigger('click')
+      expect(wrapper.emitted('change')?.at(-1)?.[0]).toMatchObject({ filters: { sort, direction: 'desc' } })
+    }
+  })
+
+  it('defaults episode runtime to ascending order', async () => {
+    const { wrapper } = await createMountedBar()
+    const sortDetails = required(wrapper.findAll('details').find((details) => details.text().includes('Sorted by')), 'Sort menu')
+
+    const option = sortDetails.findAll('button.control-option').find((button) => button.text().includes('Episode runtime'))
+    await required(option, 'Episode runtime option').trigger('click')
+
+    expect(lastChange(wrapper).filters).toMatchObject({ sort: 'episode_runtime', direction: 'asc' })
   })
 
   it('applies a movie status filter to the URL', async () => {
@@ -294,15 +328,210 @@ describe('MediaFilterBar movie profile', () => {
     expect(router.currentRoute.value.query).toEqual({ status: ['watched'] })
   })
 
-  it('keeps the tv status chips for tv media type', async () => {
-    const { wrapper } = await createMountedBar()
+  it('drops started-only sorts and the missing rating filter when only plan to watch is selected', async () => {
+    const { wrapper } = await createMountedBar({}, { status: ['plan_to_watch'] })
 
-    await required(findAdvancedTrigger(wrapper), 'Advanced Filters trigger').trigger('click')
+    expect(sortLabels(wrapper)).toEqual([
+      'Title', 'Votes', 'Runtime', 'Release date', 'Provider rating', 'User rating', 'Episode runtime',
+    ])
+    expect(lastChange(wrapper).filters.sort).toBe('title')
 
-    const chips = wrapper
-      .findAll('button.chip')
-      .map((button) => button.text().trim())
-    expect(chips).toContain('Watching')
-    expect(chips).toHaveLength(4)
+    await openAdvanced(wrapper)
+    expect(quickFilterLabels(wrapper)).not.toContain('Missing rating')
+  })
+
+  it('keeps started-only sorts once a started status is selected', async () => {
+    const { wrapper } = await createMountedBar({}, { status: ['plan_to_watch', 'watching'] })
+
+    expect(sortLabels(wrapper)).toContain('Last watched')
+  })
+
+  it('falls back to the default sort when the status filter removes the current sort', async () => {
+    const { wrapper, router } = await createMovieBar()
+    expect(lastChange(wrapper).filters.sort).toBe('watched_date')
+
+    await applyStatusFilter(wrapper, 'Plan to watch')
+
+    expect(lastChange(wrapper).filters).toMatchObject({ sort: 'title', statuses: ['plan_to_watch'] })
+    // Title is now the resolved default, so it is not written to the URL.
+    expect(router.currentRoute.value.query).toEqual({ status: ['plan_to_watch'] })
+  })
+
+  it('prunes values that do not apply to the media type when hydrating from the URL', async () => {
+    const { wrapper } = await createMovieBar({}, {
+      status: ['watching', 'watched'],
+      provider_status: ['Ended'],
+      has_upcoming: '1',
+      sort: 'last_watched',
+    })
+
+    expect(lastChange(wrapper).filters).toMatchObject({
+      statuses: ['watched'],
+      providerStatuses: [],
+      sort: 'watched_date',
+    })
   })
 })
+
+describe('MediaFilterBar watchlist profile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const baseSorts = ['Date added', 'Title', 'Votes', 'Runtime', 'Release date', 'Provider rating']
+
+  async function createWatchlistBar(query = {}, props = {}) {
+    return createMountedBar({ kind: 'watchlist', mediaType: 'all', providerStatusOptions: ['Ended', 'Returning Series'], ...props }, query)
+  }
+
+  it('offers the base sorts for all media types and never started-only sorts', async () => {
+    const { wrapper } = await createWatchlistBar()
+
+    expect(sortLabels(wrapper)).toEqual(baseSorts)
+    expect(lastChange(wrapper).filters.sort).toBe('added_at')
+  })
+
+  it('keeps the base sorts for movies', async () => {
+    const { wrapper } = await createWatchlistBar({ media_type: 'movie' })
+
+    expect(sortLabels(wrapper)).toEqual(baseSorts)
+  })
+
+  it('adds episode runtime for shows without dropping anything', async () => {
+    const { wrapper } = await createWatchlistBar({ media_type: 'tv' })
+
+    expect(sortLabels(wrapper)).toEqual([...baseSorts, 'Episode runtime'])
+  })
+
+  it('has no status or quick filters, but offers show status for shows', async () => {
+    const { wrapper } = await createWatchlistBar()
+    await openAdvanced(wrapper)
+
+    expect(sectionTitles(wrapper)).toEqual(['Genres', 'Media type'])
+    expect(quickFilterLabels(wrapper)).toEqual([])
+
+    const shows = required(findButtonByText(wrapper, 'Shows'), 'Shows chip')
+    await shows.trigger('click')
+    expect(sectionTitles(wrapper)).toEqual(['Show status', 'Genres', 'Media type'])
+  })
+
+  it('hides show status when the server provides no options', async () => {
+    const { wrapper } = await createWatchlistBar({ media_type: 'tv' }, { providerStatusOptions: [] })
+    await openAdvanced(wrapper)
+
+    expect(sectionTitles(wrapper)).toEqual(['Genres', 'Media type'])
+  })
+
+  it('keeps a show status from the URL before the options have loaded', async () => {
+    const { wrapper } = await createWatchlistBar({ media_type: 'tv', provider_status: ['Ended'] }, { providerStatusOptions: [] })
+
+    expect(lastChange(wrapper).filters.providerStatuses).toEqual(['Ended'])
+  })
+
+  it('lists the options provided by the server as show statuses', async () => {
+    const { wrapper } = await createWatchlistBar({ media_type: 'tv' })
+    await openAdvanced(wrapper)
+
+    expect(statusChipLabels(wrapper).slice(0, 2)).toEqual(['Ended', 'Returning Series'])
+  })
+
+  it('applies a show status to the URL', async () => {
+    const { wrapper, router } = await createWatchlistBar({ media_type: 'tv' })
+
+    await openAdvanced(wrapper)
+    const chip = wrapper.findAll('button.chip').find((button) => button.text().trim() === 'Ended')
+    await required(chip, 'Ended chip').trigger('click')
+    await required(findButtonByText(wrapper, 'Apply'), 'Apply button').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.query).toEqual({ media_type: 'tv', provider_status: ['Ended'] })
+    expect(lastChange(wrapper).filters.providerStatuses).toEqual(['Ended'])
+  })
+
+  it('ignores a status filter from the URL since every item is on the watchlist', async () => {
+    const { wrapper } = await createWatchlistBar({ status: ['watched'], missing_rating: '1' })
+
+    expect(lastChange(wrapper).filters).toMatchObject({ statuses: [], missingRating: false })
+  })
+})
+
+describe('MediaFilterBar list profile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const baseSorts = [
+    'Custom order', 'Date added', 'Title', 'Votes', 'Runtime', 'Release date', 'Provider rating', 'User rating',
+  ]
+
+  async function createListBar(query = {}) {
+    return createMountedBar({ kind: 'list', mediaType: 'all', providerStatusOptions: ['Ended'] }, query)
+  }
+
+  it('offers the base sorts for all media types and defaults to custom order', async () => {
+    const { wrapper } = await createListBar()
+
+    expect(sortLabels(wrapper)).toEqual(baseSorts)
+    expect(lastChange(wrapper).filters.sort).toBe('custom_order')
+  })
+
+  it('expands the sorts for movies', async () => {
+    const { wrapper } = await createListBar({ media_type: 'movie' })
+
+    expect(sortLabels(wrapper)).toEqual([...baseSorts, 'Watched date'])
+  })
+
+  it('expands the sorts for shows', async () => {
+    const { wrapper } = await createListBar({ media_type: 'tv' })
+
+    expect(sortLabels(wrapper)).toEqual([
+      ...baseSorts, 'Episode runtime', 'Last watched', 'Started date', 'Progress', 'Next episode date', 'Episodes left', 'Time left',
+    ])
+  })
+
+  it('shows the list filters for all media types and adds show status for shows', async () => {
+    const { wrapper } = await createListBar()
+    await openAdvanced(wrapper)
+
+    expect(sectionTitles(wrapper)).toEqual(['Quick filters', 'User status', 'Genres', 'Media type'])
+    expect(quickFilterLabels(wrapper)).toEqual(['Missing rating', 'In watchlist'])
+
+    await required(findButtonByText(wrapper, 'Shows'), 'Shows chip').trigger('click')
+    expect(sectionTitles(wrapper)).toEqual(['Quick filters', 'User status', 'Show status', 'Genres', 'Media type'])
+  })
+
+  it('follows the staged media type for the status chips before applying', async () => {
+    const { wrapper } = await createListBar()
+    await openAdvanced(wrapper)
+    expect(statusChipLabels(wrapper).slice(0, 4)).toEqual(['Plan to watch', 'Watching', 'Watched', 'Dropped'])
+
+    await required(findButtonByText(wrapper, 'Movies'), 'Movies chip').trigger('click')
+
+    expect(statusChipLabels(wrapper).slice(0, 3)).toEqual(['Plan to watch', 'Watched', 'Dropped'])
+    expect(statusChipLabels(wrapper)).not.toContain('Watching')
+  })
+
+  it('falls back to custom order when widening the media type drops the current sort', async () => {
+    const { wrapper, router } = await createListBar({ media_type: 'tv', sort: 'last_watched' })
+    expect(lastChange(wrapper).filters.sort).toBe('last_watched')
+
+    await openAdvanced(wrapper)
+    await required(findButtonByText(wrapper, 'Shows'), 'Shows chip').trigger('click')
+    await required(findButtonByText(wrapper, 'Apply'), 'Apply button').trigger('click')
+    await flushPromises()
+
+    expect(lastChange(wrapper).filters).toMatchObject({ mediaType: 'all', sort: 'custom_order' })
+    expect(router.currentRoute.value.query.sort).toBeUndefined()
+  })
+
+  it('clears stale show filters when the media type no longer supports them', async () => {
+    const { wrapper, router } = await createListBar({ media_type: 'tv', provider_status: ['Ended'], status: ['watching'] })
+    expect(lastChange(wrapper).filters).toMatchObject({ providerStatuses: ['Ended'], statuses: ['watching'] })
+
+    await router.replace({ path: '/my-shows', query: { media_type: 'movie', provider_status: ['Ended'], status: ['watching'] } })
+    await flushPromises()
+
+    expect(lastChange(wrapper).filters).toMatchObject({ mediaType: 'movie', providerStatuses: [], statuses: [] })
+  })
+})
+

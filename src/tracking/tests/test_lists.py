@@ -6,7 +6,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from media.models import Genre, Movie, TVShow
+from media.models import Episode, Genre, Movie, Season, TVShow
 from social.models import Follow
 from tracking.models import (
     CustomList,
@@ -189,6 +189,68 @@ class ListItemTests:
 
         assert response.status_code == 200
         assert [(item['media_type'], item['tmdb_id']) for item in response.data['results']] == [('tv', 8001), ('movie', 8002)]
+
+    def test_sorts_episode_runtime_for_shows(self, user, auth_client, user2, tmdb_noop):
+        custom_list = CustomList.objects.create(user=user, name='Episode Runtime List')
+        TVShow.objects.create(tmdb_id=8101, name='Long Show', episode_runtime=60)
+        TVShow.objects.create(tmdb_id=8102, name='Short Show', episode_runtime=22)
+        for tmdb_id in (8101, 8102):
+            ListItem.objects.create(custom_list=custom_list, media_type='tv', tmdb_id=tmdb_id)
+
+        response = auth_client.get(
+            f'/api/tracking/lists/{custom_list.id}/items/?sort=episode_runtime&direction=asc'
+        )
+
+        assert response.status_code == 200
+        assert [item['tmdb_id'] for item in response.data['results']] == [8102, 8101]
+
+    def test_episode_runtime_sort_ignores_shows_sharing_a_movie_id(self, user, auth_client, user2, tmdb_noop):
+        custom_list = CustomList.objects.create(user=user, name='Shared Id List')
+        Movie.objects.create(tmdb_id=8301, title='Movie With Shared Id')
+        TVShow.objects.create(tmdb_id=8301, name='Show With Shared Id', episode_runtime=90)
+        TVShow.objects.create(tmdb_id=8302, name='Other Show', episode_runtime=30)
+        ListItem.objects.create(custom_list=custom_list, media_type='movie', tmdb_id=8301)
+        ListItem.objects.create(custom_list=custom_list, media_type='tv', tmdb_id=8302)
+
+        response = auth_client.get(
+            f'/api/tracking/lists/{custom_list.id}/items/?sort=episode_runtime&direction=desc'
+        )
+
+        assert [(item['media_type'], item['tmdb_id']) for item in response.data['results']] == [('tv', 8302), ('movie', 8301)]
+
+    def test_total_runtime_excludes_specials(self, user, auth_client, user2, tmdb_noop):
+        custom_list = CustomList.objects.create(user=user, name='Specials List')
+        show = TVShow.objects.create(tmdb_id=8401, name='Specials Show')
+        regular = Season.objects.create(show=show, tmdb_id=84011, season_number=1, name='Season 1')
+        specials = Season.objects.create(show=show, tmdb_id=84012, season_number=0, name='Specials')
+        Episode.objects.create(season=regular, tmdb_id=840111, episode_number=1, name='E1', runtime=45)
+        Episode.objects.create(season=specials, tmdb_id=840121, episode_number=1, name='S1', runtime=90)
+        ListItem.objects.create(custom_list=custom_list, media_type='tv', tmdb_id=8401)
+
+        response = auth_client.get(f'/api/tracking/lists/{custom_list.id}/items/')
+
+        assert response.data['total_runtime_minutes'] == 45
+
+    def test_filters_provider_status_to_matching_shows(self, user, auth_client, user2, tmdb_noop):
+        custom_list = CustomList.objects.create(user=user, name='Provider Status List')
+        TVShow.objects.create(tmdb_id=8201, name='Running Show', status='Returning Series')
+        TVShow.objects.create(tmdb_id=8202, name='Finished Show', status='Ended')
+        Movie.objects.create(tmdb_id=8201, title='Movie 8201')
+        ListItem.objects.create(custom_list=custom_list, media_type='tv', tmdb_id=8201)
+        ListItem.objects.create(custom_list=custom_list, media_type='tv', tmdb_id=8202)
+        ListItem.objects.create(custom_list=custom_list, media_type='movie', tmdb_id=8201)
+
+        response = auth_client.get(
+            f'/api/tracking/lists/{custom_list.id}/items/?provider_status=Ended&provider_status=Returning Series'
+        )
+
+        assert response.status_code == 200
+        assert {(item['media_type'], item['tmdb_id']) for item in response.data['results']} == {('tv', 8201), ('tv', 8202)}
+
+        ended = auth_client.get(f'/api/tracking/lists/{custom_list.id}/items/?provider_status=Ended')
+        assert [(item['media_type'], item['tmdb_id']) for item in ended.data['results']] == [('tv', 8202)]
+        # Options come from the whole list so the filter stays switchable while one is applied.
+        assert ended.data['available_provider_statuses'] == ['Ended', 'Returning Series']
 
     def test_add_item_to_missing_list_returns_403(self, user, auth_client, user2, tmdb_noop):
         response = auth_client.post('/api/tracking/lists/999999/items/', {'media_type': 'movie', 'tmdb_id': 123})

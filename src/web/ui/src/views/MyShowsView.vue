@@ -9,24 +9,10 @@
     </div>
 
     <MediaFilterBar
+      kind="library"
       media-type="tv"
-      :show-status-filter="true"
-      :show-provider-status-filter="true"
-      :show-genre-filter="true"
-      :show-quick-filter-has-upcoming="true"
-      :show-quick-filter-new-only="true"
-      :show-quick-filter-missing-rating="true"
-      :show-quick-filter-has-next-episode="true"
-      :show-quick-filter-in-watchlist="false"
-      :show-search="true"
-      :show-sort="true"
-      :show-direction="true"
-      :show-provider-rating-sort="true"
-      :show-user-rating-sort="true"
-      default-sort-key="last_watched"
       search-placeholder="Search by show title"
       :provider-status-options="availableProviderStatuses"
-      :genre-options="availableGenres"
       ref="filterBarRef"
       :page="currentPage"
       :sync-url="true"
@@ -80,9 +66,8 @@ interface ShowFilterState {
   providerStatuses: string[]; genres: string[]; hasUpcoming: boolean; newOnly: boolean
   missingRating: boolean; hasNextEpisode: boolean; inWatchlist: boolean
 }
-interface MediaListExtras { available_genres?: string[]; available_provider_statuses?: string[]; total_runtime_minutes?: number }
+interface MediaListExtras { available_provider_statuses?: string[]; total_runtime_minutes?: number }
 
-const availableGenres = ref<string[]>([])
 const availableProviderStatuses = ref<string[]>([])
 
 const {
@@ -121,7 +106,6 @@ const {
   loadErrorMessage: 'Could not load My Shows.',
   onExtras: (data) => {
     const extras = data as typeof data & MediaListExtras
-    availableGenres.value = extras.available_genres ?? []
     availableProviderStatuses.value = extras.available_provider_statuses ?? []
   },
 })
