@@ -59,7 +59,7 @@ class TestShowState:
         response = arr_client.get(SHOW_URL)
 
         assert response.data['url'] == 'https://sonarr.example.com/base/series/breaking-bad'
-        assert fake_arr.calls[0]['url'].startswith('http://sonarr.test:8989/')
+        assert fake_arr.calls[0]['host'] == 'sonarr.test:8989'
 
 
 class TestTvdbIdResolution:

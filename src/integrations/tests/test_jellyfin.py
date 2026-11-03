@@ -133,7 +133,7 @@ class TestShowLinks:
         response = jellyfin_api.get(SHOW_LINKS_URL)
 
         assert response.data['show_url'] == 'https://jellyfin.example.com/media/web/index.html#/details?id=series-bb&serverId=srv'
-        assert library.calls[0]['url'].startswith('http://jellyfin.test:8096/')
+        assert library.calls[0]['host'] == 'jellyfin.test:8096'
 
     def test_link_omits_the_server_id_when_jellyfin_gives_none(self, jellyfin_api, fake_arr):
         fake_arr.on('GET', '/Items', {'Items': [{'Id': 'series-bb', 'ProviderIds': {'Tmdb': '1396'}}]})

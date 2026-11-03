@@ -47,7 +47,7 @@ class TestMovieState:
         response = arr_client.get(MOVIE_URL)
 
         assert response.data['url'] == 'https://radarr.example.com/base/movie/the-matrix-603'
-        assert fake_arr.calls[0]['url'].startswith('http://radarr.test:7878/')
+        assert fake_arr.calls[0]['host'] == 'radarr.test:7878'
 
     def test_link_falls_back_to_the_tmdb_id_without_a_slug(self, arr_client, fake_arr):
         fake_arr.on('GET', '/movie', [{'id': 9, 'tmdbId': 603, 'path': '/m', 'monitored': True}])

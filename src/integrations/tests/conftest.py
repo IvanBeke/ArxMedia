@@ -33,8 +33,12 @@ class FakeService:
         return [call for call in self.calls if call['method'] == method and call['path'] == path]
 
     def __call__(self, session, method, url, **kwargs):
-        path = urlsplit(url).path.removeprefix('/api/v3')
-        self.calls.append({'method': method, 'path': path, 'url': url, 'headers': dict(session.headers), 'verify': session.verify, **kwargs})
+        parts = urlsplit(url)
+        path = parts.path.removeprefix('/api/v3')
+        self.calls.append({
+            'method': method, 'path': path, 'url': url, 'host': parts.netloc,
+            'headers': dict(session.headers), 'verify': session.verify, **kwargs,
+        })
         route = self.routes[(method, path)]
         return FakeResponse(route(kwargs.get('params') or {})) if callable(route) else route
 

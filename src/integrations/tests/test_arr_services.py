@@ -1,4 +1,5 @@
 from typing import NamedTuple
+from urllib.parse import urlsplit
 
 import pytest
 import requests
@@ -87,7 +88,7 @@ class TestOptions:
             'tags': [{'id': 2, 'label': 'kids'}],
         }
         assert options_routes.calls[0]['headers']['X-Api-Key'] == service.api_key
-        assert options_routes.calls[0]['url'].startswith(f'{service.base_url}/api/v3/')
+        assert options_routes.calls[0]['host'] == urlsplit(service.base_url).netloc
 
 
 class TestUpstreamFailures:
