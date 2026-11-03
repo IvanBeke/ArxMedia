@@ -11,6 +11,11 @@ TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p'
 # Seconds an identical episode-credits sync stays deduplicated after being queued.
 TMDB_CREDITS_SYNC_LOCK_TTL = 10 * 60
 
+RADARR_URL = os.environ.get('RADARR_URL', '').strip().rstrip('/')
+RADARR_API_KEY = os.environ.get('RADARR_API_KEY', '').strip()
+RADARR_PUBLIC_URL = os.environ.get('RADARR_PUBLIC_URL', '').strip().rstrip('/') or RADARR_URL
+RADARR_VERIFY_SSL = os.environ.get('RADARR_VERIFY_SSL', 'True').strip().lower() not in ('false', '0', 'no')
+
 DJANGO_VITE = {
     'default': {
         'dev_mode': os.environ.get('DJANGO_VITE_DEV_MODE', 'False') == 'True',

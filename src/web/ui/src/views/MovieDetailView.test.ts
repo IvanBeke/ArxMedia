@@ -5,20 +5,24 @@ import { flushPromises, mount } from '@vue/test-utils'
 import MovieDetailView from '@/views/MovieDetailView.vue'
 import CollectionStrip from '@/components/CollectionStrip.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
+import AddToRadarrDialog from '@/components/AddToRadarrDialog.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types/api'
 
-const { getMovie, getMovieCredits, getMovieRecommendations, getCollection, getHistory, getRatings } = vi.hoisted(() => ({
+const { getMovie, getMovieCredits, getMovieRecommendations, getCollection, getHistory, getRatings, getRadarrMovie, getRadarrOptions } = vi.hoisted(() => ({
   getMovie: vi.fn(),
   getMovieCredits: vi.fn(),
   getMovieRecommendations: vi.fn(),
   getCollection: vi.fn(),
   getHistory: vi.fn(),
   getRatings: vi.fn(),
+  getRadarrMovie: vi.fn(),
+  getRadarrOptions: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
+  integrationsAPI: { getRadarrMovie, getRadarrOptions, addRadarrMovie: vi.fn(), removeRadarrMovie: vi.fn() },
   mediaAPI: {
     getMovie,
     getMovieCredits,
@@ -50,6 +54,7 @@ const TEST_USER: User = {
   total_watched_movies: 0,
   total_watched_episodes: 0,
   is_staff: false,
+  integrations: { radarr: false, sonarr: false, jellyfin: false },
   created_at: '',
 }
 
@@ -58,7 +63,7 @@ const MediaHistoryTabStub = {
   template: '<div class="history-tab-stub" />',
 }
 
-async function mountView(tab = 'history') {
+async function mountView(tab = 'history', { radarr = false, realActions = false } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -72,7 +77,7 @@ async function mountView(tab = 'history') {
 
   const pinia = createPinia()
   setActivePinia(pinia)
-  useAuthStore().user = TEST_USER
+  useAuthStore().user = { ...TEST_USER, integrations: { ...TEST_USER.integrations, radarr } }
 
   const wrapper = mount(MovieDetailView, {
     global: {
@@ -80,14 +85,14 @@ async function mountView(tab = 'history') {
       stubs: {
         WatchedDateTimePicker: true,
         MovieUnwatchDialog: true,
-        MediaActionsBar: true,
+        MediaActionsBar: !realActions,
         WatchSplitButton: true,
-        ActionGhostButton: true,
+        ActionGhostButton: !realActions,
         AddToListPopover: true,
         StarRating: true,
         SpoilerBlock: true,
         RatingBadge: true,
-        DetailHero: true,
+        DetailHero: !realActions,
         ExternalLinks: true,
         CastGrid: true,
         RecommendationsRow: true,
@@ -136,6 +141,31 @@ describe('MovieDetailView history tab', () => {
       media_type: 'movie',
       tmdb_id: String(TMDB_ID),
     })
+  })
+
+  it('hides the Radarr button without the radarr integration', async () => {
+    const wrapper = await mountView('overview', { realActions: true })
+
+    expect(wrapper.findAll('button').some((button) => button.text().includes('Radarr'))).toBe(false)
+    expect(wrapper.findComponent(AddToRadarrDialog).exists()).toBe(false)
+  })
+
+  it('opens the Radarr dialog from the Radarr button', async () => {
+    getRadarrMovie.mockResolvedValue({ added: false })
+    getRadarrOptions.mockResolvedValue({ root_folders: [], quality_profiles: [], tags: [] })
+    const wrapper = await mountView('overview', { radarr: true, realActions: true })
+
+    const button = wrapper.findAll('button').find((candidate) => candidate.text() === 'Add to Radarr')
+    expect(button).toBeTruthy()
+    await button!.trigger('click')
+    await flushPromises()
+
+    expect(getRadarrMovie).toHaveBeenCalledWith(String(TMDB_ID), expect.any(Object))
+    expect(wrapper.findComponent(AddToRadarrDialog).find('dialog').element.open).toBe(true)
+
+    wrapper.findComponent(AddToRadarrDialog).vm.$emit('added')
+    await flushPromises()
+    expect(wrapper.text()).toContain('The Matrix added to Radarr')
   })
 
   it('links crew highlights to the person profile', async () => {

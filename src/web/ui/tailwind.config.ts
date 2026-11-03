@@ -26,6 +26,7 @@ export default {
           favorite: '#ffb714',
           watchnow: '#6dc847',
         },
+        radarr: '#ffc230',
         dark: {
           DEFAULT: '#111111',
           50: '#1a1a1a',

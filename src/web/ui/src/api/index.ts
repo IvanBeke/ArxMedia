@@ -1,6 +1,8 @@
 import { DATA_TRANSFER_FORMAT, MEDIA_TYPE } from '@/constants/tracking'
 import type {
   ApiError,
+  ArrItemState,
+  ArrOptions,
   CalendarItem,
   CollectionDetail,
   AggregateCredits,
@@ -27,6 +29,8 @@ import type {
   PersonSearchResponse,
   ProfileUpdatePayload,
   QueryParams,
+  RadarrAddPayload,
+  RadarrRemovePayload,
   Rating,
   RegisterPayload,
   Season,
@@ -107,7 +111,7 @@ const api = {
   post: <T>(url: string, data: RequestData = null, options: { params?: QueryParams; signal?: AbortSignal } = {}) =>
     request<T>('POST', url, data, options.params ?? null, options.signal),
   patch: <T>(url: string, data: RequestData) => request<T>('PATCH', url, data),
-  delete: <T>(url: string) => request<T>('DELETE', url),
+  delete: <T>(url: string, data: RequestData = null) => request<T>('DELETE', url, data),
 }
 
 export const authAPI = {
@@ -224,6 +228,16 @@ export const trackingAPI = {
     api.post<DataTransferJob>('/tracking/data/jobs/' + jobId + '/confirm/', { import_mode: importMode }),
   cancelJobImport: (jobId: string | number) => api.post<DataTransferJob>('/tracking/data/jobs/' + jobId + '/cancel/', {}),
   deleteExportFile: (jobId: string | number) => api.delete<DataTransferJob>('/tracking/data/jobs/' + jobId + '/file/'),
+}
+
+export const integrationsAPI = {
+  getRadarrOptions: (options: RequestOptions = {}) => api.get<ArrOptions>('/integrations/radarr/options/', options),
+  getRadarrMovie: (tmdbId: string | number, options: RequestOptions = {}) =>
+    api.get<ArrItemState>('/integrations/radarr/movies/' + tmdbId + '/', options),
+  addRadarrMovie: (tmdbId: string | number, data: RadarrAddPayload) =>
+    api.post<ArrItemState>('/integrations/radarr/movies/' + tmdbId + '/', data),
+  removeRadarrMovie: (tmdbId: string | number, data: RadarrRemovePayload) =>
+    api.delete<ArrItemState>('/integrations/radarr/movies/' + tmdbId + '/', data),
 }
 
 export const calendarAPI = { get: (params?: QueryParams) => api.get<{ results: CalendarItem[] }>('/calendar/', { params }) }

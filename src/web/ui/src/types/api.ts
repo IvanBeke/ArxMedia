@@ -11,8 +11,9 @@ export interface User {
   id: number; username: string; email: string; bio: string; avatar: string | null; location: string
   website: string; preferred_region: string; account_visibility: 'public' | 'private' | 'friends_only'
   followers_count: number; following_count: number; total_watched_movies: number; total_watched_episodes: number
-  is_staff: boolean; created_at: string
+  is_staff: boolean; integrations: IntegrationFlags; created_at: string
 }
+export interface IntegrationFlags { radarr: boolean; sonarr: boolean; jellyfin: boolean }
 export interface UserProfile extends User {
   permissions?: { can_view_activity: boolean; can_view_lists: boolean }
   recent_activity?: WatchEntry[]
@@ -116,3 +117,16 @@ export interface CalendarMovie { kind: 'movie'; date: string; tmdb_id: number; t
 export interface CalendarEpisode { kind: 'episode'; date: string; tmdb_id: number; show_name: string; season_number: number; episode_number: number; episode_name: string; air_time: string; poster_url: string | null }
 export type CalendarItem = CalendarMovie | CalendarEpisode
 export interface WatchedEpisode { season_number: number | null; episode_number: number | null; watched_at: string | null }
+
+export interface ArrOptions {
+  root_folders: { path: string; free_space: number | null }[]
+  quality_profiles: { id: number; name: string }[]
+  tags: { id: number; label: string }[]
+}
+export interface ArrItemState { added: boolean; path?: string; monitored?: boolean; url?: string }
+export type RadarrMinimumAvailability = 'announced' | 'inCinemas' | 'released'
+export interface RadarrAddPayload {
+  quality_profile_id: number; root_folder_path: string; minimum_availability: RadarrMinimumAvailability
+  monitored: boolean; search_for_movie: boolean; tags: number[]
+}
+export interface RadarrRemovePayload { delete_files: boolean; add_import_exclusion: boolean }

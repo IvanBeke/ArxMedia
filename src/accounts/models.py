@@ -19,6 +19,11 @@ class User(AbstractUser):
     account_visibility = models.CharField(max_length=20, choices=AccountVisibility.choices, default=AccountVisibility.PUBLIC)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta(AbstractUser.Meta):
+        permissions = [
+            ('use_sonarr_radarr', 'Can add media to Sonarr and Radarr'),
+        ]
+
     def __str__(self):
         return self.username
 

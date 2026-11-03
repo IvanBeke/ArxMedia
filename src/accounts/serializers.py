@@ -5,6 +5,7 @@ from django.db.models import Avg, Count, F, Q
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 
+from integrations.permissions import enabled_integrations
 from tracking.choices import ListPrivacy
 from tracking.models import CustomList, Rating, UserMediaStatus, WatchEntry
 from tracking.serializers import CustomListSerializer, WatchEntrySerializer
@@ -32,15 +33,19 @@ class UserSerializer(serializers.ModelSerializer):
     total_watched_movies = serializers.ReadOnlyField()
     total_watched_episodes = serializers.ReadOnlyField()
     preferred_region = serializers.CharField(max_length=2)
+    integrations = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'bio', 'avatar', 'location',
             'website', 'preferred_region', 'account_visibility', 'followers_count', 'following_count',
-            'total_watched_movies', 'total_watched_episodes', 'is_staff', 'created_at'
+            'total_watched_movies', 'total_watched_episodes', 'is_staff', 'integrations', 'created_at'
         ]
         read_only_fields = ['id', 'is_staff', 'created_at']
+
+    def get_integrations(self, obj):
+        return enabled_integrations(obj)
 
     def validate_preferred_region(self, value):
         region = (value or '').strip().upper()

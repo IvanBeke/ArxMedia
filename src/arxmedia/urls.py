@@ -19,6 +19,7 @@ urlpatterns = [
     path('api/tracking/', include('tracking.urls')),
     path('api/social/', include('social.urls')),
     path('api/calendar/', include('my_calendar.urls')),
+    path('api/integrations/', include('integrations.urls')),
     re_path(r'^static/(?P<path>.*)$', serve, {'document_root': settings.STATIC_ROOT}),
 ]
 

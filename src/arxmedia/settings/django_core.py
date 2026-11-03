@@ -16,6 +16,7 @@ INSTALLED_APPS = [
     'tracking',
     'social',
     'my_calendar',
+    'integrations',
     'web',
 ]
 

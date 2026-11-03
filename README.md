@@ -48,7 +48,7 @@ App URL: `http://localhost:8000`
 
 - Django settings: `src/arxmedia/settings/` (package: `base`, `security`, `django_core`, `database`, `static_media`, `api`, `integrations`, `caching`, `celery`, `logging_conf`)
 - Django URLs: `src/arxmedia/urls.py`
-- Backend apps: `src/accounts`, `src/media`, `src/tracking`, `src/social`, `src/my_calendar`, `src/web`
+- Backend apps: `src/accounts`, `src/media`, `src/tracking`, `src/social`, `src/my_calendar`, `src/integrations`, `src/web`
 - UI source: `src/web/ui/src`
 - Built UI assets: `src/web/static/web`
 
@@ -59,6 +59,7 @@ App URL: `http://localhost:8000`
 - `/api/tracking/`
 - `/api/social/`
 - `/api/calendar/`
+- `/api/integrations/`
 
 All non-API routes fall back to the SPA.
 
