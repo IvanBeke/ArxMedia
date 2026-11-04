@@ -10,9 +10,24 @@ from tracking.choices import ListPrivacy
 from tracking.models import CustomList, Rating, UserMediaStatus, WatchEntry
 from tracking.serializers import CustomListSerializer, WatchEntrySerializer
 
+from .avatars import process_avatar
 from .privacy import can_view_account_content, get_viewer_relationship
 
 User = get_user_model()
+
+
+class AvatarField(serializers.ReadOnlyField):
+    """Site-relative avatar URL, so it resolves on the public host behind any proxy."""
+
+    def to_representation(self, value):
+        return value.url if value else None
+
+
+class AvatarUploadSerializer(serializers.Serializer):
+    avatar = serializers.FileField()
+
+    def validate_avatar(self, value):
+        return process_avatar(value)
 
 
 class LoginSerializer(serializers.Serializer):
@@ -28,6 +43,7 @@ class LoginSerializer(serializers.Serializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    avatar = AvatarField()
     followers_count = serializers.ReadOnlyField()
     following_count = serializers.ReadOnlyField()
     total_watched_movies = serializers.ReadOnlyField()
@@ -78,6 +94,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class PublicUserSerializer(serializers.ModelSerializer):
+    avatar = AvatarField()
     followers_count = serializers.ReadOnlyField()
     following_count = serializers.ReadOnlyField()
     total_watched_movies = serializers.ReadOnlyField()
@@ -191,6 +208,7 @@ class PublicUserSerializer(serializers.ModelSerializer):
 
 
 class PublicUserCardSerializer(serializers.ModelSerializer):
+    avatar = AvatarField()
     followers_count = serializers.ReadOnlyField()
     following_count = serializers.ReadOnlyField()
 

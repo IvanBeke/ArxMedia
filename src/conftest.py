@@ -13,6 +13,13 @@ def _clear_cache():
 
 
 @pytest.fixture(autouse=True)
+def media_root(settings, tmp_path):
+    """Keep uploads written during tests out of the real media volume."""
+    settings.MEDIA_ROOT = tmp_path
+    return tmp_path
+
+
+@pytest.fixture(autouse=True)
 def _block_real_http(monkeypatch):
     """Fail any test that attempts real HTTP (CI has no TMDB key)."""
 

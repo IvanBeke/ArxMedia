@@ -18,6 +18,8 @@
           {{ errorMsg }}
         </div>
 
+        <AvatarUpload :username="user.username" :avatar="user.avatar" @updated="onAvatarUpdated" />
+
         <div class="space-y-3">
           <div>
             <label class="block text-xs text-gray-400 mb-1">{{ t('settings_username') }}</label>
@@ -137,6 +139,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { authAPI } from '@/api'
+import AvatarUpload from '@/components/AvatarUpload.vue'
 import LoadError from '@/components/LoadError.vue'
 import { useAuthStore } from '@/stores/auth'
 import { usePreferencesStore } from '@/stores/preferences'
@@ -226,6 +229,12 @@ async function saveProfile() {
   } finally {
     saving.value = false
   }
+}
+
+function onAvatarUpdated(updated: User) {
+  user.value = updated
+  auth.user = updated
+  showSuccess(t('avatar_updated'))
 }
 
 async function updateAccountVisibility() {

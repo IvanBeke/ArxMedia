@@ -67,7 +67,7 @@ export interface UpcomingItem {
 }
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
-type RequestMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'HEAD'
+type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD'
 type RequestData = object | readonly unknown[] | FormData | null
 /** Pass an AbortSignal to cancel a superseded request (see useLatestRequest). */
 type RequestOptions = { signal?: AbortSignal }
@@ -114,6 +114,7 @@ const api = {
   get: <T>(url: string, options: { params?: QueryParams; signal?: AbortSignal } = {}) => request<T>('GET', url, null, options.params ?? null, options.signal),
   post: <T>(url: string, data: RequestData = null, options: { params?: QueryParams; signal?: AbortSignal } = {}) =>
     request<T>('POST', url, data, options.params ?? null, options.signal),
+  put: <T>(url: string, data: RequestData) => request<T>('PUT', url, data),
   patch: <T>(url: string, data: RequestData) => request<T>('PATCH', url, data),
   delete: <T>(url: string, data: RequestData = null) => request<T>('DELETE', url, data),
 }
@@ -124,6 +125,12 @@ export const authAPI = {
   logout: () => api.post<void>('/auth/logout/'),
   me: () => api.get<User>('/auth/me/'),
   updateProfile: (data: ProfileUpdatePayload) => api.patch<User>('/auth/me/', data),
+  uploadAvatar: (image: Blob) => {
+    const body = new FormData()
+    body.append('avatar', image, 'avatar.webp')
+    return api.put<User>('/auth/me/avatar/', body)
+  },
+  removeAvatar: () => api.delete<User>('/auth/me/avatar/'),
   searchUsers: (q: string) => api.get<UserCard[]>('/auth/users/search/', { params: { q } }),
   getUser: (username: string) => api.get<UserProfile>(`/auth/users/${encodeURIComponent(username)}/`),
   getUserActivity: (username: string) => api.get<UserActivityHeatmap>(`/auth/users/${encodeURIComponent(username)}/activity/`),

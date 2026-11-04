@@ -8,8 +8,9 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.throttling import ScopedRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from media.models import Movie, TVShow
@@ -19,6 +20,7 @@ from tracking.models import WatchEntry, WatchEntryMediaType
 from .authentication import authenticated_user
 from .privacy import can_view_account_content, get_viewer_relationship
 from .serializers import (
+    AvatarUploadSerializer,
     LoginSerializer,
     PasswordChangeSerializer,
     PublicUserCardSerializer,
@@ -76,6 +78,29 @@ class MeView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+class AvatarView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser]
+    throttle_classes = [UserRateThrottle, ScopedRateThrottle]
+    throttle_scope = 'avatar_upload'
+
+    def put(self, request):
+        serializer = AvatarUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = authenticated_user(request)
+        previous = user.avatar.name
+        user.avatar.save('avatar.webp', serializer.validated_data['avatar'])
+        if previous:
+            user.avatar.storage.delete(previous)
+        return Response(UserSerializer(user).data)
+
+    def delete(self, request):
+        user = authenticated_user(request)
+        if user.avatar:
+            user.avatar.delete()
+        return Response(UserSerializer(user).data)
 
 
 class UserProfileView(generics.RetrieveAPIView):

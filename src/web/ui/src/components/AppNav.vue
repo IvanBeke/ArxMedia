@@ -91,9 +91,7 @@
               aria-haspopup="menu"
               :aria-expanded="showUserMenu ? 'true' : 'false'"
             >
-              <div class="w-7 h-7 rounded-full bg-brand-500/20 border border-brand-500/30 flex items-center justify-center text-brand-400 text-xs font-medium cursor-pointer">
-                {{ auth.user?.username?.[0]?.toUpperCase() }}
-              </div>
+              <UserAvatar v-if="auth.user" :username="auth.user.username" :src="auth.user.avatar" size="sm" class="cursor-pointer" />
             </button>
 
             <Transition name="fade">
@@ -180,6 +178,7 @@ import { useRouter } from 'vue-router'
 import { ExternalLink } from '@lucide/vue'
 import { onClickOutside } from '@vueuse/core'
 import SearchBar from '@/components/SearchBar.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useI18n } from '@/i18n'

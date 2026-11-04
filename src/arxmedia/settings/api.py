@@ -28,6 +28,7 @@ REST_FRAMEWORK = {
         'data_import': '20/hour',
         'data_export': '10/hour',
         'metadata_refresh': '60/hour',
+        'avatar_upload': '30/hour',
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,

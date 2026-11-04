@@ -8,9 +8,7 @@
 
     <template v-else-if="profile">
       <div class="flex flex-wrap items-start gap-4 sm:gap-5 mb-6">
-        <div class="w-16 h-16 rounded-full bg-brand-500/20 border-2 border-brand-500/30 flex items-center justify-center text-brand-400 text-2xl font-medium flex-shrink-0">
-          {{ profile.username.charAt(0).toUpperCase() }}
-        </div>
+        <UserAvatar :username="profile.username" :src="profile.avatar" size="lg" />
         <div class="min-w-0 flex-1">
           <h1 class="font-display text-2xl text-primary font-semibold">{{ profile.username }}</h1>
           <p v-if="profile.bio" class="text-gray-400 text-sm mt-1">{{ profile.bio }}</p>
@@ -139,6 +137,7 @@ import { useRoute } from 'vue-router'
 import { authAPI } from '@/api'
 import ActivityHeatmap from '@/components/ActivityHeatmap.vue'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 import { useAuthStore } from '@/stores/auth'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import { formatDateByLocale, useI18n } from '@/i18n'

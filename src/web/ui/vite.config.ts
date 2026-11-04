@@ -102,6 +102,10 @@ export default defineConfig({
         target: 'http://app:8000',
         changeOrigin: true,
       },
+      '/media': {
+        target: 'http://app:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

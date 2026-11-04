@@ -1,7 +1,13 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils.crypto import get_random_string
 
 from tracking.choices import WatchEntryMediaType
+
+
+def avatar_upload_path(instance, filename):
+    # A fresh random suffix per upload gives every avatar a new URL, so browsers never serve a stale one.
+    return f'avatars/{instance.username}_{get_random_string(8)}.webp'
 
 
 class AccountVisibility(models.TextChoices):
@@ -12,7 +18,7 @@ class AccountVisibility(models.TextChoices):
 
 class User(AbstractUser):
     bio = models.TextField(blank=True)
-    avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
+    avatar = models.ImageField(upload_to=avatar_upload_path, null=True, blank=True)
     location = models.CharField(max_length=100, blank=True)
     website = models.URLField(blank=True)
     preferred_region = models.CharField(max_length=2, default='US')
