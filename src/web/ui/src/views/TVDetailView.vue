@@ -474,24 +474,10 @@ const metadataUpdatedAtLabel = computed(() => formatUpdatedAtLabel(show.value?.m
 
 const externalLinks = computed(() => showExternalLinks(tmdbId.value, show.value?.external_ids))
 
-const showWatchedCount = computed(() => {
-  let count = 0
-  for (const key of watchedEps.value) {
-    if (!key.startsWith('0-')) count++
-  }
-  return count
-})
+// Progress counts only released episodes; the backend is the single source for both totals.
+const showWatchedCount = computed(() => show.value?.user_status?.progress?.watched_episodes ?? 0)
 
-const showTotalCount = computed(() => {
-  const seasons = show.value?.seasons || []
-  if (seasons.length) {
-    const regular = seasons
-      .filter((season) => season.season_number >= 1)
-      .reduce((sum, season) => sum + (season.episode_count || 0), 0)
-    if (regular > 0) return regular
-  }
-  return show.value?.number_of_episodes || 0
-})
+const showTotalCount = computed(() => show.value?.user_status?.progress?.total_episodes ?? 0)
 
 const showProgress = computed(() => computeProgressPercent(showWatchedCount.value, showTotalCount.value))
 
@@ -530,6 +516,7 @@ async function handleEpisodeWatchOption(sn: number, payload: EpisodeTarget & { o
 
   markLocally(sn, epNum, marked.watchedAt)
   showSuccess(t('show_episode_marked'))
+  await refreshProgress()
 }
 
 function openEpisodeUnwatchConfirm(sn: number, payload: EpisodeTarget) {
@@ -543,6 +530,7 @@ function openEpisodeUnwatchConfirm(sn: number, payload: EpisodeTarget) {
 async function onEpisodeUnwatched(target: { seasonNumber: string | number; episodeNumber: string | number }) {
   unmarkLocally(Number(target.seasonNumber), Number(target.episodeNumber))
   showSuccess(t('show_episode_unwatched'))
+  await refreshProgress()
 }
 
 function toggleSeason(sn: number) {
@@ -572,21 +560,9 @@ function getSeasonProgress(sn: number) {
   return computeProgressPercent(watched, total)
 }
 
-// Watched episodes per season, counted once per change instead of on every progress lookup.
-const watchedCountBySeason = computed(() => {
-  const counts = new Map<number, number>()
-  for (const key of watchedEps.value) {
-    const seasonNumber = Number(key.split('-', 1)[0])
-    counts.set(seasonNumber, (counts.get(seasonNumber) ?? 0) + 1)
-  }
-  return counts
-})
-
 function getSeasonProgressCounts(sn: number) {
-  const watched = watchedCountBySeason.value.get(sn) ?? 0
-  const season = show.value?.seasons.find((item) => item.season_number === sn)
-  const total = seasonEpisodes.value[sn]?.length || season?.episode_count || watched
-  return { watched, total }
+  const progress = show.value?.seasons.find((item) => item.season_number === sn)?.progress
+  return { watched: progress?.watched_episodes ?? 0, total: progress?.total_episodes ?? 0 }
 }
 
 function formatSeasonProgressFraction(sn: number) {
@@ -615,6 +591,7 @@ async function toggleSeasonWatched(sn: number) {
       await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
       showSuccess(t('show_season_marked'))
     }
+    await refreshProgress()
   } catch (error: unknown) {
     showError(getApiErrorMessage(error, t('error_update_season')))
   }
@@ -687,6 +664,7 @@ async function handleShowWatchOption(option: WatchedAtOption) {
     applyWatchedEpisodes(response)
     seasonEpisodes.value = {}
     await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
+    await refreshProgress()
     showSuccess(t('show_marked'))
   } catch (error) {
     showError(getApiErrorMessage(error, t('show_mark_failed')))
@@ -757,6 +735,17 @@ async function loadShow() {
   } catch (error: unknown) {
     // A failed reload after an action keeps the page; only a failed first load replaces it.
     if (!show.value) loadError.value = getApiErrorMessage(error, t('error_load_show'))
+  }
+}
+
+async function refreshProgress() {
+  try {
+    const data = await mediaAPI.getTV(tmdbId.value)
+    if (data && show.value) {
+      show.value = { ...show.value, user_status: data.user_status, seasons: data.seasons }
+    }
+  } catch {
+    // Keep the last known progress when the refresh fails.
   }
 }
 

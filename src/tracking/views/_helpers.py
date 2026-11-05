@@ -2,6 +2,7 @@ import logging
 
 from django.db.models import (
     Case,
+    Count,
     DateField,
     Exists,
     ExpressionWrapper,
@@ -218,8 +219,7 @@ def _build_tv_runtime_map(tmdb_ids: list[int]) -> dict[int, int]:
 
     rows = Episode.objects.filter(
         season__show__tmdb_id__in=tmdb_ids,
-        season__season_number__gt=0,
-    ).values('season__show__tmdb_id').annotate(
+    ).filter(Episode.released_q()).values('season__show__tmdb_id').annotate(
         total_runtime=Sum(Episode.effective_runtime_expression())
     )
 
@@ -301,13 +301,18 @@ def _alias_media_sort_fields(queryset, user=None):
         tv_total_runtime=Subquery(
             Episode.objects.filter(
                 season__show__tmdb_id=OuterRef('tmdb_id'),
-                season__season_number__gt=0,
-            ).values('season__show__tmdb_id').annotate(
+            ).filter(Episode.released_q()).values('season__show__tmdb_id').annotate(
                 total_runtime=Sum(Episode.effective_runtime_expression())
             ).values('total_runtime')[:1]
         ),
         movie_total_episodes=Value(None, output_field=IntegerField()),
-        tv_total_episodes=Subquery(tv_lookup.values('number_of_episodes')[:1]),
+        tv_total_episodes=Subquery(
+            Episode.objects.filter(
+                season__show__tmdb_id=OuterRef('tmdb_id'),
+            ).filter(Episode.released_q()).values('season__show__tmdb_id').annotate(
+                total=Count('id')
+            ).values('total')[:1]
+        ),
         movie_vote_average=Subquery(movie_lookup.values('vote_average')[:1]),
         tv_vote_average=Subquery(tv_lookup.values('vote_average')[:1]),
         movie_vote_count=Subquery(movie_lookup.values('vote_count')[:1]),

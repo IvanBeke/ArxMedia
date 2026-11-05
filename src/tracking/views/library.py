@@ -604,8 +604,7 @@ def _attach_show_runtime_totals(items) -> int:
         row['season__show__tmdb_id']: row['total'] or 0
         for row in Episode.objects.filter(
             season__show__tmdb_id__in=[item['tmdb_id'] for item in items],
-            season__season_number__gt=0,
-        ).values('season__show__tmdb_id').annotate(
+        ).filter(Episode.released_q()).values('season__show__tmdb_id').annotate(
             total=Sum(Episode.effective_runtime_expression())
         )
     }

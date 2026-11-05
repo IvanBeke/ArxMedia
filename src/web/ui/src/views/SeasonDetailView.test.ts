@@ -59,7 +59,7 @@ const TEST_USER: User = {
   created_at: '',
 }
 
-function seasonPayload(watchedCount: number, total = 50) {
+function seasonPayload(watchedCount: number, total = 50, listed = total) {
   return {
     tmdb_id: TMDB_ID,
     show_name: 'Dark',
@@ -70,7 +70,7 @@ function seasonPayload(watchedCount: number, total = 50) {
     vote_count: 0,
     air_date: '2021-06-21',
     credits: { cast: [{ id: 101, credit_id: 'c1', name: 'Season Star', character: 'Lead', profile_path: null }], crew: [] },
-    episodes: Array.from({ length: total }, (_, index) => ({
+    episodes: Array.from({ length: listed }, (_, index) => ({
       episode_number: index + 1,
       name: `Episode ${index + 1}`,
       air_date: '',
@@ -207,8 +207,19 @@ describe('SeasonDetailView progress', () => {
     expect(wrapper.text()).not.toContain('unavailable')
   })
 
-  it('increments the count optimistically when an unwatched episode is marked', async () => {
-    getSeason.mockResolvedValue(seasonPayload(12))
+  it('counts progress over released episodes while still listing every episode', async () => {
+    getSeason.mockResolvedValue(seasonPayload(12, 40, 50))
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('12/40')
+    expect(wrapper.text()).toContain('50 episodes')
+    expect(wrapper.findComponent(ProgressBar).props('pct')).toBe(30)
+  })
+
+  it('refreshes the count from the backend when an unwatched episode is marked', async () => {
+    getSeason.mockResolvedValueOnce(seasonPayload(12)).mockResolvedValue(seasonPayload(13))
     getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
 
     const wrapper = await mountView()
@@ -243,8 +254,8 @@ describe('SeasonDetailView progress', () => {
     expect(wrapper.text()).toContain('12/50')
   })
 
-  it('decrements the count when a watched episode is unwatched', async () => {
-    getSeason.mockResolvedValue(seasonPayload(12))
+  it('refreshes the count from the backend when a watched episode is unwatched', async () => {
+    getSeason.mockResolvedValueOnce(seasonPayload(12)).mockResolvedValue(seasonPayload(11))
     getWatchedEpisodes.mockResolvedValue(watchedPayload([[SEASON_NUMBER, 5], [SEASON_NUMBER, 6]]))
 
     const wrapper = await mountView()
@@ -257,8 +268,8 @@ describe('SeasonDetailView progress', () => {
     expect(wrapper.text()).toContain('11/50')
   })
 
-  it('recounts from the refreshed list after marking the whole season', async () => {
-    getSeason.mockResolvedValue(seasonPayload(12))
+  it('refreshes the count from the backend after marking the whole season', async () => {
+    getSeason.mockResolvedValueOnce(seasonPayload(12)).mockResolvedValue(seasonPayload(50))
     getWatchedEpisodes
       .mockResolvedValueOnce(watchedPayload([[SEASON_NUMBER, 5], [SEASON_NUMBER, 6]]))
       .mockResolvedValueOnce(

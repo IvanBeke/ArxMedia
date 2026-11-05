@@ -163,6 +163,35 @@ class SystemTaskTests:
         assert result['status'] == 'missing'
         mock_sync_credits.assert_not_called()
 
+    def test_refresh_released_episode_progress_queues_only_stale_status_rows(self, mocker, user, user2, tmdb_noop):
+        from tracking.models import WatchEntry
+        from tracking.tasks.system import refresh_released_episode_progress
+
+        today = timezone.localdate()
+        stale_show = TVShow.objects.create(tmdb_id=9601, name='Airing Show')
+        stale_season = Season.objects.create(show=stale_show, tmdb_id=96011, season_number=1, name='S1')
+        Episode.objects.create(season=stale_season, tmdb_id=960111, episode_number=1, name='E1', air_date=today - timedelta(days=10))
+        airing = Episode.objects.create(season=stale_season, tmdb_id=960112, episode_number=2, name='E2', air_date=today + timedelta(days=1))
+        fresh_show = TVShow.objects.create(tmdb_id=9602, name='Steady Show')
+        fresh_season = Season.objects.create(show=fresh_show, tmdb_id=96021, season_number=1, name='S1')
+        Episode.objects.create(season=fresh_season, tmdb_id=960211, episode_number=1, name='E1', air_date=today - timedelta(days=10))
+        for tmdb_id in (9601, 9602):
+            WatchEntry.objects.create(user=user, media_type='episode', tmdb_id=tmdb_id, season_number=1, episode_number=1)
+
+        mock_delay = mocker.patch('tracking.tasks.system.refresh_show_status_for_user.delay')
+        assert refresh_released_episode_progress() == {'queued': 0}
+
+        # The episode airs without any write that would trigger a status refresh.
+        Episode.objects.filter(pk=airing.pk).update(air_date=today)
+        assert refresh_released_episode_progress() == {'queued': 1}
+        mock_delay.assert_called_once_with(9601, user.id)
+
+    def test_celery_beat_schedule_refreshes_released_episode_progress_hourly(self, user, user2, tmdb_noop):
+        schedule_config = settings.CELERY_BEAT_SCHEDULE['tracking-refresh-released-episode-progress-hourly']
+
+        assert schedule_config['task'] == 'tracking.refresh_released_episode_progress'
+        assert schedule_config['schedule'] == 60 * 60
+
     def test_celery_beat_schedule_runs_tmdb_sync_every_six_hours(self, user, user2, tmdb_noop):
         schedule_config = settings.CELERY_BEAT_SCHEDULE['tracking-sync-tmdb-changed-items']
 

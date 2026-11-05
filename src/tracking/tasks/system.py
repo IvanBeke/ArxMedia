@@ -2,7 +2,8 @@ import logging
 from datetime import date, timedelta
 
 from celery import shared_task
-from django.db.models import Q
+from django.db.models import Count, F, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from media.models import Episode, Movie, TVShow
@@ -10,7 +11,7 @@ from media.signals import suppress_episode_signals
 from media.tmdb import TMDBNotFoundError, tmdb
 
 from ..choices import DataTransferJobType, DataTransferStatus, MediaType, WatchEntryMediaType
-from ..models import DataTransferJob, WatchEntry
+from ..models import DataTransferJob, UserMediaStatus, WatchEntry
 from ..status_sync import rebuild_episode_chain, refresh_all_statuses_for_show, refresh_show_status
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,28 @@ def refresh_show_status_for_user(tmdb_id: int, user_id: int) -> dict[str, int]:
         'tmdb_id': tmdb_id,
         'user_id': user_id,
     }
+
+
+@shared_task(name='tracking.refresh_released_episode_progress')
+def refresh_released_episode_progress() -> dict[str, int]:
+    """Queue a status refresh for every tracked show whose stored released-episode total is out of date.
+
+    Progress counts only released episodes, so an episode airing changes the total without any write
+    to the show, its episodes or the user's watch entries.
+    """
+    live_total = Subquery(
+        Episode.objects.filter(season__show__tmdb_id=OuterRef('tmdb_id')).filter(Episode.released_q())
+        .values('season__show__tmdb_id').annotate(total=Count('id')).values('total')[:1]
+    )
+    stale = list(
+        UserMediaStatus.objects.shows()
+        .annotate(live_total=Coalesce(live_total, 0))
+        .exclude(total_episodes=F('live_total'))
+        .values_list('tmdb_id', 'user_id')
+    )
+    for tmdb_id, user_id in stale:
+        refresh_show_status_for_user.delay(tmdb_id, user_id)
+    return {'queued': len(stale)}
 
 
 @shared_task(name='tracking.sync_show_episode_credits')

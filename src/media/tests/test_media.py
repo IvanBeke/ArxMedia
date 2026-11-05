@@ -1369,8 +1369,11 @@ class MediaTests:
     def test_season_detail_includes_season_zero_own_progress(self, user, auth_client):
         show = TVShow.objects.create(tmdb_id=404, name='Show B', number_of_seasons=1, number_of_episodes=2)
         season_zero = show.seasons.create(tmdb_id=4040, season_number=0, name='Specials')
-        season_zero.episodes.create(tmdb_id=10, episode_number=1, name='S0E1')
-        season_zero.episodes.create(tmdb_id=11, episode_number=2, name='S0E2')
+        aired = timezone.localdate() - timedelta(days=1)
+        season_zero.episodes.create(tmdb_id=10, episode_number=1, name='S0E1', air_date=aired)
+        season_zero.episodes.create(tmdb_id=11, episode_number=2, name='S0E2', air_date=aired)
+        season_zero.episodes.create(tmdb_id=12, episode_number=3, name='S0E3 upcoming', air_date=timezone.localdate() + timedelta(days=5))
+        season_zero.episodes.create(tmdb_id=13, episode_number=4, name='S0E4 undated')
 
         WatchEntry.objects.create(
             user=user,
@@ -1545,6 +1548,56 @@ class MediaTests:
         response = auth_client.get('/api/media/tv/888/')
         assert response.data['user_status']['status'] == 'dropped'
         assert 'status_changed_at' in response.data['user_status']
+
+    def test_season_detail_progress_counts_only_released_episodes(self, user, auth_client):
+        show = TVShow.objects.create(tmdb_id=410, name='Airing Show', number_of_seasons=1, number_of_episodes=3, status='Ended')
+        season = show.seasons.create(tmdb_id=4101, season_number=1, name='Season 1')
+        aired = timezone.localdate() - timedelta(days=3)
+        season.episodes.create(tmdb_id=41011, episode_number=1, name='Aired 1', air_date=aired)
+        season.episodes.create(tmdb_id=41012, episode_number=2, name='Aired 2', air_date=aired)
+        season.episodes.create(tmdb_id=41013, episode_number=3, name='Upcoming', air_date=timezone.localdate() + timedelta(days=7))
+        for episode_number in (1, 2, 3):
+            WatchEntry.objects.create(
+                user=user, media_type='episode', tmdb_id=410, season_number=1, episode_number=episode_number,
+                watched_at='2026-08-01T10:00:00Z',
+            )
+
+        response = auth_client.get('/api/media/tv/410/seasons/1/')
+
+        assert response.status_code == 200
+        assert response.data['episode_count'] == 3
+        assert response.data['user_status']['progress'] == {'watched_episodes': 2, 'total_episodes': 2, 'percent': 100}
+        assert response.data['user_status']['status'] == 'watched'
+
+    def test_tv_detail_reports_released_only_progress_for_show_and_seasons(self, mocker, user, auth_client):
+        mocker.patch('media.views.tmdb.get_tv_details', return_value={})
+        mocker.patch('media.views.tmdb.sync_tv_show')
+        show = TVShow.objects.create(tmdb_id=411, name='Progress Show', number_of_seasons=2, number_of_episodes=4)
+        aired = timezone.localdate() - timedelta(days=3)
+        upcoming = timezone.localdate() + timedelta(days=7)
+        season_one = show.seasons.create(tmdb_id=4111, season_number=1, name='Season 1')
+        season_two = show.seasons.create(tmdb_id=4112, season_number=2, name='Season 2')
+        season_one.episodes.create(tmdb_id=41111, episode_number=1, name='S1E1', air_date=aired)
+        season_one.episodes.create(tmdb_id=41112, episode_number=2, name='S1E2', air_date=aired)
+        season_two.episodes.create(tmdb_id=41121, episode_number=1, name='S2E1', air_date=aired)
+        season_two.episodes.create(tmdb_id=41122, episode_number=2, name='S2E2', air_date=upcoming)
+
+        untracked = auth_client.get('/api/media/tv/411/')
+        assert untracked.data['user_status']['progress'] == {'watched_episodes': 0, 'total_episodes': 3, 'percent': 0}
+
+        WatchEntry.objects.create(
+            user=user, media_type='episode', tmdb_id=411, season_number=1, episode_number=1, watched_at='2026-08-01T10:00:00Z',
+        )
+        WatchEntry.objects.create(
+            user=user, media_type='episode', tmdb_id=411, season_number=2, episode_number=1, watched_at='2026-08-02T10:00:00Z',
+        )
+        response = auth_client.get('/api/media/tv/411/')
+
+        assert response.data['user_status']['progress'] == {'watched_episodes': 2, 'total_episodes': 3, 'percent': 66}
+        progress_by_season = {season['season_number']: season['progress'] for season in response.data['seasons']}
+        assert progress_by_season[1] == {'watched_episodes': 1, 'total_episodes': 2, 'percent': 50}
+        assert progress_by_season[2] == {'watched_episodes': 1, 'total_episodes': 1, 'percent': 100}
+        assert [season['episode_count'] for season in response.data['seasons']] == [2, 2]
 
     def test_refresh_movie_metadata_requires_auth(self, mocker):
         mock_sync_movie = mocker.patch('media.views.tmdb.sync_movie')

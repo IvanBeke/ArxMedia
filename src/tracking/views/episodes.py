@@ -119,19 +119,17 @@ def watched_episodes(request):
 
 
 def _season_episode_rows(season):
-    """Episode numbers and air dates for a season, syncing it from TMDB first if none are stored."""
+    """Released episode numbers and dates for a season, syncing it from TMDB first if none are stored."""
     from media.models import Episode
 
-    fields = ('episode_number', 'air_date', 'broadcast_start')
-    rows = list(Episode.objects.filter(season=season).values(*fields))
-    if not rows:
+    episodes = Episode.objects.filter(season=season)
+    if not episodes.exists():
         from media.tmdb import tmdb
         try:
             tmdb.sync_season(season.show, season.season_number)
-            rows = list(Episode.objects.filter(season=season).values(*fields))
         except Exception as exc:
             logger.warning('Failed to sync season %s for show %s: %s', season.season_number, season.show.tmdb_id, exc)
-    return rows
+    return list(episodes.released(include_specials=True).values('episode_number', 'air_date', 'broadcast_start'))
 
 
 def _bulk_mark_episodes(user, tmdb_id, rows_by_season, watched_at_value):

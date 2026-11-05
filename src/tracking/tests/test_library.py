@@ -1258,9 +1258,9 @@ class ProgressListTests:
     def test_progress_list_sorts_runtime_by_total_show_runtime(self, user, auth_client, user2, tmdb_noop):
         response = auth_client.get('/api/tracking/my-shows/?sort=runtime')
         items = response.data['results']
-        # Totals: Gamma 60, Beta 110, Alpha 125; Delta has no episodes and sorts last.
-        assert [item['tmdb_id'] for item in items] == [4003, 4002, 4001, 4004]
-        assert [item['runtime_total_minutes'] for item in items] == [60, 110, 125, None]
+        # Released totals: Gamma 60, Alpha 82 (upcoming A3 excluded), Beta 110; Delta has no episodes and sorts last.
+        assert [item['tmdb_id'] for item in items] == [4003, 4001, 4002, 4004]
+        assert [item['runtime_total_minutes'] for item in items] == [60, 82, 110, None]
 
     def test_progress_list_sorts_episode_runtime(self, user, auth_client, user2, tmdb_noop):
         response = auth_client.get('/api/tracking/my-shows/?sort=episode_runtime')
@@ -1292,8 +1292,8 @@ class ProgressListTests:
         response = auth_client.get('/api/tracking/my-shows/')
         assert response.status_code == 200
         assert 'total_runtime_minutes' in response.data
-        # Alpha 42+40+43, Beta 55+55, Gamma 30+30; Delta has no episodes.
-        assert response.data['total_runtime_minutes'] == 295
+        # Alpha 42+40 (upcoming A3 excluded), Beta 55+55, Gamma 30+30; Delta has no episodes.
+        assert response.data['total_runtime_minutes'] == 252
 
     def test_progress_list_total_runtime_minutes_respects_filters(self, user, auth_client, user2, tmdb_noop):
         response = auth_client.get('/api/tracking/my-shows/?status=watched')

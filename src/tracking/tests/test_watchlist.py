@@ -125,8 +125,8 @@ class WatchlistTests:
     def test_watchlist_total_runtime_falls_back_to_show_runtime(self, user, auth_client, user2, tmdb_noop):
         show = TVShowFactory(tmdb_id=2203, name='Fallback Runtime Watchlist Show', episode_runtime=46)
         season = SeasonFactory(show=show, tmdb_id=3203, season_number=1, name='Season 1')
-        EpisodeFactory(season=season, tmdb_id=32031, episode_number=1, name='Episode 1', runtime=None)
-        EpisodeFactory(season=season, tmdb_id=32032, episode_number=2, name='Episode 2', runtime=None)
+        EpisodeFactory(season=season, tmdb_id=32031, episode_number=1, name='Episode 1', runtime=None, air_date=timezone.localdate() - timedelta(days=1))
+        EpisodeFactory(season=season, tmdb_id=32032, episode_number=2, name='Episode 2', runtime=None, air_date=timezone.localdate() - timedelta(days=1))
         UserMediaStatusFactory(user=user, media_type='tv', tmdb_id=2203, status_changed_at=timezone.now())
 
         response = auth_client.get('/api/tracking/watchlist/?media_type=tv')
@@ -138,8 +138,8 @@ class WatchlistTests:
         show = TVShowFactory(tmdb_id=2204, name='Specials Watchlist Show', episode_runtime=40)
         regular = SeasonFactory(show=show, tmdb_id=3204, season_number=1, name='Season 1')
         specials = SeasonFactory(show=show, tmdb_id=3205, season_number=0, name='Specials')
-        EpisodeFactory(season=regular, tmdb_id=32041, episode_number=1, name='Episode 1', runtime=45)
-        EpisodeFactory(season=specials, tmdb_id=32051, episode_number=1, name='Special 1', runtime=90)
+        EpisodeFactory(season=regular, tmdb_id=32041, episode_number=1, name='Episode 1', runtime=45, air_date=timezone.localdate() - timedelta(days=1))
+        EpisodeFactory(season=specials, tmdb_id=32051, episode_number=1, name='Special 1', runtime=90, air_date=timezone.localdate() - timedelta(days=1))
         UserMediaStatusFactory(user=user, media_type='tv', tmdb_id=2204, status_changed_at=timezone.now())
 
         response = auth_client.get('/api/tracking/watchlist/?media_type=tv')

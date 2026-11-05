@@ -214,10 +214,23 @@ const {
   load: loadWatchedEpisodes,
 } = useWatchedEpisodes()
 
-// Watched count comes from the backend (`user_status.progress`) and is
-// adjusted locally as episodes are marked/unmarked.
+// Progress counts only released episodes and comes from the backend (`user_status.progress`),
+// re-fetched after episodes are marked/unmarked. The episode list itself still shows every episode.
 const watchedEpisodesCount = ref(0)
+const releasedEpisodesCount = ref(0)
 
+function applyProgress(data: Season | null) {
+  watchedEpisodesCount.value = data?.user_status?.progress?.watched_episodes ?? 0
+  releasedEpisodesCount.value = data?.user_status?.progress?.total_episodes ?? 0
+}
+
+async function refreshProgress() {
+  try {
+    applyProgress(await mediaAPI.getSeason(tmdbId.value, seasonNumber.value))
+  } catch {
+    // Keep the last known progress when the refresh fails.
+  }
+}
 
 const seasonCredits = computed((): AggregateCredits | null => season.value?.credits ?? null)
 
@@ -245,19 +258,7 @@ const seasonAirYear = computed(() => {
 
 const hasSeasonRating = computed(() => (season.value?.vote_average ?? 0) > 0)
 
-function countWatchedInSeasonFromSet(seasonNum: number) {
-  const prefix = `${seasonNum}-`
-  let count = 0
-  for (const key of watchedEps.value) {
-    if (key.startsWith(prefix)) count++
-  }
-  return count
-}
-
-const seasonProgress = computed(() => {
-  if (!season.value?.episodes?.length) return 0
-  return computeProgressPercent(watchedEpisodesCount.value, totalEpisodesCount.value)
-})
+const seasonProgress = computed(() => computeProgressPercent(watchedEpisodesCount.value, releasedEpisodesCount.value))
 
 const totalEpisodesCount = computed(() => season.value?.episodes?.length || 0)
 
@@ -269,7 +270,7 @@ const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'episodes'
 ])
 
 const seasonProgressFraction = computed(() => {
-  return formatProgressFraction(watchedEpisodesCount.value, totalEpisodesCount.value)
+  return formatProgressFraction(watchedEpisodesCount.value, releasedEpisodesCount.value)
 })
 
 function isEpisodeWatched(epNum: number) {
@@ -288,20 +289,15 @@ function openUnwatchConfirm(payload: EpisodeTarget) {
   })
 }
 
-function onEpisodeUnwatched(target: { seasonNumber: string | number; episodeNumber: string | number }) {
-  const season = Number(target.seasonNumber)
-  const episode = Number(target.episodeNumber)
-  if (isWatched(season, episode)) {
-    watchedEpisodesCount.value = Math.max(0, watchedEpisodesCount.value - 1)
-  }
-  unmarkLocally(season, episode)
+async function onEpisodeUnwatched(target: { seasonNumber: string | number; episodeNumber: string | number }) {
+  unmarkLocally(Number(target.seasonNumber), Number(target.episodeNumber))
+  await refreshProgress()
 }
 
 async function handleEpisodeWatchOption(payload: EpisodeTarget & { option: WatchedAtOption; releaseDate: string | null }) {
   const epNum = payload.episodeNumber
   const sn = seasonNumber.value
 
-  const wasWatched = isEpisodeWatched(epNum)
   const marked = await markFromOption(payload.option, {
     tmdbId: tmdbId.value,
     seasonNumber: sn,
@@ -310,7 +306,7 @@ async function handleEpisodeWatchOption(payload: EpisodeTarget & { option: Watch
   if (!marked) return
 
   markLocally(sn, epNum, marked.watchedAt)
-  if (!wasWatched) watchedEpisodesCount.value += 1
+  await refreshProgress()
 }
 
 async function handleSeasonWatchOption(option: WatchedAtOption) {
@@ -331,7 +327,7 @@ async function handleSeasonWatchOption(option: WatchedAtOption) {
       seasonNumber: seasonNumber.value,
       onError: (error: unknown) => showActionError(getApiErrorMessage(error, t('history_load_failed'))),
     })
-    watchedEpisodesCount.value = countWatchedInSeasonFromSet(seasonNumber.value)
+    await refreshProgress()
   } catch (error: unknown) {
     showActionError(getApiErrorMessage(error, t('error_mark_season')))
   }
@@ -358,7 +354,7 @@ onMounted(async () => {
     if (data) {
       season.value = data
       showName.value = data.show_name || 'TV Show'
-      watchedEpisodesCount.value = data.user_status?.progress?.watched_episodes ?? 0
+      applyProgress(data)
     }
     aggregateCredits.value = credits
   } finally {

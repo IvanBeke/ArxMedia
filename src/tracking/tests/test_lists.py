@@ -1,3 +1,4 @@
+from datetime import date
 from unittest.mock import patch
 
 import pytest
@@ -223,8 +224,8 @@ class ListItemTests:
         show = TVShow.objects.create(tmdb_id=8401, name='Specials Show')
         regular = Season.objects.create(show=show, tmdb_id=84011, season_number=1, name='Season 1')
         specials = Season.objects.create(show=show, tmdb_id=84012, season_number=0, name='Specials')
-        Episode.objects.create(season=regular, tmdb_id=840111, episode_number=1, name='E1', runtime=45)
-        Episode.objects.create(season=specials, tmdb_id=840121, episode_number=1, name='S1', runtime=90)
+        Episode.objects.create(season=regular, tmdb_id=840111, episode_number=1, name='E1', runtime=45, air_date=date(2020, 1, 1))
+        Episode.objects.create(season=specials, tmdb_id=840121, episode_number=1, name='S1', runtime=90, air_date=date(2020, 1, 1))
         ListItem.objects.create(custom_list=custom_list, media_type='tv', tmdb_id=8401)
 
         response = auth_client.get(f'/api/tracking/lists/{custom_list.id}/items/')

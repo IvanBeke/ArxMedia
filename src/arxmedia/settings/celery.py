@@ -54,6 +54,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'tracking.sync_tmdb_changed_items',
         'schedule': crontab(hour='*/6', minute=0),
     },
+    'tracking-refresh-released-episode-progress-hourly': {
+        'task': 'tracking.refresh_released_episode_progress',
+        'schedule': 60 * 60,
+    },
     'tracking-cleanup-data-transfer-jobs-daily': {
         'task': 'tracking.cleanup_data_transfer_jobs',
         'schedule': crontab(hour=5, minute=0),

@@ -1,4 +1,4 @@
-from django.db.models import Count, Max, Min
+from django.db.models import Count, Max
 
 from media.models import Episode, TVShow
 
@@ -42,7 +42,7 @@ def _build_tv_result_from_status_row(show_status, rating_data):
     }
 
 
-def _build_tv_result_without_status(show_status_row, rating_data):
+def _build_tv_result_without_status(show_status_row, rating_data, total_episodes):
     status_value = show_status_row['status'] if show_status_row else None
     changed_at = show_status_row['status_changed_at'] if show_status_row else None
     return {
@@ -53,7 +53,7 @@ def _build_tv_result_without_status(show_status_row, rating_data):
         'rated_at': None,
         'progress': {
             'watched_episodes': 0,
-            'total_episodes': 0,
+            'total_episodes': total_episodes,
             'percent': 0,
         },
     }
@@ -78,16 +78,20 @@ def _media_status_result(media_type, tmdb_id, maps):
     rating_data = maps['ratings'].get((media_type, tmdb_id), {})
     if media_type == MediaType.MOVIE:
         return _movie_status_result(tmdb_id, maps['movie_status'], maps['movie_watched'], rating_data)
-    return _tv_status_result(tmdb_id, maps['tv_status'], rating_data)
+    return _tv_status_result(tmdb_id, maps['tv_status'], maps['tv_released_totals'], rating_data)
 
 
 def _status_maps(user, movie_ids, tv_ids):
     """All per-user status/rating lookups in one place, batched by media type."""
+    tv_status = _tv_status_map(user, tv_ids)
     return {
         'ratings': _rating_map(user, movie_ids, tv_ids),
         'movie_status': _movie_status_map(user, movie_ids),
         'movie_watched': _movie_watched_map(user, movie_ids),
-        'tv_status': _tv_status_map(user, tv_ids),
+        'tv_status': tv_status,
+        'tv_released_totals': _tv_released_totals(
+            {tmdb_id for tmdb_id in tv_ids if not _has_progress(tv_status.get(tmdb_id))}
+        ),
     }
 
 
@@ -161,11 +165,24 @@ def _tv_status_map(user, tv_ids):
     return {row['tmdb_id']: row for row in tv_status_rows}
 
 
-def _tv_status_result(tmdb_id, tv_status_map, rating_data):
+def _has_progress(show_status_row) -> bool:
+    return bool(show_status_row) and show_status_row['status'] != TvShowStatus.PLAN_TO_WATCH
+
+
+def _tv_released_totals(tmdb_ids):
+    if not tmdb_ids:
+        return {}
+    rows = Episode.objects.filter(
+        season__show__tmdb_id__in=tmdb_ids,
+    ).filter(Episode.released_q()).values('season__show__tmdb_id').annotate(total=Count('id'))
+    return {row['season__show__tmdb_id']: row['total'] for row in rows}
+
+
+def _tv_status_result(tmdb_id, tv_status_map, released_totals, rating_data):
     show_status = tv_status_map.get(tmdb_id)
-    if show_status and show_status['status'] != TvShowStatus.PLAN_TO_WATCH:
+    if _has_progress(show_status):
         return _build_tv_result_from_status_row(show_status, rating_data)
-    return _build_tv_result_without_status(show_status, rating_data)
+    return _build_tv_result_without_status(show_status, rating_data, released_totals.get(tmdb_id, 0))
 
 
 def annotate_season_user_status(user, season_items):
@@ -207,9 +224,7 @@ def _season_status_result(key, watched_map, total_map, final_show_ids):
 def _season_status(watched_episodes: int, total_episodes: int, is_final: bool):
     if watched_episodes <= 0:
         return None
-    # A final show with nothing released yet, or fully watched, counts as watched.
-    finished = (total_episodes == 0 and is_final) or (watched_episodes >= total_episodes and is_final)
-    if finished:
+    if is_final and watched_episodes >= total_episodes:
         return SeasonStatus.WATCHED
     return SeasonStatus.WATCHING
 
@@ -231,7 +246,7 @@ def _season_contexts(user, normalized_items):
     season_numbers = {season_number for _, season_number in normalized_items}
 
     released_episode_keys = _released_episode_keys(tmdb_ids, season_numbers)
-    watched_map = _watched_map(user, tmdb_ids, season_numbers)
+    watched_map = _watched_map(user, tmdb_ids, season_numbers, released_episode_keys)
 
     total_map: dict[tuple[int, int], int] = {}
     for tmdb_id, season_number, _ in released_episode_keys:
@@ -253,19 +268,20 @@ def _released_episode_keys(tmdb_ids, season_numbers):
     )
 
 
-def _watched_map(user, tmdb_ids, season_numbers):
+def _watched_map(user, tmdb_ids, season_numbers, released_episode_keys):
+    """Per-season watched count limited to released episodes; last_watched_at covers every watch."""
     watched_rows = WatchEntry.objects.for_user(user).episodes().filter(
         tmdb_id__in=tmdb_ids,
         season_number__in=season_numbers,
-    ).values(
-        'tmdb_id',
-        'season_number',
-    ).annotate(
-        watched_episodes=Count('id'),
-        first_watched_at=Min('watched_at'),
-        last_watched_at=Max('watched_at'),
-    )
-    return {(row['tmdb_id'], row['season_number']): row for row in watched_rows}
+    ).values_list('tmdb_id', 'season_number', 'episode_number', 'watched_at')
+    watched_map: dict[tuple[int, int], dict] = {}
+    for tmdb_id, season_number, episode_number, watched_at in watched_rows:
+        entry = watched_map.setdefault((tmdb_id, season_number), {'watched_episodes': 0, 'last_watched_at': None})
+        if (tmdb_id, season_number, episode_number) in released_episode_keys:
+            entry['watched_episodes'] += 1
+        if watched_at and (entry['last_watched_at'] is None or watched_at > entry['last_watched_at']):
+            entry['last_watched_at'] = watched_at
+    return watched_map
 
 
 def _final_show_ids(tmdb_ids):

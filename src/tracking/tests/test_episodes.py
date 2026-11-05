@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -90,8 +90,8 @@ class SeasonTests:
     def test_mark_season_watched_returns_episode_records(self, user, auth_client, user2, tmdb_noop):
         show = TVShow.objects.create(tmdb_id=124, name='Season Show')
         season = Season.objects.create(show=show, tmdb_id=1241, season_number=1, name='Season 1')
-        Episode.objects.create(season=season, tmdb_id=12411, episode_number=1, name='Episode 1')
-        Episode.objects.create(season=season, tmdb_id=12412, episode_number=3, name='Episode 3')
+        Episode.objects.create(season=season, tmdb_id=12411, episode_number=1, name='Episode 1', air_date=date(2020, 1, 1))
+        Episode.objects.create(season=season, tmdb_id=12412, episode_number=3, name='Episode 3', air_date=date(2020, 1, 1))
 
         response = auth_client.post('/api/tracking/seasons/mark/', {
             'tmdb_id': show.tmdb_id,
@@ -106,8 +106,8 @@ class SeasonTests:
     def test_mark_season_watched_twice_does_not_duplicate_entries(self, user, auth_client, user2, tmdb_noop):
         show = TVShow.objects.create(tmdb_id=125, name='Twice Show')
         season = Season.objects.create(show=show, tmdb_id=1251, season_number=1, name='Season 1')
-        Episode.objects.create(season=season, tmdb_id=12511, episode_number=1, name='Episode 1')
-        Episode.objects.create(season=season, tmdb_id=12512, episode_number=2, name='Episode 2')
+        Episode.objects.create(season=season, tmdb_id=12511, episode_number=1, name='Episode 1', air_date=date(2020, 1, 1))
+        Episode.objects.create(season=season, tmdb_id=12512, episode_number=2, name='Episode 2', air_date=date(2020, 1, 1))
 
         for _ in range(2):
             response = auth_client.post('/api/tracking/seasons/mark/', {'tmdb_id': 125, 'season_number': 1})
@@ -118,7 +118,7 @@ class SeasonTests:
     def test_mark_season_zero_watched(self, user, auth_client, user2, tmdb_noop):
         show = TVShow.objects.create(tmdb_id=126, name='Specials Show')
         season = Season.objects.create(show=show, tmdb_id=1260, season_number=0, name='Specials')
-        Episode.objects.create(season=season, tmdb_id=12601, episode_number=1, name='Special 1')
+        Episode.objects.create(season=season, tmdb_id=12601, episode_number=1, name='Special 1', air_date=date(2020, 1, 1))
 
         response = auth_client.post('/api/tracking/seasons/mark/', {
             'tmdb_id': show.tmdb_id,
@@ -193,7 +193,7 @@ class SeasonTests:
         for number in (0, 1, 2):
             season = Season.objects.create(show=show, tmdb_id=3300 + number, season_number=number, name=f'S{number}')
             for episode_number in (1, 2):
-                Episode.objects.create(season=season, tmdb_id=33000 + number * 10 + episode_number, episode_number=episode_number, name='E')
+                Episode.objects.create(season=season, tmdb_id=33000 + number * 10 + episode_number, episode_number=episode_number, name='E', air_date=date(2020, 1, 1))
         WatchEntry.objects.create(user=user, media_type='episode', tmdb_id=330, season_number=1, episode_number=1)
 
         with patch('tracking.views.episodes.refresh_show_status', wraps=refresh_show_status) as refresh:
@@ -205,29 +205,46 @@ class SeasonTests:
         assert not WatchEntry.objects.filter(user=user, tmdb_id=330, season_number=0).exists()
 
     def test_mark_show_and_season_use_each_episode_release_date(self, user, auth_client, user2, tmdb_noop):
-        from datetime import date as date_cls
-
         show = TVShow.objects.create(tmdb_id=331, name='Release Show', number_of_seasons=1)
         season = Season.objects.create(show=show, tmdb_id=3311, season_number=1, name='S1')
-        Episode.objects.create(season=season, tmdb_id=33111, episode_number=1, name='E1', air_date=date_cls(2024, 1, 5))
+        Episode.objects.create(season=season, tmdb_id=33111, episode_number=1, name='E1', air_date=date(2024, 1, 5))
         broadcast = datetime(2024, 1, 12, 21, 0, tzinfo=UTC)
         Episode.objects.create(
-            season=season, tmdb_id=33112, episode_number=2, name='E2', air_date=date_cls(2024, 1, 12), broadcast_start=broadcast,
+            season=season, tmdb_id=33112, episode_number=2, name='E2', air_date=date(2024, 1, 12), broadcast_start=broadcast,
         )
-        Episode.objects.create(season=season, tmdb_id=33113, episode_number=3, name='E3', air_date=None)
+        Episode.objects.create(season=season, tmdb_id=33113, episode_number=3, name='E3', air_date=timezone.localdate() + timedelta(days=30))
 
         for url, payload in (
             ('/api/tracking/shows/mark/', {'tmdb_id': 331}),
             ('/api/tracking/seasons/mark/', {'tmdb_id': 331, 'season_number': 1}),
         ):
             WatchEntry.objects.filter(user=user, tmdb_id=331).delete()
-            before = timezone.now()
             response = auth_client.post(url, {**payload, 'watched_at': 'release_date'}, format='json')
             assert response.status_code == 200
             watched = {e.episode_number: e.watched_at for e in WatchEntry.objects.filter(user=user, tmdb_id=331)}
-            assert timezone.localtime(watched[1]).date() == date_cls(2024, 1, 5)
+            assert timezone.localtime(watched[1]).date() == date(2024, 1, 5)
             assert watched[2] == broadcast
-            assert watched[3] >= before
+            assert 3 not in watched
+
+    def test_mark_season_and_show_skip_unreleased_episodes(self, user, auth_client, user2, tmdb_noop):
+        show = TVShow.objects.create(tmdb_id=332, name='Airing Show', number_of_seasons=1)
+        regular = Season.objects.create(show=show, tmdb_id=3321, season_number=1, name='S1')
+        specials = Season.objects.create(show=show, tmdb_id=3320, season_number=0, name='Specials')
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        Episode.objects.create(season=regular, tmdb_id=33211, episode_number=1, name='Aired', air_date=date(2020, 1, 1))
+        Episode.objects.create(season=regular, tmdb_id=33212, episode_number=2, name='Upcoming', air_date=tomorrow)
+        Episode.objects.create(season=regular, tmdb_id=33213, episode_number=3, name='Undated')
+        Episode.objects.create(season=specials, tmdb_id=33201, episode_number=1, name='Upcoming Special', air_date=tomorrow)
+
+        season_response = auth_client.post('/api/tracking/seasons/mark/', {'tmdb_id': 332, 'season_number': 1})
+        special_response = auth_client.post('/api/tracking/seasons/mark/', {'tmdb_id': 332, 'season_number': 0})
+        WatchEntry.objects.filter(user=user, tmdb_id=332).delete()
+        show_response = auth_client.post('/api/tracking/shows/mark/', {'tmdb_id': 332})
+
+        assert season_response.data['marked'] == 1
+        assert special_response.data['marked'] == 0
+        assert show_response.data['marked'] == 1
+        assert list(WatchEntry.objects.filter(user=user, tmdb_id=332).values_list('season_number', 'episode_number')) == [(1, 1)]
 
     def test_mark_show_watched_validates_input(self, user, auth_client, user2, tmdb_noop):
         assert auth_client.post('/api/tracking/shows/mark/', {}).status_code == 400
@@ -263,7 +280,7 @@ class SeasonTests:
     def test_mark_season_watched_updates_user_stats(self, user, auth_client, user2, tmdb_noop):
         show = TVShow.objects.create(tmdb_id=322, name='Stats Show')
         season = Season.objects.create(show=show, tmdb_id=3221, season_number=1, name='Season 1')
-        Episode.objects.create(season=season, tmdb_id=32211, episode_number=1, name='E1')
+        Episode.objects.create(season=season, tmdb_id=32211, episode_number=1, name='E1', air_date=date(2020, 1, 1))
 
         response = auth_client.post('/api/tracking/seasons/mark/', {'tmdb_id': 322, 'season_number': 1})
 

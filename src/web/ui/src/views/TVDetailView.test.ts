@@ -68,7 +68,11 @@ const TEST_USER: User = {
   created_at: '',
 }
 
-function showPayload() {
+function progress(watched: number, total: number) {
+  return { watched_episodes: watched, total_episodes: total, percent: total ? Math.floor((watched / total) * 100) : 0 }
+}
+
+function showPayload({ watched = 2, total = 3 } = {}) {
   return {
     tmdb_id: TMDB_ID,
     name: 'Dark',
@@ -86,9 +90,9 @@ function showPayload() {
     status: 'Ended',
     episode_runtime: 60,
     seasons: [
-      { season_number: 1, name: 'Season 1', overview: '', poster_path: null, poster_url: null, air_date: '2017-12-01', episode_count: 3, vote_average: 8.1, vote_count: 15 },
+      { season_number: 1, name: 'Season 1', overview: '', poster_path: null, poster_url: null, air_date: '2017-12-01', episode_count: 3, vote_average: 8.1, vote_count: 15, progress: progress(watched, total) },
     ],
-    user_status: { status: 'watching' },
+    user_status: { status: 'watching', progress: progress(watched, total) },
     watch_providers: null,
   }
 }
@@ -254,6 +258,7 @@ describe('TVDetailView hero progress', () => {
 
   it('marks the whole show watched with a single request', async () => {
     getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+    getTV.mockResolvedValueOnce(showPayload({ watched: 0, total: 3 })).mockResolvedValueOnce(showPayload({ watched: 3, total: 3 }))
     vi.mocked(trackingAPI.markShowWatched).mockResolvedValue({ marked: 3, episodes: watchedPayload([[1, 1], [1, 2], [1, 3]]).episodes })
 
     const wrapper = await mountView(true)
@@ -288,12 +293,46 @@ describe('TVDetailView hero progress', () => {
     expect(trackingAPI.markShowWatched).toHaveBeenCalledWith({ tmdb_id: TMDB_ID, watched_at: 'release_date' })
   })
 
-  it('excludes specials from the watched count', async () => {
-    getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1], [1, 2], [0, 1]]))
+  it('uses the backend released-only progress instead of counting watched or listed episodes', async () => {
+    const payload = showPayload({ watched: 2, total: 3 })
+    payload.number_of_episodes = 4
+    payload.seasons[0]!.episode_count = 4
+    getTV.mockResolvedValue(payload)
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1], [1, 2], [1, 3], [1, 4], [0, 1]]))
 
     const wrapper = await mountView(true)
 
     expect(wrapper.text()).toContain('2/3 watched')
+    expect(wrapper.text()).not.toContain('/4 watched')
+    expect(wrapper.findAllComponents(ProgressBar)[0]?.props('pct')).toBe(67)
+  })
+
+  it('marks a season watched once every released episode is watched even if more are upcoming', async () => {
+    const payload = showPayload({ watched: 3, total: 3 })
+    payload.seasons[0]!.episode_count = 4
+    getTV.mockResolvedValue(payload)
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1], [1, 2], [1, 3]]))
+
+    const wrapper = await mountView(true)
+    await wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Seasons'))?.trigger('click')
+
+    expect(wrapper.findAll('button').some((button) => button.text().includes('Mark watched'))).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Watched')).toBe(true)
+    expect(wrapper.text()).toContain('3/3 watched')
+  })
+
+  it('refreshes progress from the backend after marking a season', async () => {
+    getTV.mockResolvedValueOnce(showPayload({ watched: 0, total: 3 })).mockResolvedValue(showPayload({ watched: 3, total: 3 }))
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+
+    const wrapper = await mountView(true)
+    await wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Seasons'))?.trigger('click')
+    expect(wrapper.text()).toContain('0/3 watched')
+    await wrapper.findAll('button').find((button) => button.text() === 'Mark watched')?.trigger('click')
+    await flushPromises()
+
+    expect(trackingAPI.markSeasonWatched).toHaveBeenCalledWith({ tmdb_id: TMDB_ID, season_number: 1 })
+    expect(wrapper.text()).toContain('3/3 watched')
   })
 
   it('shows the season rating in the seasons list', async () => {
@@ -307,12 +346,12 @@ describe('TVDetailView hero progress', () => {
     expect(wrapper.text()).toContain('8.1')
   })
 
-  it('shows per-season progress counted from the watched episodes', async () => {
+  it('shows per-season progress over released episodes only', async () => {
     const payload = showPayload()
     payload.seasons = [
-      { ...payload.seasons[0]!, season_number: 1, name: 'Season 1', episode_count: 3 },
-      { ...payload.seasons[0]!, season_number: 2, name: 'Season 2', episode_count: 4 },
-      { ...payload.seasons[0]!, season_number: 10, name: 'Season 10', episode_count: 2 },
+      { ...payload.seasons[0]!, season_number: 1, name: 'Season 1', episode_count: 3, progress: progress(3, 3) },
+      { ...payload.seasons[0]!, season_number: 2, name: 'Season 2', episode_count: 5, progress: progress(1, 4) },
+      { ...payload.seasons[0]!, season_number: 10, name: 'Season 10', episode_count: 2, progress: progress(1, 2) },
     ]
     getTV.mockResolvedValue(payload)
     getWatchedEpisodes.mockResolvedValue(watchedPayload([[1, 1], [1, 2], [1, 3], [2, 1], [10, 1]]))

@@ -219,9 +219,9 @@ class Episode(models.Model):
         now = now or timezone.now()
         released = (
             Q(broadcast_start__lte=now)
-            | Q(broadcast_start__isnull=True, air_date__lte=now.date())
+            | Q(broadcast_start__isnull=True, air_date__lte=timezone.localtime(now).date())
         )
-        return (cls.specials_q() | released) if include_specials else cls.regular_q() & released
+        return released if include_specials else cls.regular_q() & released
 
     @classmethod
     def regular_q(cls):
@@ -238,7 +238,7 @@ class Episode(models.Model):
         air_date_lookup = 'air_date__gte' if include_today else 'air_date__gt'
         return season_filter & (
             Q(broadcast_start__gt=now)
-            | Q(broadcast_start__isnull=True, **{air_date_lookup: now.date()})
+            | Q(broadcast_start__isnull=True, **{air_date_lookup: timezone.localtime(now).date()})
         )
 
 

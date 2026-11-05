@@ -465,6 +465,20 @@ def _tv_providers(tmdb_id):
         return {}
 
 
+def _attach_season_progress(request, data, tmdb_id):
+    if not request.user.is_authenticated:
+        return
+    tmdb_id = int(tmdb_id)
+    status_map = annotate_season_user_status(
+        request.user,
+        [{'tmdb_id': tmdb_id, 'season_number': season['season_number']} for season in data['seasons']],
+    )
+    for season in data['seasons']:
+        season_status = status_map.get((tmdb_id, season['season_number']))
+        if season_status:
+            season['progress'] = season_status['progress']
+
+
 @transaction.non_atomic_requests
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -476,6 +490,7 @@ def tv_detail(request, tmdb_id):
     data = _serialize_tv_show_detail(show)
     data['watch_providers'] = _providers_for_region(_tv_providers(tmdb_id), _resolve_region(request))
     _attach_user_status(request, data, MediaType.TV, tmdb_id)
+    _attach_season_progress(request, data, tmdb_id)
     return Response(data)
 
 
