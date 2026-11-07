@@ -200,20 +200,31 @@ class JellyfinClient(ServiceClient):
         })
         items = {}
         for item in (response or {}).get('Items', []):
-            tmdb_id = {key.lower(): value for key, value in (item.get('ProviderIds') or {}).items()}.get('tmdb')
-            if tmdb_id and str(tmdb_id).isdigit():
-                items[int(tmdb_id)] = self._item_ref(item)
+            tmdb_id = self._provider_id(item, 'tmdb')
+            if tmdb_id:
+                items[tmdb_id] = self._item_ref(item)
         return items
 
     def seasons(self, series_id: str) -> dict[int, dict[str, str]]:
         response = self._request('GET', f'/Shows/{series_id}/Seasons', params={'enableImages': 'false', 'enableUserData': 'false'})
-        return self._refs_by_index(response)
+        items = (response or {}).get('Items', [])
+        return {item['IndexNumber']: self._item_ref(item) for item in items if item.get('IndexNumber') is not None}
 
-    def episodes(self, series_id: str, season_number: int) -> dict[int, dict[str, str]]:
+    def episodes(self, series_id: str) -> list[dict[str, Any]]:
         response = self._request('GET', f'/Shows/{series_id}/Episodes', params={
-            'season': season_number, 'enableImages': 'false', 'enableUserData': 'false',
+            'fields': 'ProviderIds', 'enableImages': 'false', 'enableUserData': 'false',
         })
-        return self._refs_by_index(response)
+        return [
+            {
+                'ref': self._item_ref(item),
+                'season': item['ParentIndexNumber'],
+                'number': item['IndexNumber'],
+                'season_ref': {'id': item['SeasonId'], 'server_id': item.get('ServerId', '')} if item.get('SeasonId') else None,
+                'tvdb_id': self._provider_id(item, 'tvdb'),
+            }
+            for item in (response or {}).get('Items', [])
+            if item.get('IndexNumber') is not None and item.get('ParentIndexNumber') is not None
+        ]
 
     def item_url(self, item: dict[str, str]) -> str:
         server = f'&serverId={item["server_id"]}' if item.get('server_id') else ''
@@ -223,9 +234,10 @@ class JellyfinClient(ServiceClient):
     def _item_ref(item: dict[str, Any]) -> dict[str, str]:
         return {'id': item['Id'], 'server_id': item.get('ServerId', '')}
 
-    def _refs_by_index(self, response: Any) -> dict[int, dict[str, str]]:
-        items = (response or {}).get('Items', [])
-        return {item['IndexNumber']: self._item_ref(item) for item in items if item.get('IndexNumber') is not None}
+    @staticmethod
+    def _provider_id(item: dict[str, Any], provider: str) -> int | None:
+        value = {key.lower(): value for key, value in (item.get('ProviderIds') or {}).items()}.get(provider)
+        return int(value) if value and str(value).isdigit() else None
 
 
 def radarr_credentials() -> tuple[str, str]:

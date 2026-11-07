@@ -4,6 +4,7 @@ from django.urls import reverse
 
 from integrations.clients import jellyfin_client
 from media.http import MAX_WORKERS
+from media.models import Episode, Season, TVShow
 
 SHOW_LINKS_URL = reverse('jellyfin_show_links', args=[1396])
 MOVIE_LINK_URL = reverse('jellyfin_movie_link', args=[603])
@@ -13,6 +14,7 @@ PAGE = 'http://jellyfin.test:8096/web/index.html#/details'
 SERIES = {'Items': [
     {'Id': 'series-bb', 'ServerId': 'srv', 'ProviderIds': {'Tmdb': '1396', 'Tvdb': '81189'}},
     {'Id': 'series-no-tmdb', 'ServerId': 'srv', 'ProviderIds': {'Imdb': 'tt1'}},
+    {'Id': 'series-other', 'ServerId': 'srv', 'ProviderIds': {'Tmdb': '1399'}},
 ]}
 MOVIES = {'Items': [
     {'Id': 'movie-matrix', 'ServerId': 'srv', 'ProviderIds': {'Tmdb': '603', 'Imdb': 'tt0133093'}},
@@ -21,14 +23,16 @@ MOVIES = {'Items': [
 SEASONS = {'Items': [
     {'Id': 'season-0', 'ServerId': 'srv', 'IndexNumber': 0},
     {'Id': 'season-1', 'ServerId': 'srv', 'IndexNumber': 1},
+    {'Id': 'season-2', 'ServerId': 'srv', 'IndexNumber': 2},
 ]}
-EPISODES = {
-    1: {'Items': [
-        {'Id': 'ep-1-1', 'ServerId': 'srv', 'IndexNumber': 1, 'ParentIndexNumber': 1},
-        {'Id': 'ep-1-2', 'ServerId': 'srv', 'IndexNumber': 2, 'ParentIndexNumber': 1},
-    ]},
-    2: {'Items': [{'Id': 'ep-2-1', 'ServerId': 'srv', 'IndexNumber': 1, 'ParentIndexNumber': 2}]},
-}
+EPISODES = {'Items': [
+    {'Id': 'ep-1-1', 'ServerId': 'srv', 'SeasonId': 'season-1', 'ParentIndexNumber': 1, 'IndexNumber': 1, 'ProviderIds': {'Tvdb': '101'}},
+    {'Id': 'ep-1-2', 'ServerId': 'srv', 'SeasonId': 'season-1', 'ParentIndexNumber': 1, 'IndexNumber': 2, 'ProviderIds': {'Tvdb': '102'}},
+    {'Id': 'ep-2-1', 'ServerId': 'srv', 'SeasonId': 'season-2', 'ParentIndexNumber': 2, 'IndexNumber': 1, 'ProviderIds': {'Tvdb': '201'}},
+    {'Id': 'ep-2-2', 'ServerId': 'srv', 'SeasonId': 'season-2', 'ParentIndexNumber': 2, 'IndexNumber': 2, 'ProviderIds': {'Tvdb': '202'}},
+]}
+# TMDB puts the TVDB second season's episodes in its first season, after E2
+TMDB_TVDB_IDS = {(1396, 1, 3): 201, (1396, 1, 4): 202, (1396, 5, 1): 201}
 NO_LINKS = {'show_url': None, 'season_url': None, 'episode_url': None}
 
 
@@ -36,8 +40,16 @@ NO_LINKS = {'show_url': None, 'season_url': None, 'episode_url': None}
 def library(fake_arr):
     fake_arr.on('GET', '/Items', lambda params: MOVIES if params['includeItemTypes'] == 'Movie' else SERIES)
     fake_arr.on('GET', '/Shows/series-bb/Seasons', SEASONS)
-    fake_arr.on('GET', '/Shows/series-bb/Episodes', lambda params: EPISODES.get(params['season'], {'Items': []}))
+    fake_arr.on('GET', '/Shows/series-bb/Episodes', EPISODES)
     return fake_arr
+
+
+@pytest.fixture(autouse=True)
+def tmdb_episode_ids(mocker):
+    def fetch(show_id, season, episode, *, use_cache=True):
+        return {'tvdb_id': TMDB_TVDB_IDS.get((show_id, season, episode)), 'imdb_id': None}
+
+    return mocker.patch('media.tmdb.tmdb.get_episode_external_ids', side_effect=fetch)
 
 
 class TestPermissionGate:
@@ -108,7 +120,7 @@ class TestShowLinks:
             'season_url': f'{PAGE}?id=season-1&serverId=srv',
             'episode_url': f'{PAGE}?id=ep-1-2&serverId=srv',
         }
-        assert library.calls_to('GET', '/Shows/series-bb/Episodes')[0]['params']['season'] == 1
+        assert 'season' not in library.calls_to('GET', '/Shows/series-bb/Episodes')[0]['params']
 
     def test_missing_season_and_episode_have_no_link(self, jellyfin_api, library):
         response = jellyfin_api.get(SHOW_LINKS_URL, {'season': 9, 'episode': 1})
@@ -150,10 +162,17 @@ class TestShowLinks:
     def test_library_lookups_are_cached_between_requests(self, jellyfin_api, library):
         jellyfin_api.get(SHOW_LINKS_URL, {'season': 1, 'episode': 1})
         jellyfin_api.get(SHOW_LINKS_URL, {'season': 1, 'episode': 2})
+        jellyfin_api.get(SHOW_LINKS_URL, {'season': 1})
+        jellyfin_api.get(SHOW_LINKS_URL, {'season': 1})
 
         assert len(library.calls_to('GET', '/Items')) == 1
         assert len(library.calls_to('GET', '/Shows/series-bb/Episodes')) == 1
         assert len(library.calls_to('GET', '/Shows/series-bb/Seasons')) == 1
+
+    def test_a_season_link_needs_no_episode_lookup(self, jellyfin_api, library):
+        jellyfin_api.get(SHOW_LINKS_URL, {'season': 1})
+
+        assert library.calls_to('GET', '/Shows/series-bb/Episodes') == []
 
 
 class TestMovieLink:
@@ -221,11 +240,11 @@ class TestEpisodeLinks:
             {'tmdb_id': 1396, 'season_number': 1, 'episode_number': 9, 'url': None},
         ]
 
-    def test_fetches_each_season_only_once(self, jellyfin_api, library):
+    def test_fetches_each_series_only_once(self, jellyfin_api, library):
         self.post(
             jellyfin_api,
             {'tmdb_id': 1396, 'season_number': 1, 'episode_number': 1},
-            {'tmdb_id': 1396, 'season_number': 1, 'episode_number': 2},
+            {'tmdb_id': 1396, 'season_number': 2, 'episode_number': 1},
         )
 
         assert len(library.calls_to('GET', '/Items')) == 1
@@ -242,6 +261,90 @@ class TestEpisodeLinks:
         assert self.post(jellyfin_api, {'tmdb_id': 1396, 'season_number': 1, 'episode_number': 0}).status_code == 400
         too_many = [{'tmdb_id': 1396, 'season_number': 1, 'episode_number': 1}] * 51
         assert self.post(jellyfin_api, *too_many).status_code == 400
+
+
+class TestTvdbEpisodeMatching:
+    def post(self, client, *refs):
+        items = [{'tmdb_id': tmdb_id, 'season_number': season, 'episode_number': episode} for tmdb_id, season, episode in refs]
+        return client.post(EPISODE_LINKS_URL, {'items': items}, format='json')
+
+    @pytest.fixture
+    def stored_episode(self):
+        show = TVShow.objects.create(tmdb_id=1396, name='Breaking Bad')
+        season = Season.objects.create(show=show, season_number=1, tmdb_id=1)
+        return Episode.objects.create(season=season, episode_number=3, tmdb_id=3, name='E3', external_ids={'tvmaze_id': 9})
+
+    def test_an_episode_missing_by_number_is_matched_by_its_tvdb_id(self, jellyfin_api, library):
+        response = self.post(jellyfin_api, (1396, 1, 3), (1396, 1, 4))
+
+        assert [result['url'] for result in response.data['results']] == [
+            f'{PAGE}?id=ep-2-1&serverId=srv', f'{PAGE}?id=ep-2-2&serverId=srv',
+        ]
+
+    def test_show_links_match_the_episode_and_link_its_season(self, jellyfin_api, library):
+        response = jellyfin_api.get(SHOW_LINKS_URL, {'season': 1, 'episode': 3})
+
+        assert response.data == {
+            'show_url': f'{PAGE}?id=series-bb&serverId=srv',
+            'season_url': f'{PAGE}?id=season-2&serverId=srv',
+            'episode_url': f'{PAGE}?id=ep-2-1&serverId=srv',
+        }
+
+    def test_a_season_missing_in_jellyfin_links_the_season_of_its_first_episode(self, jellyfin_api, library):
+        response = jellyfin_api.get(SHOW_LINKS_URL, {'season': 5})
+
+        assert response.data['season_url'] == f'{PAGE}?id=season-2&serverId=srv'
+
+    def test_an_episode_found_by_number_needs_no_tmdb_lookup(self, jellyfin_api, library, tmdb_episode_ids):
+        self.post(jellyfin_api, (1396, 1, 1))
+
+        tmdb_episode_ids.assert_not_called()
+
+    def test_tmdb_is_asked_without_its_response_cache(self, jellyfin_api, library, tmdb_episode_ids):
+        self.post(jellyfin_api, (1396, 1, 3))
+
+        tmdb_episode_ids.assert_called_once_with(1396, 1, 3, use_cache=False)
+
+    def test_a_stored_tvdb_id_needs_no_tmdb_lookup(self, jellyfin_api, library, tmdb_episode_ids, stored_episode):
+        stored_episode.external_ids['tvdb_id'] = 202
+        stored_episode.save()
+
+        response = self.post(jellyfin_api, (1396, 1, 3))
+
+        assert response.data['results'][0]['url'] == f'{PAGE}?id=ep-2-2&serverId=srv'
+        tmdb_episode_ids.assert_not_called()
+
+    def test_a_fetched_tvdb_id_is_stored_for_the_next_lookup(self, jellyfin_api, library, tmdb_episode_ids, stored_episode):
+        self.post(jellyfin_api, (1396, 1, 3))
+        self.post(jellyfin_api, (1396, 1, 3))
+
+        stored_episode.refresh_from_db()
+        assert stored_episode.external_ids == {'tvmaze_id': 9, 'tvdb_id': 201}
+        assert tmdb_episode_ids.call_count == 1
+
+    def test_an_episode_without_a_tvdb_id_has_no_link_and_stores_nothing(self, jellyfin_api, library, stored_episode):
+        episode = Episode.objects.create(season=stored_episode.season, episode_number=9, tmdb_id=9, name='E9')
+
+        response = self.post(jellyfin_api, (1396, 1, 9))
+
+        assert response.data['results'][0]['url'] is None
+        episode.refresh_from_db()
+        assert episode.external_ids == {}
+
+    def test_a_tvdb_id_that_jellyfin_lacks_has_no_link(self, jellyfin_api, library, stored_episode):
+        stored_episode.external_ids['tvdb_id'] = 999
+        stored_episode.save()
+
+        response = self.post(jellyfin_api, (1396, 1, 3))
+
+        assert response.data['results'][0]['url'] is None
+
+    def test_a_tmdb_failure_only_loses_the_unmatched_links(self, jellyfin_api, library, tmdb_episode_ids):
+        tmdb_episode_ids.side_effect = requests.ConnectionError('offline')
+
+        response = self.post(jellyfin_api, (1396, 1, 1), (1396, 1, 3))
+
+        assert [result['url'] for result in response.data['results']] == [f'{PAGE}?id=ep-1-1&serverId=srv', None]
 
 
 class TestUpstreamFailures:
@@ -271,21 +374,14 @@ class TestUpstreamFailures:
 
         assert jellyfin_api.get(SHOW_LINKS_URL).data['show_url'] == f'{PAGE}?id=series-bb&serverId=srv'
 
-    def test_a_season_that_fails_only_loses_its_own_links(self, jellyfin_api, library, mocker):
-        original = library.__class__.__call__
-
-        def fail_for_season_two(self_, session, method, url, **kwargs):
-            if kwargs.get('params', {}).get('season') == 2:
-                raise requests.ConnectionError('refused')
-            return original(self_, session, method, url, **kwargs)
-
-        mocker.patch.object(library.__class__, '__call__', fail_for_season_two)
+    def test_a_series_that_fails_only_loses_its_own_links(self, jellyfin_api, library):
+        library.on('GET', '/Shows/series-other/Episodes', None, status_code=500)
 
         response = jellyfin_api.post(
             EPISODE_LINKS_URL,
             {'items': [
                 {'tmdb_id': 1396, 'season_number': 1, 'episode_number': 1},
-                {'tmdb_id': 1396, 'season_number': 2, 'episode_number': 1},
+                {'tmdb_id': 1399, 'season_number': 1, 'episode_number': 1},
             ]},
             format='json',
         )
