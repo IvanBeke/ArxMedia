@@ -15,6 +15,7 @@ from tracking.choices import MediaType
 from tracking.status_annotations import annotate_media_user_status, annotate_season_user_status
 from tracking.tasks import sync_show_episode_credits
 
+from .episode_ids import resolve_episode_external_ids
 from .models import Episode, EpisodeCredit, Movie, TVShow
 from .serializers import (
     MovieSerializer,
@@ -789,19 +790,11 @@ def tv_external_ids(request, tmdb_id):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def episode_external_ids(request, tmdb_id, season_number, episode_number):
-    episode = Episode.objects.filter(
-        season__show__tmdb_id=tmdb_id, season__season_number=season_number, episode_number=episode_number,
-    ).first()
-    stored = dict(episode.external_ids) if episode and episode.external_ids else {}
-    try:
-        live = tmdb.get_episode_external_ids(tmdb_id, season_number, episode_number)
-        if isinstance(live, dict):
-            stored.update({k: v for k, v in live.items() if v})
-    except Exception as exc:
-        logger.warning('Failed to fetch episode external ids for %s S%sE%s: %s', tmdb_id, season_number, episode_number, exc)
-        if not stored:
-            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
-    return Response(stored)
+    ref = (tmdb_id, season_number, episode_number)
+    ids = resolve_episode_external_ids([ref], required=('imdb_id', 'tvdb_id'))[ref]
+    if not ids:
+        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(ids)
 
 
 def _recommendations_response(request, tmdb_id, fetcher, media_type, label):

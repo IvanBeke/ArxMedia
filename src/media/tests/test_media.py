@@ -2047,23 +2047,49 @@ class MediaTests:
         assert response.status_code == 200
         assert response.data['tvmaze_id'] == 123
 
-    def test_episode_external_ids_merges_stored_and_live(self, auth_client):
+    def test_episode_external_ids_fetches_missing_ids_and_stores_them(self, auth_client):
+        show = TVShow.objects.create(tmdb_id=7778, name='Episode IDs')
+        season = Season.objects.create(show=show, season_number=1, tmdb_id=1)
+        episode = Episode.objects.create(season=season, episode_number=2, tmdb_id=2, name='E2', external_ids={'tvmaze_id': 4953})
+
+        with patch('media.views.tmdb.get_episode_external_ids', return_value={'imdb_id': 'tt1480055', 'tvdb_id': None}):
+            response = auth_client.get('/api/media/tv/7778/seasons/1/episodes/2/external-ids/')
+
+        assert response.status_code == 200
+        assert response.data == {'tvmaze_id': 4953, 'imdb_id': 'tt1480055'}
+        episode.refresh_from_db()
+        assert episode.external_ids == {'tvmaze_id': 4953, 'imdb_id': 'tt1480055'}
+
+    def test_episode_external_ids_skips_tmdb_when_the_ids_are_stored(self, auth_client):
+        show = TVShow.objects.create(tmdb_id=7778, name='Episode IDs')
+        season = Season.objects.create(show=show, season_number=1, tmdb_id=1)
+        ids = {'tvmaze_id': 4953, 'imdb_id': 'tt1480055', 'tvdb_id': 321}
+        Episode.objects.create(season=season, episode_number=2, tmdb_id=2, name='E2', external_ids=ids)
+
+        with patch('media.views.tmdb.get_episode_external_ids') as fetch:
+            response = auth_client.get('/api/media/tv/7778/seasons/1/episodes/2/external-ids/')
+
+        assert response.data == ids
+        fetch.assert_not_called()
+
+    def test_episode_external_ids_fall_back_to_stored_ids_when_tmdb_fails(self, auth_client):
         show = TVShow.objects.create(tmdb_id=7778, name='Episode IDs')
         season = Season.objects.create(show=show, season_number=1, tmdb_id=1)
         Episode.objects.create(season=season, episode_number=2, tmdb_id=2, name='E2', external_ids={'tvmaze_id': 4953})
 
-        with patch('media.views.tmdb.get_episode_external_ids', return_value={'imdb_id': 'tt1480055', 'tvdb_id': None}):
-            response = auth_client.get('/api/media/tv/7778/seasons/1/episodes/2/external-ids/')
-        assert response.status_code == 200
-        assert response.data == {'tvmaze_id': 4953, 'imdb_id': 'tt1480055'}
-
         with patch('media.views.tmdb.get_episode_external_ids', side_effect=Exception('offline')):
             response = auth_client.get('/api/media/tv/7778/seasons/1/episodes/2/external-ids/')
+            missing = auth_client.get('/api/media/tv/7778/seasons/1/episodes/9/external-ids/')
+
         assert response.data == {'tvmaze_id': 4953}
+        assert missing.status_code == 404
 
-        with patch('media.views.tmdb.get_episode_external_ids', side_effect=Exception('offline')):
-            response = auth_client.get('/api/media/tv/7778/seasons/1/episodes/9/external-ids/')
-        assert response.status_code == 404
+    def test_episode_external_ids_of_an_unsynced_episode_are_returned_but_not_stored(self, auth_client):
+        with patch('media.views.tmdb.get_episode_external_ids', return_value={'imdb_id': 'tt1480055', 'tvdb_id': 321}):
+            response = auth_client.get('/api/media/tv/7778/seasons/1/episodes/2/external-ids/')
+
+        assert response.data == {'imdb_id': 'tt1480055', 'tvdb_id': 321}
+        assert not Episode.objects.exists()
 
     def test_movie_detail_includes_collection_and_external_ids(self, mocker, auth_client):
         mock_details = mocker.patch('media.views.tmdb.get_movie_details')
