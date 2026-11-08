@@ -2,7 +2,7 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
       <div>
-        <h1 class="font-display text-2xl text-primary font-semibold">My Shows</h1>
+        <h1 class="font-display text-2xl text-primary font-semibold">{{ t('page_my_shows') }}</h1>
         <p class="text-muted text-sm">Track your shows and decide what to watch next.</p>
       </div>
       <CountRuntimeBadge :count="count" type-label="shows" :total-minutes="totalRuntimeMinutes" />
@@ -60,6 +60,11 @@ import PaginationControls from '@/components/PaginationControls.vue'
 import ProgressRow from '@/components/ProgressRow.vue'
 import { usePagedFilteredList } from '@/composables/usePagedFilteredList'
 import type { QueryParams, ShowProgressItem } from '@/types/api'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
+usePageTitle(() => t('page_my_shows'))
 
 interface ShowFilterState {
   search: string; sort: string; direction: string; mediaType: string; statuses: string[]

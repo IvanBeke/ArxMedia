@@ -7,7 +7,7 @@
           alt="ArxMedia logo"
           class="h-10 w-auto mx-auto mb-3"
         />
-        <h1 class="font-display text-2xl text-primary font-semibold">Create Account</h1>
+        <h1 class="font-display text-2xl text-primary font-semibold">{{ t('page_create_account') }}</h1>
         <p class="text-gray-500 text-sm mt-1">Start tracking your watch history</p>
       </div>
 
@@ -53,6 +53,11 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
+usePageTitle(() => t('page_create_account'))
 
 const auth = useAuthStore()
 const router = useRouter()

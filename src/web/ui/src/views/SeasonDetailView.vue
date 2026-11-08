@@ -166,6 +166,7 @@ import MediaTabs, { type MediaTab } from '@/components/MediaTabs.vue'
 import MediaHistoryTab from '@/components/MediaHistoryTab.vue'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { useDetailTabs } from '@/composables/useDetailTabs'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useWatchedEpisodes } from '@/composables/useWatchedEpisodes'
@@ -195,6 +196,11 @@ const aggregateCredits = ref<AggregateCredits | null>(null)
 const creditsError = ref(false)
 const loading = ref(true)
 const showName = ref('TV Show')
+usePageTitle(() => {
+  if (!season.value) return null
+  const seasonLabel = season.value.season_number === 0 ? t('episode_special_season') : season.value.name
+  return `${showName.value} · ${seasonLabel}`
+})
 const unwatchDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
 const { errorMsg: actionError, showError: showActionError } = useFlashMessages()
 const {

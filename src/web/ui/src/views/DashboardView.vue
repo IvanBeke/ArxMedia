@@ -154,11 +154,13 @@ import { formatHoursMinutes } from '@/utils/progress'
 import { getEpisodeLink, getShowLink, getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import type { DashboardStats, UpNextItem, UpcomingItem } from '@/api'
 import type { WatchEntry } from '@/types/api'
+import { usePageTitle } from '@/composables/usePageTitle'
 
 const auth = useAuthStore()
 const stats = ref<DashboardStats | null>(null)
 const activity = ref<WatchEntry[] | null>(null)
 const { t } = useI18n()
+usePageTitle(() => t('dashboard_title'))
 const loadingStats = ref(true)
 const loadingActivity = ref(true)
 const upNext = ref<UpNextItem[] | null>(null)

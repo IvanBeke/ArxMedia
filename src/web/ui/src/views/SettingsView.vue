@@ -149,6 +149,7 @@ import { usePwa } from '@/composables/usePwa'
 import { ACCOUNT_VISIBILITY } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
 import type { ApiError, ProfileUpdatePayload, User } from '@/types/api'
+import { usePageTitle } from '@/composables/usePageTitle'
 
 type ProfileForm = Required<Pick<ProfileUpdatePayload, 'username' | 'email' | 'bio' | 'location' | 'preferred_region' | 'account_visibility'>>
 
@@ -156,6 +157,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const prefs = usePreferencesStore()
 const { t } = useI18n()
+usePageTitle(() => t('settings_title'))
 const user = ref<User | null>(null)
 const loading = ref(true)
 const saving = ref(false)

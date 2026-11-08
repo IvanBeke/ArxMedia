@@ -197,9 +197,11 @@ import { formatDateByLocale } from '@/i18n'
 import type { CustomList, UserCard } from '@/types/api'
 import { getApiErrorMessage } from '@/utils/errors'
 import { normalizePagedResponse } from '@/utils/pagination'
+import { usePageTitle } from '@/composables/usePageTitle'
 
 const lists = ref<CustomList[]>([])
 const { t } = useI18n()
+usePageTitle(() => t('lists_title'))
 const loading = ref(true)
 const loadError = ref('')
 const creating = ref(false)

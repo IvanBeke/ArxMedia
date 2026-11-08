@@ -26,9 +26,11 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 
 const router = useRouter()
 const { t } = useI18n()
+usePageTitle(() => t('pwa_offline_title'))
 
 function retry(): void {
   if (navigator.onLine) {

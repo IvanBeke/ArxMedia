@@ -132,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authAPI, mediaAPI } from '@/api'
 import MediaCard from '@/components/MediaCard.vue'
@@ -144,6 +144,7 @@ import { useAuthStore } from '@/stores/auth'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { toRouteQuery } from '@/utils/pagination'
 import type { MediaResult, MediaType, PersonSearchResult, QueryParams, UserCard } from '@/types/api'
 
@@ -186,7 +187,9 @@ const { t } = useI18n()
 const activeScope = ref<SearchScope>(SCOPE_VALUE.ALL)
 const isUserScope = ref(false)
 const isPeopleScope = ref(false)
-const pageTitle = ref('Discover')
+const pageTitle = computed(() => (query.value.trim() ? t('page_search') : t('nav_discover')))
+const documentTitle = computed(() => (query.value.trim() ? `${pageTitle.value}: ${query.value.trim()}` : pageTitle.value))
+usePageTitle(documentTitle)
 
 async function doSearch({ page = 1 }: { page?: number } = {}) {
   const trimmedQuery = query.value.trim()
@@ -280,10 +283,6 @@ function applyScope(scope: SearchScope) {
   activeFilter.value = isUserScope.value || isPeopleScope.value ? 'multi' : mapScopeToFilter(scope)
 }
 
-function syncPageTitle() {
-  pageTitle.value = query.value.trim() ? 'Search' : 'Discover'
-}
-
 function buildSearchQuery(scope: SearchScope, rawQuery: string, page = 1): QueryParams {
   const scopedValue = scope === SCOPE_VALUE.USERS ? 'users' : scope === SCOPE_VALUE.PEOPLE ? 'people' : mapScopeToFilter(scope)
   const trimmedQuery = String(rawQuery || '').trim()
@@ -344,7 +343,6 @@ function onSearchSubmit({ query: nextQuery, scope }: SearchSubmit) {
   applyScope(scope)
   query.value = nextQuery
   currentPage.value = nextPage
-  syncPageTitle()
   if (nextQuery) {
     doSearch({ page: nextPage })
   } else {
@@ -366,15 +364,13 @@ watch(
     const queryChanged = query.value.trim() !== nextValue
 
     if (!scopeChanged && !pageChanged && !queryChanged) {
-      syncPageTitle()
       return
     }
 
     applyScope(nextScope)
     query.value = nextValue
     currentPage.value = nextPage
-    syncPageTitle()
-
+  
     if (nextValue) {
       await doSearch({ page: currentPage.value })
     } else {
@@ -396,7 +392,6 @@ onMounted(async () => {
   applyScope(initialScope)
   query.value = initialQuery
   currentPage.value = initialPage
-  syncPageTitle()
 
   if (query.value) {
     await doSearch({ page: currentPage.value })

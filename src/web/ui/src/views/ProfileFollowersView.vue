@@ -53,6 +53,7 @@ import { authAPI } from '@/api'
 import PaginationControls from '@/components/PaginationControls.vue'
 import UserList from '@/components/UserList.vue'
 import { useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import type { ApiError, UserCard } from '@/types/api'
 
@@ -69,6 +70,7 @@ const lastLoadedCount = ref(0)
 
 const username = computed(() => String(route.params.username ?? ''))
 const title = computed(() => t('profile_followers_page_title', { username: username.value }))
+usePageTitle(title)
 
 async function loadFollowers(nextPage = 1) {
   loading.value = true

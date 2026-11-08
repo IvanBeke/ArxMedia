@@ -33,4 +33,9 @@
 </template>
 
 <script setup lang="ts">
+import { usePageTitle } from '@/composables/usePageTitle'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
+usePageTitle(() => t('page_home_tagline'))
 </script>

@@ -100,6 +100,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { useRoute } from 'vue-router'
 import { mediaAPI } from '@/api'
 import DetailHero from '@/components/DetailHero.vue'
@@ -121,6 +122,7 @@ const route = useRoute()
 const { t } = useI18n()
 const personId = computed(() => String(route.params.id ?? ''))
 const person = ref<PersonDetail | null>(null)
+usePageTitle(() => person.value?.name)
 const credits = ref<PersonCombinedCredits | null>(null)
 const loading = ref(true)
 const loadingCredits = ref(true)

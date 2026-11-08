@@ -132,6 +132,7 @@ import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLin
 import { historyItemQueryFromRoute } from '@/utils/historyFilters'
 import { invalidPageRecovery, normalizePagedResponse, parsePage, toRouteQuery } from '@/utils/pagination'
 import type { MediaType, QueryParams, WatchEntry, WatchEntryMediaType } from '@/types/api'
+import { usePageTitle } from '@/composables/usePageTitle'
 
 type HistoryFilter = 'all' | MediaType | WatchEntryMediaType
 type HistoryOrder = 'newest' | 'oldest'
@@ -140,6 +141,7 @@ type HistoryGroup = { key: string; label: string; items: WatchEntry[] }
 
 const route = useRoute()
 const { t } = useI18n()
+usePageTitle(() => t('history_title'))
 const router = useRouter()
 
 const entries = ref<WatchEntry[]>([])

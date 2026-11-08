@@ -141,12 +141,14 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import { useAuthStore } from '@/stores/auth'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import { formatDateByLocale, useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 import type { UserProfile } from '@/types/api'
 
 const route = useRoute()
 const auth = useAuthStore()
 const { t } = useI18n()
 const profile = ref<UserProfile | null>(null)
+usePageTitle(() => profile.value?.username)
 const loading = ref(true)
 const followLoading = ref(false)
 const activeTab = ref('activity')

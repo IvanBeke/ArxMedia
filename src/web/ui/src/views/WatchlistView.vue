@@ -8,7 +8,7 @@
 
     <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
       <div>
-        <h1 class="font-display text-2xl text-primary font-semibold">Watchlist</h1>
+        <h1 class="font-display text-2xl text-primary font-semibold">{{ t('page_watchlist') }}</h1>
       </div>
       <CountRuntimeBadge :shows="counts.shows" :movies="counts.movies" :total-minutes="totalRuntimeMinutes" />
     </div>
@@ -70,6 +70,7 @@ import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import { useQueryPageSync } from '@/composables/useQueryPageSync'
 import type { MediaCard as MediaCardItem, MediaType, QueryParams } from '@/types/api'
+import { usePageTitle } from '@/composables/usePageTitle'
 
 interface MediaFilterState {
   search: string; sort: string; direction: string; mediaType: string; statuses: string[]
@@ -102,6 +103,7 @@ const counts = ref({ shows: 0, movies: 0 })
 const availableProviderStatuses = ref<string[]>([])
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const { t } = useI18n()
+usePageTitle(() => t('page_watchlist'))
 const route = useRoute()
 const filterBarRef = ref<{ clearAll: () => void } | null>(null)
 const currentPage = useQueryPageSync(route)

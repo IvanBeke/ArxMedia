@@ -411,6 +411,7 @@
 import { nextTick, ref, onMounted, onBeforeUnmount, computed, watch, type ComponentPublicInstance } from 'vue'
 import { useCleanupOnUnmount } from '@/composables/useCleanupOnUnmount'
 import { useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { useRoute, useRouter } from 'vue-router'
 import { authAPI, trackingAPI, mediaAPI } from '@/api'
 import MediaFilterBar from '@/components/MediaFilterBar.vue'
@@ -448,6 +449,7 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const list = ref<CustomList | null>(null)
+usePageTitle(() => list.value?.name)
 const items = ref<ListItem[]>([])
 const loading = ref(true)
 const loadError = ref('')

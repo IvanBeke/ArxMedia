@@ -1,7 +1,7 @@
 <template>
   <div class="w-full px-4 sm:px-6 lg:px-8 py-4 flex flex-col min-h-[calc(100dvh-3.5rem)]">
     <div class="max-w-7xl mx-auto w-full mb-4">
-      <h1 class="font-display text-2xl text-primary font-semibold">Calendar</h1>
+      <h1 class="font-display text-2xl text-primary font-semibold">{{ t('nav_calendar') }}</h1>
       <p class="text-muted text-sm">Watchlist movies and episodes from shows you are watching</p>
     </div>
 
@@ -148,6 +148,11 @@ import { MEDIA_TYPE } from '@/constants/tracking'
 import { isoDateKey, monthBounds, nowInstantIso, parsePlainDate, weekBounds } from '@/utils/temporal'
 import { getEpisodeLink, getMovieLink } from '@/utils/watchEntryLinks'
 import type { CalendarItem } from '@/types/api'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
+usePageTitle(() => t('nav_calendar'))
 
 type ViewMode = 'day' | 'month' | 'week'
 type CalendarDisplayItem = {

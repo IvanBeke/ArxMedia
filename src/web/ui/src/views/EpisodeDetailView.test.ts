@@ -217,6 +217,12 @@ describe('EpisodeDetailView navigation', () => {
     expect(next.find('svg').exists()).toBe(true)
   })
 
+  it('sets the document title from the show, episode code and episode name', async () => {
+    await mountView(2, 2)
+
+    expect(document.title).toBe('Navigation Show S02E02 · Season 2 Episode 2 · ArxMedia')
+  })
+
   it('links backward to the last episode of the previous season', async () => {
     const { wrapper } = await mountView(2, 1)
 

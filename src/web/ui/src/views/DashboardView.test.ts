@@ -68,6 +68,12 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('My Shows is empty')
   })
 
+  it('sets the document title', async () => {
+    await mountView()
+
+    expect(document.title).toBe('Dashboard · ArxMedia')
+  })
+
   it('formats total watch time from the stats payload', async () => {
     const wrapper = await mountView()
 

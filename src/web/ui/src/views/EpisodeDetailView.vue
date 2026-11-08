@@ -168,6 +168,7 @@ import { useAuthStore } from '@/stores/auth'
 import CastGrid from '@/components/CastGrid.vue'
 import LoadError from '@/components/LoadError.vue'
 import { formatDateTimeByLocale, useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { useEpisodeWatchActions } from '@/composables/useEpisodeWatchActions'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { getApiErrorMessage } from '@/utils/errors'
@@ -216,6 +217,12 @@ const {
   markFromOption,
 } = useEpisodeWatchActions({ onError: showActionError })
 const { t } = useI18n()
+usePageTitle(() => {
+  if (!episodeData.value) return null
+  const code = `S${String(seasonNum.value).padStart(2, '0')}E${String(episodeNum.value).padStart(2, '0')}`
+  const prefix = showData.value ? `${showData.value.name} ${code}` : code
+  return `${prefix} · ${episodeData.value.name}`
+})
 
 const watchButtonTooltip = computed(() => watchedTooltipText(isWatched.value, watchedAt.value, t))
 

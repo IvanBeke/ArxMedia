@@ -1,7 +1,7 @@
 <template>
   <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <header class="mb-6">
-      <h1 class="font-display text-3xl text-primary font-semibold tracking-tight">Import Data</h1>
+      <h1 class="font-display text-3xl text-primary font-semibold tracking-tight">{{ t('page_import_data') }}</h1>
       <p class="text-sm text-muted mt-1">Import from Trakt and WeTrackr ZIP exports, Yamtrack CSV exports, or ArxMedia backups.</p>
     </header>
 
@@ -350,10 +350,14 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { trackingAPI } from '@/api'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { DATA_IMPORT_MODE, DATA_TRANSFER_FORMAT, DATA_TRANSFER_STATUS } from '@/constants/tracking'
-import { formatDateTimeByLocale } from '@/i18n'
+import { formatDateTimeByLocale, useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { instantEpochMs, nowEpochMs } from '@/utils/temporal'
 import { getApiErrorMessage } from '@/utils/errors'
 import type { DataTransferFileReport, DataTransferJob, DataTransferListDetail, DataTransferReport, DataTransferStatus, DataTransferWarning } from '@/types/api'
+
+const { t } = useI18n()
+usePageTitle(() => t('page_import_data'))
 
 type ImportMode = (typeof DATA_IMPORT_MODE)[keyof typeof DATA_IMPORT_MODE]
 type ImportModeOption = { value: ImportMode; tag: string; title: string; description: string }

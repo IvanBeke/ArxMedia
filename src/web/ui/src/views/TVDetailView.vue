@@ -352,6 +352,7 @@ import CastGrid from '@/components/CastGrid.vue'
 import RecommendationsRow from '@/components/RecommendationsRow.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { getApiErrorMessage } from '@/utils/errors'
 import { computeProgressPercent, formatProgressFraction } from '@/utils/progress'
 import { tmdbImageUrl } from '@/utils/images'
@@ -384,6 +385,7 @@ const historyFilter = computed(() => ({
 }))
 
 const show = ref<TVShow | null>(null)
+usePageTitle(() => show.value?.name)
 const aggregateCredits = ref<AggregateCredits | null>(null)
 const loading = ref(true)
 const loadError = ref('')

@@ -263,6 +263,7 @@ import RecommendationsRow from '@/components/RecommendationsRow.vue'
 import CollectionStrip from '@/components/CollectionStrip.vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { formatDateByLocale, useI18n } from '@/i18n'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { getApiErrorMessage } from '@/utils/errors'
 import { useMediaCardQuickActions } from '@/composables/useMediaCardQuickActions'
 import { useDetailTabs } from '@/composables/useDetailTabs'
@@ -288,6 +289,7 @@ const historyFilter = computed(() => ({
 const auth = useAuthStore()
 const { t } = useI18n()
 const movie = ref<Movie | null>(null)
+usePageTitle(() => movie.value?.title)
 const creditsData = ref<AggregateCredits | null>(null)
 const collectionDetail = ref<CollectionDetail | null>(null)
 const loading = ref(true)

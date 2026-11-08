@@ -144,6 +144,12 @@ describe('MovieDetailView history tab', () => {
     })
   })
 
+  it('sets the document title from the loaded movie', async () => {
+    await mountView()
+
+    expect(document.title).toBe('The Matrix · ArxMedia')
+  })
+
   it('hides the Radarr button without the radarr integration', async () => {
     const wrapper = await mountView('overview', { realActions: true })
 
