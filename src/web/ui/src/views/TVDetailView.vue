@@ -51,7 +51,7 @@
       </template>
       <template #meta>
         <template v-if="show">
-          <p class="text-muted text-sm mb-3">
+          <p class="hero-meta mb-3">
             {{ show.first_air_date ? (temporalYear(show.first_air_date) || '') : '' }}
             · {{ show.number_of_seasons }} Season{{ show.number_of_seasons !== 1 ? 's' : '' }}
             <template v-if="auth.isAuthenticated"> · {{ showWatchedFraction }} watched</template>

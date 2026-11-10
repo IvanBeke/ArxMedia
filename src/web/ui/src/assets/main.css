@@ -318,6 +318,12 @@
     color: var(--text-muted);
   }
 
+  .hero-meta {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
   .bg-surface {
     background-color: var(--bg-surface);
   }

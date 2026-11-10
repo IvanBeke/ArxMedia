@@ -40,13 +40,13 @@
       </template>
       <template #meta>
         <template v-if="movie">
-          <p v-if="movie.tagline" class="text-gray-500 italic text-sm mb-2 break-words">{{ movie.tagline }}</p>
-          <p class="text-gray-500 text-sm mb-1">
+          <p v-if="movie.tagline" class="hero-meta italic mb-2 break-words">{{ movie.tagline }}</p>
+          <p class="hero-meta mb-1">
             {{ releaseYear(movie.release_date) }}
             <span v-if="runtimeLabel"> · {{ runtimeLabel }}</span>
             <span v-if="movie.status"> · {{ movie.status }}</span>
           </p>
-          <p class="text-gray-600 text-xs mb-3">{{ formatDateByLocale(movie.release_date) }}</p>
+          <p class="hero-meta text-xs mb-3">{{ formatDateByLocale(movie.release_date) }}</p>
           <div class="flex items-center gap-4 mb-1 text-sm">
             <RatingBadge :value="movie.vote_average ?? 0" :votes="movie.vote_count" out-of-ten />
           </div>
