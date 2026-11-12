@@ -229,7 +229,7 @@ class UpNextTests:
         assert next(item for item in response.data if item['tmdb_id'] == 781)['next_episode']['episode_number'] == 2
 
     def test_up_next_includes_progress_and_remaining_runtime_fields(self, user, auth_client, user2, tmdb_noop):
-        today = timezone.now().date()
+        today = timezone.localdate()
         show = TVShow.objects.create(tmdb_id=777, name='Runtime Show')
         season = Season.objects.create(show=show, tmdb_id=7771, season_number=1, name='Season 1')
         Episode.objects.create(season=season, tmdb_id=77711, episode_number=1, name='Episode 1', air_date=today - timedelta(days=5), runtime=20)
@@ -266,7 +266,7 @@ class UpNextTests:
         assert item['progress_percent'] == 33
 
     def test_up_next_uses_show_runtime_when_episode_runtime_is_missing(self, user, auth_client, user2, tmdb_noop):
-        today = timezone.now().date()
+        today = timezone.localdate()
         show = TVShow.objects.create(tmdb_id=779, name='Fallback Runtime Show', episode_runtime=45)
         season = Season.objects.create(show=show, tmdb_id=7791, season_number=1, name='Season 1')
         Episode.objects.create(season=season, tmdb_id=77911, episode_number=1, name='Episode 1', air_date=today - timedelta(days=5), runtime=20)
@@ -354,7 +354,7 @@ class UpNextTests:
     def test_up_next_prioritizes_recent_releases_with_new_badge(self, user, auth_client, user2, tmdb_noop):
         from media.models import Episode, Season, TVShow
 
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         show_newer = TVShow.objects.create(tmdb_id=1001, name='Newer Show')
         season_newer = Season.objects.create(show=show_newer, tmdb_id=10011, season_number=1, name='Season 1')
@@ -651,7 +651,7 @@ class UpNextTests:
     def test_upcoming_excludes_season_zero(self, user, auth_client, user2, tmdb_noop):
         from media.models import Episode, Season, TVShow
 
-        today = timezone.now().date()
+        today = timezone.localdate()
         show = TVShow.objects.create(tmdb_id=3002, name='Upcoming Specials')
         season0 = Season.objects.create(show=show, tmdb_id=30020, season_number=0, name='Specials')
         season1 = Season.objects.create(show=show, tmdb_id=30021, season_number=1, name='Season 1')
@@ -773,7 +773,7 @@ class SeasonPosterCardsTests:
         assert entries[0]['poster_path'] == '/movie-poster.jpg'
 
     def test_up_next_uses_next_season_poster(self, user, auth_client, user2, tmdb_noop):
-        today = timezone.now().date()
+        today = timezone.localdate()
         show = TVShow.objects.create(tmdb_id=8101, name='Up Next Poster Show', poster_path='/un-show.jpg')
         season1 = Season.objects.create(show=show, tmdb_id=81011, season_number=1, name='Season 1', poster_path='/un-s1.jpg')
         season2 = Season.objects.create(show=show, tmdb_id=81012, season_number=2, name='Season 2', poster_path='/un-s2.jpg')
@@ -795,7 +795,7 @@ class SeasonPosterCardsTests:
         assert item['poster_url'] == 'https://image.tmdb.org/t/p/w500/un-s2.jpg'
 
     def test_up_next_falls_back_to_show_poster_when_next_season_poster_blank(self, user, auth_client, user2, tmdb_noop):
-        today = timezone.now().date()
+        today = timezone.localdate()
         show = TVShow.objects.create(tmdb_id=8201, name='Blank Season Show', poster_path='/blank-un-show.jpg')
         season1 = Season.objects.create(show=show, tmdb_id=82011, season_number=1, name='Season 1', poster_path='')
         Episode.objects.create(season=season1, tmdb_id=820111, episode_number=1, name='E1', air_date=today - timedelta(days=3))
@@ -815,7 +815,7 @@ class SeasonPosterCardsTests:
         assert item['poster_url'] == 'https://image.tmdb.org/t/p/w500/blank-un-show.jpg'
 
     def test_upcoming_uses_episode_season_poster(self, user, auth_client, user2, tmdb_noop):
-        today = timezone.now().date()
+        today = timezone.localdate()
         show = TVShow.objects.create(tmdb_id=8301, name='Upcoming Poster Show', poster_path='/up-show.jpg')
         season1 = Season.objects.create(show=show, tmdb_id=83011, season_number=1, name='Season 1', poster_path='/up-s1.jpg')
         Episode.objects.create(
@@ -881,7 +881,7 @@ class SeasonPosterCardsTests:
 class ProgressListTests:
     @pytest.fixture(autouse=True)
     def _progress_data(self, user):
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         genre_drama = Genre.objects.create(tmdb_id=501, name='Drama')
         genre_scifi = Genre.objects.create(tmdb_id=502, name='Sci-Fi')
@@ -1268,7 +1268,7 @@ class ProgressListTests:
         assert [item['tmdb_id'] for item in response.data['results']] == [4001, 4002, 4004, 4003]
 
     def test_progress_list_aggregates_all_remaining_episodes_and_runtime(self, user, auth_client, user2, tmdb_noop):
-        Episode.objects.filter(tmdb_id=4113).update(air_date=timezone.now().date() - timedelta(days=1))
+        Episode.objects.filter(tmdb_id=4113).update(air_date=timezone.localdate() - timedelta(days=1))
         refresh_show_status(user.id, 4001)
 
         response = auth_client.get('/api/tracking/my-shows/?search=alpha')

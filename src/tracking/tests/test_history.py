@@ -116,8 +116,8 @@ class WatchEntryTests:
     def test_show_progress_uses_released_episodes_and_floors_percentage(self, user, user2, tmdb_noop):
         show = TVShow.objects.create(tmdb_id=889, name='Released Progress Show')
         season = Season.objects.create(show=show, tmdb_id=890, season_number=1, name='Season 1')
-        yesterday = timezone.now().date() - timedelta(days=1)
-        tomorrow = timezone.now().date() + timedelta(days=1)
+        yesterday = timezone.localdate() - timedelta(days=1)
+        tomorrow = timezone.localdate() + timedelta(days=1)
         for episode_number, air_date in ((1, yesterday), (2, yesterday), (3, yesterday), (4, tomorrow), (5, None)):
             Episode.objects.create(
                 season=season,

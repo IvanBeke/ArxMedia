@@ -1823,7 +1823,7 @@ class DataImportExportTests:
         """Episodes materialized during the import must be visible to up_next at done."""
         show = TVShow.objects.create(tmdb_id=4601, name='Ready Show', number_of_seasons=1)
         season = Season.objects.create(show=show, tmdb_id=4602, season_number=1, name='Season 1')
-        today = timezone.now().date()
+        today = timezone.localdate()
         Episode.objects.create(
             season=season, tmdb_id=4603, episode_number=1, name='Next Up',
             air_date=today - timedelta(days=2), runtime=42,
