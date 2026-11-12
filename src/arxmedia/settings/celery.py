@@ -46,6 +46,10 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = _env_int('CELERY_WORKER_MAX_TASKS_PER_CHILD'
 CELERY_TASK_SOFT_TIME_LIMIT = _env_int('CELERY_TASK_SOFT_TIME_LIMIT', 30 * 60)
 CELERY_TASK_TIME_LIMIT = _env_int('CELERY_TASK_TIME_LIMIT', 35 * 60)
 CELERY_BEAT_SCHEDULE = {
+    'notifications-release-daily': {
+        'task': 'notifications.generate_release_notifications',
+        'schedule': crontab(hour=0, minute=5),
+    },
     'tracking-heartbeat-hourly': {
         'task': 'tracking.heartbeat',
         'schedule': 60 * 60,

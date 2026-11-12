@@ -122,6 +122,17 @@
             </Transition>
           </div>
 
+          <RouterLink
+            v-if="auth.isAuthenticated"
+            to="/notifications"
+            class="p-2 rounded-md text-muted hover:text-primary hover:bg-surface-100 transition-colors focus-visible:outline-2 focus-visible:outline-brand-500"
+            :aria-label="notifications.unreadCount ? t('notifications_nav_unread', { count: notifications.unreadCount }) : t('notifications_title')"
+            :title="t('notifications_title')"
+          >
+            <BellDot v-if="notifications.unreadCount" class="w-5 h-5" aria-hidden="true" />
+            <Bell v-else class="w-5 h-5" aria-hidden="true" />
+          </RouterLink>
+
           <!-- Theme Toggle -->
           <button @click="theme.toggle()" class="p-2 rounded-md hover:bg-surface-100 transition-colors text-muted hover:text-primary md:ml-2" :aria-label="t('nav_toggle_theme')">
             <svg v-if="theme.isDark" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -173,14 +184,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ExternalLink } from '@lucide/vue'
+import { Bell, BellDot, ExternalLink } from '@lucide/vue'
 import { onClickOutside } from '@vueuse/core'
 import SearchBar from '@/components/SearchBar.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { useNotificationsStore } from '@/stores/notifications'
 import { useI18n } from '@/i18n'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import type { PersonSearchResult, UserCard } from '@/types/api'
@@ -191,6 +203,7 @@ type SearchPreviewItem = (UserCard & { kind: 'user' }) | (PersonSearchResult & {
 
 const auth = useAuthStore()
 const theme = useThemeStore()
+const notifications = useNotificationsStore()
 const router = useRouter()
 const searchQuery = ref('')
 const searchScope = ref<SearchScope>('all')
@@ -204,6 +217,7 @@ const { t } = useI18n()
 
 onClickOutside(userMenuRef, () => { showUserMenu.value = false })
 onClickOutside(mobileMenuRef, () => { showMobileMenu.value = false }, { ignore: [mobileMenuButtonRef] })
+watch(() => auth.user?.id, (userId) => { if (userId) void notifications.refreshUnread() }, { immediate: true })
 
 function scopeToQueryValue(scope: SearchScope) {
   if (scope === 'movies') return MEDIA_TYPE.MOVIE

@@ -1,10 +1,11 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { authAPI } from '@/api'
+import { authAPI, notificationsAPI } from '@/api'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useNotificationsStore } from '@/stores/notifications'
 import { required } from '@/test-support/assertions'
 import type { ComponentPublicInstance } from 'vue'
 import type { User } from '@/types/api'
@@ -30,7 +31,29 @@ function mountAppNav() {
 
 describe('AppNav', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     setActivePinia(createPinia())
+    vi.spyOn(notificationsAPI, 'getUnreadCount').mockResolvedValue({ unread_count: 0 })
+  })
+
+  it('shows the bell, switching to the unread variant with its count in the label', async () => {
+    useAuthStore().user = user
+    const wrapper = mountAppNav()
+    await flushPromises()
+    const link = wrapper.find('a[href="/notifications"]')
+    expect(notificationsAPI.getUnreadCount).toHaveBeenCalledOnce()
+    expect(link.find('.lucide-bell').exists()).toBe(true)
+
+    useNotificationsStore().unreadCount = 2
+    await wrapper.vm.$nextTick()
+    expect(link.find('.lucide-bell-dot').exists()).toBe(true)
+    expect(link.attributes('aria-label')).toBe('Notifications (2 unread)')
+  })
+
+  it('hides notifications from guests', () => {
+    const wrapper = mountAppNav()
+    expect(wrapper.find('a[href="/notifications"]').exists()).toBe(false)
+    expect(notificationsAPI.getUnreadCount).not.toHaveBeenCalled()
   })
 
   it('keeps the mobile and desktop navigation breakpoints aligned', () => {

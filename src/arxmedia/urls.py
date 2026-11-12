@@ -27,6 +27,7 @@ urlpatterns = [
     path('api/auth/', include('accounts.urls')),
     path('api/media/', include('media.urls')),
     path('api/tracking/', include('tracking.urls')),
+    path('api/notifications/', include('notifications.urls')),
     path('api/social/', include('social.urls')),
     path('api/calendar/', include('my_calendar.urls')),
     path('api/integrations/', include('integrations.urls')),

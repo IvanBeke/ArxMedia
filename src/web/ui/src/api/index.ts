@@ -36,6 +36,7 @@ import type {
   RadarrAddPayload,
   Rating,
   RegisterPayload,
+  ReleaseNotification,
   Season,
   SeasonWatchPayload,
   ShowProgressItem,
@@ -264,6 +265,13 @@ export const integrationsAPI = {
     api.post<{ results: JellyfinEpisodeLink[] }>('/integrations/jellyfin/episodes/links/', { items }, options),
 }
 
+export const notificationsAPI = {
+  list: (page = 1, options: RequestOptions = {}) =>
+    api.get<PaginatedResponse<ReleaseNotification>>('/notifications/', { params: { page }, ...options }),
+  getUnreadCount: () => api.get<{ unread_count: number }>('/notifications/unread-count/'),
+  markRead: (id: number) => api.post<void>(`/notifications/${id}/read/`),
+  delete: (id: number) => api.delete<void>(`/notifications/${id}/`),
+}
 export const calendarAPI = { get: (params?: QueryParams) => api.get<{ results: CalendarItem[] }>('/calendar/', { params }) }
 export const socialAPI = { getFeed: () => api.get<WatchEntry[]>('/social/feed/') }
 export default api

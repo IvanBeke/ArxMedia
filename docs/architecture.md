@@ -63,7 +63,7 @@ What "good work" means for this project.
 - UI source lives under `src/web/ui/src/`
 - Built ui assets are served by Django from `src/web/static/web/`
 - UI routes (all lazy-loaded; `/`, `/login`, `/register`, `/offline` are public, everything else requires auth):
-  - `/`, `/dashboard`, `/search`, `/watchlist`, `/history`, `/calendar`, `/settings`, `/offline`
+  - `/`, `/dashboard`, `/search`, `/watchlist`, `/history`, `/calendar`, `/notifications`, `/settings`, `/offline`
   - `/login`, `/register`
   - `/my-shows`, `/my-movies`
   - `/movies/:id`, `/tv/:id`, `/tv/:id/season/:seasonNumber`, `/tv/:id/season/:seasonNumber/episode/:episodeNumber`
@@ -114,9 +114,11 @@ All API routes require an authenticated session except `POST /api/auth/register/
 - Integrations (`/api/integrations/`, requires the `accounts.use_sonarr_radarr` permission, 403 otherwise): `radarr/options/` (root folders, quality profiles, tags), `radarr/movies/<tmdb_id>/` (GET: `{added, path, monitored, url}`, `url` being the item's page in Radarr; POST: add the movie, 201, or 409 if already added; DELETE with `{delete_files, add_import_exclusion}`: remove it, 200 `{added: false}`, or 404 if not in Radarr; Radarr validation errors are passed through), `sonarr/options/` and `sonarr/tv/<tmdb_id>/` (same contract for shows; the show's TheTVDB id is resolved from the stored external ids or TMDB and a show without one answers 422; Sonarr validation errors are passed through)
 - Jellyfin (requires `accounts.use_jellyfin`, 403 otherwise): `jellyfin/tv/<tmdb_id>/links/?season=&episode=` returns `{show_url, season_url, episode_url}` (each a Jellyfin page URL or null), `jellyfin/movies/<tmdb_id>/link/` returns `{url}`, and `POST jellyfin/episodes/links/` with `{items: [{tmdb_id, season_number, episode_number}]}` (max 50) returns `{results: [{..., url}]}` in the same order. Shows are matched by TMDB id; an episode is matched by its season and episode number and, when Jellyfin has none with that numbering (Jellyfin usually follows TheTVDB, TMDB may split seasons differently), by its TheTVDB id, which is cached in `Episode.external_ids` on first use (as is its IMDb id, which `tv/<id>/seasons/<n>/episodes/<e>/external-ids/` serves from the stored ids and only asks TMDB for episodes still missing one). A season link falls back to the Jellyfin season of the matched episode. Library lookups are cached for 5 minutes, and a Jellyfin failure answers 200 with null links instead of an error (503 only when Jellyfin is not configured)
 - Social (`/api/social/feed/`), calendar (`/api/calendar/`), health (`GET /healthz/`, unauthenticated), admin (`/admin/`), PWA (`/manifest.webmanifest`, `/sw.js`)
+- Release notifications (`/api/notifications/`): owner-scoped paginated GET (newest first; title and poster come from the local catalog, and the release date is the day the notification was created, since the daily job only announces that day's releases; season rows use the season poster, falling back to the show), `unread-count/` GET (`{unread_count}`, drives the header bell; the UI requests it once per page load or login), `<id>/read/` POST (marks it read, 204) and `<id>/` DELETE. Other users' ids return 404.
 
 ## Background tasks (Celery beat)
 
+- `notifications-release-daily`: 00:05 in the configured timezone, notifies about today's movie releases and regular-season episode-1 releases (local broadcast date, falling back to air date). Movies and S01E01 go to users planning to watch; season 2+ goes to everyone tracking the show except Dropped. No catch-up: a missed run skips that day's releases.
 - `tracking-heartbeat-hourly`: liveness heartbeat, every hour
 - `tracking-sync-tmdb-changed-items`: re-syncs locally stored movies/shows changed on TMDB in the last day, every 6 hours
 - `tracking-cleanup-data-transfer-jobs-daily`: retention for import/export jobs and files, daily 05:00

@@ -26,6 +26,10 @@ export interface RegisterPayload extends LoginPayload { email: string; password2
 export interface ProfileUpdatePayload { username?: string; email?: string; bio?: string; location?: string; website?: string; preferred_region?: string; account_visibility?: User['account_visibility'] }
 export interface UserCard { id: number; username: string; bio: string; avatar: string | null; followers_count: number; following_count: number }
 export interface PaginatedResponse<T> { count: number; next: string | null; previous: string | null; results: T[] }
+export interface ReleaseNotification {
+  id: number; media_type: MediaType; tmdb_id: number; season_number: number | null
+  created_at: string; read: boolean; title: string; poster_url: string | null; release_date: string
+}
 export interface Genre { id?: number; tmdb_id: number; name: string }
 export interface SeasonProgress { watched_episodes?: number; total_episodes?: number; percent?: number }
 export interface MediaUserStatus { status: WatchEntryStatus; watched_at?: string | null; status_changed_at?: string | null; rating?: number | null; progress?: SeasonProgress }
