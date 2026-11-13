@@ -1,4 +1,13 @@
 import { Temporal as TemporalPolyfill, toTemporalInstant } from '@js-temporal/polyfill'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach } from 'vitest'
+
+// Components and composables read the locale from the preferences store through
+// useI18n(), so every test starts with an active Pinia; tests that need their own
+// instance simply replace it.
+beforeEach(() => {
+  setActivePinia(createPinia())
+})
 
 // The polyfill's `Temporal` declarations are structurally distinct from the ambient
 // ones TypeScript provides in `lib.esnext.temporal.d.ts`, though both describe the

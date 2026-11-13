@@ -8,7 +8,7 @@
           class="h-10 w-auto mx-auto mb-3"
         />
         <h1 class="font-display text-2xl text-primary font-semibold">{{ t('page_sign_in') }}</h1>
-        <p class="text-gray-500 text-sm mt-1">Welcome back</p>
+        <p class="text-gray-500 text-sm mt-1">{{ t('auth_login_welcome') }}</p>
       </div>
 
       <div class="card p-6">
@@ -18,23 +18,23 @@
 
         <div class="space-y-4">
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Username</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_username') }}</label>
             <input v-model="form.username" type="text" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" class="input rounded-md" placeholder="cooluser123" @keydown.enter="submit" />
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Password</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('auth_password') }}</label>
             <input v-model="form.password" type="password" name="password" autocomplete="current-password" class="input rounded-md" placeholder="••••••••" @keydown.enter="submit" />
           </div>
         </div>
 
         <button @click="submit" :disabled="auth.loading" class="btn-primary w-full mt-5 py-2.5 rounded-md">
-          <span v-if="auth.loading">Signing in...</span>
-          <span v-else>Sign In</span>
+          <span v-if="auth.loading">{{ t('auth_signing_in') }}</span>
+          <span v-else>{{ t('page_sign_in') }}</span>
         </button>
 
         <p class="text-center text-sm text-gray-500 mt-5">
-          Don't have an account?
-          <RouterLink to="/register" class="text-brand-400 hover:text-brand-300">Join free</RouterLink>
+          {{ t('auth_no_account') }}
+          <RouterLink to="/register" class="text-brand-400 hover:text-brand-300">{{ t('auth_join_free') }}</RouterLink>
         </p>
       </div>
     </div>

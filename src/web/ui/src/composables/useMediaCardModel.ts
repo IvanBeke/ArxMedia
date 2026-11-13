@@ -1,13 +1,13 @@
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
-import { formatDateByLocale } from '@/i18n'
+import { formatDateByLocale, useI18n } from '@/i18n'
 import { temporalYear } from '@/utils/temporal'
 import { tmdbImageUrl } from '@/utils/images'
 import type { MediaType, MediaUserStatus, WatchEntryMediaType } from '@/types/api'
 import type { WatchEntryStatus } from '@/types/tracking'
 
 export interface MediaCardItem { id?: number; tmdb_id?: number; media_type?: MediaType | WatchEntryMediaType; poster_url?: string | null; poster_path?: string | null; title?: string; name?: string; show_title?: string; show_name?: string | null; episode_title?: string; season_number?: string | number | null; episode_number?: string | number | null; release_date?: string | null; rating?: number | null; vote_average?: number; user_status?: MediaUserStatus | null }
-interface MediaCardModelOptions { mediaType?: MediaType; posterLinkTo?: string; titleLinkTo?: string; subtitleLinkTo?: string; showMediaTypeBadge?: boolean; status?: WatchEntryStatus; watched?: boolean; showQuickAction?: boolean; quickActionActive?: boolean; quickActionLoading?: boolean; quickActionPulsing?: boolean; quickActionAriaLabel?: string; showWatchedQuickAction?: boolean; watchedQuickActionLoading?: boolean; watchedQuickActionPulsing?: boolean; watchedQuickActionAriaLabel?: string }
+interface MediaCardModelOptions { mediaType?: MediaType; posterLinkTo?: string; titleLinkTo?: string; subtitleLinkTo?: string; showMediaTypeBadge?: boolean; status?: WatchEntryStatus; watched?: boolean; showQuickAction?: boolean; quickActionActive?: boolean; quickActionLoading?: boolean; quickActionPulsing?: boolean; showWatchedQuickAction?: boolean; watchedQuickActionLoading?: boolean; watchedQuickActionPulsing?: boolean }
 
 function resolvePosterUrl(item: MediaCardItem) {
   const path = item?.poster_url || item?.poster_path
@@ -28,6 +28,7 @@ function resolveMediaType(item: MediaCardItem, mediaType: MediaType | undefined)
 }
 
 export function useMediaCardModel(context: string, entrySource: MaybeRefOrGetter<MediaCardItem | null | undefined>, optionsSource: MaybeRefOrGetter<MediaCardModelOptions | null | undefined> = {}) {
+  const { t } = useI18n()
   const model = computed(() => {
     const item = toValue(entrySource) ?? {}
     const options = toValue(optionsSource) ?? {}
@@ -36,7 +37,7 @@ export function useMediaCardModel(context: string, entrySource: MaybeRefOrGetter
     const isEpisode = item.media_type === WATCH_ENTRY_MEDIA_TYPE.EPISODE
 
     const title = isEpisode
-      ? (item.show_title || item.show_name || item.episode_title || item.title || 'Episode')
+      ? (item.show_title || item.show_name || item.episode_title || item.title || t('card_episode_fallback'))
       : (item.title || item.name || '')
 
     const subtitle = isEpisode
@@ -84,13 +85,11 @@ export function useMediaCardModel(context: string, entrySource: MaybeRefOrGetter
           active: Boolean(options.quickActionActive),
           loading: Boolean(options.quickActionLoading),
           pulsing: Boolean(options.quickActionPulsing),
-          ariaLabel: options.quickActionAriaLabel || 'Add to watchlist',
         },
         watchedMenu: {
           visible: Boolean(options.showWatchedQuickAction),
           loading: Boolean(options.watchedQuickActionLoading),
           pulsing: Boolean(options.watchedQuickActionPulsing),
-          ariaLabel: options.watchedQuickActionAriaLabel || 'Mark as watched',
           releaseDate: item.release_date || '',
         },
       },

@@ -11,18 +11,18 @@
 
           <div class="show-headline-meta max-md:ml-auto">
             <details ref="menuRef" class="control-menu">
-              <summary class="row-pill-trigger" title="Manage" aria-label="Manage movie">
-                <span>Manage</span>
+              <summary class="row-pill-trigger" :title="t('media_row_manage')" :aria-label="t('movie_row_manage_aria')">
+                <span>{{ t('media_row_manage') }}</span>
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                 </svg>
               </summary>
               <div class="control-panel right-0 w-52 p-1.5 menu-panel">
                 <button type="button" class="control-option" :disabled="busy" @click="openRateDialog">
-                  Rate
+                  {{ t('media_row_rate') }}
                 </button>
                 <button type="button" class="control-option" :disabled="busy" @click="toggleListPopover">
-                  Add to list
+                  {{ t('media_row_add_to_list') }}
                 </button>
               </div>
             </details>
@@ -49,7 +49,7 @@
 
         <p class="mt-1.5 text-[11px] text-muted truncate">{{ genresText(item) }}</p>
 
-        <p v-if="item.last_watched_at" class="mt-1.5 text-[11px] text-muted">Watched {{ formatCompactDate(item.last_watched_at) }}</p>
+        <p v-if="item.last_watched_at" class="mt-1.5 text-[11px] text-muted">{{ t('movie_row_watched_date', { date: formatCompactDate(item.last_watched_at) }) }}</p>
       </div>
     </div>
 
@@ -64,8 +64,8 @@
       <div class="p-5 md:p-6">
         <div class="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 :id="`movie-rate-title-${item.tmdb_id}`" class="text-lg font-display text-primary font-semibold">Rate movie</h2>
-            <p class="text-xs text-muted mt-1">{{ item.title || 'Select your score' }}</p>
+            <h2 :id="`movie-rate-title-${item.tmdb_id}`" class="text-lg font-display text-primary font-semibold">{{ t('movie_row_rate_title') }}</h2>
+            <p class="text-xs text-muted mt-1">{{ item.title || t('media_row_select_score') }}</p>
           </div>
           <button type="button" class="text-muted hover:text-primary" @click="closeRateDialog">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -75,11 +75,11 @@
         </div>
 
         <div class="rounded-lg border border-surface-200 bg-surface px-3 py-3">
-          <p class="text-xs text-muted mb-2">Your rating</p>
+          <p class="text-xs text-muted mb-2">{{ t('media_row_your_rating') }}</p>
           <StarRating v-model="rating" @update:modelValue="submitRating" />
         </div>
 
-        <p v-if="savingRating" class="mt-3 text-xs text-muted">Saving rating...</p>
+        <p v-if="savingRating" class="mt-3 text-xs text-muted">{{ t('media_row_saving_rating') }}</p>
       </div>
     </dialog>
   </article>
@@ -94,6 +94,7 @@ import RatingBadge from '@/components/RatingBadge.vue'
 import StarRating from '@/components/StarRating.vue'
 import UserRating from '@/components/UserRating.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
+import { useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
@@ -110,6 +111,8 @@ interface MovieRowItem extends MediaCard {
 
 const props = defineProps<{ item: MovieRowItem }>()
 const emit = defineEmits<{ changed: []; error: [message: string] }>()
+
+const { t } = useI18n()
 
 const busy = ref(false)
 const menuRef = ref<HTMLDetailsElement | null>(null)
@@ -156,7 +159,7 @@ async function submitRating(score: number) {
     closeRateDialog()
     emit('changed')
   } catch (error) {
-    emit('error', getApiErrorMessage(error, 'Could not submit rating.'))
+    emit('error', getApiErrorMessage(error, t('media_row_rate_failed')))
   } finally {
     savingRating.value = false
   }
@@ -200,9 +203,9 @@ function statusClass(value: WatchEntryStatus | undefined) {
 }
 
 function statusText(value: WatchEntryStatus | undefined) {
-  if (value === 'plan_to_watch') return 'Plan to watch'
-  if (value === 'watched') return 'Watched'
-  if (value === 'dropped') return 'Dropped'
+  if (value === 'plan_to_watch') return t('status_plan_to_watch')
+  if (value === 'watched') return t('watch_action_watched')
+  if (value === 'dropped') return t('watch_action_dropped')
   return value
 }
 

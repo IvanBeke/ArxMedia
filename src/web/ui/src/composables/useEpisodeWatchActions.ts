@@ -1,5 +1,6 @@
 import { trackingAPI } from '@/api'
 import { useWatchedDateTimePicker } from '@/composables/useWatchedDateTimePicker'
+import { useI18n } from '@/i18n'
 import { getApiErrorMessage } from '@/utils/errors'
 import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
 import type { WatchedAtOption } from '@/utils/watchOptions'
@@ -12,6 +13,8 @@ export function useEpisodeWatchActions(options: EpisodeWatchActionOptions = {}) 
   const {
     onError = (message) => console.error(message),
   } = options
+
+  const { t } = useI18n()
 
   const {
     showDatePicker,
@@ -40,7 +43,7 @@ export function useEpisodeWatchActions(options: EpisodeWatchActionOptions = {}) 
       // The backend resolves tokens like "release_date"; use the moment it stored.
       return { watchedAt: response.watched_at }
     } catch (error) {
-      onError(getApiErrorMessage(error, 'Could not mark episode as watched.'))
+      onError(getApiErrorMessage(error, t('error_mark_episode_watched')))
       return null
     }
   }
@@ -54,7 +57,7 @@ export function useEpisodeWatchActions(options: EpisodeWatchActionOptions = {}) 
       })
       return true
     } catch (error) {
-      onError(getApiErrorMessage(error, 'Could not unmark this episode.'))
+      onError(getApiErrorMessage(error, t('error_unmark_episode')))
       return false
     }
   }

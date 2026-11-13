@@ -26,7 +26,7 @@ const props = withDefaults(defineProps<{
   decimals: 1, outOfTen: false, size: 'sm', votes: 0,
 })
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const votesNumber = computed(() => Number(props.votes))
 
@@ -34,7 +34,7 @@ const showVotes = computed(() => Number.isFinite(votesNumber.value) && votesNumb
 
 const formattedVotes = computed(() => {
   if (!showVotes.value) return '0'
-  return votesNumber.value.toLocaleString()
+  return votesNumber.value.toLocaleString(locale.value === 'es' ? 'es-ES' : 'en-US')
 })
 
 const voteLabel = computed(() => {

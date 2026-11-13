@@ -4,21 +4,22 @@
       <span class="w-12 shrink-0 text-sm text-muted">{{ group.label }}</span>
       <ul class="min-w-0 flex-1 space-y-2">
         <li v-for="item in group.items" :key="`${item.media_type}-${item.id}-${item.credit_id || item.character || item.job}`" class="text-sm min-w-0">
-          <RouterLink :to="creditDetailLink(item)" :title="creditTitle(item)" class="text-brand-300 font-medium hover:text-brand-400 hover:underline transition-colors">
-            {{ creditTitle(item) }}
+          <RouterLink :to="creditDetailLink(item)" :title="creditTitle(item, t)" class="text-brand-300 font-medium hover:text-brand-400 hover:underline transition-colors">
+            {{ creditTitle(item, t) }}
           </RouterLink>
-          <span v-if="episodeCount(item)" class="text-muted"> · {{ episodeCount(item) }} episodes</span>
-          <span v-if="roleLine(item)" class="text-muted"> as {{ roleLine(item) }}</span>
+          <span v-if="episodeCount(item)" class="text-muted"> · {{ episodeCount(item) }} {{ t('common_episode_many') }}</span>
+          <span v-if="roleLine(item)" class="text-muted"> {{ t('person_credit_as', { role: roleLine(item) }) }}</span>
         </li>
       </ul>
     </div>
   </div>
-  <p v-else class="text-sm text-muted">{{ emptyLabel }}</p>
+  <p v-else class="text-sm text-muted">{{ emptyLabel ?? t('person_no_credits') }}</p>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useI18n } from '@/i18n'
 import { creditDetailLink, creditRole, creditTitle, filterByMedia, groupCreditsByYear, type PersonMediaFilter } from '@/utils/person'
 import type { PersonCredit } from '@/types/api'
 
@@ -26,7 +27,9 @@ const props = withDefaults(defineProps<{
   items?: PersonCredit[]
   mediaFilter?: PersonMediaFilter
   emptyLabel?: string
-}>(), { items: () => [], mediaFilter: 'all', emptyLabel: 'No credits available.' })
+}>(), { items: () => [], mediaFilter: 'all' })
+
+const { t } = useI18n()
 
 const groups = computed(() => groupCreditsByYear(filterByMedia(props.items ?? [], props.mediaFilter)))
 

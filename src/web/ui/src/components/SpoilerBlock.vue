@@ -4,7 +4,7 @@
     class="w-full text-left rounded"
     :class="shouldBlur ? 'spoiler-blur' : ''"
     @click="reveal"
-    :aria-label="shouldBlur ? 'Reveal hidden spoiler content' : 'Content visible'"
+    :aria-label="shouldBlur ? t('spoiler_reveal_label') : t('spoiler_visible_label')"
   >
     <slot />
   </button>
@@ -12,6 +12,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 import { usePreferencesStore } from '@/stores/preferences'
 
 const props = withDefaults(defineProps<{
@@ -21,6 +22,7 @@ const props = withDefaults(defineProps<{
   watched: false,
 })
 
+const { t } = useI18n()
 const prefs = usePreferencesStore()
 const revealed = ref<boolean>(false)
 

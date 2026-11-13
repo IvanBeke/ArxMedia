@@ -24,6 +24,7 @@
 import { computed } from 'vue'
 import { Check } from '@lucide/vue'
 import { WATCH_ENTRY_STATUS } from '@/constants/tracking'
+import { useI18n } from '@/i18n'
 import type { WatchEntryStatus } from '@/types/tracking'
 
 const props = withDefaults(defineProps<{
@@ -33,6 +34,8 @@ const props = withDefaults(defineProps<{
   status: WATCH_ENTRY_STATUS.NONE,
   watched: false,
 })
+
+const { t } = useI18n()
 
 const statusValue = computed(() => {
   if (props.status && props.status !== WATCH_ENTRY_STATUS.NONE) {
@@ -50,15 +53,15 @@ const statusBadgeClass = computed(() => {
 })
 
 const statusLabel = computed(() => {
-  if (statusValue.value === WATCH_ENTRY_STATUS.WATCHED) return 'Watched'
-  if (statusValue.value === WATCH_ENTRY_STATUS.WATCHING) return 'Watching'
-  if (statusValue.value === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) return 'Watchlist'
-  if (statusValue.value === WATCH_ENTRY_STATUS.DROPPED) return 'Dropped'
+  if (statusValue.value === WATCH_ENTRY_STATUS.WATCHED) return t('watch_action_watched')
+  if (statusValue.value === WATCH_ENTRY_STATUS.WATCHING) return t('watch_action_watching')
+  if (statusValue.value === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) return t('page_watchlist')
+  if (statusValue.value === WATCH_ENTRY_STATUS.DROPPED) return t('watch_action_dropped')
   return ''
 })
 
 const statusTooltip = computed(() => {
   if (!statusLabel.value) return ''
-  return `Status: ${statusLabel.value}`
+  return t('card_status_tooltip', { status: statusLabel.value })
 })
 </script>

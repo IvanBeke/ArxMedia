@@ -20,7 +20,7 @@
           <div class="space-y-3 min-w-0">
             <div class="flex items-center gap-3 flex-wrap">
               <h1 class="font-display text-2xl text-primary font-semibold truncate">{{ list.name }}</h1>
-              <span class="badge text-[10px]" :class="privacyClass(list.privacy)">{{ list.privacy }}</span>
+              <span class="badge text-[10px]" :class="privacyClass(list.privacy)">{{ privacyLabel(list.privacy) }}</span>
             </div>
             <p class="text-sm text-secondary">{{ list.description || t('list_no_description') }}</p>
             <p class="text-xs text-muted">
@@ -67,7 +67,7 @@
         kind="list"
         media-type="all"
         :provider-status-options="availableProviderStatuses"
-        search-placeholder="Search list items by title"
+        :search-placeholder="t('list_search_items')"
         ref="filterBarRef"
         :page="currentPage"
         :sync-url="true"
@@ -140,14 +140,14 @@
                class="reorder-move-btn"
                data-reorder-move="prev"
                :disabled="index === 0"
-               :aria-label="`Move ${item.title || 'media item'} earlier`"
+               :aria-label="t('list_move_earlier', { title: item.title || t('list_media_item_fallback') })"
                @click.stop="moveReorderItem(item.id, -1)"
              >←</button>
              <div
               class="reorder-handle inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-full bg-surface-900/85 backdrop-blur border border-white/30 px-4 py-2.5 text-sm font-bold text-white shadow-2xl cursor-grab active:cursor-grabbing touch-none"
                role="button"
                tabindex="0"
-               :aria-label="`Drag ${item.title || 'media item'}, position ${index + 1}. Press left or right arrow keys to move.`"
+               :aria-label="t('list_drag_item', { title: item.title || t('list_media_item_fallback'), position: index + 1 })"
                 data-reorder-handle
                 @keydown="onReorderHandleKeydown($event, item.id)"
              >
@@ -161,7 +161,7 @@
                class="reorder-move-btn"
                data-reorder-move="next"
                :disabled="index === reorderDisplayItems.length - 1"
-               :aria-label="`Move ${item.title || 'media item'} later`"
+               :aria-label="t('list_move_later', { title: item.title || t('list_media_item_fallback') })"
                @click.stop="moveReorderItem(item.id, 1)"
              >→</button>
            </div>
@@ -348,7 +348,7 @@
               v-model="searchQuery"
               type="text"
               class="input w-full"
-              placeholder="Search movies and shows..."
+              :placeholder="t('list_search_media')"
               @input="searchMedia"
             >
           </div>
@@ -375,7 +375,7 @@
                   :disabled="addingResultKey === `${result.media_type}-${result.tmdb_id}`"
                   @click="addSearchResultToList(result)"
                 >
-                  {{ addingResultKey === `${result.media_type}-${result.tmdb_id}` ? 'Adding...' : 'Add to list' }}
+                  {{ addingResultKey === `${result.media_type}-${result.tmdb_id}` ? t('arr_adding') : t('list_popover_add_to_list') }}
                 </button>
               </div>
             </div>
@@ -391,10 +391,10 @@
       <ConfirmDialog
         ref="deleteListDialog"
         :title="t('list_delete_title')"
-        message="This permanently deletes the list and removes all list memberships from it."
+        :message="t('list_delete_message')"
         :confirm-label="t('common_delete')"
         :cancel-label="t('list_keep_list')"
-        loading-label="Deleting..."
+        :loading-label="t('common_deleting')"
         :loading="deletingList"
         @confirm="confirmDeleteList"
       />
@@ -574,6 +574,10 @@ function privacyClass(privacy: CustomList['privacy']) {
     [LIST_PRIVACY.PRIVATE]: 'bg-red-500/20 text-red-400',
   }
   return classes[privacy] || ''
+}
+
+function privacyLabel(privacy: CustomList['privacy']) {
+  return t(privacy === LIST_PRIVACY.PRIVATE ? 'list_privacy_badge_private' : 'list_privacy_badge_public')
 }
 
 function onDialogClick(event: MouseEvent, dialog: HTMLDialogElement | null) {

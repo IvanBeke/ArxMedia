@@ -17,7 +17,7 @@
       kind="watchlist"
       media-type="all"
       :provider-status-options="availableProviderStatuses"
-      search-placeholder="Search by title"
+      :search-placeholder="t('filter_bar_search_placeholder')"
       ref="filterBarRef"
       :page="currentPage"
       :sync-url="true"
@@ -50,8 +50,8 @@
     </div>
 
     <div v-if="!loading && !items.length" class="card p-10 text-center">
-      <p class="text-gray-500 text-sm mb-3">Your watchlist is empty</p>
-      <RouterLink to="/search" class="btn-primary text-sm">Find Something to Watch</RouterLink>
+      <p class="text-gray-500 text-sm mb-3">{{ t('watchlist_view_empty') }}</p>
+      <RouterLink to="/search" class="btn-primary text-sm">{{ t('watchlist_view_find') }}</RouterLink>
     </div>
   </div>
 </template>

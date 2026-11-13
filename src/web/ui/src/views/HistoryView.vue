@@ -110,7 +110,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
       </div>
-      <p class="text-muted mb-4">{{ hasItemFilter ? 'No matching watch history' : 'No watch history yet' }}</p>
+      <p class="text-muted mb-4">{{ hasItemFilter ? t('history_empty_filtered') : t('history_empty') }}</p>
       <RouterLink to="/search" class="btn-primary">{{ t('history_start_watching') }}</RouterLink>
     </div>
   </div>
@@ -126,8 +126,8 @@ import PaginationControls from '@/components/PaginationControls.vue'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
-import { useI18n } from '@/i18n'
-import { formatTemporalDate, isoDateKey } from '@/utils/temporal'
+import { formatDateByLocale, useI18n } from '@/i18n'
+import { isoDateKey } from '@/utils/temporal'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import { historyItemQueryFromRoute } from '@/utils/historyFilters'
 import { invalidPageRecovery, normalizePagedResponse, parsePage, toRouteQuery } from '@/utils/pagination'
@@ -156,11 +156,11 @@ const count = ref(0)
 const lastLoadedCount = ref(0)
 let suppressRouteLoad = false
 
-const filters: { label: string; value: HistoryFilter }[] = [
+const filters = computed<{ label: string; value: HistoryFilter }[]>(() => [
   { label: t('history_filter_all'), value: 'all' },
   { label: t('history_filter_movies'), value: MEDIA_TYPE.MOVIE },
   { label: t('history_filter_episodes'), value: WATCH_ENTRY_MEDIA_TYPE.EPISODE },
-]
+])
 
 const hasItemFilter = computed(() => Object.keys(historyItemQueryFromRoute(route.query)).length > 0)
 
@@ -176,7 +176,7 @@ const groupedEntries = computed<HistoryGroup[]>(() => {
     const key = isoDateKey(entry.watched_at) || 'unknown'
     const label = key === 'unknown'
       ? t('watch_date_unknown')
-      : formatTemporalDate(entry.watched_at, 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      : formatDateByLocale(entry.watched_at)
 
     if (!byKey.has(key)) {
       const group = { key, label, items: [] }

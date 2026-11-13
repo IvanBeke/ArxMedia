@@ -1,4 +1,5 @@
 import { DATA_TRANSFER_FORMAT, MEDIA_TYPE } from '@/constants/tracking'
+import { useI18n } from '@/i18n'
 import type {
   ApiError,
   ArrItemState,
@@ -79,7 +80,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
   const payload: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     if (payload && typeof payload === 'object') throw { ...payload, status: response.status } as ApiError
-    throw { detail: `Request failed (${response.status})`, status: response.status } satisfies ApiError
+    throw { detail: useI18n().t('error_request_failed', { status: response.status }), status: response.status } satisfies ApiError
   }
   return payload as T
 }

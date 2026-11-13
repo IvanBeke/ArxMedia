@@ -183,6 +183,12 @@ const providerRegions = [
   'NL', 'NO', 'NZ', 'PL', 'PT', 'RO', 'SE', 'TR', 'US', 'ZA'
 ]
 
+const VISIBILITY_VALUE_KEYS = {
+  [ACCOUNT_VISIBILITY.PUBLIC]: 'settings_visibility_value_public',
+  [ACCOUNT_VISIBILITY.PRIVATE]: 'settings_visibility_value_private',
+  [ACCOUNT_VISIBILITY.FRIENDS_ONLY]: 'settings_visibility_value_friends_only',
+} as const
+
 const passwordForm = ref({
   currentPassword: '',
   newPassword: '',
@@ -248,7 +254,7 @@ async function updateAccountVisibility() {
     if (auth.user) {
       auth.user.account_visibility = data.account_visibility
     }
-    showSuccess(t('settings_visibility_set', { value: data.account_visibility.replace('_', ' ') }))
+    showSuccess(t('settings_visibility_set', { value: t(VISIBILITY_VALUE_KEYS[data.account_visibility]) }))
   } catch (error: unknown) {
     errorMsg.value = getApiErrorMessage(error, t('error_update_visibility'))
     if (user.value) form.value.account_visibility = user.value.account_visibility

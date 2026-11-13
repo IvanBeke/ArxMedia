@@ -1,9 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SearchBar from '@/components/SearchBar.vue'
+import { usePreferencesStore } from '@/stores/preferences'
 import { required } from '@/test-support/assertions'
 
 describe('SearchBar', () => {
+  it('translates the controls and the empty preview hint to Spanish', async () => {
+    localStorage.clear()
+    usePreferencesStore().setLocale('es')
+    const wrapper = mount(SearchBar, {
+      props: { modelValue: 'blade', enablePreview: true },
+    })
+
+    expect(wrapper.find('button[aria-label="Borrar búsqueda"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="Buscar"]').exists()).toBe(true)
+    localStorage.clear()
+  })
+
   it('clears the query before navigating to a preview item', async () => {
     const wrapper = mount(SearchBar, {
       props: {

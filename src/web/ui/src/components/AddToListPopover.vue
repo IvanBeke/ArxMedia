@@ -7,8 +7,8 @@
       :class="[iconOnly ? 'w-8 h-8 p-0' : 'h-9', buttonClass]"
       :disabled="loading"
       @click="toggleOpen"
-      :title="iconOnly ? 'Add to list' : undefined"
-      :aria-label="iconOnly ? 'Add to list' : undefined"
+      :title="iconOnly ? t('list_popover_add_to_list') : undefined"
+      :aria-label="iconOnly ? t('list_popover_add_to_list') : undefined"
     >
       <svg v-if="iconOnly" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -17,7 +17,7 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
-        <span>{{ loading ? '...' : 'Add to list' }}</span>
+        <span>{{ loading ? '...' : t('list_popover_add_to_list') }}</span>
       </template>
     </button>
 
@@ -138,8 +138,11 @@ async function loadLists() {
 }
 
 function toggleLabel(item: CustomList) {
-  const action = item.contains_item ? 'Remove from' : 'Add to'
-  return `${action} ${item.name} (${item.privacy} list)`
+  const isPrivate = item.privacy === LIST_PRIVACY.PRIVATE
+  if (item.contains_item) {
+    return t(isPrivate ? 'list_popover_remove_from_private' : 'list_popover_remove_from_public', { name: item.name })
+  }
+  return t(isPrivate ? 'list_popover_add_to_private' : 'list_popover_add_to_public', { name: item.name })
 }
 
 watch(() => [props.mediaType, props.tmdbId], async () => {

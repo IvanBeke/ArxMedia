@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { usePreferencesStore } from '@/stores/preferences'
 import { required } from '@/test-support/assertions'
 import type { ComponentPublicInstance } from 'vue'
 import type { User } from '@/types/api'
@@ -32,6 +33,7 @@ function mountAppNav() {
 describe('AppNav', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    localStorage.clear()
     setActivePinia(createPinia())
     vi.spyOn(notificationsAPI, 'getUnreadCount').mockResolvedValue({ unread_count: 0 })
   })
@@ -119,6 +121,61 @@ describe('AppNav', () => {
 
     await required(wrapper.findAll('a[href="/watchlist"]').at(-1), 'Watchlist link').trigger('click')
     expect((wrapper.vm as ComponentPublicInstance & { showMobileMenu: boolean }).showMobileMenu).toBe(false)
+  })
+
+  it('translates the desktop, library, user and mobile menus for authenticated users', async () => {
+    usePreferencesStore().setLocale('es')
+    useAuthStore().user = user
+    const wrapper = mountAppNav()
+
+    await wrapper.find('div.relative').trigger('mouseenter')
+    await wrapper.find('button[aria-label="Abrir menú de usuario"]').trigger('click')
+
+    expect(wrapper.findAll('.nav-link').map((link) => link.text())).toEqual([
+      'Descubrir',
+      'Biblioteca',
+      'Historial',
+      'Pendientes',
+    ])
+    expect(wrapper.findAll('.dropdown-item').map((item) => item.text())).toEqual([
+      'Mis series',
+      'Mis películas',
+      'Perfil',
+      'Listas',
+      'Calendario',
+      'Datos',
+      'Ajustes',
+      'Cerrar sesión',
+    ])
+
+    await wrapper.find('button[aria-label="Abrir menú de navegación"]').trigger('click')
+
+    expect(wrapper.findAll('.mobile-nav-link').map((link) => link.text())).toEqual([
+      'Descubrir',
+      'Mis series',
+      'Mis películas',
+      'Historial',
+      'Pendientes',
+      'Calendario',
+      'Datos',
+      'Ajustes',
+      'Perfil',
+      'Cerrar sesión',
+    ])
+  })
+
+  it('translates the guest links in the desktop and mobile menus', async () => {
+    usePreferencesStore().setLocale('es')
+    const wrapper = mountAppNav()
+
+    await wrapper.find('button[aria-label="Abrir menú de navegación"]').trigger('click')
+
+    expect(wrapper.find('a[href="/login"].btn-primary').text()).toBe('Iniciar sesión')
+    expect(wrapper.find('a[href="/register"].btn-ghost').text()).toBe('Crear cuenta')
+    expect(wrapper.findAll('.mobile-nav-link').map((link) => link.text())).toEqual([
+      'Iniciar sesión',
+      'Crear cuenta',
+    ])
   })
 
   it('logs out and returns to the home view', async () => {

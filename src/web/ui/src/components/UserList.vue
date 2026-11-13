@@ -17,11 +17,11 @@
       <div class="mt-2 flex items-center gap-3 text-[11px] text-muted">
         <span>
           <span class="text-primary font-semibold">{{ user.followers_count }}</span>
-          <span class="ml-1">{{ followersLabel }}</span>
+          <span class="ml-1">{{ followersLabel || t('profile_tab_followers') }}</span>
         </span>
         <span>
           <span class="text-primary font-semibold">{{ user.following_count }}</span>
-          <span class="ml-1">{{ followingLabel }}</span>
+          <span class="ml-1">{{ followingLabel || t('profile_tab_following') }}</span>
         </span>
       </div>
     </div>
@@ -30,13 +30,16 @@
 
 <script setup lang="ts">
 import UserAvatar from '@/components/UserAvatar.vue'
+import { useI18n } from '@/i18n'
 import type { UserCard } from '@/types/api'
+
+const { t } = useI18n()
 
 withDefaults(defineProps<{
   users?: UserCard[]
   followersLabel?: string
   followingLabel?: string
 }>(), {
-  users: () => [], followersLabel: 'Followers', followingLabel: 'Following',
+  users: () => [], followersLabel: '', followingLabel: '',
 })
 </script>

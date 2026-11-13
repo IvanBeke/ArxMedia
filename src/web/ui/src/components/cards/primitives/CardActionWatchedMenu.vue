@@ -2,8 +2,8 @@
   <div class="pointer-events-auto">
     <WatchMenu
       :release-date="releaseDate"
-      :button-aria-label="ariaLabel"
-      :button-title="ariaLabel"
+      :button-aria-label="label"
+      :button-title="label"
       :disabled="loading"
       :pulsing="pulsing"
       button-class="w-10 h-10 rounded-full flex items-center justify-center border shadow-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-400 focus-visible:ring-offset-surface bg-emerald-700/90 border-emerald-600 text-white hover:bg-emerald-600"
@@ -16,18 +16,23 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Check } from '@lucide/vue'
 import WatchMenu from '@/components/WatchMenu.vue'
+import { useI18n } from '@/i18n'
 import type { WatchedAtOption } from '@/utils/watchOptions'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   releaseDate?: string
   loading?: boolean
   pulsing?: boolean
   ariaLabel?: string
 }>(), {
-  releaseDate: '', loading: false, pulsing: false, ariaLabel: 'Mark as watched',
+  releaseDate: '', loading: false, pulsing: false, ariaLabel: '',
 })
+
+const { t } = useI18n()
+const label = computed(() => props.ariaLabel || t('tracking_mark_as_watched'))
 
 const emit = defineEmits<{
   select: [option: WatchedAtOption]

@@ -3,8 +3,8 @@
     type="button"
     class="pointer-events-auto cursor-pointer w-10 h-10 rounded-full flex items-center justify-center border shadow-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-400 focus-visible:ring-offset-surface bg-indigo-700/90 border-indigo-600 text-white hover:bg-indigo-600"
     :disabled="loading"
-    :title="ariaLabel"
-    :aria-label="ariaLabel"
+    :title="label"
+    :aria-label="label"
     :aria-pressed="active ? 'true' : 'false'"
     :data-pulsing="pulsing ? 'true' : 'false'"
     @click.stop.prevent="handleTrigger"
@@ -17,14 +17,20 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
+import { computed } from 'vue'
+import { useI18n } from '@/i18n'
+
+const props = withDefaults(defineProps<{
   active?: boolean
   loading?: boolean
   pulsing?: boolean
   ariaLabel?: string
 }>(), {
-  active: false, loading: false, pulsing: false, ariaLabel: 'Add to watchlist',
+  active: false, loading: false, pulsing: false, ariaLabel: '',
 })
+
+const { t } = useI18n()
+const label = computed(() => props.ariaLabel || t('card_add_to_watchlist'))
 
 const emit = defineEmits<{
   trigger: []

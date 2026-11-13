@@ -43,25 +43,25 @@
                 aria-haspopup="true"
                 :aria-expanded="showLibraryMenu ? 'true' : 'false'"
               >
-                <span>Library</span>
+                <span>{{ t('nav_library') }}</span>
                 <svg class="w-3 h-3 transition-transform" :class="showLibraryMenu ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                 </svg>
               </button>
               <Transition name="fade">
                 <div v-if="showLibraryMenu" class="absolute left-0 top-full w-40 bg-surface border border-surface-200 rounded-lg shadow-xl py-1 z-[120]">
-                  <RouterLink to="/my-shows" @click="showLibraryMenu = false" class="dropdown-item">My Shows</RouterLink>
-                  <RouterLink to="/my-movies" @click="showLibraryMenu = false" class="dropdown-item">My Movies</RouterLink>
+                  <RouterLink to="/my-shows" @click="showLibraryMenu = false" class="dropdown-item">{{ t('page_my_shows') }}</RouterLink>
+                  <RouterLink to="/my-movies" @click="showLibraryMenu = false" class="dropdown-item">{{ t('page_my_movies') }}</RouterLink>
                 </div>
               </Transition>
             </div>
-            <RouterLink to="/history" class="nav-link hidden lg:block">History</RouterLink>
-            <RouterLink to="/watchlist" class="nav-link hidden lg:block">Watchlist</RouterLink>
+            <RouterLink to="/history" class="nav-link hidden lg:block">{{ t('history_title') }}</RouterLink>
+            <RouterLink to="/watchlist" class="nav-link hidden lg:block">{{ t('page_watchlist') }}</RouterLink>
           </template>
 
           <template v-else>
-            <RouterLink to="/login" class="btn-primary text-sm px-3 py-1.5">Log in</RouterLink>
-            <RouterLink to="/register" class="btn-ghost text-sm px-3 py-1.5 ml-1 bg-surface-100 border-surface-300 text-secondary hover:bg-surface-200 hover:text-primary">Create account</RouterLink>
+            <RouterLink to="/login" class="btn-primary text-sm px-3 py-1.5">{{ t('nav_log_in') }}</RouterLink>
+            <RouterLink to="/register" class="btn-ghost text-sm px-3 py-1.5 ml-1 bg-surface-100 border-surface-300 text-secondary hover:bg-surface-200 hover:text-primary">{{ t('nav_create_account') }}</RouterLink>
           </template>
         </div>
 
@@ -71,7 +71,7 @@
             ref="mobileMenuButtonRef"
             @click="showMobileMenu = !showMobileMenu"
             class="lg:hidden p-2 rounded-md text-muted hover:text-primary hover:bg-surface-100 transition-colors"
-            aria-label="Open navigation menu"
+            :aria-label="t('nav_open_menu')"
             aria-haspopup="menu"
             :aria-expanded="showMobileMenu ? 'true' : 'false'"
           >
@@ -97,9 +97,9 @@
             <Transition name="fade">
               <div v-if="showUserMenu" class="absolute right-0 mt-2 w-48 bg-surface border border-surface-200 rounded-lg shadow-xl py-1 z-[120]">
                 <RouterLink :to="`/profile/${auth.user?.username}`" @click="showUserMenu = false" class="dropdown-item">
-                  Profile
+                  {{ t('nav_profile') }}
                 </RouterLink>
-                <RouterLink to="/lists" @click="showUserMenu = false" class="dropdown-item">Lists</RouterLink>
+                <RouterLink to="/lists" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_lists') }}</RouterLink>
                 <RouterLink to="/calendar" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_calendar') }}</RouterLink>
                 <RouterLink to="/data" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_data') }}</RouterLink>
                 <RouterLink to="/settings" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_settings') }}</RouterLink>
@@ -117,7 +117,7 @@
                   </span>
                 </a>
                 <hr class="border-surface-200 my-1" />
-                <button @click="logout" class="dropdown-item w-full text-left text-red-400 hover:text-red-300">Sign Out</button>
+                <button @click="logout" class="dropdown-item w-full text-left text-red-400 hover:text-red-300">{{ t('nav_sign_out') }}</button>
               </div>
             </Transition>
           </div>
@@ -150,10 +150,10 @@
           <div class="flex flex-col gap-1 pb-1">
             <template v-if="auth.isAuthenticated">
               <RouterLink to="/search" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_discover') }}</RouterLink>
-              <RouterLink to="/my-shows" @click="showMobileMenu = false" class="mobile-nav-link">My Shows</RouterLink>
-              <RouterLink to="/my-movies" @click="showMobileMenu = false" class="mobile-nav-link">My Movies</RouterLink>
-              <RouterLink to="/history" @click="showMobileMenu = false" class="mobile-nav-link">History</RouterLink>
-              <RouterLink to="/watchlist" @click="showMobileMenu = false" class="mobile-nav-link">Watchlist</RouterLink>
+              <RouterLink to="/my-shows" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('page_my_shows') }}</RouterLink>
+              <RouterLink to="/my-movies" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('page_my_movies') }}</RouterLink>
+              <RouterLink to="/history" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('history_title') }}</RouterLink>
+              <RouterLink to="/watchlist" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('page_watchlist') }}</RouterLink>
               <RouterLink to="/calendar" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_calendar') }}</RouterLink>
               <RouterLink to="/data" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_data') }}</RouterLink>
               <RouterLink to="/settings" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_settings') }}</RouterLink>
@@ -168,13 +168,13 @@
                 <ExternalLink class="w-4 h-4" aria-hidden="true" />
                 {{ t('nav_admin') }}
               </a>
-              <RouterLink :to="`/profile/${auth.user?.username}`" @click="showMobileMenu = false" class="mobile-nav-link">Profile</RouterLink>
-              <button @click="logout" class="mobile-nav-link text-left text-red-400 hover:text-red-300">Sign Out</button>
+              <RouterLink :to="`/profile/${auth.user?.username}`" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_profile') }}</RouterLink>
+              <button @click="logout" class="mobile-nav-link text-left text-red-400 hover:text-red-300">{{ t('nav_sign_out') }}</button>
             </template>
 
             <template v-else>
-              <RouterLink to="/login" @click="showMobileMenu = false" class="mobile-nav-link">Log in</RouterLink>
-              <RouterLink to="/register" @click="showMobileMenu = false" class="mobile-nav-link">Create account</RouterLink>
+              <RouterLink to="/login" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_log_in') }}</RouterLink>
+              <RouterLink to="/register" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_create_account') }}</RouterLink>
             </template>
           </div>
         </div>

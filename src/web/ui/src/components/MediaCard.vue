@@ -2,7 +2,7 @@
   <WatchedDateTimePicker
     :open="showDatePicker"
     :initial-value="pickerInitialValue"
-    title="When did you watch this?"
+    :title="t('card_when_watched')"
     @confirm="handleDatePickerConfirm"
     @cancel="handleDatePickerCancel"
   />
@@ -11,7 +11,7 @@
     :poster-url="posterUrl"
     :poster-alt="title"
     :poster-link-to="linkTo"
-    :poster-aria-label="`Open ${title}`"
+    :poster-aria-label="t('card_open_title', { title })"
     :title-link-to="linkTo"
     :title-text="title"
   >
@@ -59,7 +59,7 @@
         <CardActionRemoveHistoryEntry
           v-if="showListRemoveActionButton"
           :loading="removingFromList"
-          aria-label="Remove from list"
+          :aria-label="t('card_remove_from_list')"
           @trigger="openRemoveFromListDialog"
         />
         <CardActionWatchlistToggle
@@ -67,7 +67,7 @@
           :active="false"
           :loading="addingToList"
           :pulsing="false"
-          aria-label="Add to list"
+          :aria-label="t('media_row_add_to_list')"
           @trigger="addToListAction"
         />
       </MediaCardActions>
@@ -85,20 +85,20 @@
 
   <ConfirmDialog
     ref="removeHistoryDialog"
-    title="Remove from watched history?"
+    :title="t('card_remove_history_title')"
     :message="removeHistoryConfirmText"
-    confirm-label="Remove"
-    cancel-label="Keep history"
+    :confirm-label="t('arr_remove_action')"
+    :cancel-label="t('card_remove_history_keep')"
     @confirm="confirmRemoveHistory"
   />
 
   <ConfirmDialog
     ref="removeFromListDialog"
-    title="Remove from this list?"
-    message="This removes the item from this list only. It does not remove watch history or ratings."
-    confirm-label="Remove"
-    cancel-label="Keep item"
-    loading-label="Removing..."
+    :title="t('card_remove_from_list_title')"
+    :message="t('card_remove_from_list_message')"
+    :confirm-label="t('arr_remove_action')"
+    :cancel-label="t('card_remove_from_list_keep')"
+    :loading-label="t('arr_removing')"
     :loading="removingFromList"
     @confirm="confirmRemoveFromList"
   />
@@ -238,15 +238,15 @@ const showAnyAction = computed(() => {
 })
 const watchlistAriaLabel = computed(() => getWatchlistAriaLabel(resolvedMediaType.value, isInWatchlist.value, props.item?.user_status?.status_changed_at ?? null))
 const watchedAriaLabel = computed(() => t('tracking_mark_as_watched'))
-const removeWatchedAriaLabel = computed(() => 'Remove from watched history')
+const removeWatchedAriaLabel = computed(() => t('card_remove_watched_aria'))
 const removeHistoryConfirmText = computed(() => {
   if (props.removeWatchedQuickActionConfirmText) {
     return props.removeWatchedQuickActionConfirmText
   }
   if (card.value.mediaType === MEDIA_TYPE.TV) {
-    return 'This will remove all watched episodes for this show from your history. Ratings and list membership are not changed.'
+    return t('card_remove_history_confirm_show')
   }
-  return 'This will remove this movie from your watched history. Ratings and list membership are not changed.'
+  return t('card_remove_history_confirm_movie')
 })
 
 const removeHistoryDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
@@ -322,7 +322,7 @@ async function confirmRemoveFromList() {
       media_type: resolvedMediaType.value,
     })
   } catch (error) {
-    emitError(getApiErrorMessage(error, 'Could not remove item from list.'))
+    emitError(getApiErrorMessage(error, t('card_remove_from_list_failed')))
   } finally {
     removingFromList.value = false
   }
@@ -334,7 +334,7 @@ async function addToListAction() {
   }
   const tmdbId = Number(props.item?.tmdb_id || props.item?.id)
   if (!tmdbId) {
-    emitError('Could not add item to list.')
+    emitError(t('list_item_add_failed'))
     return
   }
   addingToList.value = true
@@ -349,7 +349,7 @@ async function addToListAction() {
       media_type: resolvedMediaType.value,
     })
   } catch (error) {
-    emitError(getApiErrorMessage(error, 'Could not add item to list.'))
+    emitError(getApiErrorMessage(error, t('list_item_add_failed')))
   } finally {
     addingToList.value = false
   }

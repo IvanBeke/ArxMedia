@@ -99,7 +99,7 @@ export function useMediaCardQuickActions(options: MediaCardQuickActionOptions = 
 
       return result
     } catch (error) {
-      onError(getApiErrorMessage(error, 'Could not update watchlist.'))
+      onError(getApiErrorMessage(error, t('error_update_watchlist')))
       return null
     }
   }
@@ -130,7 +130,7 @@ export function useMediaCardQuickActions(options: MediaCardQuickActionOptions = 
 
       return marked.status
     } catch (error) {
-      onError(getApiErrorMessage(error, 'Could not update watched status.'))
+      onError(getApiErrorMessage(error, t('error_update_watched_status')))
       return null
     }
   }
@@ -153,7 +153,7 @@ export function useMediaCardQuickActions(options: MediaCardQuickActionOptions = 
 
       return true
     } catch (error) {
-      onError(getApiErrorMessage(error, 'Could not update watched status.'))
+      onError(getApiErrorMessage(error, t('error_update_watched_status')))
       return false
     }
   }

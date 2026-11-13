@@ -3,15 +3,15 @@
     <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
       <div>
         <h1 class="font-display text-2xl text-primary font-semibold">{{ t('page_my_movies') }}</h1>
-        <p class="text-muted text-sm">Track your movies and decide what to watch next.</p>
+        <p class="text-muted text-sm">{{ t('my_movies_subtitle') }}</p>
       </div>
-      <CountRuntimeBadge :count="count" type-label="movies" :total-minutes="totalRuntimeMinutes" />
+      <CountRuntimeBadge :count="count" :type-label="t('my_movies_type_label')" :total-minutes="totalRuntimeMinutes" />
     </div>
 
     <MediaFilterBar
       kind="library"
       media-type="movie"
-      search-placeholder="Search by movie title"
+      :search-placeholder="t('my_movies_search_placeholder')"
       ref="filterBarRef"
       :page="currentPage"
       :sync-url="true"
@@ -44,8 +44,8 @@
     </template>
 
     <div v-else class="card p-10 text-center">
-      <p class="text-sm text-muted mb-3">No movies match your current filters.</p>
-      <button class="btn-primary text-sm" @click="resetFilters">Clear filters</button>
+      <p class="text-sm text-muted mb-3">{{ t('my_movies_empty') }}</p>
+      <button class="btn-primary text-sm" @click="resetFilters">{{ t('list_clear_filters') }}</button>
     </div>
 
     <p v-if="errorMsg" class="mt-3 text-sm text-red-400">{{ errorMsg }}</p>
@@ -94,6 +94,6 @@ const {
     ...(filterState.missingRating ? { missing_rating: true } : {}),
     ...(filterState.genres.length ? { genres: filterState.genres } : {}),
   }),
-  loadErrorMessage: 'Could not load My Movies.',
+  loadErrorMessage: t('my_movies_load_failed'),
 })
 </script>

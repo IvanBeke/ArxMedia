@@ -118,7 +118,7 @@
     </DetailHero>
 
     <div v-if="!loading && movie" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-      <MediaTabs v-model="activeTab" :tabs="visibleTabs" aria-label="Movie sections" />
+      <MediaTabs v-model="activeTab" :tabs="visibleTabs" :aria-label="t('movie_tabs_label')" />
 
       <div class="mt-6" role="tabpanel" :id="`tabpanel-${activeTab}`" :aria-labelledby="`tab-${activeTab}`">
         <template v-if="activeTab === 'overview'">
@@ -132,7 +132,7 @@
                     :key="`provider-${p.provider_id}`"
                     class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary max-w-full"
                   >
-                    <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
+                    <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="t('media_provider_logo_alt', { name: p.provider_name })" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
                     <span class="truncate">{{ p.provider_name }}</span>
                   </div>
                   <span v-if="!(movie.watch_providers.flatrate || []).length" class="text-xs text-muted">{{ t('movie_no_providers') }}</span>
@@ -177,7 +177,7 @@
                   </div>
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('movie_post_credits') }}</dt>
-                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.has_postcredits_scene ? 'Yes' : 'No' }}</dd>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ movie.has_postcredits_scene ? t('common_yes') : t('common_no') }}</dd>
                   </div>
                 </dl>
               </div>
@@ -189,10 +189,10 @@
                   :disabled="refreshingMetadata"
                   class="btn-ghost text-xs border border-surface-200 bg-surface-100/70 hover:bg-surface-100 w-full"
                 >
-                  {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB' }}
+                  {{ refreshingMetadata ? t('media_metadata_updating') : t('movie_update_metadata') }}
                 </button>
                 <p class="text-xs text-muted break-words">
-                  Last metadata update: {{ metadataUpdatedAtLabel }}
+                  {{ t('media_metadata_last_update', { date: metadataUpdatedAtLabel }) }}
                 </p>
               </div>
             </div>
@@ -211,7 +211,7 @@
           <p v-if="creditsError" class="text-sm text-muted mb-3">{{ t('common_credits_unavailable') }}
             <button type="button" class="text-brand-400 hover:text-brand-300" @click="reloadCredits">{{ t('action_try_again') }}</button>
           </p>
-          <h3 class="text-primary font-medium mb-3">Cast{{ creditsData?.cast?.length ? ` (${creditsData.cast.length})` : '' }}</h3>
+          <h3 class="text-primary font-medium mb-3">{{ t('tabs_cast') }}{{ creditsData?.cast?.length ? ` (${creditsData.cast.length})` : '' }}</h3>
           <CastGrid :people="creditsData?.cast || []" />
           <div v-if="(creditsData?.crew || []).length" class="mt-8">
             <h3 class="text-primary font-medium mb-3">{{ t('movie_crew') }}</h3>
@@ -356,7 +356,7 @@ const runtimeLabel = computed(() => {
   if (!Number.isFinite(runtime) || runtime <= 0) {
     return ''
   }
-  return formatHoursMinutes(runtime)
+  return formatHoursMinutes(runtime, false, t)
 })
 
 const topCrew = computed(() => {

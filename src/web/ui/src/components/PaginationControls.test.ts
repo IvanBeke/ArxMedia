@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PaginationControls from '@/components/PaginationControls.vue'
+import { usePreferencesStore } from '@/stores/preferences'
 import { required } from '@/test-support/assertions'
 import type { VueWrapper } from '@vue/test-utils'
 
@@ -19,6 +20,21 @@ function lastTotalPages(wrapper: VueWrapper) {
 describe('PaginationControls', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('translates the navigation labels to Spanish', () => {
+    localStorage.clear()
+    usePreferencesStore().setLocale('es')
+    const wrapper = mount(PaginationControls, {
+      props: { count: 47, page: 2, loadedCount: 20 },
+    })
+
+    expect(wrapper.find('nav').attributes('aria-label')).toBe('Paginación')
+    expect(wrapper.find('button[aria-label="Ir a la primera página"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="Ir a la página anterior"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="Ir a la página siguiente"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="Ir a la última página"]').exists()).toBe(true)
+    localStorage.clear()
   })
 
   it('computes total pages from count and the calibrated first-page size', () => {

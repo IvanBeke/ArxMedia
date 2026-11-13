@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import LoginView from '@/views/LoginView.vue'
 import { useAuthStore } from '@/stores/auth'
+import { usePreferencesStore } from '@/stores/preferences'
 
 function mountLogin(redirect?: string) {
   const pinia = createPinia()
@@ -33,6 +34,19 @@ function mountLogin(redirect?: string) {
 describe('LoginView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+  })
+
+  it('translates the form to Spanish', async () => {
+    localStorage.clear()
+    usePreferencesStore().setLocale('es')
+    const { wrapper } = await mountLogin()
+
+    expect(wrapper.find('h1').text()).toBe('Iniciar sesión')
+    expect(wrapper.text()).toContain('Hola de nuevo')
+    expect(wrapper.text()).toContain('Nombre de usuario')
+    expect(wrapper.text()).toContain('Contraseña')
+    expect(wrapper.text()).toContain('¿No tienes cuenta?')
+    localStorage.clear()
   })
 
   it('returns to the protected route after login', async () => {

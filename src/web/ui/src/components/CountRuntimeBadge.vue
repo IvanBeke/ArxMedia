@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { formatHoursMinutes } from '@/utils/progress'
 
 const props = withDefaults(defineProps<{
@@ -12,15 +13,17 @@ const props = withDefaults(defineProps<{
   shows: null, movies: null, count: null, typeLabel: null, totalMinutes: 0,
 })
 
-const watchedTimeLabel = computed(() => formatHoursMinutes(props.totalMinutes))
+const { t } = useI18n()
+
+const watchedTimeLabel = computed(() => formatHoursMinutes(props.totalMinutes, false, t))
 
 const label = computed(() => {
   const runtimeLabel = watchedTimeLabel.value
 
   if (props.shows !== null && props.movies !== null) {
     const parts: string[] = []
-    if (props.shows > 0) parts.push(`${props.shows} show${props.shows === 1 ? '' : 's'}`)
-    if (props.movies > 0) parts.push(`${props.movies} movie${props.movies === 1 ? '' : 's'}`)
+    if (props.shows > 0) parts.push(t(props.shows === 1 ? 'count_badge_show_one' : 'count_badge_show_many', { count: props.shows }))
+    if (props.movies > 0) parts.push(t(props.movies === 1 ? 'count_badge_movie_one' : 'count_badge_movie_many', { count: props.movies }))
     if (parts.length) {
       return `${parts.join(' | ')} | ${runtimeLabel}`
     }
@@ -31,7 +34,7 @@ const label = computed(() => {
     if (props.count <= 0) {
       return runtimeLabel
     }
-    const labelText = props.typeLabel || 'items'
+    const labelText = props.typeLabel || t('count_badge_items')
     return `${props.count} ${labelText} | ${runtimeLabel}`
   }
 

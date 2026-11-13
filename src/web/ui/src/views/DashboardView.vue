@@ -19,7 +19,7 @@
       <StatCard :value="stats.shows_watched" :title="t('dashboard_shows_watched')" />
       <StatCard :value="stats.episodes_watched" :title="t('dashboard_episodes_watched')" />
       <StatCard :value="stats.shows_watching" :title="t('dashboard_shows_watching')" />
-      <StatCard :value="formatHoursMinutes(stats.watch_time_minutes)" :title="t('dashboard_watch_time')" />
+      <StatCard :value="formatHoursMinutes(stats.watch_time_minutes, false, t)" :title="t('dashboard_watch_time')" />
       <StatCard :value="stats.average_rating ?? '–'" :title="t('dashboard_avg_rating')" />
     </div>
 

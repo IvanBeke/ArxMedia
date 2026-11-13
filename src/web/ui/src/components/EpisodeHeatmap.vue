@@ -5,14 +5,14 @@
     </div>
 
     <div v-else-if="error" class="card p-6 text-center">
-      <p class="text-muted text-sm mb-3">Failed to load episode ratings.</p>
+      <p class="text-muted text-sm mb-3">{{ t('episode_heatmap_load_failed') }}</p>
       <button type="button" class="btn-ghost text-xs border border-surface-200 bg-surface-100/70 hover:bg-surface-100" @click="load">
-        Retry
+        {{ t('pwa_offline_retry') }}
       </button>
     </div>
 
     <div v-else-if="!seasons.length" class="card p-6 text-center">
-      <p class="text-muted text-sm">No episode ratings available.</p>
+      <p class="text-muted text-sm">{{ t('episode_heatmap_empty') }}</p>
     </div>
 
     <div v-else class="relative">
@@ -93,12 +93,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { mediaAPI } from '@/api'
+import { useI18n } from '@/i18n'
 import { formatRating } from '@/utils/format'
 import type { HeatmapSeason } from '@/types/api'
 
 const props = defineProps<{
   showId: number
 }>()
+
+const { t } = useI18n()
 
 const seasons = ref<HeatmapSeason[]>([])
 const loading = ref(true)

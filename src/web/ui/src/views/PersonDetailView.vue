@@ -31,7 +31,7 @@
             :aria-expanded="biographyExpanded"
             @click="biographyExpanded = !biographyExpanded"
           >
-            {{ biographyExpanded ? 'Read Less' : 'Read More' }}
+            {{ biographyExpanded ? t('person_biography_read_less') : t('person_biography_read_more') }}
           </button>
         </div>
       </template>
@@ -59,7 +59,7 @@
           <section :aria-label="t('person_acting_label')">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
               <h2 class="text-primary font-medium">{{ t('person_acting') }}{{ actingCount ? ` (${actingCount})` : '' }}</h2>
-              <div class="flex gap-1.5" role="group" aria-label="Filter acting by media type">
+              <div class="flex gap-1.5" role="group" :aria-label="t('person_acting_filter')">
                 <button
                   v-for="option in mediaFilterOptions"
                   :key="option.value"
@@ -75,7 +75,7 @@
                 </button>
               </div>
             </div>
-            <p v-if="creditsError" class="text-sm text-muted">{{ t('common_recs_unavailable') }}</p>
+            <p v-if="creditsError" class="text-sm text-muted">{{ t('person_credits_unavailable') }}</p>
             <PersonFilmographyList v-else :items="actingCredits" :media-filter="actingFilter" :empty-label="t('person_no_acting_credits')" />
           </section>
 
@@ -131,11 +131,11 @@ const pageError = ref('')
 const biographyExpanded = ref(false)
 const actingFilter = ref<PersonMediaFilter>('all')
 
-const mediaFilterOptions: { label: string; value: PersonMediaFilter }[] = [
+const mediaFilterOptions = computed<{ label: string; value: PersonMediaFilter }[]>(() => [
   { label: t('person_filter_all'), value: 'all' },
   { label: t('person_filter_movies'), value: MEDIA_TYPE.MOVIE },
   { label: t('person_filter_tv'), value: MEDIA_TYPE.TV },
-]
+])
 
 const externalLinks = computed(() => personExternalLinks(personId.value, person.value?.external_ids))
 
@@ -144,7 +144,7 @@ const heroMeta = computed(() => {
   if (!birthday) return ''
   const formatted = formatDateByLocale(birthday) || birthday
   const age = ageFor(birthday, person.value?.deathday || undefined)
-  return age === null ? formatted : `${formatted} (${age} years old)`
+  return age === null ? formatted : t('person_birthday_with_age', { date: formatted, age })
 })
 
 const biographyFull = computed(() => (person.value?.biography || '').trim())

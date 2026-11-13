@@ -3,15 +3,15 @@
     <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
       <div>
         <h1 class="font-display text-2xl text-primary font-semibold">{{ t('page_my_shows') }}</h1>
-        <p class="text-muted text-sm">Track your shows and decide what to watch next.</p>
+        <p class="text-muted text-sm">{{ t('my_shows_subtitle') }}</p>
       </div>
-      <CountRuntimeBadge :count="count" type-label="shows" :total-minutes="totalRuntimeMinutes" />
+      <CountRuntimeBadge :count="count" :type-label="t('my_shows_type_label')" :total-minutes="totalRuntimeMinutes" />
     </div>
 
     <MediaFilterBar
       kind="library"
       media-type="tv"
-      search-placeholder="Search by show title"
+      :search-placeholder="t('my_shows_search_placeholder')"
       :provider-status-options="availableProviderStatuses"
       ref="filterBarRef"
       :page="currentPage"
@@ -43,8 +43,8 @@
     </div>
 
     <div v-else class="card p-10 text-center">
-      <p class="text-sm text-muted mb-3">No shows match your current filters.</p>
-      <button class="btn-primary text-sm" @click="resetFilters">Clear filters</button>
+      <p class="text-sm text-muted mb-3">{{ t('my_shows_empty') }}</p>
+      <button class="btn-primary text-sm" @click="resetFilters">{{ t('list_clear_filters') }}</button>
     </div>
 
     <p v-if="errorMsg" class="mt-3 text-sm text-red-400">{{ errorMsg }}</p>
@@ -108,7 +108,7 @@ const {
     ...(filterState.hasNextEpisode ? { has_next_episode: true } : {}),
     ...(filterState.genres.length ? { genres: filterState.genres } : {}),
   }),
-  loadErrorMessage: 'Could not load My Shows.',
+  loadErrorMessage: t('my_shows_load_failed'),
   onExtras: (data) => {
     const extras = data as typeof data & MediaListExtras
     availableProviderStatuses.value = extras.available_provider_statuses ?? []

@@ -31,12 +31,12 @@
         <div class="flex items-start justify-between mb-2">
           <h3 class="text-primary font-medium truncate flex-1">{{ list.name }}</h3>
           <span class="badge ml-2 text-[10px]" :class="privacyClass(list.privacy)">
-            {{ list.privacy }}
+            {{ privacyLabel(list.privacy) }}
           </span>
         </div>
-        <p class="text-gray-500 text-sm mb-3 line-clamp-2">{{ list.description || 'No description' }}</p>
+        <p class="text-gray-500 text-sm mb-3 line-clamp-2">{{ list.description || t('list_no_description') }}</p>
         <div class="flex items-center justify-between text-xs text-gray-600">
-          <span>{{ list.item_count }} items</span>
+          <span>{{ t('list_item_count', { count: list.item_count }) }}</span>
           <span>{{ formatDateByLocale(list.created_at) }}</span>
         </div>
       </RouterLink>
@@ -228,6 +228,10 @@ function privacyClass(privacy: CustomList['privacy']): string {
     [LIST_PRIVACY.PRIVATE]: 'bg-red-500/20 text-red-400',
   }
   return classes[privacy] || ''
+}
+
+function privacyLabel(privacy: CustomList['privacy']): string {
+  return t(privacy === LIST_PRIVACY.PRIVATE ? 'list_privacy_badge_private' : 'list_privacy_badge_public')
 }
 
 async function createList() {

@@ -3,7 +3,7 @@
     :poster-url="card.posterUrl || posterUrl"
     :poster-alt="showTitle"
     :poster-link-to="posterLinkTo"
-    :poster-aria-label="`Open ${showTitle}`"
+    :poster-aria-label="t('card_open_title', { title: showTitle })"
     :title-link-to="resolvedTitleLinkTo"
     :title-text="showTitle"
     :title-tooltip="showTitle"
@@ -18,7 +18,7 @@
         v-if="showNewBadge"
         class="absolute top-2 left-2 z-20 inline-flex items-center rounded-full bg-brand-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow ring-1 ring-black/10"
       >
-        New
+        {{ t('card_new_badge') }}
       </span>
     </template>
 
@@ -98,6 +98,7 @@ import CardEpisodeCodePill from '@/components/cards/primitives/CardEpisodeCodePi
 import EpisodeTypePill from '@/components/EpisodeTypePill.vue'
 import { useMediaCardModel } from '@/composables/useMediaCardModel'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
+import { useI18n } from '@/i18n'
 import { formatHoursMinutes } from '@/utils/progress'
 
 const props = withDefaults(defineProps<{
@@ -127,9 +128,11 @@ const props = withDefaults(defineProps<{
 
 defineEmits<{ watch: [] }>()
 
+const { t } = useI18n()
+
 const resolvedTitleLinkTo = computed(() => props.titleLinkTo || props.posterLinkTo)
 
-const episodeTitleLabel = computed(() => props.episodeTitle || 'Episode')
+const episodeTitleLabel = computed(() => props.episodeTitle || t('card_episode_fallback'))
 
 const { model } = useMediaCardModel('up-next', computed(() => ({
   media_type: WATCH_ENTRY_MEDIA_TYPE.EPISODE,
@@ -179,7 +182,7 @@ const progressStripStyle = computed(() => {
 function formatMinutes(value: number | null | undefined) {
   const minutes = Number(value)
   if (!Number.isFinite(minutes) || minutes < 0) return '--'
-  return formatHoursMinutes(minutes)
+  return formatHoursMinutes(minutes, false, t)
 }
 
 const formattedEpisodeDuration = computed(() => formatMinutes(props.episodeDurationMinutes))
@@ -187,7 +190,7 @@ const formattedEpisodeDuration = computed(() => formatMinutes(props.episodeDurat
 const formattedEpisodesLeft = computed(() => {
   const left = Number(props.episodesLeft)
   if (!Number.isFinite(left) || left < 0) return '--'
-  return `${left} left`
+  return t('card_episodes_left', { count: left })
 })
 
 const formattedRuntimeLeft = computed(() => {

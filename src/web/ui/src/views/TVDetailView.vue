@@ -18,11 +18,11 @@
 
     <ConfirmDialog
       ref="removeHistoryDialog"
-      title="Remove from watched history?"
-      message="This will remove all watched episodes for this show from your history. Ratings and list membership are not changed."
-      confirm-label="Remove"
-      cancel-label="Keep history"
-      loading-label="Removing..."
+      :title="t('show_remove_history_title')"
+      :message="t('show_remove_history_message')"
+      :confirm-label="t('show_remove_history_confirm')"
+      :cancel-label="t('show_remove_history_keep')"
+      :loading-label="t('show_remove_history_loading')"
       :loading="removingHistory"
       @confirm="confirmRemoveWatchedEpisodes"
     />
@@ -53,10 +53,10 @@
         <template v-if="show">
           <p class="hero-meta mb-3">
             {{ show.first_air_date ? (temporalYear(show.first_air_date) || '') : '' }}
-            · {{ show.number_of_seasons }} Season{{ show.number_of_seasons !== 1 ? 's' : '' }}
-            <template v-if="auth.isAuthenticated"> · {{ showWatchedFraction }} watched</template>
-            <template v-else> · {{ show.number_of_episodes }} Episode{{ show.number_of_episodes !== 1 ? 's' : '' }}</template>
-            <span v-if="show.episode_runtime"> · {{ show.episode_runtime }} min/ep</span>
+            · {{ t(show.number_of_seasons === 1 ? 'show_seasons_count_one' : 'show_seasons_count_many', { count: show.number_of_seasons }) }}
+            <template v-if="auth.isAuthenticated"> · {{ t('show_watched_fraction', { fraction: showWatchedFraction }) }}</template>
+            <template v-else> · {{ t(show.number_of_episodes === 1 ? 'show_episodes_count_one' : 'show_episodes_count_many', { count: show.number_of_episodes }) }}</template>
+            <span v-if="show.episode_runtime"> · {{ t('show_minutes_per_episode', { minutes: show.episode_runtime }) }}</span>
             <span v-if="show.status"> · {{ show.status }}</span>
           </p>
           <div class="flex items-center gap-4 mb-1 text-sm">
@@ -147,7 +147,7 @@
     </DetailHero>
 
     <div v-if="!loading && show" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-      <MediaTabs v-model="activeTab" :tabs="visibleTabs" aria-label="Show sections" />
+      <MediaTabs v-model="activeTab" :tabs="visibleTabs" :aria-label="t('show_tabs_label')" />
 
       <div class="mt-6" role="tabpanel" :id="`tabpanel-${activeTab}`" :aria-labelledby="`tab-${activeTab}`">
         <template v-if="activeTab === 'overview'">
@@ -165,7 +165,7 @@
                     :key="`provider-${p.provider_id}`"
                     class="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-100/70 px-2.5 py-2 text-sm text-secondary max-w-full"
                   >
-                    <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="`${p.provider_name} logo`" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
+                    <img v-if="p.logo_path" :src="tmdbImageUrl(p.logo_path, 'w92') || ''" :alt="t('media_provider_logo_alt', { name: p.provider_name })" class="h-10 w-10 rounded-md object-cover shrink-0" loading="lazy" decoding="async" />
                     <span class="truncate">{{ p.provider_name }}</span>
                   </div>
                   <span v-if="!(show.watch_providers.flatrate || []).length" class="text-xs text-muted">{{ t('show_no_providers') }}</span>
@@ -194,7 +194,7 @@
                   </div>
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('show_runtime') }}</dt>
-                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.episode_runtime ? `${show.episode_runtime} min/ep` : '—' }}</dd>
+                    <dd class="text-secondary truncate min-w-0 max-w-[60%]">{{ show.episode_runtime ? t('show_minutes_per_episode', { minutes: show.episode_runtime }) : '—' }}</dd>
                   </div>
                   <div class="flex justify-between gap-2">
                     <dt class="text-muted shrink-0">{{ t('show_language') }}</dt>
@@ -210,10 +210,10 @@
                   :disabled="refreshingMetadata"
                   class="btn-ghost text-xs border border-surface-200 bg-surface-100/70 hover:bg-surface-100 w-full"
                 >
-                  {{ refreshingMetadata ? 'Updating metadata...' : 'Update metadata from TMDB and TVMaze' }}
+                  {{ refreshingMetadata ? t('media_metadata_updating') : t('show_update_metadata') }}
                 </button>
                 <p class="text-xs text-muted break-words">
-                  Last metadata update: {{ metadataUpdatedAtLabel }}
+                  {{ t('media_metadata_last_update', { date: metadataUpdatedAtLabel }) }}
                 </p>
               </div>
             </div>
@@ -292,7 +292,7 @@
         </template>
 
         <template v-if="activeTab === 'cast'">
-          <h3 class="text-primary font-medium mb-3">Cast{{ aggregateCredits?.cast?.length ? ` (${aggregateCredits.cast.length})` : '' }}</h3>
+          <h3 class="text-primary font-medium mb-3">{{ t('tabs_cast') }}{{ aggregateCredits?.cast?.length ? ` (${aggregateCredits.cast.length})` : '' }}</h3>
           <p v-if="creditsError" class="text-sm text-muted mb-3">{{ t('common_credits_unavailable') }}
             <button type="button" class="text-brand-400 hover:text-brand-300" @click="loadCredits">{{ t('action_try_again') }}</button>
           </p>
@@ -432,7 +432,7 @@ const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'seasons',
     { id: 'heatmap', label: t('tabs_heatmap') },
   ]
   if (recommendations.value.length > 0 || loadingRecs.value) {
-    tabs.push({ id: 'more', label: 'More like this' })
+    tabs.push({ id: 'more', label: t('tabs_more') })
   }
   return tabs
 })

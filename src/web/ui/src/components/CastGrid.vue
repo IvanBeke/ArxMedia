@@ -4,7 +4,7 @@
       v-for="person in people"
       :key="person.credit_id || `${person.id}-${person.character}`"
       :to="`/people/${person.id}`"
-      :aria-label="`View profile for ${person.name}`"
+      :aria-label="t('cast_view_profile', { name: person.name })"
       class="flex items-center gap-3 min-w-0 rounded-md hover:bg-surface-200/60 p-1 -m-1 transition-colors"
     >
       <img
@@ -21,23 +21,26 @@
       <div class="min-w-0">
         <p class="text-secondary truncate">{{ person.name }}</p>
         <p v-if="creditLine(person)" class="text-gray-500 truncate text-xs">{{ creditLine(person) }}</p>
-        <span v-if="episodeCount(person)" class="text-[11px] text-muted">{{ episodeCount(person) }} eps</span>
+        <span v-if="episodeCount(person)" class="text-[11px] text-muted">{{ t('cast_episode_count_short', { count: episodeCount(person) }) }}</span>
       </div>
     </RouterLink>
   </div>
-  <p v-else class="text-sm text-muted">{{ emptyLabel }}</p>
+  <p v-else class="text-sm text-muted">{{ emptyLabel ?? t('cast_empty') }}</p>
 </template>
 
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+import { useI18n } from '@/i18n'
 import { tmdbImageUrl } from '@/utils/images'
 import { creditLine } from '@/utils/credits'
 import type { Person } from '@/types/api'
 
-withDefaults(defineProps<{
+defineProps<{
   people: Person[]
   emptyLabel?: string
-}>(), { emptyLabel: 'No cast information available.' })
+}>()
+
+const { t } = useI18n()
 
 function episodeCount(person: Person): number | null {
   const count = person.total_episode_count

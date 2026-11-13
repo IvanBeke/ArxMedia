@@ -9,7 +9,7 @@
     <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       <div v-for="n in 10" :key="n" class="aspect-[2/3] skeleton rounded-md"></div>
     </div>
-    <p v-else-if="loadError" class="text-sm text-muted">Recommendations unavailable right now.</p>
+    <p v-else-if="loadError" class="text-sm text-muted">{{ t('common_recs_unavailable') }}</p>
     <div v-else-if="items.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       <MediaCard
         v-for="item in items"
@@ -21,7 +21,7 @@
         @watchlist-removed="emit('watchlist-removed', $event)"
       />
     </div>
-    <p v-else class="text-sm text-muted">No recommendations found.</p>
+    <p v-else class="text-sm text-muted">{{ t('recommendations_empty') }}</p>
   </div>
 </template>
 
@@ -29,6 +29,7 @@
 import MediaCard from '@/components/MediaCard.vue'
 import { MEDIA_TYPE } from '@/constants/tracking'
 import { useFlashMessages } from '@/composables/useFlashMessages'
+import { useI18n } from '@/i18n'
 import type { MediaResult, MediaType } from '@/types/api'
 import type { MediaStatusChangedPayload } from '@/utils/mediaStatusSync'
 
@@ -44,5 +45,6 @@ const emit = defineEmits<{
   'watchlist-removed': [payload: { tmdb_id: number | undefined; media_type: MediaType }]
 }>()
 
+const { t } = useI18n()
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 </script>

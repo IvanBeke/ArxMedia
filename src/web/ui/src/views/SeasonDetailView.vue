@@ -62,7 +62,7 @@
           <WatchSplitButton
             v-if="auth.isAuthenticated"
             :active="seasonProgress === 100"
-            :label="seasonProgress === 100 ? 'Season watched' : `${seasonProgressFraction} · Watch`"
+            :label="seasonProgress === 100 ? t('season_watched_button') : t('season_watch_progress_button', { fraction: seasonProgressFraction })"
             :release-date="season.air_date ? String(season.air_date) : ''"
             @trigger="handleSeasonWatchOption('now')"
             @select="handleSeasonWatchOption"
@@ -77,7 +77,7 @@
     </DetailHero>
 
     <div v-if="!loading && season" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-      <MediaTabs v-model="activeTab" :tabs="visibleTabs" aria-label="Season sections" />
+      <MediaTabs v-model="activeTab" :tabs="visibleTabs" :aria-label="t('season_tabs_label')" />
 
         <div class="mt-6" role="tabpanel" :id="`tabpanel-${activeTab}`" :aria-labelledby="`tab-${activeTab}`">
           <template v-if="activeTab === 'overview'">
@@ -130,7 +130,7 @@
           </template>
 
           <template v-else-if="activeTab === 'cast'">
-            <h3 class="text-primary font-medium mb-3">Season cast{{ displayCast.length ? ` (${displayCast.length})` : '' }}</h3>
+            <h3 class="text-primary font-medium mb-3">{{ t('season_cast_heading') }}{{ displayCast.length ? ` (${displayCast.length})` : '' }}</h3>
             <p v-if="creditsError && !displayCast.length" class="text-sm text-muted mb-3">{{ t('common_credits_unavailable') }}
               <button type="button" class="text-brand-400 hover:text-brand-300" @click="reloadCredits">{{ t('action_try_again') }}</button>
             </p>
@@ -195,7 +195,8 @@ const season = ref<Season | null>(null)
 const aggregateCredits = ref<AggregateCredits | null>(null)
 const creditsError = ref(false)
 const loading = ref(true)
-const showName = ref('TV Show')
+const showNameRaw = ref('')
+const showName = computed(() => showNameRaw.value || t('season_show_fallback'))
 usePageTitle(() => {
   if (!season.value) return null
   const seasonLabel = season.value.season_number === 0 ? t('episode_special_season') : season.value.name
@@ -359,7 +360,7 @@ onMounted(async () => {
     ])
     if (data) {
       season.value = data
-      showName.value = data.show_name || 'TV Show'
+      showNameRaw.value = data.show_name || ''
       applyProgress(data)
     }
     aggregateCredits.value = credits

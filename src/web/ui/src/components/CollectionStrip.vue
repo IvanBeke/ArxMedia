@@ -16,7 +16,7 @@
         decoding="async"
       />
       <div class="min-w-0">
-        <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">Part of</p>
+        <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">{{ t('collection_part_of') }}</p>
         <h3 class="text-primary font-medium">{{ collection.name }}</h3>
         <p v-if="overview" class="text-sm text-muted mt-1 line-clamp-3 max-w-2xl">{{ overview }}</p>
       </div>

@@ -1,4 +1,5 @@
 import { temporalYear } from '@/utils/temporal'
+import type { MessageKey } from '@/i18n'
 import type { MediaType, PersonCombinedCredits, PersonCredit } from '@/types/api'
 
 export type PersonMediaFilter = 'all' | MediaType
@@ -60,8 +61,8 @@ export function creditYear(item: PersonCredit): number | null {
   return temporalYear(creditDate(item))
 }
 
-export function creditTitle(item: PersonCredit): string {
-  return item.title || item.name || 'Untitled'
+export function creditTitle(item: PersonCredit, t?: (key: MessageKey) => string): string {
+  return item.title || item.name || (t ? t('common_untitled') : 'Untitled')
 }
 
 export function creditRole(item: PersonCredit): string {

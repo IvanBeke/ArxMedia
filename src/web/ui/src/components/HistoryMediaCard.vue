@@ -3,7 +3,7 @@
     :poster-url="card.posterUrl"
     :poster-alt="card.posterAlt"
     :poster-link-to="resolvedPosterLinkTo"
-    :poster-aria-label="`Open ${card.title}`"
+    :poster-aria-label="t('card_open_title', { title: card.title })"
     :title-link-to="resolvedTitleLinkTo"
     :title-text="card.title"
     :title-tooltip="card.titleTooltip"

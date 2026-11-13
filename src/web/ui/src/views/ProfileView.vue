@@ -39,7 +39,7 @@
           </div>
         </div>
         <div class="ml-auto shrink-0" v-if="!profile.viewer_relationship?.is_self && auth.isAuthenticated">
-          <button @click="toggleFollow" class="btn-primary text-sm" :disabled="followLoading">{{ isFollowing ? 'Unfollow' : 'Follow' }}</button>
+          <button @click="toggleFollow" class="btn-primary text-sm" :disabled="followLoading">{{ isFollowing ? t('profile_unfollow') : t('profile_follow') }}</button>
         </div>
       </div>
 
@@ -59,23 +59,23 @@
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
         <div class="card p-4 text-center">
           <p class="text-3xl font-display text-brand-500">{{ profile.total_watched_movies }}</p>
-          <p class="text-xs text-gray-500 mt-1">Movies</p>
+          <p class="text-xs text-gray-500 mt-1">{{ t('history_filter_movies') }}</p>
         </div>
         <div class="card p-4 text-center">
           <p class="text-3xl font-display text-brand-500">{{ profile.total_watched_episodes }}</p>
-          <p class="text-xs text-gray-500 mt-1">Episodes</p>
+          <p class="text-xs text-gray-500 mt-1">{{ t('history_filter_episodes') }}</p>
         </div>
         <div class="card p-4 text-center">
           <p class="text-3xl font-display text-brand-500">{{ profile.stats?.ratings_count ?? '-' }}</p>
-          <p class="text-xs text-gray-500 mt-1">Ratings</p>
+          <p class="text-xs text-gray-500 mt-1">{{ t('profile_stat_ratings') }}</p>
         </div>
         <div class="card p-4 text-center">
           <p class="text-3xl font-display text-brand-500">{{ profile.stats?.watchlist_count ?? '-' }}</p>
-          <p class="text-xs text-gray-500 mt-1">Watchlist</p>
+          <p class="text-xs text-gray-500 mt-1">{{ t('page_watchlist') }}</p>
         </div>
         <div class="card p-4 text-center">
           <p class="text-3xl font-display text-brand-500">{{ profile.stats?.average_rating ?? '-' }}</p>
-          <p class="text-xs text-gray-500 mt-1">Avg Rating</p>
+          <p class="text-xs text-gray-500 mt-1">{{ t('profile_stat_avg_rating') }}</p>
         </div>
       </div>
 
@@ -119,8 +119,8 @@
               class="card p-4 hover:bg-surface-200/50 transition-colors"
             >
               <h3 class="text-primary font-medium">{{ list.name }}</h3>
-              <p class="text-gray-500 text-sm mt-1">{{ list.description || 'No description' }}</p>
-              <p class="text-gray-600 text-xs mt-2">{{ list.item_count }} items</p>
+              <p class="text-gray-500 text-sm mt-1">{{ list.description || t('list_no_description') }}</p>
+              <p class="text-gray-600 text-xs mt-2">{{ t('list_item_count', { count: list.item_count }) }}</p>
             </RouterLink>
           </div>
           <div v-else class="card p-6 text-sm text-muted">{{ t('profile_empty_lists') }}</div>

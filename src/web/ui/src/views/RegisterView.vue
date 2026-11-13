@@ -8,7 +8,7 @@
           class="h-10 w-auto mx-auto mb-3"
         />
         <h1 class="font-display text-2xl text-primary font-semibold">{{ t('page_create_account') }}</h1>
-        <p class="text-gray-500 text-sm mt-1">Start tracking your watch history</p>
+        <p class="text-gray-500 text-sm mt-1">{{ t('auth_register_subtitle') }}</p>
       </div>
 
       <div class="card p-6">
@@ -18,31 +18,31 @@
 
         <div class="space-y-3">
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Username</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_username') }}</label>
             <input v-model="form.username" type="text" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" class="input rounded-md" placeholder="cooluser123" />
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Email</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('settings_email') }}</label>
             <input v-model="form.email" type="email" name="email" autocomplete="email" class="input rounded-md" placeholder="you@example.com" />
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Password</label>
-            <input v-model="form.password" type="password" name="password" autocomplete="new-password" class="input rounded-md" placeholder="At least 8 characters" />
+            <label class="block text-xs text-gray-400 mb-1">{{ t('auth_password') }}</label>
+            <input v-model="form.password" type="password" name="password" autocomplete="new-password" class="input rounded-md" :placeholder="t('auth_password_placeholder')" />
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Confirm Password</label>
+            <label class="block text-xs text-gray-400 mb-1">{{ t('auth_confirm_password') }}</label>
             <input v-model="form.password2" type="password" name="password2" autocomplete="new-password" class="input rounded-md" placeholder="••••••••" @keydown.enter="submit" />
           </div>
         </div>
 
         <button @click="submit" :disabled="auth.loading" class="btn-primary w-full mt-5 py-2.5 rounded-md">
-          <span v-if="auth.loading">Creating account...</span>
-          <span v-else>Create Account</span>
+          <span v-if="auth.loading">{{ t('auth_creating_account') }}</span>
+          <span v-else>{{ t('page_create_account') }}</span>
         </button>
 
         <p class="text-center text-sm text-gray-500 mt-5">
-          Already have an account?
-          <RouterLink to="/login" class="text-brand-400 hover:text-brand-300">Sign in</RouterLink>
+          {{ t('auth_have_account') }}
+          <RouterLink to="/login" class="text-brand-400 hover:text-brand-300">{{ t('auth_sign_in_link') }}</RouterLink>
         </p>
       </div>
     </div>

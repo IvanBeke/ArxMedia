@@ -25,6 +25,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { MEDIA_TYPE, WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { temporalYear } from '@/utils/temporal'
 import { tmdbImageUrl } from '@/utils/images'
@@ -34,20 +35,22 @@ type SearchMediaPreview = MediaResult & { poster_url?: string | null }
 
 const props = defineProps<{ item: SearchMediaPreview }>()
 
-const title = computed(() => props.item?.title || props.item?.name || 'Untitled')
+const { t } = useI18n()
+
+const title = computed(() => props.item?.title || props.item?.name || t('common_untitled'))
 const year = computed(() => {
   const raw = props.item?.release_date
   return raw ? (temporalYear(raw) || '') : ''
 })
 
-const typeLabel = computed(() => props.item?.media_type === MEDIA_TYPE.TV ? 'Show' : 'Movie')
+const typeLabel = computed(() => props.item?.media_type === MEDIA_TYPE.TV ? t('search_type_show') : t('search_type_movie'))
 
 const statusLabel = computed(() => {
   const status = props.item?.user_status?.status
-  if (status === WATCH_ENTRY_STATUS.WATCHED) return 'Watched'
-  if (status === WATCH_ENTRY_STATUS.WATCHING) return 'Watching'
-  if (status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) return 'Watchlist'
-  if (status === WATCH_ENTRY_STATUS.DROPPED) return 'Dropped'
+  if (status === WATCH_ENTRY_STATUS.WATCHED) return t('tracking_watched')
+  if (status === WATCH_ENTRY_STATUS.WATCHING) return t('watch_action_watching')
+  if (status === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) return t('page_watchlist')
+  if (status === WATCH_ENTRY_STATUS.DROPPED) return t('watch_action_dropped')
   return ''
 })
 

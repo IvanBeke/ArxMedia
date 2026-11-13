@@ -1,6 +1,6 @@
 <template>
   <div class="border-b border-surface-200 overflow-x-auto">
-    <nav class="flex gap-6 whitespace-nowrap min-h-[44px]" role="tablist" :aria-label="ariaLabel" @keydown="onKeydown">
+    <nav class="flex gap-6 whitespace-nowrap min-h-[44px]" role="tablist" :aria-label="resolvedAriaLabel" @keydown="onKeydown">
       <button
         v-for="(tab, index) in tabs"
         :key="tab.id"
@@ -24,7 +24,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useI18n } from '@/i18n'
 
 export interface MediaTab {
   id: string
@@ -37,9 +38,12 @@ const props = withDefaults(defineProps<{
   tabs: MediaTab[]
   modelValue: string
   ariaLabel?: string
-}>(), { ariaLabel: 'Detail sections' })
+}>(), { ariaLabel: '' })
 
 const emit = defineEmits<{ 'update:modelValue': [id: string] }>()
+
+const { t } = useI18n()
+const resolvedAriaLabel = computed(() => props.ariaLabel || t('media_tabs_aria_label'))
 
 const tabRefs = ref<HTMLElement[]>([])
 
@@ -50,7 +54,7 @@ function select(id: string) {
 function onKeydown(event: KeyboardEvent) {
   if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
   event.preventDefault()
-  const ids = props.tabs.map((t) => t.id)
+  const ids = props.tabs.map((tab) => tab.id)
   const current = ids.indexOf(props.modelValue)
   const delta = event.key === 'ArrowRight' ? 1 : -1
   const next = ids[(current + delta + ids.length) % ids.length]

@@ -62,17 +62,17 @@
 
     <!-- Empty state -->
     <div v-else-if="query && !loading" class="text-center py-20 text-gray-500">
-      <p class="text-lg">No results for "{{ query }}"</p>
+      <p class="text-lg">{{ t('search_view_no_results', { query }) }}</p>
     </div>
 
     <!-- Default state -->
     <div v-else-if="!query && !isUserScope && !isPeopleScope">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h2 class="section-title">Trending Right Now</h2>
+        <h2 class="section-title">{{ t('search_view_trending_title') }}</h2>
         <div
           class="flex items-center rounded-lg border border-surface-300 bg-surface-100/60 p-0.5"
           role="group"
-          aria-label="Trending time window"
+          :aria-label="t('search_view_trending_window')"
         >
           <button
             v-for="option in trendingWindowOptions"
@@ -91,10 +91,10 @@
       <div v-if="loadingDefault" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
         <div v-for="n in 10" :key="n" class="aspect-[2/3] rounded-md skeleton"></div>
       </div>
-      <p v-else-if="trendingError" class="card p-6 text-sm text-muted">Trending is unavailable right now.</p>
+      <p v-else-if="trendingError" class="card p-6 text-sm text-muted">{{ t('search_view_trending_unavailable') }}</p>
       <div v-else class="space-y-8">
         <div v-if="(activeFilter === 'multi' || activeFilter === MEDIA_TYPE.MOVIE) && trendingMovies.length">
-          <h3 class="section-title mb-4">Movies</h3>
+          <h3 class="section-title mb-4">{{ t('history_filter_movies') }}</h3>
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             <MediaCard
               v-for="item in trendingMovies"
@@ -107,7 +107,7 @@
         </div>
 
         <div v-if="(activeFilter === 'multi' || activeFilter === MEDIA_TYPE.TV) && trendingTvShows.length">
-          <h3 class="section-title mb-4">TV Shows</h3>
+          <h3 class="section-title mb-4">{{ t('person_filter_tv') }}</h3>
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             <MediaCard
               v-for="item in trendingTvShows"
@@ -122,11 +122,11 @@
     </div>
 
     <div v-else-if="!query && isUserScope" class="card p-6 text-sm text-muted">
-      Search users by username.
+      {{ t('search_view_users_hint') }}
     </div>
 
     <div v-else-if="!query && isPeopleScope" class="card p-6 text-sm text-muted">
-      Search people by name.
+      {{ t('search_view_people_hint') }}
     </div>
   </div>
 </template>
@@ -172,10 +172,6 @@ const loading = ref(false)
 const loadingDefault = ref(true)
 const trendingError = ref(false)
 const trendingWindow = ref<TrendingWindow>('week')
-const trendingWindowOptions: { value: TrendingWindow; label: string }[] = [
-  { value: 'day', label: 'Today' },
-  { value: 'week', label: 'This week' },
-]
 const activeFilter = ref<SearchFilter>('multi')
 const currentPage = ref(1)
 const totalPages = ref(1)
@@ -183,6 +179,10 @@ const totalResults = ref(0)
 const { errorMsg: quickActionError, showError: showQuickActionError } = useFlashMessages()
 const auth = useAuthStore()
 const { t } = useI18n()
+const trendingWindowOptions = computed<{ value: TrendingWindow; label: string }[]>(() => [
+  { value: 'day', label: t('calendar_today') },
+  { value: 'week', label: t('search_view_this_week') },
+])
 
 const activeScope = ref<SearchScope>(SCOPE_VALUE.ALL)
 const isUserScope = ref(false)

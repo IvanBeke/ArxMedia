@@ -4,7 +4,7 @@
       <input
         ref="inputRef"
         :value="localQuery"
-        :placeholder="placeholder"
+        :placeholder="placeholder || t('search_bar_placeholder')"
         :autofocus="autofocus"
         class="input rounded-md pr-16"
         :class="compact ? 'py-2 text-sm' : 'py-3 text-sm'"
@@ -16,7 +16,7 @@
         v-if="localQuery"
         type="button"
         class="absolute right-9 top-1/2 -translate-y-1/2 text-muted hover:text-primary"
-        aria-label="Clear search"
+        :aria-label="t('search_bar_clear')"
         @click="clearQuery"
       >
         <X class="h-4 w-4" />
@@ -24,7 +24,7 @@
       <button
         type="button"
         class="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted hover:bg-surface-100 hover:text-primary"
-        aria-label="Search"
+        :aria-label="t('page_search')"
         @click="submitSearch"
       >
         <Search class="h-4 w-4" />
@@ -64,9 +64,9 @@
       </div>
 
       <div class="max-h-80 overflow-y-auto p-1.5">
-        <p v-if="!trimmedQuery" class="px-2 py-2 text-xs text-muted">Start typing to see results.</p>
-        <p v-else-if="loadingPreview" class="px-2 py-2 text-xs text-muted">Searching...</p>
-        <p v-else-if="!previewItems.length" class="px-2 py-2 text-xs text-muted">No results found.</p>
+        <p v-if="!trimmedQuery" class="px-2 py-2 text-xs text-muted">{{ t('search_bar_start_typing') }}</p>
+        <p v-else-if="loadingPreview" class="px-2 py-2 text-xs text-muted">{{ t('common_searching') }}</p>
+        <p v-else-if="!previewItems.length" class="px-2 py-2 text-xs text-muted">{{ t('search_bar_no_results') }}</p>
         <button
           v-for="(item, index) in previewItems"
           :key="previewKey(item, index)"
@@ -86,6 +86,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useCleanupOnUnmount } from '@/composables/useCleanupOnUnmount'
+import { useI18n } from '@/i18n'
 import { onClickOutside } from '@vueuse/core'
 import { Search, X } from '@lucide/vue'
 import { authAPI, mediaAPI } from '@/api'
@@ -113,7 +114,7 @@ const props = withDefaults(defineProps<{
   submitOnClear?: boolean
   maxPreviewResults?: number
 }>(), {
-  modelValue: '', scope: 'all', placeholder: 'Search movies, shows, people, users, or #id...', autofocus: false,
+  modelValue: '', scope: 'all', placeholder: '', autofocus: false,
   compact: false, enablePreview: true, inlineScopeSelector: false, submitOnClear: false, maxPreviewResults: 10,
 })
 
@@ -124,6 +125,7 @@ const emit = defineEmits<{
   'select-preview': [item: SearchPreviewItem]
 }>()
 
+const { t } = useI18n()
 const rootRef = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
 const localQuery = ref<string>(props.modelValue)
@@ -135,13 +137,13 @@ let debounceTimer: ReturnType<typeof setTimeout> | undefined
 useCleanupOnUnmount(() => clearTimeout(debounceTimer))
 let requestId = 0
 
-const scopeOptions: { label: string; value: SearchScope }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Movies', value: 'movies' },
-  { label: 'Shows', value: 'shows' },
-  { label: 'People', value: 'people' },
-  { label: 'Users', value: 'users' },
-]
+const scopeOptions = computed<{ label: string; value: SearchScope }[]>(() => [
+  { label: t('person_filter_all'), value: 'all' },
+  { label: t('person_filter_movies'), value: 'movies' },
+  { label: t('search_scope_shows'), value: 'shows' },
+  { label: t('search_scope_people'), value: 'people' },
+  { label: t('search_scope_users'), value: 'users' },
+])
 
 const trimmedQuery = computed(() => localQuery.value.trim())
 const shouldLoadPreview = computed(() => props.enablePreview && !props.inlineScopeSelector)

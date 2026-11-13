@@ -17,7 +17,7 @@
     <div
       v-if="showUpdate"
       role="alertdialog"
-      aria-label="Update available"
+      :aria-label="t('pwa_update_title')"
       class="pointer-events-auto w-full max-w-md rounded-lg border border-surface-200 bg-surface px-4 py-3 shadow-xl"
     >
       <p class="text-sm font-medium text-primary">{{ t('pwa_update_title') }}</p>
@@ -35,7 +35,7 @@
     <div
       v-if="showInstall"
       role="dialog"
-      aria-label="Install app"
+      :aria-label="t('pwa_settings_install')"
       class="pointer-events-auto w-full max-w-md rounded-lg border border-surface-200 bg-surface px-4 py-3 shadow-xl"
     >
       <p class="text-sm font-medium text-primary">{{ t('pwa_install_title') }}</p>

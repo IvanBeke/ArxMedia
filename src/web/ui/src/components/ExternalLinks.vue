@@ -1,6 +1,6 @@
 <template>
   <div v-if="hasAny" class="flex flex-wrap items-center gap-2">
-    <span class="text-xs text-gray-500 uppercase tracking-wider mr-1">More info</span>
+    <span class="text-xs text-gray-500 uppercase tracking-wider mr-1">{{ t('external_links_more_info') }}</span>
     <a
       v-if="tmdbUrl"
       :href="tmdbUrl"
@@ -33,6 +33,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 
 const props = withDefaults(defineProps<{
   tmdbUrl?: string | null
@@ -40,5 +41,6 @@ const props = withDefaults(defineProps<{
   imdbUrl?: string | null
 }>(), { tmdbUrl: null, tvmazeUrl: null, imdbUrl: null })
 
+const { t } = useI18n()
 const hasAny = computed(() => Boolean(props.tmdbUrl || props.tvmazeUrl || props.imdbUrl))
 </script>

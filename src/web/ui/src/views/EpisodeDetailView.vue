@@ -16,7 +16,7 @@
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
       </svg>
-      Back to {{ showData?.name || 'Show' }} - Season {{ seasonNum }}
+      {{ t('episode_back_to', { show: showData?.name || t('season_show'), season: seasonNum }) }}
     </RouterLink>
 
     <div v-if="loading" class="space-y-4">
@@ -51,7 +51,7 @@
             <div class="text-sm text-muted mb-4">
               <span v-if="episodeData.air_date">{{ formatDateTimeByLocale(episodeData.air_date) }}</span>
               <span v-if="episodeData.air_date && episodeData.runtime"> · </span>
-              <span v-if="episodeData.runtime">{{ episodeData.runtime }} min</span>
+              <span v-if="episodeData.runtime">{{ t('episode_runtime_minutes', { minutes: episodeData.runtime }) }}</span>
               <span v-if="showData?.name"> · {{ showData.name }} S{{ seasonNum }}</span>
             </div>
             <div v-if="episodeData.vote_average" class="flex items-center gap-1 mb-4">
@@ -61,7 +61,7 @@
             <div class="flex flex-wrap items-center gap-2 mb-4">
               <WatchSplitButton
                 :active="isWatched"
-                :label="isWatched ? 'Watched' : 'Watch'"
+                :label="isWatched ? t('watch_action_watched') : t('watch_action_watch')"
                 :release-date="episodeData?.air_date ?? ''"
                 :title-text="watchButtonTooltip"
                 @trigger="handleWatchTrigger"
@@ -134,7 +134,7 @@
         </p>
         <div v-if="creditsData?.guest_stars?.length">
           <h3 class="text-primary font-medium mb-3">{{ t('episode_guest_stars') }}</h3>
-          <CastGrid :people="creditsData.guest_stars" empty-label="No guest stars listed." />
+          <CastGrid :people="creditsData.guest_stars" :empty-label="t('episode_no_guest_stars')" />
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@
   <div class="w-full px-4 sm:px-6 lg:px-8 py-4 flex flex-col min-h-[calc(100dvh-3.5rem)]">
     <div class="max-w-7xl mx-auto w-full mb-4">
       <h1 class="font-display text-2xl text-primary font-semibold">{{ t('nav_calendar') }}</h1>
-      <p class="text-muted text-sm">Watchlist movies and episodes from shows you are watching</p>
+      <p class="text-muted text-sm">{{ t('calendar_subtitle') }}</p>
     </div>
 
     <section class="card p-4 flex-1 flex flex-col min-h-0">
@@ -10,7 +10,7 @@
         <div
           class="flex items-center rounded-lg border border-surface-300 bg-surface-100/60 p-1"
           role="group"
-          aria-label="Calendar navigation"
+          :aria-label="t('calendar_nav_label')"
         >
           <button
             class="p-1.5 rounded-md text-muted hover:text-primary hover:bg-surface-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
@@ -23,7 +23,7 @@
             class="px-3 py-1 mx-0.5 text-sm font-medium rounded-md text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
             @click="goToday"
           >
-            Today
+            {{ t('calendar_today') }}
           </button>
           <button
             class="p-1.5 rounded-md text-muted hover:text-primary hover:bg-surface-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
@@ -37,7 +37,7 @@
         <div
           class="hidden md:flex items-center rounded-lg border border-surface-300 bg-surface-100/60 p-0.5"
           role="group"
-          aria-label="Calendar view mode"
+          :aria-label="t('calendar_view_mode_label')"
         >
           <button
             v-for="mode in viewModes"
@@ -68,7 +68,7 @@
           v-if="dayItems.length === 0"
           class="flex-1 flex items-center justify-center rounded border border-surface-300 bg-surface-100/40 p-8 text-center"
         >
-          <p class="text-sm text-muted">Nothing scheduled for this day.</p>
+          <p class="text-sm text-muted">{{ t('calendar_empty_day') }}</p>
         </div>
         <div
           v-else
@@ -151,7 +151,7 @@ import type { CalendarItem } from '@/types/api'
 import { usePageTitle } from '@/composables/usePageTitle'
 import { useI18n } from '@/i18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 usePageTitle(() => t('nav_calendar'))
 
 type ViewMode = 'day' | 'month' | 'week'
@@ -170,12 +170,19 @@ function todayIso() {
   return isoDateKey(nowInstantIso())
 }
 
-const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const viewModes: { value: ViewMode; label: string }[] = [
-  { value: 'day', label: 'Day' },
-  { value: 'week', label: 'Week' },
-  { value: 'month', label: 'Month' },
-]
+const intlLocale = computed(() => (locale.value === 'es' ? 'es-ES' : 'en-US'))
+const weekdays = computed(() => {
+  const formatter = new Intl.DateTimeFormat(intlLocale.value, { weekday: 'short', timeZone: 'UTC' })
+  return Array.from({ length: 7 }, (_, index) => {
+    const label = formatter.format(new Date(Date.UTC(2024, 0, 1 + index)))
+    return label.charAt(0).toUpperCase() + label.slice(1)
+  })
+})
+const viewModes = computed<{ value: ViewMode; label: string }[]>(() => [
+  { value: 'day', label: t('calendar_view_day') },
+  { value: 'week', label: t('calendar_view_week') },
+  { value: 'month', label: t('calendar_view_month') },
+])
 const loading = ref(true)
 const desktopViewMode = ref<ViewMode>('month')
 const anchorIso = ref(todayIso())
@@ -190,19 +197,20 @@ const skeletonCount = computed(() => {
 })
 
 const prevLabel = computed(() => {
-  if (effectiveViewMode.value === 'day') return 'Previous day'
-  return effectiveViewMode.value === 'week' ? 'Previous week' : 'Previous month'
+  if (effectiveViewMode.value === 'day') return t('calendar_prev_day')
+  return effectiveViewMode.value === 'week' ? t('calendar_prev_week') : t('calendar_prev_month')
 })
 
 const nextLabel = computed(() => {
-  if (effectiveViewMode.value === 'day') return 'Next day'
-  return effectiveViewMode.value === 'week' ? 'Next week' : 'Next month'
+  if (effectiveViewMode.value === 'day') return t('calendar_next_day')
+  return effectiveViewMode.value === 'week' ? t('calendar_next_week') : t('calendar_next_month')
 })
 
 const periodLabel = computed(() => {
+  const tag = intlLocale.value
   if (effectiveViewMode.value === 'day') {
     return (
-      parsePlainDate(anchorIso.value)?.toLocaleString(undefined, {
+      parsePlainDate(anchorIso.value)?.toLocaleString(tag, {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
@@ -216,18 +224,21 @@ const periodLabel = computed(() => {
       return ''
     }
     const { start, end } = bounds
-    const startLabel = start.toLocaleString(undefined, { month: 'short', day: 'numeric' })
+    const startLabel = start.toLocaleString(tag, { month: 'short', day: 'numeric' })
     if (start.year === end.year && start.month === end.month) {
+      if (locale.value === 'es') {
+        return `${start.day} – ${end.toLocaleString(tag, { month: 'short', day: 'numeric', year: 'numeric' })}`
+      }
       return `${startLabel} – ${end.day}, ${end.year}`
     }
-    const endLabel = end.toLocaleString(undefined, {
+    const endLabel = end.toLocaleString(tag, {
       month: 'short',
       day: 'numeric',
       ...(start.year === end.year ? {} : { year: 'numeric' })
     })
     return `${startLabel} – ${endLabel}`
   }
-  return parsePlainDate(anchorIso.value)?.toLocaleString(undefined, { month: 'long', year: 'numeric' }) || ''
+  return parsePlainDate(anchorIso.value)?.toLocaleString(tag, { month: 'long', year: 'numeric' }) || ''
 })
 
 const itemMap = computed(() => {
@@ -243,7 +254,7 @@ const itemMap = computed(() => {
         key: `movie-${item.tmdb_id}-${item.date}`,
         kind: MEDIA_TYPE.MOVIE,
         label: item.title,
-        sublabel: 'Movie',
+        sublabel: t('calendar_item_movie'),
         to: getMovieLink(item.tmdb_id)
       })
     } else {

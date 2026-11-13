@@ -7,7 +7,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>
             </svg>
-            <span>{{ advancedLabel }}</span>
+            <span>{{ advancedLabelText }}</span>
             <span v-if="activeAdvancedCount" class="control-count">{{ activeAdvancedCount }}</span>
           </span>
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -17,7 +17,7 @@
 
         <div v-if="advancedOpen" class="control-panel left-0 w-[20rem] max-w-[85vw] p-3 space-y-3">
           <div v-if="visibleQuickFilters.length" class="space-y-2">
-            <p class="text-xs text-muted">Quick filters</p>
+            <p class="text-xs text-muted">{{ t('filter_bar_quick_filters') }}</p>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="option in visibleQuickFilters"
@@ -33,7 +33,7 @@
           </div>
 
           <div v-if="panelFilters.has('statuses')" class="space-y-2">
-            <p class="text-xs text-muted">User status</p>
+            <p class="text-xs text-muted">{{ t('filter_bar_user_status') }}</p>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="statusOption in panelStatusChipOptions"
@@ -49,7 +49,7 @@
           </div>
 
           <div v-if="panelFilters.has('providerStatuses') && props.providerStatusOptions.length" class="space-y-2">
-            <p class="text-xs text-muted">Show status</p>
+            <p class="text-xs text-muted">{{ t('filter_bar_show_status') }}</p>
             <div class="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
               <button
                 v-for="providerStatus in props.providerStatusOptions"
@@ -65,7 +65,7 @@
           </div>
 
           <div class="space-y-2">
-            <p class="text-xs text-muted">Genres</p>
+            <p class="text-xs text-muted">{{ t('filter_bar_genres') }}</p>
             <div class="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
               <button
                 v-for="genre in fetchedGenres"
@@ -81,7 +81,7 @@
           </div>
 
           <div v-if="showMediaTypeControl" class="space-y-2">
-            <p class="text-xs text-muted">Media type</p>
+            <p class="text-xs text-muted">{{ t('filter_bar_media_type') }}</p>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="option in mediaTypeAdvancedOptions"
@@ -97,8 +97,8 @@
           </div>
 
           <div class="flex items-center justify-between pt-1 border-t border-surface-200">
-            <button type="button" class="btn-ghost text-xs px-3 py-1.5" @click="clearAdvanced">Clear all</button>
-            <button type="button" class="btn-primary text-xs px-3 py-1.5" @click="applyAdvanced">Apply</button>
+            <button type="button" class="btn-ghost text-xs px-3 py-1.5" @click="clearAdvanced">{{ t('filter_bar_clear_all') }}</button>
+            <button type="button" class="btn-primary text-xs px-3 py-1.5" @click="applyAdvanced">{{ t('filter_bar_apply') }}</button>
           </div>
         </div>
       </div>
@@ -108,7 +108,7 @@
           v-model="draftSearch"
           type="text"
           class="input text-sm pl-10"
-          :placeholder="searchPlaceholder"
+          :placeholder="searchPlaceholderText"
           @keydown.enter="applySearch"
         >
         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -122,7 +122,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h18M7 12h10M10 20h4"/>
             </svg>
-            <span>Sorted by</span>
+            <span>{{ t('filter_bar_sorted_by') }}</span>
             <span class="text-primary">{{ currentSortLabel }}</span>
           </span>
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -146,14 +146,14 @@
       <button
         type="button"
         class="control-trigger direction-trigger"
-        :title="filters.direction === 'asc' ? 'Ascending' : 'Descending'"
-        :aria-label="filters.direction === 'asc' ? 'Sorting ascending' : 'Sorting descending'"
+        :title="filters.direction === 'asc' ? t('filter_bar_ascending') : t('filter_bar_descending')"
+        :aria-label="filters.direction === 'asc' ? t('filter_bar_sorting_ascending') : t('filter_bar_sorting_descending')"
         @click="setDirection(filters.direction === 'asc' ? 'desc' : 'asc')"
       >
         <span class="inline-flex items-center gap-1.5">
           <ArrowDownNarrowWide v-if="filters.direction === 'asc'" class="w-4 h-4" :stroke-width="2" aria-hidden="true" />
           <ArrowDownWideNarrow v-else class="w-4 h-4" :stroke-width="2" aria-hidden="true" />
-          <span>{{ filters.direction }}</span>
+          <span>{{ filters.direction === 'asc' ? t('filter_bar_direction_asc') : t('filter_bar_direction_desc') }}</span>
         </span>
       </button>
     </div>
@@ -167,6 +167,8 @@ import type { LocationQuery, LocationQueryRaw, LocationQueryValue } from 'vue-ro
 import { onClickOutside } from '@vueuse/core'
 import { ArrowDownNarrowWide, ArrowDownWideNarrow } from '@lucide/vue'
 import { mediaAPI } from '@/api'
+import { useI18n } from '@/i18n'
+import type { MessageKey } from '@/i18n'
 
 type FilterBarKind = 'watchlist' | 'list' | 'library'
 type MediaTypeFilter = 'all' | 'movie' | 'tv'
@@ -237,8 +239,6 @@ interface Availability {
 
 const props = withDefaults(defineProps<MediaFilterBarProps>(), {
   mediaType: 'all',
-  searchPlaceholder: 'Search by title',
-  advancedLabel: 'Advanced Filters',
   providerStatusOptions: () => [],
   page: 1,
   syncUrl: true,
@@ -248,6 +248,9 @@ const emit = defineEmits<{
   change: [payload: { source: FilterChangeSource; filters: FilterState }]
 }>()
 
+const { t } = useI18n()
+const searchPlaceholderText = computed(() => props.searchPlaceholder ?? t('filter_bar_search_placeholder'))
+const advancedLabelText = computed(() => props.advancedLabel ?? t('filter_bar_advanced'))
 const route = useRoute()
 const router = useRouter()
 const rootRef = ref<HTMLElement | null>(null)
@@ -257,44 +260,44 @@ const directionOverridden = ref(false)
 const draftSearch = ref('')
 const fetchedGenres = ref<string[]>([])
 
-const tvStatusChipOptions: SortOption[] = [
-  { label: 'Plan to watch', value: 'plan_to_watch' },
-  { label: 'Watching', value: 'watching' },
-  { label: 'Watched', value: 'watched' },
-  { label: 'Dropped', value: 'dropped' },
+const tvStatusChipKeys: { key: MessageKey; value: string }[] = [
+  { key: 'status_plan_to_watch', value: 'plan_to_watch' },
+  { key: 'watch_action_watching', value: 'watching' },
+  { key: 'watch_action_watched', value: 'watched' },
+  { key: 'watch_action_dropped', value: 'dropped' },
 ]
 
-const movieStatusChipOptions: SortOption[] = [
-  { label: 'Plan to watch', value: 'plan_to_watch' },
-  { label: 'Watched', value: 'watched' },
-  { label: 'Dropped', value: 'dropped' },
+const movieStatusChipKeys: { key: MessageKey; value: string }[] = [
+  { key: 'status_plan_to_watch', value: 'plan_to_watch' },
+  { key: 'watch_action_watched', value: 'watched' },
+  { key: 'watch_action_dropped', value: 'dropped' },
 ]
 
-const quickFilterOptions: { key: FilterFlagKey; label: string }[] = [
-  { key: 'hasUpcoming', label: 'Has upcoming' },
-  { key: 'newOnly', label: 'New episodes' },
-  { key: 'missingRating', label: 'Missing rating' },
-  { key: 'hasNextEpisode', label: 'Has Next Episode' },
-  { key: 'inWatchlist', label: 'In watchlist' },
+const quickFilterOptions: { key: FilterFlagKey; label: MessageKey }[] = [
+  { key: 'hasUpcoming', label: 'filter_bar_quick_has_upcoming' },
+  { key: 'newOnly', label: 'filter_bar_quick_new_episodes' },
+  { key: 'missingRating', label: 'filter_bar_quick_missing_rating' },
+  { key: 'hasNextEpisode', label: 'filter_bar_quick_has_next_episode' },
+  { key: 'inWatchlist', label: 'filter_bar_quick_in_watchlist' },
 ]
 
-const sortLabelsByKey: Record<string, string> = {
-  added_at: 'Date added',
-  custom_order: 'Custom order',
-  title: 'Title',
-  provider_rating: 'Provider rating',
-  user_rating: 'User rating',
-  vote_count: 'Votes',
-  runtime: 'Runtime',
-  episode_runtime: 'Episode runtime',
-  release_date: 'Release date',
-  watched_date: 'Watched date',
-  time_left: 'Time left',
-  episodes_left: 'Episodes left',
-  last_watched: 'Last watched',
-  started_date: 'Started date',
-  progress_percent: 'Progress',
-  next_episode_date: 'Next episode date',
+const sortLabelKeys: Record<string, MessageKey> = {
+  added_at: 'filter_bar_sort_added_at',
+  custom_order: 'filter_bar_sort_custom_order',
+  title: 'filter_bar_sort_title',
+  provider_rating: 'filter_bar_sort_provider_rating',
+  user_rating: 'filter_bar_sort_user_rating',
+  vote_count: 'filter_bar_sort_vote_count',
+  runtime: 'movie_runtime',
+  episode_runtime: 'filter_bar_sort_episode_runtime',
+  release_date: 'watch_option_release',
+  watched_date: 'filter_bar_sort_watched_date',
+  time_left: 'filter_bar_sort_time_left',
+  episodes_left: 'filter_bar_sort_episodes_left',
+  last_watched: 'progress_row_last_watched',
+  started_date: 'filter_bar_sort_started_date',
+  progress_percent: 'filter_bar_sort_progress_percent',
+  next_episode_date: 'filter_bar_sort_next_episode_date',
 }
 
 const baseDefaultDirections: Record<string, SortDirection> = {
@@ -411,24 +414,26 @@ const panelFilters = computed(() => panelAvailability.value.filters)
 
 const panelStatusChipOptions = computed<SortOption[]>(() => statusChipOptionsFor(staged.mediaType))
 
-const visibleQuickFilters = computed(() => quickFilterOptions.filter((option) => panelFilters.value.has(option.key)))
+const visibleQuickFilters = computed(() => quickFilterOptions
+  .filter((option) => panelFilters.value.has(option.key))
+  .map((option) => ({ key: option.key, label: t(option.label) })))
 
 const resolvedSortOptions = computed<SortOption[]>(() => (
-  dedupeSortKeys(availability.value.sorts).map((key) => ({
-    label: sortLabelsByKey[key] || key,
-    value: key,
-  }))
+  dedupeSortKeys(availability.value.sorts).map((key) => {
+    const labelKey = sortLabelKeys[key]
+    return { label: labelKey ? t(labelKey) : key, value: key }
+  })
 ))
 
 const resolvedDefaultSort = computed<string>(() => pickDefaultSort(effectiveMediaType.value, availability.value.sorts))
 
-const mediaTypeAdvancedOptions: { label: string; value: Exclude<MediaTypeFilter, 'all'> }[] = [
-  { label: 'Movies', value: 'movie' },
-  { label: 'Shows', value: 'tv' },
-]
+const mediaTypeAdvancedOptions = computed<{ label: string; value: Exclude<MediaTypeFilter, 'all'> }[]>(() => [
+  { label: t('history_filter_movies'), value: 'movie' },
+  { label: t('filter_bar_media_shows'), value: 'tv' },
+])
 
 const currentSortLabel = computed(() => {
-  return resolvedSortOptions.value.find((option) => option.value === filters.sort)?.label || 'Sort'
+  return resolvedSortOptions.value.find((option) => option.value === filters.sort)?.label || t('filter_bar_sort')
 })
 
 const activeAdvancedCount = computed(() => {
@@ -479,7 +484,8 @@ function getDefaultDirection(sortKey: string): SortDirection {
 }
 
 function statusChipOptionsFor(mediaType: MediaTypeFilter): SortOption[] {
-  return mediaType === 'movie' ? movieStatusChipOptions : tvStatusChipOptions
+  const chips = mediaType === 'movie' ? movieStatusChipKeys : tvStatusChipKeys
+  return chips.map((chip) => ({ label: t(chip.key), value: chip.value }))
 }
 
 function resolveAvailability(mediaType: MediaTypeFilter, selectedStatuses: string[]): Availability {

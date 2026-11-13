@@ -8,7 +8,7 @@
     <div v-else-if="error" class="text-center py-6">
       <p class="text-muted text-sm mb-3">{{ t('profile_activity_heatmap_error') }}</p>
       <button type="button" class="btn-ghost text-xs border border-surface-200 bg-surface-100/70 hover:bg-surface-100" @click="load">
-        Retry
+        {{ t('pwa_offline_retry') }}
       </button>
     </div>
 

@@ -1,12 +1,12 @@
 <template>
-  <nav v-if="totalPages > 1" class="mt-8 flex items-center justify-center max-w-full overflow-x-auto px-1" aria-label="Pagination">
+  <nav v-if="totalPages > 1" class="mt-8 flex items-center justify-center max-w-full overflow-x-auto px-1" :aria-label="t('pagination_label')">
     <div class="inline-flex max-w-full overflow-x-auto rounded-md border border-surface-200 bg-surface-100">
       <button
         type="button"
         class="pagination-btn min-w-11 h-11 sm:min-w-9 sm:h-9 border-r border-surface-200"
       :disabled="isFirst"
       :class="{ 'opacity-50': isFirst }"
-      aria-label="Go to first page"
+      :aria-label="t('pagination_first')"
       @click="requestGo(1)"
     >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -19,7 +19,7 @@
         class="pagination-btn min-w-11 h-11 sm:min-w-9 sm:h-9 border-r border-surface-200"
       :disabled="isFirst"
       :class="{ 'opacity-50': isFirst }"
-      aria-label="Go to previous page"
+      :aria-label="t('pagination_previous')"
       @click="requestGo(currentPage - 1)"
     >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -36,7 +36,7 @@
         :class="pageNum === currentPage ? 'pagination-btn-active bg-brand-500 text-white hover:bg-brand-500' : ''"
         :disabled="disabled"
         :aria-current="pageNum === currentPage ? 'page' : undefined"
-        :aria-label="`Go to page ${pageNum}`"
+        :aria-label="t('pagination_page', { page: pageNum })"
         @click="requestGo(pageNum)"
       >
         {{ pageNum }}
@@ -48,7 +48,7 @@
         class="pagination-btn min-w-11 h-11 sm:min-w-9 sm:h-9 border-r border-surface-200"
       :disabled="isLast"
       :class="{ 'opacity-50': isLast }"
-      aria-label="Go to next page"
+      :aria-label="t('pagination_next')"
       @click="requestGo(currentPage + 1)"
     >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -60,7 +60,7 @@
         class="pagination-btn min-w-11 h-11 sm:min-w-9 sm:h-9"
       :disabled="isLast"
       :class="{ 'opacity-50': isLast }"
-      aria-label="Go to last page"
+      :aria-label="t('pagination_last')"
       @click="requestGo(totalPages)"
     >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -113,6 +113,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   count?: number

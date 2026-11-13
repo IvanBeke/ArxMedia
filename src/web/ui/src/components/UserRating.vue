@@ -14,6 +14,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { formatRating } from '@/utils/format'
 
 const props = withDefaults(defineProps<{
@@ -21,8 +22,10 @@ const props = withDefaults(defineProps<{
   size?: string
   titlePrefix?: string
 }>(), {
-  size: 'sm', titlePrefix: 'Your rating',
+  size: 'sm',
 })
+
+const { t } = useI18n()
 
 const numericValue = computed(() => Number(props.value))
 
@@ -32,8 +35,9 @@ const displayValue = computed(() => {
   return formatRating(numericValue.value)
 })
 
-const label = computed(() => `${props.titlePrefix}: ${displayValue.value}/10`)
-const ariaLabel = computed(() => `${props.titlePrefix}: ${displayValue.value} out of 10`)
+const prefix = computed(() => props.titlePrefix ?? t('user_rating_prefix'))
+const label = computed(() => t('user_rating_title', { prefix: prefix.value, value: displayValue.value }))
+const ariaLabel = computed(() => t('user_rating_aria', { prefix: prefix.value, value: displayValue.value }))
 
 const sizeClass = computed(() => {
   if (props.size === 'xs') return 'gap-1 px-1.5 py-1 text-[10px]'

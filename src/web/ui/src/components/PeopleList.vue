@@ -10,7 +10,7 @@
         <img
           v-if="person.profile_path"
           :src="tmdbImageUrl(person.profile_path, 'w185') || ''"
-          :alt="`${person.name} profile photo`"
+          :alt="t('person_profile_photo_alt', { name: person.name })"
           class="w-8 h-8 rounded-full object-cover border border-surface-200 flex-shrink-0"
           loading="lazy"
           decoding="async"
@@ -37,12 +37,15 @@
 
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+import { useI18n } from '@/i18n'
 import { tmdbImageUrl } from '@/utils/images'
 import type { PersonSearchResult } from '@/types/api'
 
 withDefaults(defineProps<{
   people?: PersonSearchResult[]
 }>(), { people: () => [] })
+
+const { t } = useI18n()
 
 function initial(name: string): string {
   return (name.trim()[0] || '?').toUpperCase()

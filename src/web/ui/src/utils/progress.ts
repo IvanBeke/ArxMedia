@@ -1,3 +1,5 @@
+import type { MessageKey } from '@/i18n'
+
 export function computeProgressPercent(watched: number, total: number): number {
   if (total <= 0) {
     return 0
@@ -12,10 +14,12 @@ export function formatProgressFraction(watched: number, total: number): string {
   return `${watched}/${total}`
 }
 
-export function formatHoursMinutes(value: unknown, approximate = false): string {
+export function formatHoursMinutes(value: unknown, approximate = false, t?: (key: MessageKey) => string): string {
+  const yearUnit = t ? t('format_unit_year') : 'y'
+  const minuteUnit = t ? t('format_unit_minute') : 'm'
   const minutes = Number(value || 0)
   if (!Number.isFinite(minutes) || minutes <= 0) {
-    return '0m'
+    return `0${minuteUnit}`
   }
   const MINUTES_PER_HOUR = 60
   const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR
@@ -31,7 +35,7 @@ export function formatHoursMinutes(value: unknown, approximate = false): string 
 
   const parts: string[] = []
   if (years > 0) {
-    parts.push(`${years}y`)
+    parts.push(`${years}${yearUnit}`)
   }
   if (years > 0 || days > 0) {
     parts.push(`${days}d`)
@@ -39,7 +43,7 @@ export function formatHoursMinutes(value: unknown, approximate = false): string 
   if (years > 0 || days > 0 || hours > 0) {
     parts.push(`${hours}h`)
   }
-  parts.push(`${remainder}m`)
+  parts.push(`${remainder}${minuteUnit}`)
 
   const compact = parts.join(' ')
   return approximate ? `~${compact}` : compact

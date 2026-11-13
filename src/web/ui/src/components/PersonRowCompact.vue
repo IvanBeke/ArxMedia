@@ -3,7 +3,7 @@
     <img
       v-if="profileUrl"
       :src="profileUrl"
-      :alt="`${person.name} profile photo`"
+      :alt="t('person_profile_photo_alt', { name: person.name })"
       class="h-6 w-6 rounded-full object-cover border border-surface-200 flex-shrink-0"
       loading="lazy"
     />
@@ -17,12 +17,15 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { tmdbImageUrl } from '@/utils/images'
 import type { PersonSearchResult } from '@/types/api'
 
 const props = defineProps<{
   person: PersonSearchResult
 }>()
+
+const { t } = useI18n()
 
 const initial = computed(() => (props.person.name.trim()[0] || '?').toUpperCase())
 const profileUrl = computed(() => tmdbImageUrl(props.person.profile_path, 'w185') || '')
