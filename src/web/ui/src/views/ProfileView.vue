@@ -1,9 +1,17 @@
 <template>
-  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div v-if="loading" class="space-y-4">
-      <div class="h-16 w-16 skeleton rounded-full"></div>
-      <div class="h-8 w-48 skeleton rounded-md"></div>
-      <div class="h-28 skeleton rounded-lg"></div>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div v-if="loading">
+      <div class="flex items-start gap-4 sm:gap-5 mb-6">
+        <div class="h-16 w-16 shrink-0 skeleton rounded-full"></div>
+        <div class="flex-1 space-y-2 pt-1">
+          <div class="h-8 w-48 skeleton rounded-md"></div>
+          <div class="h-5 w-64 max-w-full skeleton rounded-md"></div>
+        </div>
+      </div>
+      <div class="h-20 skeleton rounded-lg mb-6"></div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        <div v-for="n in 5" :key="n" class="h-22 skeleton rounded-lg"></div>
+      </div>
     </div>
 
     <template v-else-if="profile">
@@ -56,7 +64,7 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <div class="card p-4 text-center">
           <p class="text-3xl font-display text-brand-500">{{ profile.total_watched_movies }}</p>
           <p class="text-xs text-gray-500 mt-1">{{ t('history_filter_movies') }}</p>
@@ -79,7 +87,7 @@
         </div>
       </div>
 
-      <div class="mt-8 border-b border-surface-200">
+      <div class="border-b border-surface-200">
         <nav class="flex gap-6">
           <button @click="activeTab = 'activity'" class="pb-3 text-sm font-medium" :class="activeTab === 'activity' ? 'tab-active' : 'tab-inactive'">{{ t('profile_tab_activity') }}</button>
           <button @click="activeTab = 'lists'" class="pb-3 text-sm font-medium" :class="activeTab === 'lists' ? 'tab-active' : 'tab-inactive'">{{ t('profile_tab_lists') }}</button>
