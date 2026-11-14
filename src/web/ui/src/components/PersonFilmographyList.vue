@@ -8,7 +8,7 @@
             {{ creditTitle(item, t) }}
           </RouterLink>
           <span v-if="episodeCount(item)" class="text-muted"> · {{ episodeCount(item) }} {{ t('common_episode_many') }}</span>
-          <span v-if="roleLine(item)" class="text-muted"> {{ t('person_credit_as', { role: roleLine(item) }) }}</span>
+          <span v-if="roleLine(item)" class="text-muted">{{ ' ' + t('person_credit_as', { role: roleLine(item) }) }}</span>
         </li>
       </ul>
     </div>
