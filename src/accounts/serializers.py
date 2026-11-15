@@ -2,6 +2,7 @@ from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Avg, Count, F, Q
+from django.utils.translation import gettext as _
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 
@@ -37,7 +38,7 @@ class LoginSerializer(serializers.Serializer):
     def validate(self, attrs):
         user = authenticate(self.context['request'], username=attrs['username'], password=attrs['password'])
         if user is None:
-            raise AuthenticationFailed('Incorrect username or password.')
+            raise AuthenticationFailed(_('Incorrect username or password.'))
         attrs['user'] = user
         return attrs
 
@@ -55,7 +56,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'email', 'bio', 'avatar', 'location',
-            'website', 'preferred_region', 'account_visibility', 'followers_count', 'following_count',
+            'website', 'preferred_region', 'language', 'account_visibility', 'followers_count', 'following_count',
             'total_watched_movies', 'total_watched_episodes', 'is_staff', 'integrations', 'created_at'
         ]
         read_only_fields = ['id', 'is_staff', 'created_at']
@@ -66,7 +67,7 @@ class UserSerializer(serializers.ModelSerializer):
     def validate_preferred_region(self, value):
         region = (value or '').strip().upper()
         if len(region) != 2 or not region.isalpha():
-            raise serializers.ValidationError('preferred_region must be a 2-letter country code.')
+            raise serializers.ValidationError(_('preferred_region must be a 2-letter country code.'))
         return region
 
 
@@ -76,11 +77,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'password2']
+        fields = ['username', 'email', 'password', 'password2', 'language']
 
     def validate(self, data):
         if data['password'] != data['password2']:
-            raise serializers.ValidationError({'password': 'Passwords do not match.'})
+            raise serializers.ValidationError({'password': _('Passwords do not match.')})
         candidate = User(username=data.get('username', ''), email=data.get('email', ''))
         try:
             validate_password(data['password'], user=candidate)
@@ -224,7 +225,7 @@ class PasswordChangeSerializer(serializers.Serializer):
     def validate_current_password(self, value):
         user = self.context['request'].user
         if not user.check_password(value):
-            raise serializers.ValidationError('Current password is incorrect.')
+            raise serializers.ValidationError(_('Current password is incorrect.'))
         return value
 
     def validate_new_password(self, value):

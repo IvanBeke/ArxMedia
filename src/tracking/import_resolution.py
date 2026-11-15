@@ -2,6 +2,8 @@
 
 from collections import defaultdict
 
+from django.utils.translation import gettext as _
+
 from media.models import Episode
 
 from .choices import WatchEntryMediaType
@@ -80,14 +82,14 @@ def _warn_unresolved_parent(warnings, episode, parent_map, location):
         add_import_warning(
             warnings,
             'ambiguous_episode_parent',
-            'The episode ID maps to more than one local parent show and was skipped.',
+            _('The episode ID maps to more than one local parent show and was skipped.'),
             location,
         )
     else:
         add_import_warning(
             warnings,
             'unresolved_episode',
-            'The episode ID could not be matched to a local parent show and was skipped.',
+            _('The episode ID could not be matched to a local parent show and was skipped.'),
             location,
         )
 

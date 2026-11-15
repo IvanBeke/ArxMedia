@@ -4,6 +4,7 @@ from typing import NoReturn
 
 from django.db import transaction
 from django.http import FileResponse
+from django.utils.translation import gettext as _
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
@@ -31,16 +32,16 @@ def _raise_import_error(code: str, message: str, field: str = 'job') -> NoReturn
 def _import_upload_format(request) -> str:
     fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.ZIP)).lower()
     if fmt not in (DataTransferFormat.CSV, DataTransferFormat.ZIP):
-        raise ValidationError({'format': 'format must be csv or zip'})
+        raise ValidationError({'format': _('format must be csv or zip')})
     return fmt
 
 
 def _validated_upload(request):
     uploaded = request.FILES.get('file')
     if not uploaded:
-        raise ValidationError({'file': 'file is required'})
+        raise ValidationError({'file': _('file is required')})
     if uploaded.size > MAX_IMPORT_UPLOAD_BYTES:
-        raise ValidationError({'file': f'file must be at most {MAX_IMPORT_UPLOAD_BYTES // (1024 * 1024)} MB'})
+        raise ValidationError({'file': _('file must be at most %(size)s MB') % {'size': MAX_IMPORT_UPLOAD_BYTES // (1024 * 1024)}})
     return uploaded
 
 
@@ -48,10 +49,10 @@ def _validated_import_source(request) -> tuple[str, tuple[str, ...]]:
     source = (request.query_params.get('source') or '').strip().lower()
     supported_sources = supported_import_sources()
     if not source:
-        raise ValidationError({'source': f"source is required ({', '.join(supported_sources)})."})
+        raise ValidationError({'source': _('source is required (%(sources)s).') % {'sources': ', '.join(supported_sources)}})
     expected_formats = expected_formats_for_source(source)
     if expected_formats is None:
-        raise ValidationError({'source': f"source must be {', '.join(supported_sources)}"})
+        raise ValidationError({'source': _('source must be %(sources)s') % {'sources': ', '.join(supported_sources)}})
     return source, expected_formats
 
 
@@ -66,7 +67,7 @@ class DataImportView(generics.CreateAPIView):
         source, expected_formats = _validated_import_source(request)
         if fmt not in expected_formats:
             expected = ' or '.join(expected_formats)
-            raise ValidationError({'format': f'format must be {expected} for source={source}.'})
+            raise ValidationError({'format': _('format must be %(expected)s for source=%(source)s.') % {'expected': expected, 'source': source}})
 
         job = DataTransferJob.objects.create(
             user=authenticated_user(request),
@@ -92,7 +93,7 @@ class DataExportView(generics.CreateAPIView):
     def post(self, request, *args, **kwargs):
         fmt = request.query_params.get('data_format', request.query_params.get('format', DataTransferFormat.ZIP)).lower()
         if fmt != DataTransferFormat.ZIP:
-            raise ValidationError({'format': 'format must be zip'})
+            raise ValidationError({'format': _('format must be zip')})
         job = DataTransferJob.objects.create(
             user=request.user,
             job_type=DataTransferJobType.EXPORT,
@@ -129,10 +130,10 @@ class DataJobConfirmView(generics.GenericAPIView):
         try:
             pk = int(str(kwargs.get('pk')))
         except (TypeError, ValueError):
-            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, _('Import job not found.'))
         job = DataTransferJob.objects.filter(user=user, id=pk).first()
         if not job:
-            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, _('Import job not found.'))
 
         import_mode = (request.data.get('import_mode') or '').strip().lower()
         try:
@@ -156,10 +157,10 @@ class DataJobCancelView(generics.GenericAPIView):
         try:
             pk = int(str(kwargs.get('pk')))
         except (TypeError, ValueError):
-            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, _('Import job not found.'))
         job = DataTransferJob.objects.filter(user=user, id=pk).first()
         if not job:
-            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, _('Import job not found.'))
         from ..import_state_machine import cancel
 
         try:
@@ -179,22 +180,22 @@ class DataJobFileView(generics.GenericAPIView):
         try:
             job_id = int(str(pk))
         except (TypeError, ValueError):
-            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, _('Import job not found.'))
         job = DataTransferJob.objects.filter(user=user, id=job_id).first()
         if not job:
-            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, 'Import job not found.')
+            _raise_import_error(ImportErrorCode.IMPORT_JOB_NOT_FOUND, _('Import job not found.'))
         if job.job_type != DataTransferJobType.EXPORT:
-            raise ValidationError({'job': 'Only export jobs have a downloadable file.'})
+            raise ValidationError({'job': _('Only export jobs have a downloadable file.')})
         return job
 
     def get(self, request, *args, **kwargs):
         job = self._get_export_job(request, kwargs.get('pk'))
         if not job.output_file:
-            raise NotFound('Export file not found.')
+            raise NotFound(_('Export file not found.'))
         try:
             handle = job.output_file.open('rb')
         except FileNotFoundError as exc:
-            raise NotFound('Export file not found.') from exc
+            raise NotFound(_('Export file not found.')) from exc
         response = FileResponse(handle, as_attachment=True, filename=os.path.basename(job.output_file.name))
         response['Cache-Control'] = 'private, no-store'
         return response

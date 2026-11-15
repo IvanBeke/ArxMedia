@@ -21,6 +21,7 @@ import logging
 from celery import shared_task
 from django.db import transaction
 from django.db.models import Q
+from django.utils import translation
 
 from ..choices import DataImportMode, DataTransferStatus
 from ..import_engine import (
@@ -162,20 +163,21 @@ def _resolution_candidates(parsed: ParsedImport) -> tuple[int, ...]:
 @shared_task(name='tracking.run_import_job', acks_late=True, reject_on_worker_lost=True)
 def run_import_job(job_id: int) -> dict[str, str]:
     """Start an import: sync candidate shows for episode resolution, or dispatch items directly."""
-    job = DataTransferJob.objects.filter(id=job_id).first()
+    job = DataTransferJob.objects.select_related('user').filter(id=job_id).first()
     if job is None:
         return {'status': 'missing'}
     if job.status != DataTransferStatus.PROCESSING:
         return {'status': job.status}
 
-    try:
-        return _start_import(job)
-    except ImportJobCancelled:
-        job.refresh_from_db()
-        return {'status': job.status}
-    except Exception as exc:
-        fail(job, _error_message(exc))
-        return {'status': job.status}
+    with translation.override(job.user.language):
+        try:
+            return _start_import(job)
+        except ImportJobCancelled:
+            job.refresh_from_db()
+            return {'status': job.status}
+        except Exception as exc:
+            fail(job, _error_message(exc))
+            return {'status': job.status}
 
 
 def _start_import(job: DataTransferJob) -> dict[str, str]:
@@ -198,17 +200,18 @@ def _start_import(job: DataTransferJob) -> dict[str, str]:
 @shared_task(name='tracking.dispatch_import_items', acks_late=True, reject_on_worker_lost=True)
 def dispatch_import_items(job_id: int) -> dict[str, str]:
     """Fan out one task per media item; the last one to finish runs finish_import_job."""
-    job = DataTransferJob.objects.filter(id=job_id).first()
+    job = DataTransferJob.objects.select_related('user').filter(id=job_id).first()
     if job is None:
         return {'status': 'missing'}
-    try:
-        return _dispatch_import_items(job)
-    except ImportJobCancelled:
-        job.refresh_from_db()
-        return {'status': job.status}
-    except Exception as exc:
-        fail(job, _error_message(exc))
-        return {'status': job.status}
+    with translation.override(job.user.language):
+        try:
+            return _dispatch_import_items(job)
+        except ImportJobCancelled:
+            job.refresh_from_db()
+            return {'status': job.status}
+        except Exception as exc:
+            fail(job, _error_message(exc))
+            return {'status': job.status}
 
 
 def _dispatch_import_items(job: DataTransferJob) -> dict[str, str]:
@@ -260,14 +263,15 @@ def _preexisting_status_keys(job, parsed):
 
 @shared_task(name='tracking.finish_import_job', acks_late=True, reject_on_worker_lost=True)
 def finish_import_job(job_id: int) -> dict[str, str]:
-    job = DataTransferJob.objects.filter(id=job_id).first()
+    job = DataTransferJob.objects.select_related('user').filter(id=job_id).first()
     if job is None:
         return {'status': 'missing'}
-    try:
-        finish_import(job_id, parsed=_load_resolved(job))
-    except Exception as exc:
-        job.refresh_from_db()
-        fail(job, _error_message(exc))
+    with translation.override(job.user.language):
+        try:
+            finish_import(job_id, parsed=_load_resolved(job))
+        except Exception as exc:
+            job.refresh_from_db()
+            fail(job, _error_message(exc))
     job.refresh_from_db()
     return {'status': job.status}
 

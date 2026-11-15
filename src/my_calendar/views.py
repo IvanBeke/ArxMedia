@@ -4,6 +4,7 @@ from django.db.models import DateTimeField
 from django.db.models.functions import Cast, Coalesce
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.utils.translation import gettext as _
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -21,7 +22,7 @@ def _parse_range(request):
     except ValueError:
         start = None
     if start is None:
-        raise ValidationError({'start': 'start must be a valid date (YYYY-MM-DD).'})
+        raise ValidationError({'start': _('start must be a valid date (YYYY-MM-DD).')})
     try:
         days = int(days_param)
     except (TypeError, ValueError):

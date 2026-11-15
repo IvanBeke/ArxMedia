@@ -210,6 +210,54 @@ class AccountTests:
         user.refresh_from_db()
         assert user.preferred_region == 'ES'
 
+    def test_update_language(self, user, auth_client):
+        assert auth_client.get('/api/auth/me/').data['language'] == 'en'
+
+        response = auth_client.patch('/api/auth/me/', {'language': 'es'}, format='json')
+        assert response.status_code == 200
+        assert response.data['language'] == 'es'
+
+        user.refresh_from_db()
+        assert user.language == 'es'
+
+    def test_update_language_rejects_unsupported_value(self, user, auth_client):
+        response = auth_client.patch('/api/auth/me/', {'language': 'fr'}, format='json')
+        assert response.status_code == 400
+        assert 'language' in response.data
+
+        user.refresh_from_db()
+        assert user.language == 'en'
+
+    def test_register_stores_the_chosen_language(self, api_client):
+        response = api_client.post('/api/auth/register/', {
+            'username': 'spanishuser',
+            'email': 'es@example.com',
+            'password': 'Newpass-123',
+            'password2': 'Newpass-123',
+            'language': 'es',
+        })
+        assert response.status_code == 201
+        assert response.data['language'] == 'es'
+        assert User.objects.get(username='spanishuser').language == 'es'
+
+    def test_register_defaults_to_english(self, api_client):
+        response = api_client.post('/api/auth/register/', {
+            'username': 'defaultuser',
+            'email': 'default@example.com',
+            'password': 'Newpass-123',
+            'password2': 'Newpass-123',
+        })
+        assert response.status_code == 201
+        assert response.data['language'] == 'en'
+
+    def test_language_is_not_exposed_on_public_profiles(self, user, auth_client2):
+        user.language = 'es'
+        user.save(update_fields=['language'])
+
+        response = auth_client2.get(f'/api/auth/users/{user.username}/')
+        assert response.status_code == 200
+        assert 'language' not in response.data
+
     def test_update_account_visibility(self, user, auth_client):
         response = auth_client.patch('/api/auth/me/', {
             'account_visibility': 'friends_only'

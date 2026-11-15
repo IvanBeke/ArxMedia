@@ -3,6 +3,7 @@ import os
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from rest_framework import serializers
 
 from .choices import MediaType, WatchEntryMediaType
@@ -278,7 +279,7 @@ class CustomListSerializer(serializers.ModelSerializer):
         owner_id = custom_list.user_id
         collaborator_ids = {user.id for user in collaborators}
         if owner_id in collaborator_ids:
-            raise serializers.ValidationError({'collaborator_ids': 'The list owner cannot be a collaborator.'})
+            raise serializers.ValidationError({'collaborator_ids': _('The list owner cannot be a collaborator.')})
 
         ListCollaborator.objects.filter(custom_list=custom_list).exclude(user_id__in=collaborator_ids).delete()
         existing_ids = set(

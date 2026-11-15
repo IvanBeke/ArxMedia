@@ -3,6 +3,7 @@ import logging
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.utils.functional import cached_property
+from django.utils.translation import gettext as _
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -52,9 +53,9 @@ def _accessible_list(user, list_id):
     try:
         custom_list = CustomList.objects.get(id=list_id)
     except CustomList.DoesNotExist:
-        raise PermissionDenied('List not found.') from None
+        raise PermissionDenied(_('List not found.')) from None
     if not _can_access_list(user, custom_list):
-        raise PermissionDenied('You do not have permission to access this list.')
+        raise PermissionDenied(_('You do not have permission to access this list.'))
     return custom_list
 
 
@@ -160,19 +161,19 @@ class CustomListDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self):
         obj = super().get_object()
         if not _can_access_list(self.request.user, obj):
-            raise PermissionDenied('You do not have permission to access this list.')
+            raise PermissionDenied(_('You do not have permission to access this list.'))
         return obj
 
     def perform_update(self, serializer):
         # Only owner can update
         if serializer.instance.user != self.request.user:
-            raise PermissionDenied('You can only edit your own lists.')
+            raise PermissionDenied(_('You can only edit your own lists.'))
         serializer.save()
 
     def perform_destroy(self, instance):
         # Only owner can delete
         if instance.user != self.request.user:
-            raise PermissionDenied('You can only delete your own lists.')
+            raise PermissionDenied(_('You can only delete your own lists.'))
         instance.delete()
 
     def retrieve(self, request, *args, **kwargs):
@@ -231,7 +232,7 @@ class ListItemListCreateView(generics.ListCreateAPIView):
         user = authenticated_user(self.request)
         custom_list = _writable_list(
             user, self.kwargs.get('list_id'),
-            'You can only add items to your lists or lists where you collaborate.',
+            _('You can only add items to your lists or lists where you collaborate.'),
         )
         from django.db.models import Max
 
@@ -245,7 +246,7 @@ class ListItemListCreateView(generics.ListCreateAPIView):
             try:
                 serializer.save(custom_list=custom_list, custom_order=next_order)
             except IntegrityError:
-                raise ValidationError({'detail': 'Item is already in this list.'}) from None
+                raise ValidationError({'detail': _('Item is already in this list.')}) from None
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -300,19 +301,19 @@ class ListItemDetailView(generics.RetrieveDestroyAPIView):
 def _validated_reorder_ids(request, custom_list) -> list[int]:
     ordered_ids = request.data.get('custom_order')
     if not isinstance(ordered_ids, list):
-        raise ValidationError({'custom_order': 'custom_order must be a list of item ids.'})
+        raise ValidationError({'custom_order': _('custom_order must be a list of item ids.')})
 
     try:
         ordered_ids = [int(i) for i in ordered_ids]
     except (TypeError, ValueError) as exc:
-        raise ValidationError({'custom_order': 'custom_order must contain integers.'}) from exc
+        raise ValidationError({'custom_order': _('custom_order must contain integers.')}) from exc
 
     if len(ordered_ids) != len(set(ordered_ids)):
-        raise ValidationError({'custom_order': 'custom_order must not contain duplicates.'})
+        raise ValidationError({'custom_order': _('custom_order must not contain duplicates.')})
 
     existing_ids = set(ListItem.objects.filter(custom_list=custom_list).values_list('id', flat=True))
     if set(ordered_ids) != existing_ids:
-        raise ValidationError({'custom_order': 'custom_order must contain all item ids for this list exactly once.'})
+        raise ValidationError({'custom_order': _('custom_order must contain all item ids for this list exactly once.')})
     return ordered_ids
 
 
@@ -336,7 +337,7 @@ class ListItemReorderView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         custom_list = _writable_list(
             request.user, self.kwargs.get('list_id'),
-            'You can only reorder items in your lists or lists where you collaborate.',
+            _('You can only reorder items in your lists or lists where you collaborate.'),
         )
         ordered_ids = _validated_reorder_ids(request, custom_list)
         _bulk_reorder(custom_list, ordered_ids)

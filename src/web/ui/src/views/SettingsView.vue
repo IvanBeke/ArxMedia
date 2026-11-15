@@ -261,8 +261,15 @@ async function updateAccountVisibility() {
   }
 }
 
-function updateLocale() {
-  prefs.setLocale(selectedLocale.value)
+async function updateLocale() {
+  errorMsg.value = ''
+  try {
+    const data = await authAPI.updateProfile({ language: selectedLocale.value })
+    auth.setUser(data)
+  } catch (error: unknown) {
+    errorMsg.value = getApiErrorMessage(error, t('error_update_language'))
+    selectedLocale.value = prefs.locale
+  }
 }
 
 function toggleSpoilerMode() {

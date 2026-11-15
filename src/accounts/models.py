@@ -16,12 +16,18 @@ class AccountVisibility(models.TextChoices):
     FRIENDS_ONLY = 'friends_only', 'Friends only'
 
 
+class Language(models.TextChoices):
+    EN = 'en', 'English'
+    ES = 'es', 'Español'
+
+
 class User(AbstractUser):
     bio = models.TextField(blank=True)
     avatar = models.ImageField(upload_to=avatar_upload_path, null=True, blank=True)
     location = models.CharField(max_length=100, blank=True)
     website = models.URLField(blank=True)
     preferred_region = models.CharField(max_length=2, default='US')
+    language = models.CharField(max_length=2, choices=Language.choices, default=Language.EN)
     account_visibility = models.CharField(max_length=20, choices=AccountVisibility.choices, default=AccountVisibility.PUBLIC)
     created_at = models.DateTimeField(auto_now_add=True)
 

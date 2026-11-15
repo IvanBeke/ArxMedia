@@ -6,6 +6,8 @@ from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
+from django.utils.translation import gettext as _
+
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
 from ...import_metadata import _parse_watched_at, _safe_int
 from ...import_records import (
@@ -117,16 +119,16 @@ def _yamtrack_reject(state: _YamtrackState, code: str, message: str, column: str
 
 def _validate_yamtrack_row(state: _YamtrackState, source: str, media_type: str, status: str, tmdb_id: int | None) -> bool:
     if source != 'tmdb':
-        _yamtrack_reject(state, 'non_tmdb_source', 'Only rows with source tmdb can be imported.', 'source', 'skipped_non_tmdb')
+        _yamtrack_reject(state, 'non_tmdb_source', _('Only rows with source tmdb can be imported.'), 'source', 'skipped_non_tmdb')
         return False
     if media_type not in YAMTRACK_ALLOWED_MEDIA_TYPES:
-        _yamtrack_reject(state, 'unsupported_media_type', 'The row uses an unsupported media type.', 'media_type', 'skipped_unsupported_media_type')
+        _yamtrack_reject(state, 'unsupported_media_type', _('The row uses an unsupported media type.'), 'media_type', 'skipped_unsupported_media_type')
         return False
     if status not in YAMTRACK_ALLOWED_STATUSES:
-        _yamtrack_reject(state, 'invalid_status', 'The row uses a status that cannot be imported.', 'status', 'skipped_invalid_status')
+        _yamtrack_reject(state, 'invalid_status', _('The row uses a status that cannot be imported.'), 'status', 'skipped_invalid_status')
         return False
     if not tmdb_id:
-        _yamtrack_reject(state, 'missing_tmdb_id', 'The row does not contain a TMDB ID.', 'media_id', 'skipped_missing_tmdb_id')
+        _yamtrack_reject(state, 'missing_tmdb_id', _('The row does not contain a TMDB ID.'), 'media_id', 'skipped_missing_tmdb_id')
         return False
     return True
 
@@ -204,7 +206,7 @@ def _flag_missing_yamtrack_number(
         return
     state.invalid_count += 1
     add_import_warning(
-        state.warnings, 'missing_episode_number', 'The episode row is missing a season or episode number.',
+        state.warnings, 'missing_episode_number', _('The episode row is missing a season or episode number.'),
         {'kind': 'csv_row', 'file': 'yamtrack.csv', 'row': state.row_count + 1,
          'column': _yamtrack_missing_number_column(season_number, episode_number)},
     )

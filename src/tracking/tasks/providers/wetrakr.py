@@ -6,6 +6,7 @@ import zipfile
 from datetime import datetime
 
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from ...choices import DataTransferFormat, ListPrivacy, MediaType, TvShowStatus, WatchEntryMediaType
 from ...import_config import open_import_zip
@@ -88,7 +89,7 @@ def _read_csv(archive: zipfile.ZipFile, file_name: str) -> list[dict]:
     headers = set(reader.fieldnames or ())
     missing = sorted(WETRAKR_REQUIRED_HEADERS[file_name] - headers)
     if missing:
-        raise ValueError(f"Missing required columns: {', '.join(missing)}")
+        raise ValueError(_('Missing required columns: %(columns)s') % {'columns': ', '.join(missing)})
     return list(reader)
 
 
@@ -135,7 +136,7 @@ def _record_missing_file(state: _WeTrackrState, file_name: str, file_report: dic
     add_import_warning(
         state.warnings,
         'missing_file',
-        f'{file_name} is missing from the WeTrackr export.',
+        _('%(file)s is missing from the WeTrackr export.') % {'file': file_name},
         {'kind': 'zip_file', 'file': file_name},
     )
     state.files_report.append(file_report)
@@ -169,7 +170,7 @@ def _tracklog_watched_episode(state: _WeTrackrState, file_name: str, row: dict, 
         _reject(
             state,
             'missing_episode_number',
-            'The watched episode is missing a valid season or episode number.',
+            _('The watched episode is missing a valid season or episode number.'),
             file_name,
             index,
             _unresolved_row_column(season_number, episode_number),
@@ -220,7 +221,7 @@ def _tracklog_status_row(state: _WeTrackrState, file_name: str, index: int, item
         _reject(
             state,
             'unsupported_status',
-            'The tracklog status cannot be mapped to an ArxMedia status.',
+            _('The tracklog status cannot be mapped to an ArxMedia status.'),
             file_name,
             index,
             'status',
@@ -249,7 +250,7 @@ def _handle_tracklog_row(state: _WeTrackrState, file_name: str, row: dict, index
         _reject(
             state,
             'unsupported_media_type',
-            'The tracklog row uses an unsupported media type.',
+            _('The tracklog row uses an unsupported media type.'),
             file_name,
             index,
             'type',
@@ -260,7 +261,7 @@ def _handle_tracklog_row(state: _WeTrackrState, file_name: str, row: dict, index
         _reject(
             state,
             'missing_tmdb_id',
-            'The tracklog row does not contain a valid TMDB ID.',
+            _('The tracklog row does not contain a valid TMDB ID.'),
             file_name,
             index,
             'tmdb_id',
@@ -310,7 +311,7 @@ def _handle_rating_row(state: _WeTrackrState, file_name: str, row: dict, index: 
         _reject(
             state,
             'unsupported_media_type',
-            'The rating row uses an unsupported media type.',
+            _('The rating row uses an unsupported media type.'),
             file_name,
             index,
             'type',
@@ -321,7 +322,7 @@ def _handle_rating_row(state: _WeTrackrState, file_name: str, row: dict, index: 
         _reject(
             state,
             'missing_tmdb_id',
-            'The rating row does not contain a valid TMDB ID.',
+            _('The rating row does not contain a valid TMDB ID.'),
             file_name,
             index,
             'tmdb_id',
@@ -332,7 +333,7 @@ def _handle_rating_row(state: _WeTrackrState, file_name: str, row: dict, index: 
         _reject(
             state,
             'invalid_rating',
-            'The rating must be a whole number from 1 to 10 with a valid rated_at.',
+            _('The rating must be a whole number from 1 to 10 with a valid rated_at.'),
             file_name,
             index,
             _invalid_rating_column(score),
@@ -386,7 +387,7 @@ def _upsert_list_item(
         _reject(
             state,
             'duplicate_list_item',
-            'The WeTrackr list contains a duplicate item.',
+            _('The WeTrackr list contains a duplicate item.'),
             file_name,
             index,
             'tmdb_id',
@@ -423,7 +424,7 @@ def _append_list_item(state: _WeTrackrState, file_name: str, row: dict, index: i
         _reject(
             state,
             'invalid_list_name',
-            'The list name is missing or longer than 200 characters.',
+            _('The list name is missing or longer than 200 characters.'),
             file_name,
             index,
             'list_name',
@@ -434,7 +435,7 @@ def _append_list_item(state: _WeTrackrState, file_name: str, row: dict, index: i
         _reject(
             state,
             'invalid_list_rank',
-            'The list rank is missing or invalid; file order was used.',
+            _('The list rank is missing or invalid; file order was used.'),
             file_name,
             index,
             'rank',
@@ -461,7 +462,7 @@ def _handle_list_row(state: _WeTrackrState, file_name: str, row: dict, index: in
         _reject(
             state,
             'unsupported_media_type',
-            'The list row uses an unsupported media type.',
+            _('The list row uses an unsupported media type.'),
             file_name,
             index,
             'type',
@@ -472,7 +473,7 @@ def _handle_list_row(state: _WeTrackrState, file_name: str, row: dict, index: in
         _reject(
             state,
             'missing_tmdb_id',
-            'The list row does not contain a valid TMDB ID.',
+            _('The list row does not contain a valid TMDB ID.'),
             file_name,
             index,
             'tmdb_id',
@@ -596,7 +597,7 @@ def parse_wetrakr_zip(content: bytes) -> ParsedImport:
     with open_import_zip(content) as archive:
         root_files = _wetrakr_root_files(archive)
         if not root_files.intersection(WETRAKR_SUPPORTED_FILES):
-            raise ValueError('WeTrackr CSV files must be stored at the ZIP root.')
+            raise ValueError(_('WeTrackr CSV files must be stored at the ZIP root.'))
 
         for file_name in WETRAKR_SUPPORTED_FILES:
             _process_wetrakr_file(archive, file_name, root_files, state)

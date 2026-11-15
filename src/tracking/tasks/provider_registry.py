@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from django.utils.translation import gettext as _
+
 from ..import_errors import ImportDomainError, ImportErrorCode
 from .providers.arxmedia import analyze_arxmedia_zip, parse_arxmedia_zip
 from .providers.trakt import analyze_trakt_zip, parse_trakt_zip
@@ -33,7 +35,7 @@ def get_import_provider(source: str) -> ImportProviderFunctions:
     if provider is None:
         raise ImportDomainError(
             code=ImportErrorCode.IMPORT_SOURCE_UNSUPPORTED,
-            message=f'Unsupported import source: {source}',
+            message=_('Unsupported import source: %(source)s') % {'source': source},
         )
     return provider
 

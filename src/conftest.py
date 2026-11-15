@@ -2,7 +2,14 @@
 
 import pytest
 from django.core.cache import cache as django_cache
+from django.core.management import call_command
 from rest_framework.test import APIClient
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _compiled_message_catalogs():
+    """Compiled .mo catalogs are not tracked, so build them from the .po files first."""
+    call_command("compilemessages", ignore_patterns=[".venv/*", "web/ui/*"], verbosity=0)
 
 
 @pytest.fixture(autouse=True)

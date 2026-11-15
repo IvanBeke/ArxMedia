@@ -18,7 +18,7 @@ class CustomUserAdmin(UserAdmin):
     fieldsets = (
         *base_fieldsets,
         ('Profile', {
-            'fields': ('bio', 'avatar', 'location', 'website', 'preferred_region', 'account_visibility'),
+            'fields': ('bio', 'avatar', 'location', 'website', 'preferred_region', 'language', 'account_visibility'),
         }),
         ('Account metadata', {'fields': ('created_at',)}),
     )

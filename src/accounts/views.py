@@ -5,6 +5,7 @@ from django.db.models.functions import TruncDate
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
+from django.utils.translation import gettext as _
 from django.views.decorators.csrf import csrf_protect
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
@@ -136,7 +137,7 @@ class UserFollowersView(generics.ListAPIView):
 
         relationship = get_viewer_relationship(self.request.user, target)
         if not can_view_account_content(target.account_visibility, relationship):
-            raise PermissionDenied('You do not have permission to view followers for this profile.')
+            raise PermissionDenied(_('You do not have permission to view followers for this profile.'))
 
         return User.objects.filter(following__following=target).order_by('username')
 
@@ -153,7 +154,7 @@ class UserFollowingView(generics.ListAPIView):
 
         relationship = get_viewer_relationship(self.request.user, target)
         if not can_view_account_content(target.account_visibility, relationship):
-            raise PermissionDenied('You do not have permission to view following for this profile.')
+            raise PermissionDenied(_('You do not have permission to view following for this profile.'))
 
         return User.objects.filter(followers__follower=target).order_by('username')
 
@@ -165,10 +166,10 @@ class FollowView(APIView):
         try:
             target = User.objects.get(username=username)
         except User.DoesNotExist:
-            return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': _('User not found.')}, status=status.HTTP_404_NOT_FOUND)
 
         if target == request.user:
-            return Response({'detail': 'Cannot follow yourself.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': _('Cannot follow yourself.')}, status=status.HTTP_400_BAD_REQUEST)
 
         follow, created = Follow.objects.get_or_create(follower=request.user, following=target)
         if not created:
@@ -195,7 +196,7 @@ class PasswordChangeView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         update_session_auth_hash(request, user)
-        return Response({'detail': 'Password updated successfully.'}, status=status.HTTP_200_OK)
+        return Response({'detail': _('Password updated successfully.')}, status=status.HTTP_200_OK)
 
 
 def _previous_year_start(today: date) -> date:

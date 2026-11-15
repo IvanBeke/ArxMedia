@@ -57,6 +57,15 @@ What "good work" means for this project.
 - `src/arxmedia/settings/celery.py` contains Redis-derived Celery broker/backend and beat schedules
 - `src/arxmedia/settings/logging_conf.py` contains `LOG_LEVEL` and Django logging configuration
 
+## Language and translations
+
+- Each account has one `language` (`en` or `es`, `User.language`, default `en`, editable via `PATCH /api/auth/me/` and in the UI settings). It is private: it is returned by `me/` and never by public profiles. The API never takes a language parameter or reads `Accept-Language`: the account language is the single source of truth, and anonymous requests use English
+- A registration may carry the language the guest was browsing in; after login or `me/` the UI always follows the account language, overriding the browser's stored locale. Guests keep the browser-stored locale
+- `accounts.middleware.UserLanguageMiddleware` (after `AuthenticationMiddleware`) activates the signed-in user's language for each request and deactivates it afterwards, so `gettext` calls made while handling a request render in that language. Django, DRF and `django.contrib.auth` ship their own Spanish catalogs (password validators, generic DRF errors), which apply through the same activation
+- Project messages are wrapped with `gettext` (`gettext_lazy` only for import-time constants and serializer attributes), use named placeholders (`_('%(key)s must be an integer.') % {'key': key}`) and are translated in `src/locale/es/LC_MESSAGES/django.po`. Compiled `.mo` files are not tracked: the Docker image builds them, and the pytest session compiles them first
+- Text that is stored in the database is translated when it is created, in the owner's language: Celery import/export tasks run inside `translation.override(job.user.language)` (stored job errors, warnings and file errors are therefore frozen in the language active when the job ran; jobs are purged after 7 days). Raw exception text from zip/CSV/JSON parsers is not translated
+- UI strings live in `src/web/ui/src/i18n.ts` (`messages.en` and `messages.es`, `t()` / `useI18n()`); `i18n.test.ts` checks both languages define the same keys and placeholders. Views remount when the language changes, so they reload their data in it
+
 ## UI principles (Vue 3)
 
 - Dark theme, purple brand (#9f42c6), Inter font

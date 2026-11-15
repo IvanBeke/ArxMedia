@@ -62,3 +62,4 @@ src/web/static/web/apple-touch-icon.png
 # OS files
 .DS_Store
 Thumbs.db
+*.mo

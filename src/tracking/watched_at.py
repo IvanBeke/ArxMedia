@@ -10,6 +10,7 @@ Clients send one of:
 from datetime import date, datetime
 
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from rest_framework.exceptions import ValidationError
 
 WATCHED_AT_NOW = 'now'
@@ -33,7 +34,7 @@ def resolve_watched_at(value, release: date | datetime | None = None) -> datetim
         parsed = datetime.fromisoformat(str(value))
     except ValueError as exc:
         raise ValidationError({
-            'watched_at': 'Must be "now", "unknown", "release_date", or an ISO 8601 timestamp.',
+            'watched_at': _('Must be "now", "unknown", "release_date", or an ISO 8601 timestamp.'),
         }) from exc
     return timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
 

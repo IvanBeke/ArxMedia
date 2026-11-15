@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any
 
+from django.utils.translation import gettext as _
+
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
 from ...import_config import open_import_zip
 from ...import_metadata import _parse_watched_at, _safe_int
@@ -139,7 +141,7 @@ def _invalid_history(stats: _TraktStats, ctx: dict[str, Any]) -> None:
     stats.invalid_count += 1
     _trakt_invalid_record(
         stats, ctx, 'invalid_watch_history',
-        'The watch history record is missing a valid TMDB ID or episode number.',
+        _('The watch history record is missing a valid TMDB ID or episode number.'),
     )
 
 
@@ -168,7 +170,7 @@ def _handle_trakt_watched_movies(stats: _TraktStats, ctx: dict[str, Any]) -> Non
     tmdb_id = _safe_int((ctx['record'].get('movie') or {}).get('ids', {}).get('tmdb'))
     if not tmdb_id:
         stats.invalid_count += 1
-        _trakt_invalid_record(stats, ctx, 'missing_tmdb_id', 'The watched movie record does not contain a TMDB ID.')
+        _trakt_invalid_record(stats, ctx, 'missing_tmdb_id', _('The watched movie record does not contain a TMDB ID.'))
         return
     stats.records.append(
         WatchEntryRecord(
@@ -184,7 +186,7 @@ def _handle_trakt_watchlist(stats: _TraktStats, ctx: dict[str, Any]) -> None:
     media_type, tmdb_id = _media_from_record(ctx['record'])
     if not tmdb_id:
         stats.invalid_count += 1
-        _trakt_invalid_record(stats, ctx, 'missing_tmdb_id', 'The watchlist record does not contain a TMDB ID.')
+        _trakt_invalid_record(stats, ctx, 'missing_tmdb_id', _('The watchlist record does not contain a TMDB ID.'))
         return
     stats.records.append(StatusRecord(
         media_type=media_type, tmdb_id=tmdb_id,
@@ -200,7 +202,7 @@ def _handle_trakt_ratings(stats: _TraktStats, ctx: dict[str, Any]) -> None:
         stats.invalid_count += 1
         _trakt_invalid_record(
             stats, ctx, 'invalid_rating',
-            'The rating record is missing a TMDB ID, valid rating, or valid rated_at.',
+            _('The rating record is missing a TMDB ID, valid rating, or valid rated_at.'),
         )
         return
     stats.records.append(RatingRecord(
@@ -209,10 +211,10 @@ def _handle_trakt_ratings(stats: _TraktStats, ctx: dict[str, Any]) -> None:
 
 
 def _handle_trakt_hidden_progress(stats: _TraktStats, ctx: dict[str, Any]) -> None:
-    _, tmdb_id = _media_from_record(ctx['record'])
+    _media_type, tmdb_id = _media_from_record(ctx['record'])
     if not tmdb_id:
         stats.invalid_count += 1
-        _trakt_invalid_record(stats, ctx, 'missing_tmdb_id', 'The hidden progress record does not contain a TMDB ID.')
+        _trakt_invalid_record(stats, ctx, 'missing_tmdb_id', _('The hidden progress record does not contain a TMDB ID.'))
         return
     stats.records.append(StatusRecord(
         media_type=MediaType.TV, tmdb_id=tmdb_id,
@@ -227,7 +229,7 @@ def _handle_trakt_watched_shows(stats: _TraktStats, ctx: dict[str, Any]) -> None
     tmdb_id = _safe_int((ctx['record'].get('show') or {}).get('ids', {}).get('tmdb'))
     if not tmdb_id:
         stats.invalid_count += 1
-        _trakt_invalid_record(stats, ctx, 'missing_tmdb_id', 'The watched show record does not contain a TMDB ID.')
+        _trakt_invalid_record(stats, ctx, 'missing_tmdb_id', _('The watched show record does not contain a TMDB ID.'))
         return
     stats.metadata_only_count += 1
     stats.show_ids.add(tmdb_id)
@@ -265,7 +267,7 @@ def _consume_trakt_record(stats: _TraktStats, file_report: dict, record, file_na
     if not isinstance(record, dict):
         stats.invalid_count += 1
         add_import_warning(
-            stats.warnings, 'invalid_record', 'The record is not a JSON object.',
+            stats.warnings, 'invalid_record', _('The record is not a JSON object.'),
             {'kind': 'zip_record', 'file': file_name, 'record': file_report['records_seen']},
         )
         return
@@ -273,7 +275,7 @@ def _consume_trakt_record(stats: _TraktStats, file_report: dict, record, file_na
     if handler is None:
         stats.unsupported_records += 1
         stats.invalid_count += 1
-        _trakt_invalid_record(stats, ctx, 'unsupported_record', 'This file or record is not supported by the Trakt importer.')
+        _trakt_invalid_record(stats, ctx, 'unsupported_record', _('This file or record is not supported by the Trakt importer.'))
         return
     handler(stats, ctx)
 

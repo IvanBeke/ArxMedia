@@ -20,6 +20,8 @@ Code style, patterns, and no-gos for this project.
 - Use `uv` for app tooling inside Docker (`docker compose exec app uv ...`)
 - Add new Django settings in `src/arxmedia/settings/` by domain (`base`, `security`, `django_core`, `database`, `static_media`, `api`, `integrations`, `caching`, `celery`, `logging_conf`), not in a monolithic file
 - Keep `src/arxmedia/settings/__init__.py` as the only aggregation entrypoint that exports uppercase settings loaded from those modules
+- Wrap every user-facing message (validation errors, `detail` texts, permission messages) with `gettext` and named placeholders, then run `docker compose exec app python manage.py makemessages -l es --ignore 'web/ui/*' --no-location` and fill the Spanish `msgstr`s in `src/locale/es/LC_MESSAGES/django.po`; `compilemessages` builds the untracked `.mo` files (the Docker image and the pytest session do it)
+- Text persisted in the database must be translated at creation time in the owner's language (`translation.override(user.language)`), never stored as a lazy proxy
 
 ### No-gos
 - No bare `except:` — always catch specific exceptions
@@ -38,6 +40,7 @@ Code style, patterns, and no-gos for this project.
 ### Patterns
 - Use Pinia stores for state management
 - Use `async/await` for API calls
+- Every visible string, `aria-label`, `title` and `placeholder` goes through `t()` with keys in both `en` and `es`; never send a language to the API (it comes from the account)
 - Use `v-if/v-else` for conditional rendering
 - Use `<script setup>` with `defineProps`/`defineEmits`
 - Run UI tooling in Docker using a Node container mounted to `src/web/ui`

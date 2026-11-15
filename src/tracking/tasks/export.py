@@ -4,7 +4,7 @@ import zipfile
 
 from celery import shared_task
 from django.core.files.base import ContentFile
-from django.utils import timezone
+from django.utils import timezone, translation
 
 from ..choices import DataTransferStatus
 from ..models import CustomList, DataTransferJob, Rating, UserMediaStatus, WatchEntry
@@ -12,7 +12,12 @@ from ..models import CustomList, DataTransferJob, Rating, UserMediaStatus, Watch
 
 @shared_task(name='tracking.export_user_data')
 def export_user_data(job_id: int) -> dict[str, str]:
-    job = DataTransferJob.objects.get(id=job_id)
+    job = DataTransferJob.objects.select_related('user').get(id=job_id)
+    with translation.override(job.user.language):
+        return _export(job)
+
+
+def _export(job: DataTransferJob) -> dict[str, str]:
     job.status = DataTransferStatus.PROCESSING
     job.save(update_fields=['status', 'updated_at'])
 

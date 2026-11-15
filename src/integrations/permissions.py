@@ -1,3 +1,4 @@
+from django.utils.translation import gettext_lazy as _
 from rest_framework import permissions
 
 from .clients import jellyfin_credentials, radarr_credentials, sonarr_credentials
@@ -7,14 +8,14 @@ JELLYFIN_PERMISSION = 'accounts.use_jellyfin'
 
 
 class CanUseSonarrRadarr(permissions.BasePermission):
-    message = 'You do not have permission to use Sonarr and Radarr.'
+    message = _('You do not have permission to use Sonarr and Radarr.')
 
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.has_perm(SONARR_RADARR_PERMISSION))
 
 
 class CanUseJellyfin(permissions.BasePermission):
-    message = 'You do not have permission to use Jellyfin.'
+    message = _('You do not have permission to use Jellyfin.')
 
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.has_perm(JELLYFIN_PERMISSION))

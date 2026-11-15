@@ -1,3 +1,6 @@
+from django.utils import translation
+from django.utils.translation import gettext as _
+
 from ..choices import DataImportMode, DataTransferJobType
 from ..import_config import expected_formats_for_source, source_requires_confirmation
 from ..import_errors import ImportDomainError, ImportErrorCode
@@ -12,7 +15,11 @@ class PrepareImportCommand:
         self.job_id = job_id
 
     def execute(self) -> dict[str, str]:
-        job = DataTransferJob.objects.get(id=self.job_id)
+        job = DataTransferJob.objects.select_related('user').get(id=self.job_id)
+        with translation.override(job.user.language):
+            return self._prepare(job)
+
+    def _prepare(self, job: DataTransferJob) -> dict[str, str]:
         start_prepare(job)
         try:
             content = job.input_file.read() if job.input_file else b''
@@ -44,7 +51,7 @@ class ConfirmImportCommand:
             return
         raise ImportDomainError(
             code=ImportErrorCode.IMPORT_CONFIRM_NOT_ALLOWED,
-            message='Only import jobs can be confirmed.',
+            message=_('Only import jobs can be confirmed.'),
         )
 
     def _validate_source(self):
@@ -52,23 +59,23 @@ class ConfirmImportCommand:
         if expected_formats is None:
             raise ImportDomainError(
                 code=ImportErrorCode.IMPORT_SOURCE_UNSUPPORTED,
-                message='Import source is not supported.',
+                message=_('Import source is not supported.'),
             )
         if self.job.data_format not in expected_formats:
             raise ImportDomainError(
                 code=ImportErrorCode.IMPORT_SOURCE_FORMAT_MISMATCH,
-                message='Import source and format do not match.',
+                message=_('Import source and format do not match.'),
             )
         if not source_requires_confirmation(self.job.source):
             raise ImportDomainError(
                 code=ImportErrorCode.IMPORT_CONFIRM_NOT_ALLOWED,
-                message='Import source does not support confirmation.',
+                message=_('Import source does not support confirmation.'),
             )
 
     def _validate_import_mode(self):
         if self.import_mode not in DataImportMode.values:
             raise ImportDomainError(
                 code=ImportErrorCode.IMPORT_MODE_INVALID,
-                message='import_mode must be new_items, update_existing, or mirror_imported_set',
+                message=_('import_mode must be new_items, update_existing, or mirror_imported_set'),
                 field='import_mode',
             )

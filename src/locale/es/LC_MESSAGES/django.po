@@ -1,0 +1,428 @@
+# Spanish translations for ArxMedia server messages.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: ArxMedia\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-13 18:24+0100\n"
+"PO-Revision-Date: 2026-11-13 18:30+0100\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n == 1 ? 0 : n != 0 && n % 1000000 == 0 ? "
+"1 : 2;\n"
+
+#, python-format
+msgid "Image must be %(size)s MB or smaller."
+msgstr "La imagen debe pesar %(size)s MB o menos."
+
+msgid "Image must be a JPEG, PNG or WebP file."
+msgstr "La imagen debe ser un archivo JPEG, PNG o WebP."
+
+#, python-format
+msgid "Image sides must be between %(min)s and %(max)s pixels."
+msgstr "Los lados de la imagen deben medir entre %(min)s y %(max)s píxeles."
+
+msgid "Could not read the image."
+msgstr "No se pudo leer la imagen."
+
+msgid "Incorrect username or password."
+msgstr "Usuario o contraseña incorrectos."
+
+msgid "preferred_region must be a 2-letter country code."
+msgstr "preferred_region debe ser un código de país de 2 letras."
+
+msgid "Passwords do not match."
+msgstr "Las contraseñas no coinciden."
+
+msgid "Current password is incorrect."
+msgstr "La contraseña actual es incorrecta."
+
+msgid "You do not have permission to view followers for this profile."
+msgstr "No tienes permiso para ver los seguidores de este perfil."
+
+msgid "You do not have permission to view following for this profile."
+msgstr "No tienes permiso para ver los seguidos de este perfil."
+
+msgid "User not found."
+msgstr "Usuario no encontrado."
+
+msgid "Cannot follow yourself."
+msgstr "No puedes seguirte a ti mismo."
+
+msgid "Password updated successfully."
+msgstr "Contraseña actualizada correctamente."
+
+#, python-format
+msgid "Could not reach %(service)s."
+msgstr "No se pudo conectar con %(service)s."
+
+#, python-format
+msgid "%(service)s rejected the API key."
+msgstr "%(service)s rechazó la clave de API."
+
+#, python-format
+msgid "%(service)s could not process the request."
+msgstr "%(service)s no pudo procesar la solicitud."
+
+#, python-format
+msgid "%(service)s responded with an error (HTTP %(status)s)."
+msgstr "%(service)s respondió con un error (HTTP %(status)s)."
+
+msgid "Movie not found in Radarr."
+msgstr "No se encontró la película en Radarr."
+
+msgid "Series not found in Sonarr."
+msgstr "No se encontró la serie en Sonarr."
+
+msgid "Radarr is not configured."
+msgstr "Radarr no está configurado."
+
+msgid "Sonarr is not configured."
+msgstr "Sonarr no está configurado."
+
+msgid "Jellyfin is not configured."
+msgstr "Jellyfin no está configurado."
+
+msgid "This show has no TheTVDB id, which Sonarr needs."
+msgstr "Esta serie no tiene ID de TheTVDB, que Sonarr necesita."
+
+msgid "Could not look up the TheTVDB id for this show."
+msgstr "No se pudo buscar el ID de TheTVDB de esta serie."
+
+msgid "You do not have permission to use Sonarr and Radarr."
+msgstr "No tienes permiso para usar Sonarr y Radarr."
+
+msgid "You do not have permission to use Jellyfin."
+msgstr "No tienes permiso para usar Jellyfin."
+
+msgid "Movie is not in Radarr."
+msgstr "La película no está en Radarr."
+
+msgid "Movie is already in Radarr."
+msgstr "La película ya está en Radarr."
+
+msgid "Series is not in Sonarr."
+msgstr "La serie no está en Sonarr."
+
+msgid "Series is already in Sonarr."
+msgstr "La serie ya está en Sonarr."
+
+#, python-format
+msgid "%(key)s must be an integer."
+msgstr "%(key)s debe ser un número entero."
+
+msgid "Resource not found."
+msgstr "Recurso no encontrado."
+
+#, python-format
+msgid "Must be one of: %(options)s."
+msgstr "Debe ser uno de: %(options)s."
+
+msgid "Unable to refresh metadata right now."
+msgstr "No se pueden actualizar los metadatos ahora mismo."
+
+msgid "start must be a valid date (YYYY-MM-DD)."
+msgstr "start debe ser una fecha válida (AAAA-MM-DD)."
+
+#, python-format
+msgid "Archive has too many files (limit %(limit)s)."
+msgstr "El archivo contiene demasiados ficheros (límite: %(limit)s)."
+
+#, python-format
+msgid "Archive is too large when extracted (limit %(limit)s MB)."
+msgstr "El archivo es demasiado grande al descomprimirlo (límite: %(limit)s MB)."
+
+msgid "The episode ID maps to more than one local parent show and was skipped."
+msgstr "El ID del episodio coincide con más de una serie local y se omitió."
+
+msgid "The episode ID could not be matched to a local parent show and was skipped."
+msgstr "El ID del episodio no se pudo asociar a ninguna serie local y se omitió."
+
+msgid "Import job cannot start prepare from current status."
+msgstr "La importación no puede iniciar la preparación desde su estado actual."
+
+msgid "Import job cannot finish prepare from current status."
+msgstr "La importación no puede terminar la preparación desde su estado actual."
+
+msgid "Import job is not ready for confirmation."
+msgstr "La importación aún no está lista para confirmarse."
+
+msgid "Import job cannot apply from current status."
+msgstr "La importación no puede aplicarse desde su estado actual."
+
+msgid "Import job cannot be completed from current status."
+msgstr "La importación no puede completarse desde su estado actual."
+
+msgid "This import job can no longer be cancelled."
+msgstr "Esta importación ya no se puede cancelar."
+
+msgid "The list owner cannot be a collaborator."
+msgstr "El propietario de la lista no puede ser colaborador."
+
+msgid "Only import jobs can be confirmed."
+msgstr "Solo se pueden confirmar importaciones."
+
+msgid "Import source is not supported."
+msgstr "Este origen de importación no es compatible."
+
+msgid "Import source and format do not match."
+msgstr "El origen de la importación y el formato no coinciden."
+
+msgid "Import source does not support confirmation."
+msgstr "Este origen de importación no admite confirmación."
+
+msgid "import_mode must be new_items, update_existing, or mirror_imported_set"
+msgstr "import_mode debe ser new_items, update_existing o mirror_imported_set"
+
+#, python-format
+msgid "Unsupported import source: %(source)s"
+msgstr "Origen de importación no compatible: %(source)s"
+
+msgid "The collection must be an array."
+msgstr "La colección debe ser un array."
+
+msgid "The watch history item must be an object."
+msgstr "El elemento del historial de visionado debe ser un objeto."
+
+msgid "The item does not contain a TMDB ID."
+msgstr "El elemento no contiene un ID de TMDB."
+
+msgid "The watchlist item must be an object."
+msgstr "El elemento de pendientes debe ser un objeto."
+
+msgid "The dropped item must be an object."
+msgstr "El elemento descartado debe ser un objeto."
+
+msgid "The rating item must be an object."
+msgstr "El elemento de valoración debe ser un objeto."
+
+msgid "The rating item is missing a TMDB ID, valid score, or valid rating date."
+msgstr "Al elemento de valoración le falta un ID de TMDB, una puntuación válida o una fecha de valoración válida."
+
+msgid "The list must be an object."
+msgstr "La lista debe ser un objeto."
+
+msgid "The list name is missing or longer than 200 characters."
+msgstr "Falta el nombre de la lista o supera los 200 caracteres."
+
+msgid "The import contains a duplicate list name."
+msgstr "La importación contiene un nombre de lista duplicado."
+
+msgid "The list privacy must be public or private; public was used."
+msgstr "La privacidad de la lista debe ser pública o privada; se usó pública."
+
+msgid "The list items must be an array."
+msgstr "Los elementos de la lista deben ser un array."
+
+msgid "The list item must be an object."
+msgstr "El elemento de la lista debe ser un objeto."
+
+msgid "The list item is missing a valid media type/TMDB ID or has an invalid order."
+msgstr "Al elemento de la lista le falta un tipo de contenido o ID de TMDB válido, o tiene un orden no válido."
+
+msgid "The list contains a duplicate item."
+msgstr "La lista contiene un elemento duplicado."
+
+msgid "The JSON document must be an object."
+msgstr "El documento JSON debe ser un objeto."
+
+msgid "Duplicate archive entry."
+msgstr "Entrada duplicada en el archivo."
+
+msgid "The archive contains the same collection file more than once."
+msgstr "El archivo contiene el mismo fichero de colección más de una vez."
+
+msgid "The watch history record is missing a valid TMDB ID or episode number."
+msgstr "Al registro del historial de visionado le falta un ID de TMDB o un número de episodio válido."
+
+msgid "The watched movie record does not contain a TMDB ID."
+msgstr "El registro de la película vista no contiene un ID de TMDB."
+
+msgid "The watchlist record does not contain a TMDB ID."
+msgstr "El registro de pendientes no contiene un ID de TMDB."
+
+msgid "The rating record is missing a TMDB ID, valid rating, or valid rated_at."
+msgstr "Al registro de valoración le falta un ID de TMDB, una valoración válida o un rated_at válido."
+
+msgid "The hidden progress record does not contain a TMDB ID."
+msgstr "El registro de progreso oculto no contiene un ID de TMDB."
+
+msgid "The watched show record does not contain a TMDB ID."
+msgstr "El registro de la serie vista no contiene un ID de TMDB."
+
+msgid "The record is not a JSON object."
+msgstr "El registro no es un objeto JSON."
+
+msgid "This file or record is not supported by the Trakt importer."
+msgstr "El importador de Trakt no admite este archivo o registro."
+
+#, python-format
+msgid "Missing required columns: %(columns)s"
+msgstr "Faltan columnas obligatorias: %(columns)s"
+
+#, python-format
+msgid "%(file)s is missing from the WeTrackr export."
+msgstr "Falta %(file)s en la exportación de WeTrackr."
+
+msgid "The watched episode is missing a valid season or episode number."
+msgstr "Al episodio visto le falta una temporada o un número de episodio válido."
+
+msgid "The tracklog status cannot be mapped to an ArxMedia status."
+msgstr "El estado del registro de seguimiento no se puede asociar a un estado de ArxMedia."
+
+msgid "The tracklog row uses an unsupported media type."
+msgstr "La fila del registro de seguimiento usa un tipo de contenido no compatible."
+
+msgid "The tracklog row does not contain a valid TMDB ID."
+msgstr "La fila del registro de seguimiento no contiene un ID de TMDB válido."
+
+msgid "The rating row uses an unsupported media type."
+msgstr "La fila de valoración usa un tipo de contenido no compatible."
+
+msgid "The rating row does not contain a valid TMDB ID."
+msgstr "La fila de valoración no contiene un ID de TMDB válido."
+
+msgid "The rating must be a whole number from 1 to 10 with a valid rated_at."
+msgstr "La valoración debe ser un número entero del 1 al 10 con un rated_at válido."
+
+msgid "The WeTrackr list contains a duplicate item."
+msgstr "La lista de WeTrackr contiene un elemento duplicado."
+
+msgid "The list rank is missing or invalid; file order was used."
+msgstr "Falta la posición de la lista o no es válida; se usó el orden del archivo."
+
+msgid "The list row uses an unsupported media type."
+msgstr "La fila de la lista usa un tipo de contenido no compatible."
+
+msgid "The list row does not contain a valid TMDB ID."
+msgstr "La fila de la lista no contiene un ID de TMDB válido."
+
+msgid "WeTrackr CSV files must be stored at the ZIP root."
+msgstr "Los archivos CSV de WeTrackr deben estar en la raíz del ZIP."
+
+msgid "Only rows with source tmdb can be imported."
+msgstr "Solo se pueden importar las filas con origen tmdb."
+
+msgid "The row uses an unsupported media type."
+msgstr "La fila usa un tipo de contenido no compatible."
+
+msgid "The row uses a status that cannot be imported."
+msgstr "La fila usa un estado que no se puede importar."
+
+msgid "The row does not contain a TMDB ID."
+msgstr "La fila no contiene un ID de TMDB."
+
+msgid "The episode row is missing a season or episode number."
+msgstr "A la fila del episodio le falta la temporada o el número de episodio."
+
+#, python-format
+msgid "%(field)s must be an integer."
+msgstr "%(field)s debe ser un número entero."
+
+msgid "tmdb_id, season_number, and episode_number are required."
+msgstr "tmdb_id, season_number y episode_number son obligatorios."
+
+msgid "tmdb_id is required."
+msgstr "tmdb_id es obligatorio."
+
+msgid "tmdb_id and season_number are required."
+msgstr "tmdb_id y season_number son obligatorios."
+
+msgid "Season not found."
+msgstr "Temporada no encontrada."
+
+msgid "Show not found."
+msgstr "Serie no encontrada."
+
+msgid "Rate this movie after marking it as watched."
+msgstr "Valora esta película después de marcarla como vista."
+
+msgid "Rate this show after you start watching it."
+msgstr "Valora esta serie después de empezar a verla."
+
+#, python-format
+msgid "Must be one of: %(values)s."
+msgstr "Debe ser uno de: %(values)s."
+
+msgid "List not found."
+msgstr "Lista no encontrada."
+
+msgid "You do not have permission to access this list."
+msgstr "No tienes permiso para acceder a esta lista."
+
+msgid "You can only edit your own lists."
+msgstr "Solo puedes editar tus propias listas."
+
+msgid "You can only delete your own lists."
+msgstr "Solo puedes eliminar tus propias listas."
+
+msgid "You can only add items to your lists or lists where you collaborate."
+msgstr "Solo puedes añadir elementos a tus listas o a las listas en las que colaboras."
+
+msgid "Item is already in this list."
+msgstr "El elemento ya está en esta lista."
+
+msgid "custom_order must be a list of item ids."
+msgstr "custom_order debe ser una lista de IDs de elementos."
+
+msgid "custom_order must contain integers."
+msgstr "custom_order debe contener números enteros."
+
+msgid "custom_order must not contain duplicates."
+msgstr "custom_order no puede contener duplicados."
+
+msgid "custom_order must contain all item ids for this list exactly once."
+msgstr "custom_order debe contener todos los IDs de elementos de esta lista exactamente una vez."
+
+msgid "You can only reorder items in your lists or lists where you collaborate."
+msgstr "Solo puedes reordenar elementos en tus listas o en las listas en las que colaboras."
+
+msgid "format must be csv or zip"
+msgstr "format debe ser csv o zip"
+
+msgid "file is required"
+msgstr "file es obligatorio"
+
+#, python-format
+msgid "file must be at most %(size)s MB"
+msgstr "file debe pesar como máximo %(size)s MB"
+
+#, python-format
+msgid "source is required (%(sources)s)."
+msgstr "source es obligatorio (%(sources)s)."
+
+#, python-format
+msgid "source must be %(sources)s"
+msgstr "source debe ser %(sources)s"
+
+#, python-format
+msgid "format must be %(expected)s for source=%(source)s."
+msgstr "format debe ser %(expected)s para source=%(source)s."
+
+msgid "format must be zip"
+msgstr "format debe ser zip"
+
+msgid "Import job not found."
+msgstr "Importación no encontrada."
+
+msgid "Only export jobs have a downloadable file."
+msgstr "Solo las exportaciones tienen un archivo descargable."
+
+msgid "Export file not found."
+msgstr "Archivo de exportación no encontrado."
+
+msgid "This content has already been watched and cannot be added to watchlist."
+msgstr "Este contenido ya se ha visto y no se puede añadir a pendientes."
+
+msgid "media_type is required."
+msgstr "media_type es obligatorio."
+
+msgid "media_type must be one of: movie, tv."
+msgstr "media_type debe ser uno de: movie, tv."
+
+msgid "Must be \"now\", \"unknown\", \"release_date\", or an ISO 8601 timestamp."
+msgstr "Debe ser \"now\", \"unknown\", \"release_date\" o una marca de tiempo ISO 8601."

@@ -7,6 +7,7 @@ from django.db.models import (
     Q,
     Sum,
 )
+from django.utils.translation import gettext as _
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -190,8 +191,8 @@ class RatingListCreateView(generics.ListCreateAPIView):
 
         if not can_rate:
             if media_type == MediaType.MOVIE:
-                raise ValidationError({'detail': 'Rate this movie after marking it as watched.'})
-            raise ValidationError({'detail': 'Rate this show after you start watching it.'})
+                raise ValidationError({'detail': _('Rate this movie after marking it as watched.')})
+            raise ValidationError({'detail': _('Rate this show after you start watching it.')})
 
         # Upsert rating
         existing = Rating.objects.filter(
@@ -216,7 +217,7 @@ class ReviewListCreateView(generics.ListCreateAPIView):
         qs = Review.objects.filter(visible_owner_q(self.request.user)).select_related('user')
         if media_type:
             if media_type not in MediaType.values:
-                raise ValidationError({'media_type': f'Must be one of: {", ".join(MediaType.values)}.'})
+                raise ValidationError({'media_type': _('Must be one of: %(values)s.') % {'values': ', '.join(MediaType.values)}})
             qs = qs.filter(media_type=media_type)
         if tmdb_id:
             qs = qs.filter(tmdb_id=_coerce_int(tmdb_id, 'tmdb_id'))

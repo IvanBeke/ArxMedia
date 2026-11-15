@@ -1,3 +1,5 @@
+from django.utils.translation import gettext as _
+
 from .choices import DataTransferStatus
 from .import_errors import ImportDomainError, ImportErrorCode
 from .models import DataTransferJob
@@ -13,7 +15,7 @@ def start_prepare(job: DataTransferJob):
         job,
         DataTransferStatus.PENDING,
         ImportErrorCode.IMPORT_INVALID_STATE_TRANSITION,
-        'Import job cannot start prepare from current status.',
+        _('Import job cannot start prepare from current status.'),
     )
     job.status = DataTransferStatus.PROCESSING
     job.save(update_fields=['status', 'updated_at'])
@@ -24,7 +26,7 @@ def finish_prepare(job: DataTransferJob, report: dict):
         job,
         DataTransferStatus.PROCESSING,
         ImportErrorCode.IMPORT_INVALID_STATE_TRANSITION,
-        'Import job cannot finish prepare from current status.',
+        _('Import job cannot finish prepare from current status.'),
     )
     job.total_items = report.get('total_items', 0)
     job.processed_items = 0
@@ -39,7 +41,7 @@ def confirm(job: DataTransferJob, import_mode: str, overwrite_existing: bool):
         job,
         DataTransferStatus.AWAITING_CONFIRMATION,
         ImportErrorCode.IMPORT_NOT_READY,
-        'Import job is not ready for confirmation.',
+        _('Import job is not ready for confirmation.'),
     )
     job.import_mode = import_mode
     job.overwrite_existing = overwrite_existing
@@ -54,7 +56,7 @@ def prepare_apply(job: DataTransferJob):
         job,
         DataTransferStatus.PROCESSING,
         ImportErrorCode.IMPORT_INVALID_STATE_TRANSITION,
-        'Import job cannot apply from current status.',
+        _('Import job cannot apply from current status.'),
     )
     job.processed_items = 0
     job.total_items = (job.metadata or {}).get('total_items', job.total_items)
@@ -66,7 +68,7 @@ def finish_apply(job: DataTransferJob):
         job,
         DataTransferStatus.PROCESSING,
         ImportErrorCode.IMPORT_INVALID_STATE_TRANSITION,
-        'Import job cannot be completed from current status.',
+        _('Import job cannot be completed from current status.'),
     )
     job.status = DataTransferStatus.DONE
     job.error_message = ''
@@ -87,7 +89,7 @@ def cancel(job: DataTransferJob):
     ):
         raise ImportDomainError(
             code=ImportErrorCode.IMPORT_CANCEL_NOT_ALLOWED,
-            message='This import job can no longer be cancelled.',
+            message=_('This import job can no longer be cancelled.'),
         )
     job.status = DataTransferStatus.CANCELLED
     job.error_message = ''

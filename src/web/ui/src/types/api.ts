@@ -7,9 +7,11 @@ export type QueryValue = string | number | boolean | readonly (string | number |
 export type QueryParams = Record<string, QueryValue>
 export type ApiError = Record<string, unknown> & { detail?: string; non_field_errors?: string[]; status?: number }
 
+export type Language = 'en' | 'es'
+
 export interface User {
   id: number; username: string; email: string; bio: string; avatar: string | null; location: string
-  website: string; preferred_region: string; account_visibility: 'public' | 'private' | 'friends_only'
+  website: string; preferred_region: string; language: Language; account_visibility: 'public' | 'private' | 'friends_only'
   followers_count: number; following_count: number; total_watched_movies: number; total_watched_episodes: number
   is_staff: boolean; integrations: IntegrationFlags; created_at: string
 }
@@ -22,8 +24,8 @@ export interface UserProfile extends User {
   viewer_relationship?: { follows_you: boolean; is_friend: boolean; is_self: boolean; is_following: boolean }
 }
 export interface LoginPayload { username: string; password: string }
-export interface RegisterPayload extends LoginPayload { email: string; password2: string }
-export interface ProfileUpdatePayload { username?: string; email?: string; bio?: string; location?: string; website?: string; preferred_region?: string; account_visibility?: User['account_visibility'] }
+export interface RegisterPayload extends LoginPayload { email: string; password2: string; language?: Language }
+export interface ProfileUpdatePayload { username?: string; email?: string; bio?: string; location?: string; website?: string; preferred_region?: string; language?: Language; account_visibility?: User['account_visibility'] }
 export interface UserCard { id: number; username: string; bio: string; avatar: string | null; followers_count: number; following_count: number }
 export interface PaginatedResponse<T> { count: number; next: string | null; previous: string | null; results: T[] }
 export interface ReleaseNotification {

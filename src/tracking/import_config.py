@@ -1,6 +1,8 @@
 import io
 import zipfile
 
+from django.utils.translation import gettext as _
+
 from .choices import DataTransferFormat, DataTransferSource
 
 MAX_IMPORT_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -41,9 +43,9 @@ def open_import_zip(content: bytes) -> zipfile.ZipFile:
     entries = archive.infolist()
     if len(entries) > MAX_IMPORT_ARCHIVE_ENTRIES:
         archive.close()
-        raise ValueError(f'Archive has too many files (limit {MAX_IMPORT_ARCHIVE_ENTRIES}).')
+        raise ValueError(_('Archive has too many files (limit %(limit)s).') % {'limit': MAX_IMPORT_ARCHIVE_ENTRIES})
     if sum(entry.file_size for entry in entries) > MAX_IMPORT_ARCHIVE_UNCOMPRESSED_BYTES:
         archive.close()
         limit_mb = MAX_IMPORT_ARCHIVE_UNCOMPRESSED_BYTES // (1024 * 1024)
-        raise ValueError(f'Archive is too large when extracted (limit {limit_mb} MB).')
+        raise ValueError(_('Archive is too large when extracted (limit %(limit)s MB).') % {'limit': limit_mb})
     return archive

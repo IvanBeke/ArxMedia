@@ -3,6 +3,7 @@ from typing import Any
 
 import requests
 from django.conf import settings
+from django.utils.translation import gettext as _
 
 from media.http import MAX_WORKERS, build_session
 
@@ -53,7 +54,7 @@ class ServiceClient:
             response = self._session.request(method, url, timeout=self.REQUEST_TIMEOUT, **kwargs)
         except requests.RequestException as exc:
             logger.warning('%s request failed for %s: %s', self.SERVICE_NAME, path, exc)
-            raise IntegrationError(f'Could not reach {self.SERVICE_NAME}.') from exc
+            raise IntegrationError(_('Could not reach %(service)s.') % {'service': self.SERVICE_NAME}) from exc
         if response.status_code >= 400:
             raise self._error_for(response)
         return response.json() if response.content else None
@@ -62,11 +63,13 @@ class ServiceClient:
         status = response.status_code
         logger.warning('%s responded with HTTP %s: %s', self.SERVICE_NAME, status, response.text[:200])
         if status in (401, 403):
-            return IntegrationError(f'{self.SERVICE_NAME} rejected the API key.')
+            return IntegrationError(_('%(service)s rejected the API key.') % {'service': self.SERVICE_NAME})
         if status in (400, 404):
-            detail = _error_detail(response) or f'{self.SERVICE_NAME} could not process the request.'
+            detail = _error_detail(response) or _('%(service)s could not process the request.') % {'service': self.SERVICE_NAME}
             return IntegrationError(detail, status)
-        return IntegrationError(f'{self.SERVICE_NAME} responded with an error (HTTP {status}).')
+        return IntegrationError(
+            _('%(service)s responded with an error (HTTP %(status)s).') % {'service': self.SERVICE_NAME, 'status': status}
+        )
 
 
 class ArrClient(ServiceClient):
@@ -98,7 +101,7 @@ class RadarrClient(ArrClient):
         if isinstance(lookup, list):
             lookup = lookup[0] if lookup else None
         if not isinstance(lookup, dict) or not lookup.get('tmdbId'):
-            raise IntegrationError('Movie not found in Radarr.', 404)
+            raise IntegrationError(_('Movie not found in Radarr.'), 404)
         payload = {
             **lookup,
             'qualityProfileId': data['quality_profile_id'],
@@ -141,7 +144,7 @@ class SonarrClient(ArrClient):
         results = self._request('GET', '/series/lookup', params={'term': f'tvdb:{tvdb_id}'})
         lookup = next((result for result in results or [] if result.get('tvdbId') == tvdb_id), None)
         if not lookup:
-            raise IntegrationError('Series not found in Sonarr.', 404)
+            raise IntegrationError(_('Series not found in Sonarr.'), 404)
         payload = {
             **lookup,
             'qualityProfileId': data['quality_profile_id'],
@@ -247,7 +250,7 @@ def radarr_credentials() -> tuple[str, str]:
 def radarr_client() -> RadarrClient:
     url, api_key = radarr_credentials()
     if not (url and api_key):
-        raise IntegrationError('Radarr is not configured.', 503)
+        raise IntegrationError(_('Radarr is not configured.'), 503)
     return RadarrClient(
         url, api_key, getattr(settings, 'RADARR_VERIFY_SSL', True), getattr(settings, 'RADARR_PUBLIC_URL', ''),
     )
@@ -260,7 +263,7 @@ def sonarr_credentials() -> tuple[str, str]:
 def sonarr_client() -> SonarrClient:
     url, api_key = sonarr_credentials()
     if not (url and api_key):
-        raise IntegrationError('Sonarr is not configured.', 503)
+        raise IntegrationError(_('Sonarr is not configured.'), 503)
     return SonarrClient(
         url, api_key, getattr(settings, 'SONARR_VERIFY_SSL', True), getattr(settings, 'SONARR_PUBLIC_URL', ''),
     )
@@ -273,7 +276,7 @@ def jellyfin_credentials() -> tuple[str, str]:
 def jellyfin_client() -> JellyfinClient:
     url, api_key = jellyfin_credentials()
     if not (url and api_key):
-        raise IntegrationError('Jellyfin is not configured.', 503)
+        raise IntegrationError(_('Jellyfin is not configured.'), 503)
     return JellyfinClient(
         url, api_key, getattr(settings, 'JELLYFIN_VERIFY_SSL', True), getattr(settings, 'JELLYFIN_PUBLIC_URL', ''),
     )

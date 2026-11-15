@@ -1,5 +1,6 @@
 import logging
 
+from django.utils.translation import gettext as _
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -21,7 +22,7 @@ def _refresh_after_bulk_change(user_id, tmdb_id):
 
 def _bulk_delete_episode_entries(user_id, tmdb_id, entries):
     with suppress_watch_entry_delete_signals():
-        count, _ = entries.delete()
+        count, _deleted_by_model = entries.delete()
     if count:
         _refresh_after_bulk_change(user_id, tmdb_id)
     return count
@@ -42,7 +43,7 @@ def mark_episode_watched(request):
     watched_at_value = request.data.get('watched_at')
 
     if any(value is None for value in (tmdb_id, season_number, episode_number)):
-        return Response({'detail': 'tmdb_id, season_number, and episode_number are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('tmdb_id, season_number, and episode_number are required.')}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
     season_number = _coerce_int(season_number, 'season_number')
@@ -83,13 +84,13 @@ def unmark_episode_watched(request):
     episode_number = request.data.get('episode_number')
 
     if any(value is None for value in (tmdb_id, season_number, episode_number)):
-        return Response({'detail': 'tmdb_id, season_number, and episode_number are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('tmdb_id, season_number, and episode_number are required.')}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
     season_number = _coerce_int(season_number, 'season_number')
     episode_number = _coerce_int(episode_number, 'episode_number')
 
-    deleted, _ = WatchEntry.objects.filter(
+    deleted, _deleted_by_model = WatchEntry.objects.filter(
         user=request.user,
         media_type=WatchEntryMediaType.EPISODE,
         tmdb_id=tmdb_id,
@@ -106,7 +107,7 @@ def watched_episodes(request):
     """Get all watched episodes for a specific show."""
     tmdb_id = request.query_params.get('tmdb_id')
     if not tmdb_id:
-        return Response({'detail': 'tmdb_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('tmdb_id is required.')}, status=status.HTTP_400_BAD_REQUEST)
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
 
     episodes = WatchEntry.objects.filter(
@@ -161,7 +162,7 @@ def mark_season_watched(request):
     season_number = request.data.get('season_number')
 
     if any(value is None for value in (tmdb_id, season_number)):
-        return Response({'detail': 'tmdb_id and season_number are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('tmdb_id and season_number are required.')}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
     season_number = _coerce_int(season_number, 'season_number')
@@ -169,7 +170,7 @@ def mark_season_watched(request):
     from media.models import Season
     season = Season.objects.filter(show__tmdb_id=tmdb_id, season_number=season_number).select_related('show').first()
     if season is None:
-        return Response({'detail': 'Season not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': _('Season not found.')}, status=status.HTTP_404_NOT_FOUND)
 
     marked = _bulk_mark_episodes(
         request.user, tmdb_id, [(season_number, _season_episode_rows(season))], request.data.get('watched_at'),
@@ -190,7 +191,7 @@ def mark_show_watched(request):
     """Mark every episode of a show's regular seasons (specials excluded) as watched in one request."""
     tmdb_id = request.data.get('tmdb_id')
     if tmdb_id is None:
-        return Response({'detail': 'tmdb_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('tmdb_id is required.')}, status=status.HTTP_400_BAD_REQUEST)
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
 
     from media.models import Season
@@ -198,7 +199,7 @@ def mark_show_watched(request):
         Season.objects.filter(show__tmdb_id=tmdb_id, season_number__gt=0).select_related('show').order_by('season_number')
     )
     if not seasons:
-        return Response({'detail': 'Show not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': _('Show not found.')}, status=status.HTTP_404_NOT_FOUND)
 
     marked = _bulk_mark_episodes(
         request.user, tmdb_id, [(season.season_number, _season_episode_rows(season)) for season in seasons],
@@ -221,7 +222,7 @@ def unmark_season_watched(request):
     season_number = request.data.get('season_number')
 
     if any(value is None for value in (tmdb_id, season_number)):
-        return Response({'detail': 'tmdb_id and season_number are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('tmdb_id and season_number are required.')}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
     season_number = _coerce_int(season_number, 'season_number')
@@ -245,7 +246,7 @@ def unmark_show_watched(request):
     tmdb_id = request.data.get('tmdb_id')
 
     if not tmdb_id:
-        return Response({'detail': 'tmdb_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('tmdb_id is required.')}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
 

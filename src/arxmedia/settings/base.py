@@ -33,7 +33,9 @@ if not DEBUG and (len(SECRET_KEY) < 50 or SECRET_KEY.startswith('django-insecure
 
 AUTH_USER_MODEL = 'accounts.User'
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'en'
+LANGUAGES = [('en', 'English'), ('es', 'Español')]
+LOCALE_PATHS = [BASE_DIR / 'locale']
 TIME_ZONE = os.environ.get('TIME_ZONE', 'Europe/Madrid')
 USE_I18N = True
 USE_TZ = True

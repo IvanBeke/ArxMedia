@@ -31,7 +31,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl gettext && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local
 COPY --from=ghcr.io/astral-sh/uv:0.12.24 /uv /usr/local/bin/uv
@@ -40,6 +40,9 @@ COPY src/ .
 
 # Built assets come from the uibuild stage (vite outDir is ../static/web).
 COPY --from=uibuild /static/web ./web/static/web
+
+# Message catalogs are built from the committed .po files (compiled .mo files are not tracked).
+RUN python manage.py compilemessages --ignore '.venv/*' --ignore 'web/ui/*'
 
 RUN python manage.py collectstatic --noinput
 

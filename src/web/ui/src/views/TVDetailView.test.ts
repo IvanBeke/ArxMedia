@@ -58,6 +58,7 @@ const TEST_USER: User = {
   location: '',
   website: '',
   preferred_region: 'US',
+  language: 'en',
   account_visibility: 'public',
   followers_count: 0,
   following_count: 0,

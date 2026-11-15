@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.db import models, transaction
 from django.db.models import F, Window
 from django.db.models.functions import RowNumber
+from django.utils.translation import gettext as _
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
@@ -36,7 +37,6 @@ TRENDING_TIME_WINDOWS = ('day', 'week')
 # External ids are interpolated into the TMDB URL path, so only allow plain identifier characters.
 EXTERNAL_ID_RE = re.compile(r'^(?=.*[A-Za-z0-9])[A-Za-z0-9._-]{1,64}$')
 
-_NOT_FOUND = {'detail': 'Resource not found.'}
 _EMPTY_SEARCH = {'results': [], 'page': 1, 'total_pages': 0, 'total_results': 0}
 _EMPTY_PREFIXED_SEARCH = {'results': [], 'page': 1, 'total_pages': 1, 'total_results': 0}
 
@@ -57,7 +57,7 @@ def _parse_int_query(request, key, default):
     try:
         return int(raw), None
     except (TypeError, ValueError):
-        return None, Response({'detail': f'{key} must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
+        return None, Response({'detail': _('%(key)s must be an integer.') % {'key': key}}, status=status.HTTP_400_BAD_REQUEST)
 
 
 def _providers_for_region(raw_data, region):
@@ -181,7 +181,7 @@ def _annotate_results_with_user_status(user, results):
 
 
 def _not_found():
-    return Response(_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    return Response({'detail': _('Resource not found.')}, status=status.HTTP_404_NOT_FOUND)
 
 
 def _tag_media_type(data, media_type):
@@ -303,9 +303,15 @@ def search(request):
 
 def _validate_trending_query(media_type, time_window):
     if media_type not in TRENDING_MEDIA_TYPES:
-        return Response({'type': f'Must be one of: {", ".join(TRENDING_MEDIA_TYPES)}.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'type': _('Must be one of: %(options)s.') % {'options': ', '.join(TRENDING_MEDIA_TYPES)}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if time_window not in TRENDING_TIME_WINDOWS:
-        return Response({'window': f'Must be one of: {", ".join(TRENDING_TIME_WINDOWS)}.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'window': _('Must be one of: %(options)s.') % {'options': ', '.join(TRENDING_TIME_WINDOWS)}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     return None
 
 
@@ -506,7 +512,7 @@ def tv_heatmap(request, tmdb_id):
             show = _sync_tv_for_read(tmdb_id, user_id=request.user.id)
         except Exception:
             logger.warning('Failed to sync TV show %s from TMDB', tmdb_id, exc_info=True)
-            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return _not_found()
 
     seasons = show.seasons.filter(season_number__gte=1).prefetch_related(
         models.Prefetch('episodes', queryset=Episode.objects.annotate(
@@ -534,7 +540,7 @@ def refresh_movie_metadata(request, tmdb_id):
         movie = tmdb.sync_movie(tmdb_id, use_cache=False)
     except Exception:
         logger.warning('Failed to refresh movie %s from TMDB', tmdb_id, exc_info=True)
-        return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({'detail': _('Unable to refresh metadata right now.')}, status=status.HTTP_502_BAD_GATEWAY)
 
     return Response(MovieSerializer(movie).data)
 
@@ -552,7 +558,7 @@ def refresh_tv_metadata(request, tmdb_id):
         )
     except Exception:
         logger.warning('Failed to refresh TV show %s from TMDB', tmdb_id, exc_info=True)
-        return Response({'detail': 'Unable to refresh metadata right now.'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({'detail': _('Unable to refresh metadata right now.')}, status=status.HTTP_502_BAD_GATEWAY)
 
     show.refresh_from_db()
     return Response(_serialize_tv_show_detail(show))
@@ -649,7 +655,7 @@ def season_credits(request, tmdb_id, season_number):
         data = tmdb.get_season_aggregate_credits(tmdb_id, season_number)
     except Exception:
         logger.warning('Failed to fetch season aggregate credits for show %s season %s from TMDB', tmdb_id, season_number, exc_info=True)
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
 
     return Response({
         'cast': data.get('cast', []) if isinstance(data, dict) else [],
@@ -728,7 +734,7 @@ def tv_credits(request, tmdb_id):
         data = tmdb.get_tv_aggregate_credits(tmdb_id)
     except Exception:
         logger.warning('Failed to fetch TV aggregate credits for show %s from TMDB', tmdb_id, exc_info=True)
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
 
     cast = data.get('cast', []) if isinstance(data, dict) else []
     crew = data.get('crew', []) if isinstance(data, dict) else []
@@ -762,7 +768,7 @@ def movie_external_ids(request, tmdb_id):
         data = tmdb.get_movie_details(tmdb_id).get('external_ids')
     except Exception:
         logger.warning('Failed to fetch movie external ids for %s from TMDB', tmdb_id, exc_info=True)
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
     return Response(data if isinstance(data, dict) else {})
 
 
@@ -782,7 +788,7 @@ def tv_external_ids(request, tmdb_id):
     except Exception as exc:
         logger.warning('Failed to fetch TV external ids for %s: %s', tmdb_id, exc)
         if not stored:
-            return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return _not_found()
     return Response(stored)
 
 
@@ -793,7 +799,7 @@ def episode_external_ids(request, tmdb_id, season_number, episode_number):
     ref = (tmdb_id, season_number, episode_number)
     ids = resolve_episode_external_ids([ref], required=('imdb_id', 'tvdb_id'))[ref]
     if not ids:
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
     return Response(ids)
 
 
@@ -805,7 +811,7 @@ def _recommendations_response(request, tmdb_id, fetcher, media_type, label):
         data = fetcher(tmdb_id, page)
     except Exception:
         logger.warning('Failed to fetch %s recommendations for %s from TMDB', label, tmdb_id, exc_info=True)
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
     results = data.get('results', []) if isinstance(data, dict) else []
     _annotate_recommendation_results(request.user, results, media_type)
     return Response(data)
@@ -833,9 +839,9 @@ def collection_detail(request, collection_id):
         data = tmdb.get_collection(collection_id)
     except Exception:
         logger.warning('Failed to fetch collection %s from TMDB', collection_id, exc_info=True)
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
     if not isinstance(data, dict) or not data.get('id'):
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
     parts = data.get('parts', []) or []
     _annotate_recommendation_results(request.user, parts, MediaType.MOVIE)
     return Response(data)
@@ -909,9 +915,9 @@ def person_credits(request, person_id):
         data = tmdb.get_person_combined_credits(person_id)
     except Exception:
         logger.warning('Failed to fetch person credits for %s from TMDB', person_id, exc_info=True)
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
     if not isinstance(data, dict):
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
     cast = data.get('cast', []) if isinstance(data.get('cast'), list) else []
     crew = data.get('crew', []) if isinstance(data.get('crew'), list) else []
     _annotate_recommendation_results(request.user, [i for i in cast if i.get('media_type') == MediaType.MOVIE], MediaType.MOVIE)
@@ -929,5 +935,5 @@ def person_external_ids(request, person_id):
         data = tmdb.get_person_external_ids(person_id)
     except Exception:
         logger.warning('Failed to fetch person external ids for %s from TMDB', person_id, exc_info=True)
-        return Response({'detail': 'Resource not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return _not_found()
     return Response(data if isinstance(data, dict) else {})

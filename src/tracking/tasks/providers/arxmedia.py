@@ -3,6 +3,7 @@
 import json
 
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from ...choices import DataTransferFormat, MediaType, TvShowStatus, WatchEntryMediaType
 from ...import_config import open_import_zip
@@ -89,7 +90,7 @@ def _read_collection(data: dict, name: str, errors: _InvalidRowCounter) -> list:
     if isinstance(value, list):
         return value
     if name in data:
-        errors.fail('invalid_collection', 'The collection must be an array.', {'kind': 'json_collection', 'collection': name})
+        errors.fail('invalid_collection', _('The collection must be an array.'), {'kind': 'json_collection', 'collection': name})
     return []
 
 
@@ -104,11 +105,11 @@ def _collection_records(items, builder, errors: _InvalidRowCounter) -> list:
 
 def _history_record(item, index: int, errors: _InvalidRowCounter):
     if not isinstance(item, dict):
-        errors.fail('invalid_item', 'The watch history item must be an object.', {'kind': 'json_item', 'collection': WATCH_HISTORY_COLLECTION, 'index': index})
+        errors.fail('invalid_item', _('The watch history item must be an object.'), {'kind': 'json_item', 'collection': WATCH_HISTORY_COLLECTION, 'index': index})
         return None
     tmdb_id = _safe_int(item.get('tmdb_id'))
     if not tmdb_id:
-        errors.fail('missing_tmdb_id', 'The item does not contain a TMDB ID.', {'kind': 'json_item', 'collection': 'watch_history', 'index': index, 'field': 'tmdb_id'})
+        errors.fail('missing_tmdb_id', _('The item does not contain a TMDB ID.'), {'kind': 'json_item', 'collection': 'watch_history', 'index': index, 'field': 'tmdb_id'})
         return None
     return WatchEntryRecord(
         media_type=item.get('media_type', WatchEntryMediaType.MOVIE),
@@ -121,11 +122,11 @@ def _history_record(item, index: int, errors: _InvalidRowCounter):
 
 def _watchlist_record(item, index: int, errors: _InvalidRowCounter):
     if not isinstance(item, dict):
-        errors.fail('invalid_item', 'The watchlist item must be an object.', {'kind': 'json_item', 'collection': WATCHLIST_COLLECTION, 'index': index})
+        errors.fail('invalid_item', _('The watchlist item must be an object.'), {'kind': 'json_item', 'collection': WATCHLIST_COLLECTION, 'index': index})
         return None
     tmdb_id = _safe_int(item.get('tmdb_id'))
     if not tmdb_id:
-        errors.fail('missing_tmdb_id', 'The item does not contain a TMDB ID.', {'kind': 'json_item', 'collection': 'watchlist', 'index': index, 'field': 'tmdb_id'})
+        errors.fail('missing_tmdb_id', _('The item does not contain a TMDB ID.'), {'kind': 'json_item', 'collection': 'watchlist', 'index': index, 'field': 'tmdb_id'})
         return None
     return StatusRecord(
         media_type=item.get('media_type', MediaType.MOVIE),
@@ -140,11 +141,11 @@ def _watchlist_record(item, index: int, errors: _InvalidRowCounter):
 
 def _dropped_record(item, index: int, errors: _InvalidRowCounter):
     if not isinstance(item, dict):
-        errors.fail('invalid_item', 'The dropped item must be an object.', {'kind': 'json_item', 'collection': DROPPED_COLLECTION, 'index': index})
+        errors.fail('invalid_item', _('The dropped item must be an object.'), {'kind': 'json_item', 'collection': DROPPED_COLLECTION, 'index': index})
         return None
     tmdb_id = _safe_int(item.get('tmdb_id'))
     if not tmdb_id:
-        errors.fail('missing_tmdb_id', 'The item does not contain a TMDB ID.', {'kind': 'json_item', 'collection': 'dropped', 'index': index, 'field': 'tmdb_id'})
+        errors.fail('missing_tmdb_id', _('The item does not contain a TMDB ID.'), {'kind': 'json_item', 'collection': 'dropped', 'index': index, 'field': 'tmdb_id'})
         return None
     return StatusRecord(
         media_type=item.get('media_type', MediaType.MOVIE),
@@ -165,13 +166,13 @@ def _rating_missing_field(score, tmdb_id, rated_at) -> str:
 
 def _rating_record(item, index: int, errors: _InvalidRowCounter):
     if not isinstance(item, dict):
-        errors.fail('invalid_item', 'The rating item must be an object.', {'kind': 'json_item', 'collection': RATINGS_COLLECTION, 'index': index})
+        errors.fail('invalid_item', _('The rating item must be an object.'), {'kind': 'json_item', 'collection': RATINGS_COLLECTION, 'index': index})
         return None
     score = _safe_int(item.get('score'))
     tmdb_id = _safe_int(item.get('tmdb_id'))
     rated_at = _parse_watched_at(item.get('updated_at')) or _parse_watched_at(item.get('created_at'))
     if not score or not tmdb_id or rated_at is None:
-        errors.fail('invalid_rating', 'The rating item is missing a TMDB ID, valid score, or valid rating date.', {'kind': 'json_item', 'collection': 'ratings', 'index': index, 'field': _rating_missing_field(score, tmdb_id, rated_at)})
+        errors.fail('invalid_rating', _('The rating item is missing a TMDB ID, valid score, or valid rating date.'), {'kind': 'json_item', 'collection': 'ratings', 'index': index, 'field': _rating_missing_field(score, tmdb_id, rated_at)})
         return None
     return RatingRecord(media_type=item.get('media_type', MediaType.MOVIE), tmdb_id=tmdb_id, score=score, rated_at=rated_at)
 
@@ -188,7 +189,7 @@ def _list_records(lists, errors: _InvalidRowCounter) -> list[ListRecord]:
 
 def _list_record(list_data, index: int, seen_list_names, errors: _InvalidRowCounter):
     if not isinstance(list_data, dict):
-        errors.fail('invalid_list', 'The list must be an object.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index})
+        errors.fail('invalid_list', _('The list must be an object.'), {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index})
         return None
     name = _valid_list_name(list_data, index, seen_list_names, errors)
     if name is None:
@@ -205,12 +206,12 @@ def _list_record(list_data, index: int, seen_list_names, errors: _InvalidRowCoun
 def _valid_list_name(list_data, index: int, seen_list_names, errors: _InvalidRowCounter):
     name = list_data.get('name')
     if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
-        errors.fail('invalid_list', 'The list name is missing or longer than 200 characters.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'name'})
+        errors.fail('invalid_list', _('The list name is missing or longer than 200 characters.'), {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'name'})
         return None
     name = name.strip()
     normalized_name = name.casefold()
     if normalized_name in seen_list_names:
-        errors.fail('duplicate_list', 'The import contains a duplicate list name.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'name'})
+        errors.fail('duplicate_list', _('The import contains a duplicate list name.'), {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'name'})
         return None
     seen_list_names.add(normalized_name)
     return name
@@ -220,7 +221,7 @@ def _list_privacy(list_data, index: int, errors: _InvalidRowCounter) -> str:
     privacy = list_data.get('privacy', 'public')
     if privacy in ('public', 'private'):
         return privacy
-    errors.fail('invalid_list_privacy', 'The list privacy must be public or private; public was used.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'privacy'})
+    errors.fail('invalid_list_privacy', _('The list privacy must be public or private; public was used.'), {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'privacy'})
     return 'public'
 
 
@@ -228,7 +229,7 @@ def _list_raw_items(list_data, index: int, errors: _InvalidRowCounter) -> list:
     raw_items = list_data.get('items', [])
     if isinstance(raw_items, list):
         return raw_items
-    errors.fail('invalid_list_items', 'The list items must be an array.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'items'})
+    errors.fail('invalid_list_items', _('The list items must be an array.'), {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'field': 'items'})
     return []
 
 
@@ -250,16 +251,16 @@ def _list_items(raw_items, index: int, errors: _InvalidRowCounter) -> list[ListI
 
 def _list_item_record(list_item, index: int, item_index: int, seen_items, errors: _InvalidRowCounter):
     if not isinstance(list_item, dict):
-        errors.fail('invalid_list_item', 'The list item must be an object.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'item_index': item_index})
+        errors.fail('invalid_list_item', _('The list item must be an object.'), {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'item_index': item_index})
         return None
     media_type = str(list_item.get('media_type') or '')
     tmdb_id = _safe_int(list_item.get('tmdb_id'))
     custom_order = _safe_int(list_item.get('custom_order'))
     if _list_item_invalid(media_type, tmdb_id, custom_order):
-        errors.fail('invalid_list_item', 'The list item is missing a valid media type/TMDB ID or has an invalid order.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'item_index': item_index})
+        errors.fail('invalid_list_item', _('The list item is missing a valid media type/TMDB ID or has an invalid order.'), {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'item_index': item_index})
         return None
     if (media_type, tmdb_id) in seen_items:
-        errors.fail('duplicate_list_item', 'The list contains a duplicate item.', {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'item_index': item_index})
+        errors.fail('duplicate_list_item', _('The list contains a duplicate item.'), {'kind': 'json_item', 'collection': LISTS_COLLECTION, 'index': index, 'item_index': item_index})
         return None
     seen_items.add((media_type, tmdb_id))
     return ListItemRecord(
@@ -307,7 +308,7 @@ def _parse_arxmedia_document(
 ) -> ParsedImport:
     warnings = warnings if warnings is not None else []
     if not isinstance(data, dict):
-        add_import_warning(warnings, 'invalid_document', 'The JSON document must be an object.', {'kind': 'json_document'})
+        add_import_warning(warnings, 'invalid_document', _('The JSON document must be an object.'), {'kind': 'json_document'})
         data = {}
 
     errors = _InvalidRowCounter(warnings)
@@ -364,11 +365,11 @@ def parse_arxmedia_zip(content: bytes) -> ParsedImport:
                 files_failed += 1
                 invalid_count += 1
                 file_report['status'] = 'failed'
-                file_report['error'] = 'Duplicate archive entry.'
+                file_report['error'] = _('Duplicate archive entry.')
                 add_import_warning(
                     warnings,
                     'duplicate_file',
-                    'The archive contains the same collection file more than once.',
+                    _('The archive contains the same collection file more than once.'),
                     {'kind': 'zip_file', 'file': name},
                 )
                 files_report.append(file_report)

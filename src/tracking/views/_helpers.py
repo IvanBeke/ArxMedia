@@ -17,6 +17,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, Greatest, Lower
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from rest_framework.exceptions import ValidationError
 
 from media.tmdb import tmdb
@@ -41,7 +42,7 @@ def _coerce_int(value, field_name: str) -> int:
     try:
         return int(value)
     except (TypeError, ValueError) as exc:
-        raise ValidationError({field_name: f'{field_name} must be an integer.'}) from exc
+        raise ValidationError({field_name: _('%(field)s must be an integer.') % {'field': field_name}}) from exc
 
 
 def _parse_bool_param(value):

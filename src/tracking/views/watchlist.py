@@ -5,6 +5,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -134,7 +135,7 @@ class WatchlistListCreateView(generics.ListCreateAPIView):
             ).exists()
 
         if watched:
-            raise ValidationError('This content has already been watched and cannot be added to watchlist.')
+            raise ValidationError(_('This content has already been watched and cannot be added to watchlist.'))
 
         _ensure_local_metadata(media_type, tmdb_id)
 
@@ -160,11 +161,11 @@ def drop_media(request):
     media_type = request.data.get('media_type')
 
     if not tmdb_id:
-        return Response({'detail': 'tmdb_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('tmdb_id is required.')}, status=status.HTTP_400_BAD_REQUEST)
     if not media_type:
-        return Response({'detail': 'media_type is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('media_type is required.')}, status=status.HTTP_400_BAD_REQUEST)
     if media_type not in (MediaType.MOVIE, MediaType.TV):
-        return Response({'detail': 'media_type must be one of: movie, tv.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': _('media_type must be one of: movie, tv.')}, status=status.HTTP_400_BAD_REQUEST)
 
     tmdb_id = _coerce_int(tmdb_id, 'tmdb_id')
     dropped_at = timezone.now()
