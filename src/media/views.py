@@ -1,5 +1,6 @@
 import logging
 import re
+import unicodedata
 
 from django.conf import settings
 from django.core.cache import cache
@@ -140,6 +141,23 @@ def genres_list(request):
 
     genres = list(Genre.objects.order_by('name').values('tmdb_id', 'name'))
     return Response(genres)
+
+
+def _name_sort_key(name):
+    return unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode().casefold()
+
+
+@transaction.non_atomic_requests
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def watch_regions(request):
+    try:
+        data = tmdb.get_watch_provider_regions(request.user.language)
+    except Exception:
+        logger.exception('TMDB watch provider regions error')
+        return Response({'detail': _('Unable to load regions right now.')}, status=status.HTTP_502_BAD_GATEWAY)
+    regions = [{'code': region['iso_3166_1'], 'name': region['native_name']} for region in data['results']]
+    return Response(sorted(regions, key=lambda region: _name_sort_key(region['name'])))
 
 
 def _dedupe_media_results(results):

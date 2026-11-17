@@ -40,7 +40,7 @@
           <div>
             <label class="block text-xs text-gray-400 mb-1">{{ t('settings_provider_region') }}</label>
             <select v-model="form.preferred_region" class="input rounded-md">
-              <option v-for="region in providerRegions" :key="region" :value="region">{{ region }}</option>
+              <option v-for="region in watchRegions" :key="region.code" :value="region.code">{{ region.name }}</option>
             </select>
           </div>
         </div>
@@ -138,7 +138,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { authAPI } from '@/api'
+import { authAPI, mediaAPI } from '@/api'
 import AvatarUpload from '@/components/AvatarUpload.vue'
 import LoadError from '@/components/LoadError.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -148,7 +148,7 @@ import { useFlashMessages } from '@/composables/useFlashMessages'
 import { usePwa } from '@/composables/usePwa'
 import { ACCOUNT_VISIBILITY } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'
-import type { ApiError, ProfileUpdatePayload, User } from '@/types/api'
+import type { ApiError, ProfileUpdatePayload, User, WatchRegion } from '@/types/api'
 import { usePageTitle } from '@/composables/usePageTitle'
 
 type ProfileForm = Required<Pick<ProfileUpdatePayload, 'username' | 'email' | 'bio' | 'location' | 'preferred_region' | 'account_visibility'>>
@@ -177,12 +177,6 @@ const form = ref<ProfileForm>({
   account_visibility: ACCOUNT_VISIBILITY.PUBLIC,
 })
 
-const providerRegions = [
-  'AR', 'AT', 'AU', 'BE', 'BR', 'CA', 'CH', 'CL', 'CO', 'CZ', 'DE', 'DK',
-  'ES', 'FI', 'FR', 'GB', 'GR', 'HU', 'IE', 'IN', 'IT', 'JP', 'KR', 'MX',
-  'NL', 'NO', 'NZ', 'PL', 'PT', 'RO', 'SE', 'TR', 'US', 'ZA'
-]
-
 const VISIBILITY_VALUE_KEYS = {
   [ACCOUNT_VISIBILITY.PUBLIC]: 'settings_visibility_value_public',
   [ACCOUNT_VISIBILITY.PRIVATE]: 'settings_visibility_value_private',
@@ -195,11 +189,21 @@ const passwordForm = ref({
   confirmPassword: ''
 })
 
+const watchRegions = ref<WatchRegion[]>([])
+
+async function loadWatchRegions() {
+  try {
+    watchRegions.value = await mediaAPI.watchRegions()
+  } catch {
+    watchRegions.value = []
+  }
+}
+
 async function loadProfile() {
   loading.value = true
   loadError.value = ''
   try {
-    const data = await authAPI.me()
+    const [data] = await Promise.all([authAPI.me(), loadWatchRegions()])
     if (data) {
       user.value = data
       form.value = {

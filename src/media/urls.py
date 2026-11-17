@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path('genres/', views.genres_list, name='genres_list'),
+    path('watch-regions/', views.watch_regions, name='watch_regions'),
     path('search/', views.search, name='search'),
     path('trending/', views.trending, name='trending'),
     path('popular/', views.popular, name='popular'),

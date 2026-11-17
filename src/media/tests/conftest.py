@@ -44,7 +44,16 @@ _SEASON_1 = {
     ],
 }
 
+_WATCH_REGIONS = {
+    'results': [
+        {'iso_3166_1': 'US', 'english_name': 'United States of America', 'native_name': 'United States'},
+        {'iso_3166_1': 'ES', 'english_name': 'Spain', 'native_name': 'Spain'},
+        {'iso_3166_1': 'AR', 'english_name': 'Argentina', 'native_name': 'Argentina'},
+    ],
+}
+
 _MOCK_ENDPOINTS = {
+    '/watch/providers/regions': _WATCH_REGIONS,
     '/movie/550': _MOVIE_550,
     '/movie/550/watch/providers': {'results': {}},
     '/tv/1399': _TV_1399,

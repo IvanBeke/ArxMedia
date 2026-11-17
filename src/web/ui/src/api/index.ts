@@ -49,6 +49,7 @@ import type {
   UserProfile,
   WatchEntry,
   WatchedEpisode,
+  WatchRegion,
 } from '@/types/api'
 
 export interface DashboardStats {
@@ -149,6 +150,7 @@ export const mediaAPI = {
   search: (q: string, type: 'movie' | 'tv' | 'multi' = 'multi', page = 1) => api.get<MediaSearchResponse>('/media/search/', { params: { q, type, page } }),
   searchPeople: (q: string, page = 1) => api.get<PersonSearchResponse>('/media/people/search/', { params: { q, page } }),
   genres: () => api.get<Genre[]>('/media/genres/'),
+  watchRegions: () => api.get<WatchRegion[]>('/media/watch-regions/'),
   trending: (type: 'all' | MediaType = 'all', window: 'day' | 'week' = 'week') =>
     api.get<MediaSearchResponse>('/media/trending/', { params: { type, window } }),
   popular: (type: MediaType = MEDIA_TYPE.MOVIE, page = 1) => api.get<MediaSearchResponse>('/media/popular/', { params: { type, page } }),

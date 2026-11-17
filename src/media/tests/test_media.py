@@ -2635,3 +2635,48 @@ class RemovedEpisodeCleanupTests:
         assert result['deleted'] == 0
         assert self.season.episodes.count() == 2
         mock_refresh.assert_called_once_with(950)
+
+
+class WatchRegionsTests:
+    def test_returns_the_regions_with_their_names_sorted_by_name(self, auth_client):
+        response = auth_client.get('/api/media/watch-regions/')
+
+        assert response.status_code == 200
+        assert response.data == [
+            {'code': 'AR', 'name': 'Argentina'},
+            {'code': 'ES', 'name': 'Spain'},
+            {'code': 'US', 'name': 'United States'},
+        ]
+
+    def test_sorting_ignores_accents_and_case(self, auth_client, mocker):
+        mocker.patch('media.tmdb.TMDBService._get', return_value={'results': [
+            {'iso_3166_1': 'CU', 'native_name': 'Cuba'},
+            {'iso_3166_1': 'CI', 'native_name': 'Côte d’Ivoire'},
+            {'iso_3166_1': 'CR', 'native_name': 'Costa Rica'},
+            {'iso_3166_1': 'AE', 'native_name': 'émirats'},
+            {'iso_3166_1': 'ZA', 'native_name': 'Zambia'},
+        ]})
+
+        response = auth_client.get('/api/media/watch-regions/')
+
+        assert [region['code'] for region in response.data] == ['CR', 'CI', 'CU', 'AE', 'ZA']
+
+    def test_requires_authentication(self, api_client):
+        assert api_client.get('/api/media/watch-regions/').status_code == 401
+
+    def test_asks_tmdb_for_the_names_in_the_users_language(self, user, auth_client, mocker):
+        get = mocker.patch('media.tmdb.TMDBService._get', return_value={'results': []})
+        user.language = 'es'
+        user.save(update_fields=['language'])
+
+        auth_client.get('/api/media/watch-regions/')
+
+        get.assert_called_once_with('/watch/providers/regions', {'language': 'es'})
+
+    def test_answers_502_when_tmdb_fails(self, auth_client, mocker):
+        mocker.patch('media.tmdb.TMDBService._get', side_effect=requests.ConnectionError('down'))
+
+        response = auth_client.get('/api/media/watch-regions/')
+
+        assert response.status_code == 502
+        assert response.data['detail'] == 'Unable to load regions right now.'

@@ -219,6 +219,10 @@ class TMDBService:
             use_cache=use_cache,
         )
 
+    def get_watch_provider_regions(self, language):
+        """Countries TMDB has watch provider data for; ``native_name`` is in ``language``."""
+        return self._get('/watch/providers/regions', {'language': language})
+
     def get_trending(self, media_type='all', time_window='week'):
         return self._get(f'/trending/{media_type}/{time_window}')
 

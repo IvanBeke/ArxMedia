@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: ArxMedia\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-13 18:24+0100\n"
+"POT-Creation-Date: 2026-11-17 21:00+0100\n"
 "PO-Revision-Date: 2026-11-13 18:30+0100\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -12,8 +12,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=n == 1 ? 0 : n != 0 && n % 1000000 == 0 ? "
-"1 : 2;\n"
+"Plural-Forms: nplurals=3; plural=n == 1 ? 0 : n != 0 && n % 1000000 == 0 ? 1 : 2;\n"
 
 #, python-format
 msgid "Image must be %(size)s MB or smaller."
@@ -114,6 +113,9 @@ msgstr "La serie ya está en Sonarr."
 #, python-format
 msgid "%(key)s must be an integer."
 msgstr "%(key)s debe ser un número entero."
+
+msgid "Unable to load regions right now."
+msgstr "No se pueden cargar las regiones ahora mismo."
 
 msgid "Resource not found."
 msgstr "Recurso no encontrado."
