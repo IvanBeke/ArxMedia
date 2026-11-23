@@ -234,6 +234,12 @@
           </div>
 
           <div v-else-if="show?.seasons?.length" class="space-y-2">
+            <div v-if="toggleableSeasons.length > 1" class="flex justify-end">
+              <button type="button" class="btn-ghost text-xs inline-flex items-center gap-1 bg-surface-100 hover:bg-surface-200" @click="toggleAllSeasons">
+                <ChevronDown class="w-4 h-4 transition-transform" :class="allSeasonsExpanded ? 'rotate-180' : ''" aria-hidden="true" />
+                {{ allSeasonsExpanded ? t('show_collapse_all_seasons') : t('show_expand_all_seasons') }}
+              </button>
+            </div>
             <div v-for="season in show.seasons" :key="season.season_number" class="card overflow-visible">
               <div class="w-full flex items-center gap-4 p-4">
                 <div class="w-12 h-16 rounded-md bg-surface-200 overflow-hidden flex-shrink-0 cursor-pointer" @click="toggleSeason(season.season_number)">
@@ -252,10 +258,8 @@
                       <button @click.stop="toggleSeasonWatched(season.season_number)" class="text-xs px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap" :class="getSeasonProgress(season.season_number) === 100 ? 'bg-brand-500 text-white hover:bg-brand-600' : 'bg-surface-200 text-muted hover:text-primary hover:bg-surface-300'">
                         {{ getSeasonProgress(season.season_number) === 100 ? t('show_season_watched') : t('show_season_mark_watched') }}
                       </button>
-                      <button @click="toggleSeason(season.season_number)" class="p-1 hover:bg-surface-200 rounded transition-colors" :aria-label="t('show_expand_season', { name: season.name })">
-                        <svg class="w-5 h-5 text-muted transition-transform" :class="expandedSeason === season.season_number ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                        </svg>
+                      <button @click="toggleSeason(season.season_number)" class="p-1 hover:bg-surface-200 rounded transition-colors" :aria-expanded="expandedSeasons.has(season.season_number)" :aria-label="t('show_expand_season', { name: season.name })">
+                        <ChevronDown class="w-5 h-5 text-muted transition-transform" :class="expandedSeasons.has(season.season_number) ? 'rotate-180' : ''" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -268,8 +272,8 @@
                 </div>
               </div>
 
-              <div v-if="expandedSeason === season.season_number" class="border-t border-surface-200">
-                <div v-if="seasonLoading === season.season_number" class="p-4 space-y-3">
+              <div v-if="expandedSeasons.has(season.season_number)" class="border-t border-surface-200">
+                <div v-if="loadingSeasonNumbers.has(season.season_number)" class="p-4 space-y-3">
                   <div v-for="n in 3" :key="n" class="h-20 skeleton rounded-md"></div>
                 </div>
 
@@ -326,6 +330,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
+import { ChevronDown } from '@lucide/vue'
 import { mediaAPI, trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import StarRating from '@/components/StarRating.vue'
@@ -436,9 +441,13 @@ const { activeTab, visibleTabs } = useDetailTabs(['overview', 'seasons', 'cast',
   return tabs
 })
 
-const expandedSeason = ref<number | null>(null)
+const expandedSeasons = ref<Set<number>>(new Set())
 const seasonEpisodes = ref<Record<number, Episode[]>>({})
-const seasonLoading = ref<number | null>(null)
+const loadingSeasonNumbers = ref<Set<number>>(new Set())
+const toggleableSeasons = computed(() => (show.value?.seasons ?? []).filter((season) => season.season_number !== 0))
+const allSeasonsExpanded = computed(() =>
+  toggleableSeasons.value.every((season) => expandedSeasons.value.has(season.season_number)),
+)
 const hasWatchedEpisodes = computed(() => watchedEps.value.size > 0)
 const {
   handleQuickAction: runQuickAction,
@@ -534,26 +543,40 @@ async function onEpisodeUnwatched(target: { seasonNumber: string | number; episo
   await refreshProgress()
 }
 
+function expandSeason(sn: number) {
+  expandedSeasons.value.add(sn)
+  loadSeason(sn)
+}
+
 function toggleSeason(sn: number) {
-  if (expandedSeason.value === sn) {
-    expandedSeason.value = null
-  } else {
-    expandedSeason.value = sn
-    loadSeason(sn)
+  if (expandedSeasons.value.has(sn)) expandedSeasons.value.delete(sn)
+  else expandSeason(sn)
+}
+
+function toggleAllSeasons() {
+  const collapsing = allSeasonsExpanded.value
+  for (const { season_number: sn } of toggleableSeasons.value) {
+    if (collapsing) expandedSeasons.value.delete(sn)
+    else expandSeason(sn)
   }
 }
 
 async function loadSeason(sn: number) {
-  if (seasonEpisodes.value[sn]) return
-  seasonLoading.value = sn
+  if (seasonEpisodes.value[sn] || loadingSeasonNumbers.value.has(sn)) return
+  loadingSeasonNumbers.value.add(sn)
   try {
     const data = await mediaAPI.getSeason(tmdbId.value, sn)
     if (data) seasonEpisodes.value[sn] = data.episodes || []
   } catch {
-    seasonEpisodes.value[sn] = []
+    // Leave the season uncached so expanding it again retries.
   } finally {
-    seasonLoading.value = null
+    loadingSeasonNumbers.value.delete(sn)
   }
+}
+
+function reloadSeasonEpisodes() {
+  seasonEpisodes.value = {}
+  for (const sn of expandedSeasons.value) loadSeason(sn)
 }
 
 function getSeasonProgress(sn: number) {
@@ -663,7 +686,7 @@ async function handleShowWatchOption(option: WatchedAtOption) {
       watched_at: resolution.watchedAt ?? undefined,
     })
     applyWatchedEpisodes(response)
-    seasonEpisodes.value = {}
+    reloadSeasonEpisodes()
     await setShowStatus(WATCH_ENTRY_STATUS.WATCHING)
     await refreshProgress()
     showSuccess(t('show_marked'))
@@ -690,7 +713,7 @@ async function confirmRemoveWatchedEpisodes() {
     }
 
     watchedEps.value = new Set()
-    seasonEpisodes.value = {}
+    reloadSeasonEpisodes()
     await loadShow()
     removeHistoryDialog.value?.close()
     showSuccess(t('show_removed_episodes'))
@@ -756,7 +779,7 @@ async function refreshMetadata() {
   try {
     await mediaAPI.refreshTV(tmdbId.value)
     await loadShow()
-    seasonEpisodes.value = {}
+    reloadSeasonEpisodes()
     showMetadataSuccess(t('metadata_updated_show'))
   } catch (error) {
     showMetadataError(getApiErrorMessage(error, t('movie_refresh_failed')))

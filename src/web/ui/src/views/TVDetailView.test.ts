@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { trackingAPI } from '@/api'
@@ -13,10 +13,12 @@ import { useAuthStore } from '@/stores/auth'
 import SonarrAction from '@/components/SonarrAction.vue'
 import type { User } from '@/types/api'
 
-const { getTV, getTVCredits, getTVRecommendations, getRatings, getWatchedEpisodes, getHistory, getSonarrSeries, getSonarrOptions, getJellyfinLinks } = vi.hoisted(() => ({
+const { getTV, refreshTV, getTVCredits, getTVRecommendations, getSeason, getRatings, getWatchedEpisodes, getHistory, getSonarrSeries, getSonarrOptions, getJellyfinLinks } = vi.hoisted(() => ({
   getTV: vi.fn(),
+  refreshTV: vi.fn(),
   getTVCredits: vi.fn(),
   getTVRecommendations: vi.fn(),
+  getSeason: vi.fn(),
   getRatings: vi.fn(),
   getWatchedEpisodes: vi.fn(),
   getHistory: vi.fn(),
@@ -30,8 +32,10 @@ vi.mock('@/api', () => {
     integrationsAPI: { getSonarrSeries, getSonarrOptions, addSonarrSeries: vi.fn(), removeSonarrSeries: vi.fn(), getJellyfinLinks },
     mediaAPI: {
       getTV,
+      refreshTV,
       getTVCredits,
       getTVRecommendations,
+      getSeason,
     },
     trackingAPI: {
       getRatings,
@@ -142,6 +146,26 @@ async function mountView(authenticated: boolean, { sonarr = false, jellyfin = fa
   return wrapper
 }
 
+function findButton(wrapper: VueWrapper, label: string) {
+  return wrapper.findAll('button').find((button) => button.text() === label)
+}
+
+function multiSeasonPayload() {
+  const payload = showPayload()
+  payload.seasons = [
+    { ...payload.seasons[0]!, season_number: 1, name: 'Season 1' },
+    { ...payload.seasons[0]!, season_number: 2, name: 'Season 2' },
+  ]
+  return payload
+}
+
+async function openSeasonsTab() {
+  const wrapper = await mountView(true)
+  await wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Seasons'))?.trigger('click')
+  await flushPromises()
+  return wrapper
+}
+
 describe('TVDetailView hero progress', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -149,6 +173,8 @@ describe('TVDetailView hero progress', () => {
     getTVCredits.mockResolvedValue({ cast: [], crew: [] })
     getTVRecommendations.mockResolvedValue({ results: [] })
     getRatings.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+    getWatchedEpisodes.mockResolvedValue(watchedPayload([]))
+    getSeason.mockReset()
   })
 
   it('shows the watched fraction and progress bar for authenticated users', async () => {
@@ -368,6 +394,144 @@ describe('TVDetailView hero progress', () => {
     expect(text).toContain('3/3 watched')
     expect(text).toContain('1/4 watched')
     expect(text).toContain('1/2 watched')
+  })
+
+  it('expands and collapses every season from a single toggle', async () => {
+    getTV.mockResolvedValue(multiSeasonPayload())
+    getSeason.mockResolvedValue({ episodes: [{ episode_number: 1 }] })
+
+    const wrapper = await openSeasonsTab()
+    const toggleAll = findButton(wrapper, 'Expand all')
+    expect(toggleAll).toBeTruthy()
+
+    await toggleAll!.trigger('click')
+    await flushPromises()
+
+    expect(getSeason).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('season-episode-list-stub')).toHaveLength(2)
+
+    const collapseAll = findButton(wrapper, 'Collapse all')
+    expect(collapseAll).toBeTruthy()
+    await collapseAll!.trigger('click')
+
+    expect(wrapper.findAll('season-episode-list-stub')).toHaveLength(0)
+    expect(findButton(wrapper, 'Expand all')).toBeDefined()
+  })
+
+  it('keeps several seasons open when expanded one by one', async () => {
+    getTV.mockResolvedValue(multiSeasonPayload())
+    getSeason.mockResolvedValue({ episodes: [{ episode_number: 1 }] })
+
+    const wrapper = await openSeasonsTab()
+    await wrapper.find('button[aria-label="Expand Season 1"]').trigger('click')
+    await wrapper.find('button[aria-label="Expand Season 2"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('season-episode-list-stub')).toHaveLength(2)
+    expect(findButton(wrapper, 'Collapse all')).toBeDefined()
+  })
+
+  it('does not reload seasons that are already loaded when expanding all', async () => {
+    getTV.mockResolvedValue(multiSeasonPayload())
+    getSeason.mockResolvedValue({ episodes: [{ episode_number: 1 }] })
+
+    const wrapper = await openSeasonsTab()
+    await wrapper.find('button[aria-label="Expand Season 1"]').trigger('click')
+    await flushPromises()
+    await findButton(wrapper, 'Expand all')!.trigger('click')
+    await flushPromises()
+
+    expect(getSeason).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the empty state only for a season that fails to load when expanding all', async () => {
+    getTV.mockResolvedValue(multiSeasonPayload())
+    getSeason.mockImplementation((_id: number, seasonNumber: number) =>
+      seasonNumber === 1 ? Promise.reject(new Error('boom')) : Promise.resolve({ episodes: [{ episode_number: 1 }] }),
+    )
+
+    const wrapper = await openSeasonsTab()
+    await findButton(wrapper, 'Expand all')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('season-episode-list-stub')).toHaveLength(1)
+    expect(wrapper.text()).toContain('No episodes available for this season.')
+  })
+
+  it('retries a season that failed to load when it is expanded again', async () => {
+    getTV.mockResolvedValue(multiSeasonPayload())
+    getSeason.mockRejectedValueOnce(new Error('boom')).mockResolvedValue({ episodes: [{ episode_number: 1 }] })
+
+    const wrapper = await openSeasonsTab()
+    const chevron = () => wrapper.find('button[aria-label="Expand Season 1"]')
+    await chevron().trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('season-episode-list-stub')).toHaveLength(0)
+
+    await chevron().trigger('click')
+    await chevron().trigger('click')
+    await flushPromises()
+
+    expect(getSeason).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('season-episode-list-stub')).toHaveLength(1)
+  })
+
+  it('reloads the open seasons after the metadata is refreshed', async () => {
+    getTV.mockResolvedValue(multiSeasonPayload())
+    getSeason.mockResolvedValue({ episodes: [{ episode_number: 1 }] })
+    refreshTV.mockResolvedValue({})
+
+    const wrapper = await openSeasonsTab()
+    await findButton(wrapper, 'Expand all')!.trigger('click')
+    await flushPromises()
+    expect(getSeason).toHaveBeenCalledTimes(2)
+
+    await wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Overview'))?.trigger('click')
+    await flushPromises()
+    await findButton(wrapper, 'Update metadata from TMDB and TVMaze')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Seasons'))?.trigger('click')
+    await flushPromises()
+
+    expect(getSeason).toHaveBeenCalledTimes(4)
+    expect(wrapper.findAll('season-episode-list-stub')).toHaveLength(2)
+  })
+
+  it('leaves the specials season out of the expand all toggle', async () => {
+    const payload = multiSeasonPayload()
+    payload.seasons.unshift({ ...payload.seasons[0]!, season_number: 0, name: 'Specials' })
+    getTV.mockResolvedValue(payload)
+    getSeason.mockResolvedValue({ episodes: [{ episode_number: 1 }] })
+
+    const wrapper = await openSeasonsTab()
+    await findButton(wrapper, 'Expand all')!.trigger('click')
+    await flushPromises()
+
+    expect(getSeason.mock.calls.map(([, seasonNumber]) => seasonNumber).sort()).toEqual([1, 2])
+    expect(wrapper.findAll('season-episode-list-stub')).toHaveLength(2)
+    expect(findButton(wrapper, 'Collapse all')).toBeDefined()
+
+    await wrapper.find('button[aria-label="Expand Specials"]').trigger('click')
+    await flushPromises()
+    await findButton(wrapper, 'Collapse all')!.trigger('click')
+
+    expect(wrapper.findAll('season-episode-list-stub')).toHaveLength(1)
+  })
+
+  it.each([
+    ['a single season', () => showPayload()],
+    ['a single season besides the specials', () => {
+      const payload = showPayload()
+      payload.seasons.unshift({ ...payload.seasons[0]!, season_number: 0, name: 'Specials' })
+      return payload
+    }],
+  ])('hides the expand all toggle with %s', async (_label, buildPayload) => {
+    getTV.mockResolvedValue(buildPayload())
+
+    const wrapper = await openSeasonsTab()
+
+    expect(findButton(wrapper, 'Expand all')).toBeUndefined()
+    expect(findButton(wrapper, 'Collapse all')).toBeUndefined()
   })
 
   it('shows original title and stored language name when they differ', async () => {
