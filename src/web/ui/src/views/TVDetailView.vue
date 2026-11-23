@@ -222,7 +222,7 @@
           <div class="mt-8">
             <h3 class="text-primary font-medium mb-3">{{ t('show_top_cast') }}</h3>
             <CastGrid :people="(aggregateCredits?.cast || []).slice(0, 8)" />
-            <button v-if="(aggregateCredits?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
+            <button v-if="(aggregateCredits?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="activeTab = 'cast'">
               {{ t('show_view_all_cast') }}
             </button>
           </div>
@@ -324,8 +324,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
-import { useRoute, useRouter, RouterLink } from 'vue-router'
+import { ref, onMounted, computed } from 'vue'
+import { useRoute, RouterLink } from 'vue-router'
 import { mediaAPI, trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import StarRating from '@/components/StarRating.vue'
@@ -375,7 +375,6 @@ type ShowStatus = WatchEntryStatus | 'watchlist'
 type EpisodeTarget = { episodeNumber: number }
 
 const route = useRoute()
-const router = useRouter()
 const auth = useAuthStore()
 const { t } = useI18n()
 const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10))
@@ -423,7 +422,7 @@ const removeHistoryDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 const removingHistory = ref(false)
 const unwatchEpisodeDialog = ref<InstanceType<typeof EpisodeUnwatchDialog> | null>(null)
 
-const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'seasons', 'cast', 'history', 'heatmap', 'more'] as const, () => {
+const { activeTab, visibleTabs } = useDetailTabs(['overview', 'seasons', 'cast', 'history', 'heatmap', 'more'] as const, () => {
   const tabs: MediaTab[] = [
     { id: 'overview', label: t('tabs_overview') },
     { id: 'seasons', label: t('tabs_seasons') },

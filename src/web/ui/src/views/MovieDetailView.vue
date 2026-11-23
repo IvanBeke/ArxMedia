@@ -201,7 +201,7 @@
           <div class="mt-8">
             <h3 class="text-primary font-medium mb-3">{{ t('movie_top_cast') }}</h3>
             <CastGrid :people="(creditsData?.cast || []).slice(0, 8)" />
-            <button v-if="(creditsData?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
+            <button v-if="(creditsData?.cast || []).length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="activeTab = 'cast'">
               {{ t('movie_view_all_cast') }}
             </button>
           </div>
@@ -237,8 +237,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { mediaAPI, trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import StarRating from '@/components/StarRating.vue'
@@ -280,7 +280,6 @@ import type { CollectionDetail, AggregateCredits, MediaResult, Movie, PaginatedR
 import type { WatchedAtOption } from '@/utils/watchOptions'
 
 const route = useRoute()
-const router = useRouter()
 const movieId = computed(() => String(route.params.id ?? ''))
 const historyFilter = computed(() => ({
   media_type: WATCH_ENTRY_MEDIA_TYPE.MOVIE,
@@ -368,7 +367,7 @@ const topCrew = computed(() => {
     .slice(0, 6)
 })
 
-const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'cast', 'collection', 'history', 'more'] as const, () => {
+const { activeTab, visibleTabs } = useDetailTabs(['overview', 'cast', 'collection', 'history', 'more'] as const, () => {
   const tabs: MediaTab[] = [
     { id: 'overview', label: t('tabs_overview') },
     { id: 'cast', label: t('tabs_cast'), count: creditsData.value?.cast?.length },

@@ -106,7 +106,7 @@
             <div class="mt-8">
               <h3 class="text-primary font-medium mb-3">{{ t('season_top_cast') }}</h3>
               <CastGrid :people="displayCast.slice(0, 8)" />
-              <button v-if="displayCast.length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="setTab('cast')">
+              <button v-if="displayCast.length > 8" type="button" class="mt-3 text-sm text-brand-400 hover:text-brand-300" @click="activeTab = 'cast'">
                 {{ t('season_view_all_cast') }}
               </button>
             </div>
@@ -146,8 +146,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter, RouterLink } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, RouterLink } from 'vue-router'
 import { mediaAPI, trackingAPI } from '@/api'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import { useAuthStore } from '@/stores/auth'
@@ -182,7 +182,6 @@ type EpisodeTarget = { episodeNumber: number }
 
 const route = useRoute()
 const { t } = useI18n()
-const router = useRouter()
 const tmdbId = computed(() => Number.parseInt(String(route.params.id), 10))
 const seasonNumber = computed(() => Number.parseInt(String(route.params.seasonNumber), 10))
 const historyFilter = computed(() => ({
@@ -269,7 +268,7 @@ const seasonProgress = computed(() => computeProgressPercent(watchedEpisodesCoun
 
 const totalEpisodesCount = computed(() => season.value?.episodes?.length || 0)
 
-const { activeTab, visibleTabs, setTab } = useDetailTabs(['overview', 'episodes', 'cast', 'history'] as const, () => [
+const { activeTab, visibleTabs } = useDetailTabs(['overview', 'episodes', 'cast', 'history'] as const, () => [
   { id: 'overview', label: t('tabs_overview') },
   { id: 'episodes', label: t('tabs_episodes'), count: totalEpisodesCount.value || undefined },
   { id: 'cast', label: t('tabs_cast'), count: displayCast.value.length || undefined },

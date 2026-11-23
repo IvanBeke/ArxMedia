@@ -316,6 +316,7 @@ describe('TVDetailView hero progress', () => {
 
     const wrapper = await mountView(true)
     await wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Seasons'))?.trigger('click')
+    await flushPromises()
 
     expect(wrapper.findAll('button').some((button) => button.text().includes('Mark watched'))).toBe(false)
     expect(wrapper.findAll('button').some((button) => button.text() === 'Watched')).toBe(true)
@@ -328,6 +329,7 @@ describe('TVDetailView hero progress', () => {
 
     const wrapper = await mountView(true)
     await wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Seasons'))?.trigger('click')
+    await flushPromises()
     expect(wrapper.text()).toContain('0/3 watched')
     await wrapper.findAll('button').find((button) => button.text() === 'Mark watched')?.trigger('click')
     await flushPromises()
@@ -343,6 +345,7 @@ describe('TVDetailView hero progress', () => {
     const seasonsTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Seasons'))
     expect(seasonsTab).toBeTruthy()
     await seasonsTab?.trigger('click')
+    await flushPromises()
 
     expect(wrapper.text()).toContain('8.1')
   })
@@ -359,6 +362,7 @@ describe('TVDetailView hero progress', () => {
 
     const wrapper = await mountView(true)
     await wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('Seasons'))?.trigger('click')
+    await flushPromises()
 
     const text = wrapper.text()
     expect(text).toContain('3/3 watched')
