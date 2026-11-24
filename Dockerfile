@@ -27,7 +27,8 @@ RUN uv export --format requirements.txt --no-dev --frozen -o /tmp/requirements.t
 FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    UV_PROJECT_ENVIRONMENT=/usr/local
 
 WORKDIR /app
 

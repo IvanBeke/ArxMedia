@@ -52,6 +52,8 @@ docker compose exec app uv run ruff check . --fix
 docker compose exec app uv run mypy .
 ```
 
+The image sets `UV_PROJECT_ENVIRONMENT=/usr/local`, so `uv run` installs the dev extras into the container's system Python instead of creating a `.venv` in the bind-mounted `src/`. They persist until the container is recreated. Don't run plain `uv sync` (it is exact and prunes system packages); use `uv sync --inexact` if a sync is needed.
+
 ### 6. UI checks (run the build only if UI files were touched)
 
 ```bash
