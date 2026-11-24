@@ -10,13 +10,9 @@
       :title="iconOnly ? t('list_popover_add_to_list') : undefined"
       :aria-label="iconOnly ? t('list_popover_add_to_list') : undefined"
     >
-      <svg v-if="iconOnly" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-      </svg>
+      <Plus v-if="iconOnly" class="w-4 h-4" aria-hidden="true" />
       <template v-else>
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
+        <Plus class="w-4 h-4" aria-hidden="true" />
         <span>{{ loading ? '...' : t('list_popover_add_to_list') }}</span>
       </template>
     </button>
@@ -81,7 +77,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { onClickOutside } from '@vueuse/core'
-import { Check, Lock, LockOpen } from '@lucide/vue'
+import { Check, Lock, LockOpen, Plus } from '@lucide/vue'
 import { trackingAPI } from '@/api'
 import { LIST_PRIVACY, MEDIA_TYPE } from '@/constants/tracking'
 import { getApiErrorMessage } from '@/utils/errors'

@@ -27,9 +27,7 @@
                 <details ref="menuRef" class="control-menu">
                   <summary class="row-pill-trigger" :title="t('media_row_manage')" :aria-label="t('progress_row_manage_aria')">
                     <span>{{ t('media_row_manage') }}</span>
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                    </svg>
+                    <ChevronDown class="w-3.5 h-3.5" aria-hidden="true" />
                   </summary>
                   <div class="control-panel right-0 w-52 p-1.5 menu-panel">
                     <button type="button" class="control-option" :disabled="busy" @click="openRateDialog">
@@ -128,9 +126,7 @@
     <div class="mt-3 pt-3 border-t border-surface-200">
       <RouterLink :to="`/tv/${item.tmdb_id}`" class="inline-flex items-center gap-1 text-sm text-secondary hover:text-primary transition-colors">
         <span>{{ seasonsLabel(item) }}</span>
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-        </svg>
+        <ChevronRight class="w-4 h-4" aria-hidden="true" />
       </RouterLink>
     </div>
 
@@ -149,9 +145,7 @@
             <p class="text-xs text-muted mt-1">{{ item.show_name || t('media_row_select_score') }}</p>
           </div>
           <button type="button" class="text-muted hover:text-primary" @click="closeRateDialog">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
+            <X class="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -185,6 +179,7 @@ import { formatHoursMinutes } from '@/utils/progress'
 import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
 import type { ShowProgressItem } from '@/types/api'
 import type { WatchEntryStatus } from '@/types/tracking'
+import { ChevronDown, ChevronRight, X } from '@lucide/vue'
 
 const props = defineProps<{ item: ShowProgressItem }>()
 

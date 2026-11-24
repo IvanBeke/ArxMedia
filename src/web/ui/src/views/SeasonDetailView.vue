@@ -14,9 +14,7 @@
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
       <router-link :to="{ name: 'tv-detail', params: { id: route.params.id }, query: { tab: 'seasons' } }" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-        </svg>
+        <ChevronLeft class="w-4 h-4" />
         {{ t('season_back_to', { name: showName }) }}
       </router-link>
     </div>
@@ -177,6 +175,7 @@ import { temporalYear } from '@/utils/temporal'
 import { resolveWatchedAtFromOption } from '@/utils/watchOptions'
 import type { AggregateCredits, Season } from '@/types/api'
 import type { WatchedAtOption } from '@/utils/watchOptions'
+import { ChevronLeft } from '@lucide/vue'
 
 type EpisodeTarget = { episodeNumber: number }
 

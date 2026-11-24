@@ -2,9 +2,7 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="mb-6">
       <RouterLink :to="`/profile/${route.params.username}`" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-3">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-        </svg>
+        <ChevronLeft class="w-4 h-4" aria-hidden="true" />
         {{ t('profile_back_to_profile') }}
       </RouterLink>
       <div class="flex flex-wrap items-end justify-between gap-3">
@@ -56,6 +54,7 @@ import { useI18n } from '@/i18n'
 import { usePageTitle } from '@/composables/usePageTitle'
 import { invalidPageRecovery, normalizePagedResponse } from '@/utils/pagination'
 import type { ApiError, UserCard } from '@/types/api'
+import { ChevronLeft } from '@lucide/vue'
 
 const route = useRoute()
 const { t } = useI18n()

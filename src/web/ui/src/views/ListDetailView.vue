@@ -36,9 +36,7 @@
 
           <div v-if="canEdit" class="flex gap-2 flex-wrap">
             <button @click="openAddModal" class="btn-ghost text-sm inline-flex items-center whitespace-nowrap border-brand-500/40 text-brand-300 hover:bg-brand-500/10">
-              <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-              </svg>
+              <Plus class="w-4 h-4 mr-2 flex-shrink-0" />
               {{ t('list_add_item') }}
             </button>
             <button @click="openEditModal" class="btn-ghost text-sm">{{ t('common_edit') }}</button>
@@ -88,9 +86,7 @@
           :disabled="!canReorder"
           @click="enterReorderMode"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
-          </svg>
+          <ArrowUpDown class="w-4 h-4" aria-hidden="true" />
           {{ t('list_reorder') }}
         </button>
         <template v-else>
@@ -151,9 +147,7 @@
                 data-reorder-handle
                 @keydown="onReorderHandleKeydown($event, item.id)"
              >
-               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
-               </svg>
+               <Equal class="w-5 h-5" aria-hidden="true" />
                #{{ index + 1 }}
              </div>
              <button
@@ -194,9 +188,7 @@
             :list-context-id="listId()"
          />
          <div class="drag-preview-handle inline-flex items-center justify-center gap-2 rounded-full bg-surface-900/85 backdrop-blur border border-white/30 px-6 py-3 text-base font-bold text-white shadow-2xl">
-           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
-           </svg>
+           <Equal class="w-5 h-5" aria-hidden="true" />
            #{{ (drag.targetIndex ?? 0) + 1 }}
          </div>
        </div>
@@ -239,9 +231,7 @@
               <p class="text-sm text-muted mt-1">{{ t('list_edit_hint') }}</p>
             </div>
             <button type="button" @click="closeEditModal" class="text-gray-500 hover:text-primary">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-              </svg>
+              <X class="w-5 h-5" aria-hidden="true" />
             </button>
           </div>
 
@@ -434,6 +424,7 @@ import { attachClosestEdge, extractClosestEdge } from '@atlaskit/pragmatic-drag-
 import { reorder } from '@atlaskit/pragmatic-drag-and-drop/reorder'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { CustomList, ListItem, MediaResult, UserCard } from '@/types/api'
+import { ArrowUpDown, Equal, Plus, X } from '@lucide/vue'
 
 type ListFilters = {
   search: string; sort: string; direction: 'asc' | 'desc'; mediaType: 'all' | 'movie' | 'tv'; statuses: string[]; providerStatuses: string[]; genres: string[]

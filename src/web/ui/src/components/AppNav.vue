@@ -44,9 +44,7 @@
                 :aria-expanded="showLibraryMenu ? 'true' : 'false'"
               >
                 <span>{{ t('nav_library') }}</span>
-                <svg class="w-3 h-3 transition-transform" :class="showLibraryMenu ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                </svg>
+                <ChevronDown class="w-3 h-3 transition-transform" :class="showLibraryMenu ? 'rotate-180' : ''" aria-hidden="true" />
               </button>
               <Transition name="fade">
                 <div v-if="showLibraryMenu" class="absolute left-0 top-full w-40 bg-surface border border-surface-200 rounded-lg shadow-xl py-1 z-[120]">
@@ -75,12 +73,8 @@
             aria-haspopup="menu"
             :aria-expanded="showMobileMenu ? 'true' : 'false'"
           >
-            <svg v-if="!showMobileMenu" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <Menu v-if="!showMobileMenu" class="w-5 h-5" />
+            <X v-else class="w-5 h-5" />
           </button>
 
           <div v-if="auth.isAuthenticated" class="relative" ref="userMenuRef">
@@ -135,12 +129,8 @@
 
           <!-- Theme Toggle -->
           <button @click="theme.toggle()" class="p-2 rounded-md hover:bg-surface-100 transition-colors text-muted hover:text-primary md:ml-2" :aria-label="t('nav_toggle_theme')">
-            <svg v-if="theme.isDark" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
-            </svg>
-            <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
-            </svg>
+            <Sun v-if="theme.isDark" class="w-5 h-5" />
+            <Moon v-else class="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -186,7 +176,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, BellDot, ExternalLink } from '@lucide/vue'
+import { Bell, BellDot, ChevronDown, ExternalLink, Menu, Moon, Sun, X } from '@lucide/vue'
 import { onClickOutside } from '@vueuse/core'
 import SearchBar from '@/components/SearchBar.vue'
 import UserAvatar from '@/components/UserAvatar.vue'

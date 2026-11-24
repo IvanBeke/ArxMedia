@@ -117,9 +117,7 @@
           </WatchSplitButton>
           <ActionGhostButton v-if="showStatus !== WATCH_ENTRY_STATUS.WATCHING && !hasWatchedEpisodes" :active="showStatus === 'watchlist'" :title="watchlistTitle" @click="handleWatchlistAction">
             <template #icon>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
-              </svg>
+              <Bookmark class="w-4 h-4" aria-hidden="true" />
             </template>
             {{ showStatus === 'watchlist' ? t('show_in_watchlist') : t('show_add_watchlist') }}
           </ActionGhostButton>
@@ -330,7 +328,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
-import { ChevronDown } from '@lucide/vue'
+import { Bookmark, ChevronDown } from '@lucide/vue'
 import { mediaAPI, trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import StarRating from '@/components/StarRating.vue'

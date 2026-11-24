@@ -13,9 +13,7 @@
             <details ref="menuRef" class="control-menu">
               <summary class="row-pill-trigger" :title="t('media_row_manage')" :aria-label="t('movie_row_manage_aria')">
                 <span>{{ t('media_row_manage') }}</span>
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                </svg>
+                <ChevronDown class="w-3.5 h-3.5" aria-hidden="true" />
               </summary>
               <div class="control-panel right-0 w-52 p-1.5 menu-panel">
                 <button type="button" class="control-option" :disabled="busy" @click="openRateDialog">
@@ -68,9 +66,7 @@
             <p class="text-xs text-muted mt-1">{{ item.title || t('media_row_select_score') }}</p>
           </div>
           <button type="button" class="text-muted hover:text-primary" @click="closeRateDialog">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
+            <X class="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -100,6 +96,7 @@ import { closeOnDialogBackdropClick } from '@/composables/useDialogLightDismiss'
 import { formatIsoAsDDMMYYYY } from '@/utils/temporal'
 import type { MediaCard } from '@/types/api'
 import type { WatchEntryStatus } from '@/types/tracking'
+import { ChevronDown, X } from '@lucide/vue'
 
 interface MovieRowItem extends MediaCard {
   genres?: string[]

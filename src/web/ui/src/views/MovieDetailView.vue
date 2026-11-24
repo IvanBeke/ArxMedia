@@ -91,9 +91,7 @@
           </WatchSplitButton>
           <ActionGhostButton v-if="watchedCount === 0" :active="inWatchlist" :title="watchlistTitle" @click="toggleWatchlist">
             <template #icon>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
-              </svg>
+              <Bookmark class="w-4 h-4" aria-hidden="true" />
             </template>
             {{ inWatchlist ? t('show_in_watchlist') : t('show_add_watchlist') }}
           </ActionGhostButton>
@@ -278,6 +276,7 @@ import { instantEpochMs, instantFromEpochMs, temporalYear } from '@/utils/tempor
 import { watchedTooltipText } from '@/utils/watchOptions'
 import type { CollectionDetail, AggregateCredits, MediaResult, Movie, PaginatedResponse, WatchEntry } from '@/types/api'
 import type { WatchedAtOption } from '@/utils/watchOptions'
+import { Bookmark } from '@lucide/vue'
 
 const route = useRoute()
 const movieId = computed(() => String(route.params.id ?? ''))

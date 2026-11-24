@@ -51,7 +51,7 @@ describe('WatchSplitButton', () => {
 
     expect(wrapper.text()).toContain('Dropped')
     expect(main.classes().join(' ')).toContain('text-red-400')
-    expect(main.find('svg path').attributes('d')).toBe('M6 18L18 6M6 6l12 12')
+    expect(main.find('svg.lucide-x').exists()).toBe(true)
   })
 
   it('renders footer slot content below a divider', async () => {

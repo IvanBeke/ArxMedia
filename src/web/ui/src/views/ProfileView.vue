@@ -27,9 +27,7 @@
             >
               <strong class="text-primary">{{ profile.followers_count }}</strong>
               <span>{{ t('profile_followers_count_label') }}</span>
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
+              <ChevronRight class="w-3 h-3" aria-hidden="true" />
             </RouterLink>
             <RouterLink
               :to="`/profile/${profile.username}/following`"
@@ -37,9 +35,7 @@
             >
               <strong class="text-primary">{{ profile.following_count }}</strong>
               <span>{{ t('profile_following_count_label') }}</span>
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
+              <ChevronRight class="w-3 h-3" aria-hidden="true" />
             </RouterLink>
             <span class="badge bg-surface-200 text-secondary text-[10px]">{{ visibilityLabel }}</span>
             <span v-if="profile.viewer_relationship?.follows_you" class="badge bg-surface-200 text-secondary text-[10px]">{{ t('profile_badge_follows_you') }}</span>
@@ -151,6 +147,7 @@ import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLin
 import { formatDateByLocale, useI18n } from '@/i18n'
 import { usePageTitle } from '@/composables/usePageTitle'
 import type { UserProfile } from '@/types/api'
+import { ChevronRight } from '@lucide/vue'
 
 const route = useRoute()
 const auth = useAuthStore()

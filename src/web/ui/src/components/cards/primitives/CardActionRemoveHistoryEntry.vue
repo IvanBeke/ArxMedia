@@ -8,15 +8,14 @@
     @click.stop.prevent="handleTrigger"
   >
     <div v-if="loading" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-    <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-    </svg>
+    <X v-else class="w-4 h-4" />
   </button>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from '@/i18n'
+import { X } from '@lucide/vue'
 
 const props = withDefaults(defineProps<{
   loading?: boolean

@@ -9,13 +9,9 @@
         :disabled="disabled || loading"
         @click="emit('trigger')"
       >
-        <svg v-if="isDanger" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-        </svg>
+        <X v-if="isDanger" class="w-4 h-4" aria-hidden="true" />
         <Check v-else-if="active" class="w-4 h-4" />
-        <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-        </svg>
+        <Plus v-else class="w-4 h-4" aria-hidden="true" />
         {{ label }}
       </button>
       <button
@@ -30,9 +26,7 @@
         @click="menuOpen = !menuOpen"
         @keydown.escape="menuOpen = false"
       >
-        <svg class="w-3.5 h-3.5 transition-transform" :class="menuOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-        </svg>
+        <ChevronDown class="w-3.5 h-3.5 transition-transform" :class="menuOpen ? 'rotate-180' : ''" aria-hidden="true" />
       </button>
     </div>
 
@@ -61,7 +55,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
-import { Check } from '@lucide/vue'
+import { Check, ChevronDown, Plus, X } from '@lucide/vue'
 import { useI18n } from '@/i18n'
 import type { WatchedAtOption } from '@/utils/watchOptions'
 

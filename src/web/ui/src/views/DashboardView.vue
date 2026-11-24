@@ -27,9 +27,7 @@
     <div class="mb-8">
       <RouterLink to="/my-shows?status=watching&has_next_episode=1" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
         <span>{{ t('dashboard_up_next') }}</span>
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight class="w-4 h-4" aria-hidden="true" />
       </RouterLink>
       <div v-if="loadingUpNext" class="flex gap-4 overflow-x-auto pb-2">
         <div v-for="n in 3" :key="n" class="w-40 h-60 skeleton rounded-lg flex-shrink-0"></div>
@@ -72,9 +70,7 @@
     <div class="mb-8">
       <RouterLink to="/calendar" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
         <span>{{ t('dashboard_upcoming') }}</span>
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight class="w-4 h-4" aria-hidden="true" />
       </RouterLink>
       <div v-if="loadingUpcoming" class="flex gap-4 overflow-x-auto pb-2">
         <div v-for="n in 3" :key="n" class="w-40 h-60 skeleton rounded-lg flex-shrink-0"></div>
@@ -107,9 +103,7 @@
     <div class="mb-8">
       <RouterLink to="/history" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
         <span>{{ t('dashboard_recent_activity') }}</span>
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight class="w-4 h-4" aria-hidden="true" />
       </RouterLink>
       <div v-if="loadingActivity" class="space-y-2">
         <div v-for="n in 5" :key="n" class="h-14 skeleton rounded-lg"></div>
@@ -155,6 +149,7 @@ import { getEpisodeLink, getShowLink, getWatchEntryLink, getWatchEntryTitleLink 
 import type { DashboardStats, UpNextItem, UpcomingItem } from '@/api'
 import type { WatchEntry } from '@/types/api'
 import { usePageTitle } from '@/composables/usePageTitle'
+import { ChevronRight } from '@lucide/vue'
 
 const auth = useAuthStore()
 const stats = ref<DashboardStats | null>(null)

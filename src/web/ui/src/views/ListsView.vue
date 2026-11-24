@@ -6,9 +6,7 @@
         <p class="text-gray-500 text-sm mt-1">{{ t('lists_subtitle') }}</p>
       </div>
       <button @click="openCreateModal" class="btn-primary inline-flex items-center whitespace-nowrap">
-        <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-        </svg>
+        <Plus class="w-4 h-4 mr-2 flex-shrink-0" />
         {{ t('lists_create') }}
       </button>
     </div>
@@ -44,9 +42,7 @@
 
     <!-- Empty State -->
     <div v-else class="card p-12 text-center">
-      <svg class="w-16 h-16 text-gray-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
-      </svg>
+      <List class="w-16 h-16 text-gray-700 mx-auto mb-4" :stroke-width="1.5" />
       <p class="text-gray-500 text-lg mb-2">{{ t('lists_empty_title') }}</p>
       <p class="text-gray-600 text-sm mb-6">{{ t('lists_empty_body') }}</p>
       <button @click="openCreateModal" class="btn-primary">{{ t('lists_empty_cta') }}</button>
@@ -67,9 +63,7 @@
             <p class="text-sm text-muted mt-1">{{ t('lists_new_hint') }}</p>
           </div>
           <button type="button" @click="closeCreateModal" class="text-gray-500 hover:text-primary">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
+            <X class="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -198,6 +192,7 @@ import type { CustomList, UserCard } from '@/types/api'
 import { getApiErrorMessage } from '@/utils/errors'
 import { normalizePagedResponse } from '@/utils/pagination'
 import { usePageTitle } from '@/composables/usePageTitle'
+import { List, Plus, X } from '@lucide/vue'
 
 const lists = ref<CustomList[]>([])
 const { t } = useI18n()

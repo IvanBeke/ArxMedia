@@ -13,9 +13,7 @@
       />
 
       <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-500 bg-gradient-to-br from-surface-200 to-surface-100 p-4">
-        <svg class="w-10 h-10 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/>
-        </svg>
+        <Film class="w-10 h-10 mb-2 opacity-50" :stroke-width="1" />
         <span class="text-xs text-center line-clamp-3">{{ titleText }}</span>
       </div>
 
@@ -51,6 +49,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Film } from '@lucide/vue'
 
 const props = withDefaults(defineProps<{
   posterUrl?: string

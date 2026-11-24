@@ -4,15 +4,11 @@
       <div class="relative">
         <button type="button" class="control-trigger" @click="toggleAdvanced">
           <span class="inline-flex items-center gap-1.5">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>
-            </svg>
+            <Funnel class="w-4 h-4" aria-hidden="true" />
             <span>{{ advancedLabelText }}</span>
             <span v-if="activeAdvancedCount" class="control-count">{{ activeAdvancedCount }}</span>
           </span>
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
+          <ChevronDown class="w-4 h-4" aria-hidden="true" />
         </button>
 
         <div v-if="advancedOpen" class="control-panel left-0 w-[20rem] max-w-[85vw] p-3 space-y-3">
@@ -111,23 +107,17 @@
           :placeholder="searchPlaceholderText"
           @keydown.enter="applySearch"
         >
-        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-        </svg>
+        <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" aria-hidden="true" />
       </div>
 
       <details ref="sortMenuRef" class="relative control-menu">
         <summary class="control-trigger">
           <span class="inline-flex items-center gap-1.5">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h18M7 12h10M10 20h4"/>
-            </svg>
+            <ListFilter class="w-4 h-4" aria-hidden="true" />
             <span>{{ t('filter_bar_sorted_by') }}</span>
             <span class="text-primary">{{ currentSortLabel }}</span>
           </span>
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
+          <ChevronDown class="w-4 h-4" aria-hidden="true" />
         </summary>
         <div class="control-panel right-0 w-56">
           <button
@@ -165,7 +155,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { LocationQuery, LocationQueryRaw, LocationQueryValue } from 'vue-router'
 import { onClickOutside } from '@vueuse/core'
-import { ArrowDownNarrowWide, ArrowDownWideNarrow } from '@lucide/vue'
+import { ArrowDownNarrowWide, ArrowDownWideNarrow, ChevronDown, Funnel, ListFilter, Search } from '@lucide/vue'
 import { mediaAPI } from '@/api'
 import { useI18n } from '@/i18n'
 import type { MessageKey } from '@/i18n'

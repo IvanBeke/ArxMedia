@@ -32,9 +32,7 @@
         class="text-xs text-muted hover:text-primary flex items-center gap-1"
       >
         <span>{{ sortOrder === 'newest' ? t('history_newest_first') : t('history_oldest_first') }} {{ t('history_first_suffix') }}</span>
-        <svg class="w-3 h-3" :class="{ 'rotate-180': sortOrder === 'oldest' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
-        </svg>
+        <ChevronUp class="w-3 h-3" :class="{ 'rotate-180': sortOrder === 'oldest' }" />
       </button>
       <button
         type="button"
@@ -45,9 +43,7 @@
         @click="toggleDayGrouping"
       >
         <span class="group-toggle-pill">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10m-12 9h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v11a2 2 0 002 2z" />
-          </svg>
+          <Calendar class="w-3.5 h-3.5" aria-hidden="true" />
           <span class="group-toggle-label">{{ t('history_group_by_day') }}</span>
         </span>
       </button>
@@ -106,9 +102,7 @@
     <!-- Empty -->
     <div v-else class="card p-16 text-center">
       <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-200 flex items-center justify-center">
-        <svg class="w-8 h-8 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
+        <Clock class="w-8 h-8 text-muted" />
       </div>
       <p class="text-muted mb-4">{{ hasItemFilter ? t('history_empty_filtered') : t('history_empty') }}</p>
       <RouterLink to="/search" class="btn-primary">{{ t('history_start_watching') }}</RouterLink>
@@ -133,6 +127,7 @@ import { historyItemQueryFromRoute } from '@/utils/historyFilters'
 import { invalidPageRecovery, normalizePagedResponse, parsePage, toRouteQuery } from '@/utils/pagination'
 import type { MediaType, QueryParams, WatchEntry, WatchEntryMediaType } from '@/types/api'
 import { usePageTitle } from '@/composables/usePageTitle'
+import { Calendar, ChevronUp, Clock } from '@lucide/vue'
 
 type HistoryFilter = 'all' | MediaType | WatchEntryMediaType
 type HistoryOrder = 'newest' | 'oldest'

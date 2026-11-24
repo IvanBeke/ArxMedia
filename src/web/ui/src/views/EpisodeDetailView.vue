@@ -13,9 +13,7 @@
     <FlashToast :messages="[{ text: actionError, kind: 'error' }]" />
 
     <RouterLink :to="backLink" class="text-muted text-sm hover:text-brand-400 transition inline-flex items-center gap-1 mb-6">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-      </svg>
+      <ChevronLeft class="w-4 h-4" />
       {{ t('episode_back_to', { show: showData?.name || t('season_show'), season: seasonNum }) }}
     </RouterLink>
 

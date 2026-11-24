@@ -9,10 +9,7 @@
       :aria-label="t('pagination_first')"
       @click="requestGo(1)"
     >
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M18 6l-6 6 6 6" />
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6l-6 6 6 6" />
-      </svg>
+      <ChevronsLeft class="h-4 w-4" aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -22,9 +19,7 @@
       :aria-label="t('pagination_previous')"
       @click="requestGo(currentPage - 1)"
     >
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6" />
-      </svg>
+      <ChevronLeft class="h-4 w-4" aria-hidden="true" />
       </button>
 
       <span v-if="rangeStart > 1" class="pagination-ellipsis border-r border-surface-200" aria-hidden="true">...</span>
@@ -51,9 +46,7 @@
       :aria-label="t('pagination_next')"
       @click="requestGo(currentPage + 1)"
     >
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6" />
-      </svg>
+      <ChevronRight class="h-4 w-4" aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -63,10 +56,7 @@
       :aria-label="t('pagination_last')"
       @click="requestGo(totalPages)"
     >
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l6 6-6 6" />
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6l6 6-6 6" />
-      </svg>
+      <ChevronsRight class="h-4 w-4" aria-hidden="true" />
       </button>
     </div>
   </nav>
@@ -114,6 +104,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from '@lucide/vue'
 
 const { t } = useI18n()
 
