@@ -78,7 +78,7 @@ What "good work" means for this project.
   - `/movies/:id`, `/tv/:id`, `/tv/:id/season/:seasonNumber`, `/tv/:id/season/:seasonNumber/episode/:episodeNumber`
   - `/people/:id`
   - `/lists`, `/lists/:id`
-  - `/profile/:username`, `/profile/:username/followers`, `/profile/:username/following`
+  - `/profile/:username`, `/profile/:username/followers`, `/profile/:username/following`, `/profile/:username/stats`
   - `/data` (import/export)
 
 ## Profile visibility and social graph contract
@@ -92,7 +92,6 @@ What "good work" means for this project.
 - `GET /api/auth/users/<username>/` always returns base profile identity fields and includes:
   - `viewer_relationship`: `is_self`, `is_following`, `follows_you`, `is_friend`
   - `permissions`: `can_view_activity`, `can_view_lists`
-  - `stats`: `ratings_count`, `watchlist_count`, `average_rating` (null when hidden)
   - `visible_lists`: filtered by account visibility and list privacy
   - `recent_activity`: recent watched entries when visible
 - Social graph endpoints:
@@ -100,6 +99,21 @@ What "good work" means for this project.
   - `GET /api/auth/users/<username>/following/`
   - both use DRF page-number pagination (`count`, `next`, `previous`, `results`)
   - both return `403` when viewer cannot access protected account content
+- Stats follow the same visibility rule; see "Stats API" below
+
+## Stats API
+
+Stats live in their own app (`src/stats/`, mounted at `/api/stats/`). `StatsViewSet` has one action per section of a profile's stats page, `GET /api/stats/<username>/<action>/`, and answers `403` when the viewer cannot access the profile's protected content (see the visibility rules above). Each section has its own module and is computed by the database in a fixed number of queries: no per-row work in Python and no caching.
+
+- `ratings/` (`ratings.py`, 1 query): `ratings_count`, `average_rating` (rounded to one decimal by the database, null without ratings) and `rating_distribution` (ten counts for scores 1-10)
+- `library/` (`library.py`, 1 query): `show_statuses` (`plan_to_watch`, `watching`, `watched`, `dropped`), `movie_statuses` (`plan_to_watch`, `watched`, `dropped`), `media_types` (tracked titles per `movie`/`tv`) and `watchlist_count`
+- `watch-count/` (`watch_count.py`, 1 query): `movies_watched` and `episodes_watched`; the cheap counts, also used by the History page header
+- `watch-time/` (`watch_time.py`, 1 query): `movie_minutes`, `episode_minutes` and `watch_time_minutes`; entries with no known runtime count 0 minutes.
+- `monthly/` (`monthly.py`, 1 query): `year` and `months`, January to December of `?year=YYYY` (the current year by default) as `{month, movie_minutes, episode_minutes}`; entries with an unknown watch date are excluded
+- `years/` (`years.py`, 1 query): `current_year` and `earliest_year` (the year of the first dated watch entry, null without any); the range the stats page lets you browse by year
+- `habits/` (`habits.py`, 2 queries): per entry type (`movie`, `episode`), `weekdays` (7 counts, Monday first) and `hours` (24 counts, 0-23) in the server timezone; entries with an unknown watch date are excluded
+
+`monthly/`'s `year` must be a whole number between 1900 and 2999, otherwise the answer is `400` with a `year` error. The profile page summary requests `watch-count/`, `watch-time/` and `ratings/`; the stats page requests every section and renders each one as its own request settles. The History page header requests `watch-count/` for the signed-in user once and again after an entry is removed, so the history endpoint itself returns only the list. Query counts are pinned by `src/stats/tests/test_query_counts.py`.
 
 ## Database
 
@@ -119,7 +133,8 @@ All API routes require an authenticated session except `POST /api/auth/register/
 
 - Auth (`/api/auth/`): `register/`, `login/`, `logout/`, `me/` (GET/PATCH), `me/avatar/` (PUT/DELETE), `users/search/?q=`, `users/<username>/`, `users/<username>/activity/`, `users/<username>/followers/`, `users/<username>/following/`, `users/<username>/follow/`, `password/change/`
 - Media (`/api/media/`): `genres/`, `watch-regions/` (countries TMDB has watch provider data for, as `[{code, name}]` sorted by name; `name` is TMDB's `native_name` in the account language, 502 when TMDB fails; `preferred_region` holds one of these codes), `search/?q=&type=`, `trending/?type=&window=`, `popular/?type=`, `movies/<id>/` (+ `refresh/`, `credits/`, `external-ids/`, `recommendations/`), `collections/<id>/`, `people/search/`, `people/<id>/` (+ `credits/`, `external-ids/`), `tv/<id>/` (+ `refresh/`, `credits/`, `external-ids/`, `recommendations/`, `heatmap/`), `tv/<id>/seasons/<n>/` (+ `credits/`), `tv/<id>/seasons/<n>/episodes/<e>/credits/`, `.../external-ids/`
-- Tracking (`/api/tracking/`): `history/`, `history/<id>/`, `ratings/`, `watchlist/`, `watchlist/<id>/`, `reviews/`, `stats/` (six card values only), `activity/` (recent activity list), `episodes/watched/`, `episodes/mark/`, `episodes/unmark/`, `seasons/mark/`, `seasons/unmark/`, `shows/mark/`, `shows/unmark/`, `up-next/`, `my-shows/`, `my-movies/`, `upcoming/`, `media/drop/`, `lists/`, `lists/<id>/`, `lists/<list_id>/items/`, `lists/<list_id>/items/<id>/`, `lists/<list_id>/items/reorder/`, `recommendations/`, `data/import/`, `data/export/`, `data/jobs/`, `data/jobs/<id>/`, `data/jobs/<id>/confirm/`, `data/jobs/<id>/cancel/`, `data/jobs/<id>/file/`
+- Stats (`/api/stats/<username>/`): `ratings/`, `library/`, `watch-count/`, `watch-time/`, `monthly/`, `years/`, `habits/` (see "Profile visibility and social graph contract")
+- Tracking (`/api/tracking/`): `history/`, `history/<id>/`, `ratings/`, `watchlist/`, `watchlist/<id>/`, `reviews/`, `activity/` (recent activity list), `episodes/watched/`, `episodes/mark/`, `episodes/unmark/`, `seasons/mark/`, `seasons/unmark/`, `shows/mark/`, `shows/unmark/`, `up-next/`, `my-shows/`, `my-movies/`, `upcoming/`, `media/drop/`, `lists/`, `lists/<id>/`, `lists/<list_id>/items/`, `lists/<list_id>/items/<id>/`, `lists/<list_id>/items/reorder/`, `recommendations/`, `data/import/`, `data/export/`, `data/jobs/`, `data/jobs/<id>/`, `data/jobs/<id>/confirm/`, `data/jobs/<id>/cancel/`, `data/jobs/<id>/file/`
 - Integrations (`/api/integrations/`, requires the `accounts.use_sonarr_radarr` permission, 403 otherwise): `radarr/options/` (root folders, quality profiles, tags), `radarr/movies/<tmdb_id>/` (GET: `{added, path, monitored, url}`, `url` being the item's page in Radarr; POST: add the movie, 201, or 409 if already added; DELETE with `{delete_files, add_import_exclusion}`: remove it, 200 `{added: false}`, or 404 if not in Radarr; Radarr validation errors are passed through), `sonarr/options/` and `sonarr/tv/<tmdb_id>/` (same contract for shows; the show's TheTVDB id is resolved from the stored external ids or TMDB and a show without one answers 422; Sonarr validation errors are passed through)
 - Jellyfin (requires `accounts.use_jellyfin`, 403 otherwise): `jellyfin/tv/<tmdb_id>/links/?season=&episode=` returns `{show_url, season_url, episode_url}` (each a Jellyfin page URL or null), `jellyfin/movies/<tmdb_id>/link/` returns `{url}`, and `POST jellyfin/episodes/links/` with `{items: [{tmdb_id, season_number, episode_number}]}` (max 50) returns `{results: [{..., url}]}` in the same order. Shows are matched by TMDB id; an episode is matched by its season and episode number and, when Jellyfin has none with that numbering (Jellyfin usually follows TheTVDB, TMDB may split seasons differently), by its TheTVDB id, which is cached in `Episode.external_ids` on first use (as is its IMDb id, which `tv/<id>/seasons/<n>/episodes/<e>/external-ids/` serves from the stored ids and only asks TMDB for episodes still missing one). A season link falls back to the Jellyfin season of the matched episode. Library lookups are cached for 5 minutes, and a Jellyfin failure answers 200 with null links instead of an error (503 only when Jellyfin is not configured)
 - Social (`/api/social/feed/`), calendar (`/api/calendar/`), health (`GET /healthz/`, unauthenticated), admin (`/admin/`), PWA (`/manifest.webmanifest`, `/sw.js`)

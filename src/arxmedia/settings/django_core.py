@@ -14,6 +14,7 @@ INSTALLED_APPS = [
     'accounts',
     'media',
     'tracking',
+    'stats',
     'notifications',
     'social',
     'my_calendar',

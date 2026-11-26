@@ -8,7 +8,7 @@ ArxMedia is a self-hosted media tracking app built with Django REST Framework an
 - Track watch history, ratings, reviews, and episode progress
 - Manage a watchlist and custom lists (private, shared, public)
 - Follow users and see social activity (with account visibility controls)
-- View personal dashboard stats, calendar, and activity heatmaps
+- See a dashboard of what to watch next, a calendar, activity heatmaps and a detailed stats page (watch time, ratings, library breakdowns, when you watch)
 - Import from Trakt/WeTrackr/Yamtrack/ArxMedia backups, export full backups
 - Installable PWA with offline support
 

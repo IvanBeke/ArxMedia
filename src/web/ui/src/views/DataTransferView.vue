@@ -541,7 +541,7 @@ const finishedCollections = computed(() => {
       deleted: Number(deleted?.watchlist || 0),
     },
     {
-      label: t('profile_stat_ratings'),
+      label: t('stats_ratings'),
       description: t('data_transfer_collection_ratings_desc'),
       found: Number(summary?.ratings || 0),
       deleted: Number(deleted?.ratings || 0),

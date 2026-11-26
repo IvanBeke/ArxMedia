@@ -33,8 +33,7 @@ vi.mock('@/api', () => ({
 const TEST_USER: User = {
   id: 1, username: 'tester', email: '', bio: '', avatar: null, location: '',
   website: '', preferred_region: 'US', language: 'en', account_visibility: 'public',
-  followers_count: 0, following_count: 0, total_watched_movies: 0,
-  total_watched_episodes: 0, is_staff: false, integrations: { radarr: false, sonarr: false, jellyfin: false }, created_at: '',
+  followers_count: 0, following_count: 0, is_staff: false, integrations: { radarr: false, sonarr: false, jellyfin: false }, created_at: '',
 }
 
 describe('detail tab scroll', () => {

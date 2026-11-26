@@ -301,3 +301,4 @@ class UserActivityHeatmapView(APIView):
         days, total = _heatmap_day_entries(items_by_day, _previous_year_start(today), today)
 
         return Response({'days': days, 'total': total})
+

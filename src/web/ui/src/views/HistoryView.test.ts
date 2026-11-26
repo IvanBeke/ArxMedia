@@ -4,16 +4,18 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 import HistoryView from '@/views/HistoryView.vue'
 import { WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
-import type { WatchEntry } from '@/types/api'
+import { useAuthStore } from '@/stores/auth'
+import type { User, WatchEntry } from '@/types/api'
 
-const { getHistory, getStats, deleteHistory } = vi.hoisted(() => ({
+const { getHistory, deleteHistory, getWatchCount } = vi.hoisted(() => ({
   getHistory: vi.fn(),
-  getStats: vi.fn(),
   deleteHistory: vi.fn(),
+  getWatchCount: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
-  trackingAPI: { getHistory, getStats, deleteHistory },
+  trackingAPI: { getHistory, deleteHistory },
+  statsAPI: { getWatchCount },
 }))
 
 const HistoryMediaCardStub = {
@@ -57,6 +59,7 @@ async function mountHistory(query: Record<string, string> = {}) {
   await router.isReady()
 
   const pinia = createPinia()
+  useAuthStore(pinia).user = { username: 'alex' } as User
   const wrapper = mount(HistoryView, {
     global: {
       plugins: [router, pinia],
@@ -77,8 +80,8 @@ const withSignal = expect.objectContaining({ signal: expect.any(AbortSignal) })
 describe('HistoryView item filters', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getStats.mockResolvedValue({ movies_watched: 1, episodes_watched: 1 })
     getHistory.mockResolvedValue({ count: 1, next: null, previous: null, results: [historyEntry()] })
+    getWatchCount.mockResolvedValue({ movies_watched: 7, episodes_watched: 21 })
   })
 
   it('sends item filters from the URL to the history API', async () => {
@@ -97,6 +100,46 @@ describe('HistoryView item filters', () => {
       order: 'newest',
       page: 1,
     }, withSignal)
+  })
+
+  it('shows the watched counts of the signed-in user in the header, whatever the filters', async () => {
+    const { wrapper } = await mountHistory({ media_type: 'episode' })
+
+    expect(getWatchCount).toHaveBeenCalledWith('alex')
+    expect(wrapper.findAll('span.text-brand-400').slice(0, 2).map((value) => value.text())).toEqual(['7', '21'])
+  })
+
+  it('does not ask for the counts again when the list filters change', async () => {
+    const { wrapper } = await mountHistory()
+    getWatchCount.mockClear()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('Newest first'))?.trigger('click')
+    await flushPromises()
+
+    expect(getWatchCount).not.toHaveBeenCalled()
+  })
+
+  it('leaves the counts out of the header when they fail to load', async () => {
+    getWatchCount.mockRejectedValue({ status: 500 })
+
+    const { wrapper } = await mountHistory()
+
+    expect(wrapper.findAll('span.text-brand-400')).toHaveLength(0)
+    expect(wrapper.find('.history-card').exists()).toBe(true)
+  })
+
+  it('refreshes the counts after removing an entry', async () => {
+    deleteHistory.mockResolvedValue(undefined)
+    const { wrapper } = await mountHistory()
+    // Differs from the previous 7 and 21 by more than the removed entry, as if the history changed elsewhere too.
+    getWatchCount.mockResolvedValue({ movies_watched: 5, episodes_watched: 3 })
+
+    wrapper.findComponent(HistoryMediaCardStub).vm.$emit('action:history-remove', historyEntry())
+    await flushPromises()
+
+    expect(deleteHistory).toHaveBeenCalledWith(1)
+    expect(getWatchCount).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('span.text-brand-400').slice(0, 2).map((value) => value.text())).toEqual(['5', '3'])
   })
 
   it('preserves item filters when changing visible history controls', async () => {

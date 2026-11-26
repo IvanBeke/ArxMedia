@@ -17,16 +17,19 @@ import type {
   EpisodeWatchPayload,
   ExternalIds,
   Genre,
+  HabitsStats,
   HeatmapSeason,
   ListItem,
   ListItemsResponse,
   JellyfinEpisodeLink,
   JellyfinEpisodeRef,
   JellyfinLinks,
+  LibraryStats,
   LoginPayload,
   MediaCard,
   MediaSearchResponse,
   MediaType,
+  MonthlyStats,
   Movie,
   PaginatedResponse,
   PersonCombinedCredits,
@@ -36,6 +39,7 @@ import type {
   QueryParams,
   RadarrAddPayload,
   Rating,
+  RatingStats,
   RegisterPayload,
   ReleaseNotification,
   Season,
@@ -49,13 +53,12 @@ import type {
   UserProfile,
   WatchEntry,
   WatchedEpisode,
+  WatchCountStats,
+  WatchTimeStats,
+  YearsStats,
   WatchRegion,
 } from '@/types/api'
 
-export interface DashboardStats {
-  movies_watched: number; episodes_watched: number; shows_watching: number; shows_watched: number
-  average_rating: number | null; watch_time_minutes: number
-}
 export interface UpNextItem {
   tmdb_id: number; show_name: string; poster_url: string; is_new: boolean; progress_percent: number
   episodes_left: number | null; runtime_left_minutes: number | null; runtime_left_has_unknown: boolean
@@ -120,6 +123,18 @@ const api = {
   put: <T>(url: string, data: RequestData) => request<T>('PUT', url, data),
   patch: <T>(url: string, data: RequestData) => request<T>('PATCH', url, data),
   delete: <T>(url: string, data: RequestData = null) => request<T>('DELETE', url, data),
+}
+
+const statsPath = (username: string, section: string) => `/stats/${encodeURIComponent(username)}/${section}/`
+
+export const statsAPI = {
+  getRatings: (username: string) => api.get<RatingStats>(statsPath(username, 'ratings')),
+  getLibrary: (username: string) => api.get<LibraryStats>(statsPath(username, 'library')),
+  getWatchCount: (username: string) => api.get<WatchCountStats>(statsPath(username, 'watch-count')),
+  getWatchTime: (username: string) => api.get<WatchTimeStats>(statsPath(username, 'watch-time')),
+  getMonthly: (username: string, year?: number) => api.get<MonthlyStats>(statsPath(username, 'monthly'), { params: { year } }),
+  getYears: (username: string) => api.get<YearsStats>(statsPath(username, 'years')),
+  getHabits: (username: string) => api.get<HabitsStats>(statsPath(username, 'habits')),
 }
 
 export const authAPI = {
@@ -209,7 +224,6 @@ export const trackingAPI = {
   removeFromWatchlist: (id: string | number) => api.delete<void>('/tracking/watchlist/' + id + '/'),
   getRatings: (params?: QueryParams) => api.get<PaginatedResponse<Rating>>('/tracking/ratings/', { params }),
   rate: (data: MediaPayload & { score: number }) => api.post<Rating>('/tracking/ratings/', data),
-  getStats: () => api.get<DashboardStats>('/tracking/stats/'),
   getActivity: () => api.get<WatchEntry[]>('/tracking/activity/'),
   getUpNext: () => api.get<UpNextItem[]>('/tracking/up-next/'),
   getMyShows: (params?: QueryParams, options: RequestOptions = {}) =>

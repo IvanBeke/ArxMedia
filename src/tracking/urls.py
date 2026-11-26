@@ -9,7 +9,6 @@ urlpatterns = [
     path('watchlist/', views.WatchlistListCreateView.as_view(), name='watchlist'),
     path('watchlist/<int:pk>/', views.WatchlistDetailView.as_view(), name='watchlist_detail'),
     path('reviews/', views.ReviewListCreateView.as_view(), name='reviews'),
-    path('stats/', views.user_stats, name='user_stats'),
     path('activity/', views.recent_activity, name='recent_activity'),
     path('episodes/watched/', views.watched_episodes, name='watched_episodes'),
     path('episodes/mark/', views.mark_episode_watched, name='mark_episode_watched'),

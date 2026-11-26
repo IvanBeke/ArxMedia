@@ -142,7 +142,7 @@ class AccountTests:
         assert response.data['username'] == 'testuser'
         assert 'viewer_relationship' in response.data
         assert 'permissions' in response.data
-        assert 'stats' in response.data
+        assert 'stats' not in response.data
         assert 'recent_activity' in response.data
         assert 'visible_lists' in response.data
 

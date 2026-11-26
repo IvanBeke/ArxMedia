@@ -117,7 +117,7 @@ class RedisOutageTests:
 
         login = client.post('/api/auth/login/', {'username': 'offline', 'password': 'Offline-pass-123'})
         me = client.get('/api/auth/me/')
-        stats = client.get('/api/tracking/stats/')
+        stats = client.get('/api/stats/offline/ratings/')
 
         assert login.status_code == 200
         assert me.status_code == 200

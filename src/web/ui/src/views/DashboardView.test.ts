@@ -7,8 +7,7 @@ import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types/api'
 
-const { getStats, getActivity, getUpNext, getUpcoming, getJellyfinEpisodeLinks, markEpisodeWatched } = vi.hoisted(() => ({
-  getStats: vi.fn(),
+const { getActivity, getUpNext, getUpcoming, getJellyfinEpisodeLinks, markEpisodeWatched } = vi.hoisted(() => ({
   getActivity: vi.fn(),
   getUpNext: vi.fn(),
   getUpcoming: vi.fn(),
@@ -17,7 +16,7 @@ const { getStats, getActivity, getUpNext, getUpcoming, getJellyfinEpisodeLinks, 
 }))
 
 vi.mock('@/api', () => ({
-  trackingAPI: { getStats, getActivity, getUpNext, getUpcoming, deleteHistory: vi.fn(), markEpisodeWatched },
+  trackingAPI: { getActivity, getUpNext, getUpcoming, deleteHistory: vi.fn(), markEpisodeWatched },
   integrationsAPI: { getJellyfinEpisodeLinks },
 }))
 
@@ -45,7 +44,6 @@ async function mountView({ jellyfin = false } = {}) {
 describe('DashboardView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getStats.mockResolvedValue({ movies_watched: 2, episodes_watched: 5, shows_watching: 1, shows_watched: 3, average_rating: null, watch_time_minutes: 150 })
     getActivity.mockResolvedValue([])
     getUpNext.mockResolvedValue([])
     getUpcoming.mockResolvedValue([])
@@ -74,27 +72,11 @@ describe('DashboardView', () => {
     expect(document.title).toBe('Dashboard · ArxMedia')
   })
 
-  it('formats total watch time from the stats payload', async () => {
+  it('leaves the stats to the dedicated stats page', async () => {
     const wrapper = await mountView()
 
-    expect(wrapper.text()).toContain('Watch time')
-    expect(wrapper.text()).toContain('2h 30m')
-  })
-
-  it('shows zero watch time when nothing was watched yet', async () => {
-    getStats.mockResolvedValueOnce({ movies_watched: 0, episodes_watched: 0, shows_watching: 0, shows_watched: 0, average_rating: null, watch_time_minutes: 0 })
-
-    const wrapper = await mountView()
-
-    expect(wrapper.text()).toContain('Watch time')
-    expect(wrapper.text()).toContain('0m')
-  })
-
-  it('shows completed shows separately from shows still watching', async () => {
-    const wrapper = await mountView()
-
-    expect(wrapper.text()).toContain('Shows Watching')
-    expect(wrapper.text()).toContain('Shows Watched')
+    expect(wrapper.text()).not.toContain('Shows Watching')
+    expect(wrapper.text()).not.toContain('Watch time')
   })
 
   it('shows a section error instead of the activity list and retries', async () => {

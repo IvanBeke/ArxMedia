@@ -11,7 +11,7 @@ import { required } from '@/test-support/assertions'
 import type { ComponentPublicInstance } from 'vue'
 import type { User } from '@/types/api'
 
-const user: User = { id: 1, username: 'alex', email: '', bio: '', avatar: null, location: '', website: '', preferred_region: '', language: 'en', account_visibility: 'public', followers_count: 0, following_count: 0, total_watched_movies: 0, total_watched_episodes: 0, is_staff: false, integrations: { radarr: false, sonarr: false, jellyfin: false }, created_at: '' }
+const user: User = { id: 1, username: 'alex', email: '', bio: '', avatar: null, location: '', website: '', preferred_region: '', language: 'en', account_visibility: 'public', followers_count: 0, following_count: 0, is_staff: false, integrations: { radarr: false, sonarr: false, jellyfin: false }, created_at: '' }
 
 function mountAppNav() {
   const router = createRouter({
@@ -67,6 +67,16 @@ describe('AppNav', () => {
     expect(mobileMenuButton.classes()).toContain('lg:hidden')
   })
 
+  it('links the user menu Stats item to the signed-in user stats page', async () => {
+    useAuthStore().user = user
+    const wrapper = mountAppNav()
+
+    await wrapper.find('button[aria-label="Open user menu"]').trigger('click')
+
+    const link = required(wrapper.findAll('.dropdown-item').find((item) => item.text() === 'Stats'), 'Stats item')
+    expect(link.attributes('href')).toBe('/profile/alex/stats')
+  })
+
   it('shows the admin link in the user and mobile menus for staff users', async () => {
     const auth = useAuthStore()
     auth.user = { ...user, is_staff: true }
@@ -116,6 +126,7 @@ describe('AppNav', () => {
       'Data',
       'Settings',
       'Profile',
+      'Stats',
       'Sign Out',
     ])
 
@@ -141,6 +152,7 @@ describe('AppNav', () => {
       'Mis series',
       'Mis películas',
       'Perfil',
+      'Estadísticas',
       'Listas',
       'Calendario',
       'Datos',
@@ -160,6 +172,7 @@ describe('AppNav', () => {
       'Datos',
       'Ajustes',
       'Perfil',
+      'Estadísticas',
       'Cerrar sesión',
     ])
   })

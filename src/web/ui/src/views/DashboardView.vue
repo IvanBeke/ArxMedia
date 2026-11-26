@@ -9,20 +9,6 @@
       </div>
     </Transition>
 
-    <div v-if="loadingStats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
-      <div v-for="n in 6" :key="n" class="h-24 skeleton rounded-lg"></div>
-    </div>
-    <LoadError v-else-if="statsError" class="mb-10" :message="t('error_load_stats')" @retry="loadDashboard" />
-
-    <div v-else-if="stats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
-      <StatCard :value="stats.movies_watched" :title="t('dashboard_movies_watched')" />
-      <StatCard :value="stats.shows_watched" :title="t('dashboard_shows_watched')" />
-      <StatCard :value="stats.episodes_watched" :title="t('dashboard_episodes_watched')" />
-      <StatCard :value="stats.shows_watching" :title="t('dashboard_shows_watching')" />
-      <StatCard :value="formatHoursMinutes(stats.watch_time_minutes, false, t)" :title="t('dashboard_watch_time')" />
-      <StatCard :value="stats.average_rating ?? '–'" :title="t('dashboard_avg_rating')" />
-    </div>
-
     <!-- Up Next Row -->
     <div class="mb-8">
       <RouterLink to="/my-shows?status=watching&has_next_episode=1" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
@@ -137,32 +123,27 @@ import { trackingAPI } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import LoadError from '@/components/LoadError.vue'
-import StatCard from '@/components/StatCard.vue'
 import FutureEpisodeCard from '@/components/FutureEpisodeCard.vue'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { useJellyfinUpNextLinks } from '@/composables/useJellyfinUpNextLinks'
 import { useI18n } from '@/i18n'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
 import { getApiErrorMessage } from '@/utils/errors'
-import { formatHoursMinutes } from '@/utils/progress'
 import { getEpisodeLink, getShowLink, getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
-import type { DashboardStats, UpNextItem, UpcomingItem } from '@/api'
+import type { UpNextItem, UpcomingItem } from '@/api'
 import type { WatchEntry } from '@/types/api'
 import { usePageTitle } from '@/composables/usePageTitle'
 import { ChevronRight } from '@lucide/vue'
 
 const auth = useAuthStore()
-const stats = ref<DashboardStats | null>(null)
 const activity = ref<WatchEntry[] | null>(null)
 const { t } = useI18n()
 usePageTitle(() => t('dashboard_title'))
-const loadingStats = ref(true)
 const loadingActivity = ref(true)
 const upNext = ref<UpNextItem[] | null>(null)
 const loadingUpNext = ref(true)
 const upcoming = ref<UpcomingItem[] | null>(null)
 const loadingUpcoming = ref(true)
-const statsError = ref(false)
 const activityError = ref(false)
 const upNextError = ref(false)
 const upcomingError = ref(false)
@@ -185,13 +166,11 @@ function formatUpcomingDateTime(value: string | null): string {
 }
 
 async function refreshTrackingLists() {
-  const [upNextRes, statsRes, activityRes] = await Promise.all([
+  const [upNextRes, activityRes] = await Promise.all([
     trackingAPI.getUpNext(),
-    trackingAPI.getStats(),
     trackingAPI.getActivity(),
   ])
   upNext.value = upNextRes
-  stats.value = statsRes
   activity.value = activityRes
   void loadJellyfinLinks(upNextRes)
 }
@@ -219,17 +198,12 @@ const { deletingEntryId, deleteEntry: removeRecentEntry } = useHistoryDelete({
 })
 
 async function loadDashboard() {
-  loadingStats.value = loadingUpNext.value = loadingUpcoming.value = loadingActivity.value = true
-  const [statsRes, upNextRes, upcomingRes, activityRes] = await Promise.allSettled([
-    trackingAPI.getStats(),
+  loadingUpNext.value = loadingUpcoming.value = loadingActivity.value = true
+  const [upNextRes, upcomingRes, activityRes] = await Promise.allSettled([
     trackingAPI.getUpNext(),
     trackingAPI.getUpcoming(),
     trackingAPI.getActivity(),
   ])
-
-  statsError.value = statsRes.status === 'rejected'
-  if (statsRes.status === 'fulfilled') stats.value = statsRes.value
-  loadingStats.value = false
 
   upNextError.value = upNextRes.status === 'rejected'
   if (upNextRes.status === 'fulfilled') {

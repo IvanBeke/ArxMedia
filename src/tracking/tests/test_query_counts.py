@@ -81,7 +81,7 @@ class QueryCountTests:
         assert after == before
 
     def test_list_endpoints_do_not_query_per_row(self, user, user2, tmdb_noop, auth_client):
-        urls = ['/api/tracking/stats/', '/api/tracking/history/', '/api/tracking/lists/', '/api/tracking/watchlist/']
+        urls = ['/api/tracking/history/', '/api/tracking/lists/', '/api/tracking/watchlist/']
         self._add_rows(0, 2, user, user2)
         before = {url: self._query_count(url, auth_client) for url in urls}
         self._add_rows(2, 6, user, user2)

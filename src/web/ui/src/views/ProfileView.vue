@@ -9,8 +9,8 @@
         </div>
       </div>
       <div class="h-20 skeleton rounded-lg mb-6"></div>
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-        <div v-for="n in 5" :key="n" class="h-22 skeleton rounded-lg"></div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div v-for="n in 4" :key="n" class="h-[74px] skeleton rounded-lg"></div>
       </div>
     </div>
 
@@ -60,27 +60,16 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-        <div class="card p-4 text-center">
-          <p class="text-3xl font-display text-brand-500">{{ profile.total_watched_movies }}</p>
-          <p class="text-xs text-gray-500 mt-1">{{ t('history_filter_movies') }}</p>
+      <div v-if="canViewContent" class="mb-6">
+        <RouterLink :to="`/profile/${profile.username}/stats`" class="section-title mb-4 inline-flex items-center gap-1.5 hover:text-brand-400 transition-colors">
+          <span>{{ t('stats_title') }}</span>
+          <ChevronRight class="w-4 h-4" aria-hidden="true" />
+        </RouterLink>
+        <div v-if="watchCount.loading || watchTime.loading || ratings.loading" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div v-for="n in 4" :key="n" class="h-[74px] skeleton rounded-lg"></div>
         </div>
-        <div class="card p-4 text-center">
-          <p class="text-3xl font-display text-brand-500">{{ profile.total_watched_episodes }}</p>
-          <p class="text-xs text-gray-500 mt-1">{{ t('history_filter_episodes') }}</p>
-        </div>
-        <div class="card p-4 text-center">
-          <p class="text-3xl font-display text-brand-500">{{ profile.stats?.ratings_count ?? '-' }}</p>
-          <p class="text-xs text-gray-500 mt-1">{{ t('profile_stat_ratings') }}</p>
-        </div>
-        <div class="card p-4 text-center">
-          <p class="text-3xl font-display text-brand-500">{{ profile.stats?.watchlist_count ?? '-' }}</p>
-          <p class="text-xs text-gray-500 mt-1">{{ t('page_watchlist') }}</p>
-        </div>
-        <div class="card p-4 text-center">
-          <p class="text-3xl font-display text-brand-500">{{ profile.stats?.average_rating ?? '-' }}</p>
-          <p class="text-xs text-gray-500 mt-1">{{ t('profile_stat_avg_rating') }}</p>
-        </div>
+        <LoadError v-else-if="watchCount.error || watchTime.error || ratings.error" :message="t('error_load_stats')" @retry="retryFailed(watchCount, watchTime, ratings)" />
+        <UserStatCards v-else-if="watchCount.data && watchTime.data && ratings.data" :watch-count="watchCount.data" :watch-time="watchTime.data" :ratings="ratings.data" />
       </div>
 
       <div class="border-b border-surface-200">
@@ -138,14 +127,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { authAPI } from '@/api'
+import { authAPI, statsAPI } from '@/api'
 import ActivityHeatmap from '@/components/ActivityHeatmap.vue'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
+import LoadError from '@/components/LoadError.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import UserStatCards from '@/components/UserStatCards.vue'
 import { useAuthStore } from '@/stores/auth'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
 import { formatDateByLocale, useI18n } from '@/i18n'
 import { usePageTitle } from '@/composables/usePageTitle'
+import { retryFailed, useStatsSection } from '@/composables/useStatsSection'
 import type { UserProfile } from '@/types/api'
 import { ChevronRight } from '@lucide/vue'
 
@@ -163,6 +155,10 @@ const canViewContent = computed(() => {
   const permissions = profile.value?.permissions
   return !!(permissions?.can_view_activity || permissions?.can_view_lists)
 })
+const statsUsername = () => profile.value?.username ?? ''
+const watchCount = useStatsSection(statsUsername, statsAPI.getWatchCount, { enabled: () => canViewContent.value })
+const watchTime = useStatsSection(statsUsername, statsAPI.getWatchTime, { enabled: () => canViewContent.value })
+const ratings = useStatsSection(statsUsername, statsAPI.getRatings, { enabled: () => canViewContent.value })
 const visibilityLabel = computed(() => {
   const visibility = profile.value?.account_visibility
   if (visibility === 'private') return t('profile_visibility_private')

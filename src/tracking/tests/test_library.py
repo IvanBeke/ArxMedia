@@ -853,7 +853,7 @@ class SeasonPosterCardsTests:
         assert response.data[0]['poster_path'] == '/up-s1.jpg'
         assert response.data[0]['poster_url'] == 'https://image.tmdb.org/t/p/w500/up-s1.jpg'
 
-    def test_user_stats_recent_activity_uses_season_poster_and_episode_type(self, user, auth_client, user2, tmdb_noop):
+    def test_recent_activity_uses_season_poster_and_episode_type(self, user, auth_client, user2, tmdb_noop):
         Episode.objects.create(
             season=self.season1,
             tmdb_id=80011,

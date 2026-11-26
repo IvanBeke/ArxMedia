@@ -2,8 +2,6 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.crypto import get_random_string
 
-from tracking.choices import WatchEntryMediaType
-
 
 def avatar_upload_path(instance, filename):
     # A fresh random suffix per upload gives every avatar a new URL, so browsers never serve a stale one.
@@ -47,15 +45,3 @@ class User(AbstractUser):
     @property
     def following_count(self):
         return self.following.count()
-
-    @property
-    def total_watched_movies(self):
-        return self.watchentries.filter(
-            media_type=WatchEntryMediaType.MOVIE,
-        ).count()
-
-    @property
-    def total_watched_episodes(self):
-        return self.watchentries.filter(
-            media_type=WatchEntryMediaType.EPISODE,
-        ).count()

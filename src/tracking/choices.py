@@ -13,6 +13,10 @@ class TvShowStatus(models.TextChoices):
     DROPPED = 'dropped', 'Dropped'
 
 
+# Movies have no "watching" state.
+MOVIE_STATUSES = (TvShowStatus.PLAN_TO_WATCH, TvShowStatus.WATCHED, TvShowStatus.DROPPED)
+
+
 class SeasonStatus(models.TextChoices):
     WATCHING = 'watching', 'Watching'
     WATCHED = 'watched', 'Watched'

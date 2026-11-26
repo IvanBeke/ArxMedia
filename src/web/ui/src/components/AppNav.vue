@@ -93,6 +93,7 @@
                 <RouterLink :to="`/profile/${auth.user?.username}`" @click="showUserMenu = false" class="dropdown-item">
                   {{ t('nav_profile') }}
                 </RouterLink>
+                <RouterLink :to="`/profile/${auth.user?.username}/stats`" @click="showUserMenu = false" class="dropdown-item">{{ t('stats_title') }}</RouterLink>
                 <RouterLink to="/lists" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_lists') }}</RouterLink>
                 <RouterLink to="/calendar" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_calendar') }}</RouterLink>
                 <RouterLink to="/data" @click="showUserMenu = false" class="dropdown-item">{{ t('nav_data') }}</RouterLink>
@@ -159,6 +160,7 @@
                 {{ t('nav_admin') }}
               </a>
               <RouterLink :to="`/profile/${auth.user?.username}`" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('nav_profile') }}</RouterLink>
+              <RouterLink :to="`/profile/${auth.user?.username}/stats`" @click="showMobileMenu = false" class="mobile-nav-link">{{ t('stats_title') }}</RouterLink>
               <button @click="logout" class="mobile-nav-link text-left text-red-400 hover:text-red-300">{{ t('nav_sign_out') }}</button>
             </template>
 

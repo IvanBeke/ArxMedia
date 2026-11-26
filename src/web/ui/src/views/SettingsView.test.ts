@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePreferencesStore } from '@/stores/preferences'
 import type { User, WatchRegion } from '@/types/api'
 
-const user: User = { id: 1, username: 'alex', email: 'alex@example.com', bio: '', avatar: null, location: '', website: '', preferred_region: 'ES', language: 'en', account_visibility: 'public', followers_count: 0, following_count: 0, total_watched_movies: 0, total_watched_episodes: 0, is_staff: false, integrations: { radarr: false, sonarr: false, jellyfin: false }, created_at: '' }
+const user: User = { id: 1, username: 'alex', email: 'alex@example.com', bio: '', avatar: null, location: '', website: '', preferred_region: 'ES', language: 'en', account_visibility: 'public', followers_count: 0, following_count: 0, is_staff: false, integrations: { radarr: false, sonarr: false, jellyfin: false }, created_at: '' }
 const regions: WatchRegion[] = [
   { code: 'AR', name: 'Argentina' },
   { code: 'ES', name: 'Spain' },

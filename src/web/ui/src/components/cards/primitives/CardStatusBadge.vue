@@ -16,6 +16,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Bookmark, Check, CirclePlay, X } from '@lucide/vue'
+import { STATUS_COLOR } from '@/constants/statColors'
 import { WATCH_ENTRY_STATUS } from '@/constants/tracking'
 import { useI18n } from '@/i18n'
 import type { WatchEntryStatus } from '@/types/tracking'
@@ -37,13 +38,9 @@ const statusValue = computed(() => {
   return props.watched ? WATCH_ENTRY_STATUS.WATCHED : WATCH_ENTRY_STATUS.NONE
 })
 
-const statusBadgeClass = computed(() => {
-  if (statusValue.value === WATCH_ENTRY_STATUS.WATCHED) return 'bg-emerald-600'
-  if (statusValue.value === WATCH_ENTRY_STATUS.WATCHING) return 'bg-brand-500'
-  if (statusValue.value === WATCH_ENTRY_STATUS.PLAN_TO_WATCH) return 'bg-indigo-600'
-  if (statusValue.value === WATCH_ENTRY_STATUS.DROPPED) return 'bg-rose-600'
-  return 'bg-surface-300'
-})
+// Widened so a status the UI does not know about falls back to the neutral colour instead of throwing.
+const statusColors: Record<string, { bg: string } | undefined> = STATUS_COLOR
+const statusBadgeClass = computed(() => statusColors[statusValue.value]?.bg ?? 'bg-surface-300')
 
 const statusLabel = computed(() => {
   if (statusValue.value === WATCH_ENTRY_STATUS.WATCHED) return t('watch_action_watched')

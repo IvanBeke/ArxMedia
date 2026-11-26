@@ -12,7 +12,7 @@ export type Language = 'en' | 'es'
 export interface User {
   id: number; username: string; email: string; bio: string; avatar: string | null; location: string
   website: string; preferred_region: string; language: Language; account_visibility: 'public' | 'private' | 'friends_only'
-  followers_count: number; following_count: number; total_watched_movies: number; total_watched_episodes: number
+  followers_count: number; following_count: number
   is_staff: boolean; integrations: IntegrationFlags; created_at: string
 }
 export interface IntegrationFlags { radarr: boolean; sonarr: boolean; jellyfin: boolean }
@@ -20,9 +20,21 @@ export interface UserProfile extends User {
   permissions?: { can_view_activity: boolean; can_view_lists: boolean }
   recent_activity?: WatchEntry[]
   visible_lists?: Pick<CustomList, 'id' | 'name' | 'description' | 'item_count'>[]
-  stats?: { ratings_count: number; watchlist_count: number; average_rating: number }
   viewer_relationship?: { follows_you: boolean; is_friend: boolean; is_self: boolean; is_following: boolean }
 }
+export interface RatingStats { ratings_count: number; average_rating: number | null; rating_distribution: number[] }
+export interface LibraryStats {
+  show_statuses: Record<'plan_to_watch' | 'watching' | 'watched' | 'dropped', number>
+  movie_statuses: Record<'plan_to_watch' | 'watched' | 'dropped', number>
+  media_types: Record<'movie' | 'tv', number>
+  watchlist_count: number
+}
+export interface WatchCountStats { movies_watched: number; episodes_watched: number }
+export interface WatchTimeStats { movie_minutes: number; episode_minutes: number; watch_time_minutes: number }
+export interface MonthlyStats { year: number; months: { month: string; movie_minutes: number; episode_minutes: number }[] }
+export interface YearsStats { current_year: number; earliest_year: number | null }
+export interface HabitsStats { movie: WatchHabits; episode: WatchHabits }
+export interface WatchHabits { weekdays: number[]; hours: number[] }
 export interface LoginPayload { username: string; password: string }
 export interface RegisterPayload extends LoginPayload { email: string; password2: string; language?: Language }
 export interface ProfileUpdatePayload { username?: string; email?: string; bio?: string; location?: string; website?: string; preferred_region?: string; language?: Language; account_visibility?: User['account_visibility'] }

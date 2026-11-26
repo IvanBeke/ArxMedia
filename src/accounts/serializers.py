@@ -1,14 +1,14 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Avg, Count, F, Q
+from django.db.models import F, Q
 from django.utils.translation import gettext as _
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 
 from integrations.permissions import enabled_integrations
 from tracking.choices import ListPrivacy
-from tracking.models import CustomList, Rating, UserMediaStatus, WatchEntry
+from tracking.models import CustomList, WatchEntry
 from tracking.serializers import CustomListSerializer, WatchEntrySerializer
 
 from .avatars import process_avatar
@@ -47,8 +47,6 @@ class UserSerializer(serializers.ModelSerializer):
     avatar = AvatarField()
     followers_count = serializers.ReadOnlyField()
     following_count = serializers.ReadOnlyField()
-    total_watched_movies = serializers.ReadOnlyField()
-    total_watched_episodes = serializers.ReadOnlyField()
     preferred_region = serializers.CharField(max_length=2)
     integrations = serializers.SerializerMethodField()
 
@@ -57,7 +55,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'bio', 'avatar', 'location',
             'website', 'preferred_region', 'language', 'account_visibility', 'followers_count', 'following_count',
-            'total_watched_movies', 'total_watched_episodes', 'is_staff', 'integrations', 'created_at'
+            'is_staff', 'integrations', 'created_at'
         ]
         read_only_fields = ['id', 'is_staff', 'created_at']
 
@@ -98,11 +96,8 @@ class PublicUserSerializer(serializers.ModelSerializer):
     avatar = AvatarField()
     followers_count = serializers.ReadOnlyField()
     following_count = serializers.ReadOnlyField()
-    total_watched_movies = serializers.ReadOnlyField()
-    total_watched_episodes = serializers.ReadOnlyField()
     viewer_relationship = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
-    stats = serializers.SerializerMethodField()
     visible_lists = serializers.SerializerMethodField()
     recent_activity = serializers.SerializerMethodField()
 
@@ -112,8 +107,8 @@ class PublicUserSerializer(serializers.ModelSerializer):
             'id', 'username', 'bio', 'avatar', 'location',
             'account_visibility',
             'followers_count', 'following_count',
-            'total_watched_movies', 'total_watched_episodes', 'created_at',
-            'viewer_relationship', 'permissions', 'stats', 'visible_lists', 'recent_activity'
+            'created_at',
+            'viewer_relationship', 'permissions', 'visible_lists', 'recent_activity'
         ]
 
     def _viewer_relationship(self, obj):
@@ -145,27 +140,6 @@ class PublicUserSerializer(serializers.ModelSerializer):
         return {
             'can_view_activity': can_view,
             'can_view_lists': can_view,
-        }
-
-    def get_stats(self, obj):
-        if not self._can_view(obj):
-            return {
-                'ratings_count': None,
-                'watchlist_count': None,
-                'average_rating': None,
-            }
-
-        ratings_summary = Rating.objects.filter(user=obj).aggregate(
-            ratings_count=Count('id'),
-            average_rating=Avg('score'),
-        )
-        watchlist_count = UserMediaStatus.objects.for_user(obj).planning().count()
-        avg_rating = ratings_summary['average_rating']
-
-        return {
-            'ratings_count': ratings_summary['ratings_count'],
-            'watchlist_count': watchlist_count,
-            'average_rating': round(avg_rating, 1) if avg_rating else None,
         }
 
     def get_visible_lists(self, obj):

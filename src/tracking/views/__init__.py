@@ -15,7 +15,6 @@ from .history import (
     WatchEntryDetailView,
     WatchEntryListCreateView,
     recent_activity,
-    user_stats,
 )
 from .library import (
     my_movies_list,
@@ -78,6 +77,5 @@ __all__ = [
     'unmark_show_watched',
     'up_next',
     'upcoming',
-    'user_stats',
     'watched_episodes',
 ]

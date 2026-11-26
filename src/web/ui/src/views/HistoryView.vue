@@ -2,9 +2,9 @@
   <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
       <h1 class="font-display text-2xl text-primary font-semibold">{{ t('history_title') }}</h1>
-      <div class="text-sm text-muted">
-        <span class="text-brand-400 font-medium">{{ stats?.movies_watched || 0 }}</span> {{ t('history_movies_unit') }} 
-        <span class="text-brand-400 font-medium">{{ stats?.episodes_watched || 0 }}</span> {{ t('history_episodes_unit') }}
+      <div v-if="watchCount.data" class="text-sm text-muted">
+        <span class="text-brand-400 font-medium">{{ watchCount.data.movies_watched }}</span> {{ t('history_movies_unit') }} 
+        <span class="text-brand-400 font-medium">{{ watchCount.data.episodes_watched }}</span> {{ t('history_episodes_unit') }}
       </div>
     </div>
 
@@ -113,13 +113,15 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { trackingAPI } from '@/api'
+import { statsAPI, trackingAPI } from '@/api'
 import { MEDIA_TYPE, WATCH_ENTRY_MEDIA_TYPE } from '@/constants/tracking'
 import HistoryMediaCard from '@/components/HistoryMediaCard.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { useFlashMessages } from '@/composables/useFlashMessages'
 import { isAbortError, useLatestRequest } from '@/composables/useLatestRequest'
 import { getRemoveHistoryConfirmText, useHistoryDelete } from '@/composables/useHistoryDelete'
+import { useStatsSection } from '@/composables/useStatsSection'
+import { useAuthStore } from '@/stores/auth'
 import { formatDateByLocale, useI18n } from '@/i18n'
 import { isoDateKey } from '@/utils/temporal'
 import { getWatchEntryLink, getWatchEntryTitleLink } from '@/utils/watchEntryLinks'
@@ -131,16 +133,16 @@ import { Calendar, ChevronUp, Clock } from '@lucide/vue'
 
 type HistoryFilter = 'all' | MediaType | WatchEntryMediaType
 type HistoryOrder = 'newest' | 'oldest'
-type HistoryStats = { movies_watched: number; episodes_watched: number }
 type HistoryGroup = { key: string; label: string; items: WatchEntry[] }
 
 const route = useRoute()
+const auth = useAuthStore()
 const { t } = useI18n()
 usePageTitle(() => t('history_title'))
 const router = useRouter()
 
 const entries = ref<WatchEntry[]>([])
-const stats = ref<HistoryStats | null>(null)
+const watchCount = useStatsSection(() => auth.user?.username ?? '', statsAPI.getWatchCount)
 const loading = ref(true)
 const loadError = ref(false)
 const activeFilter = ref<HistoryFilter>('all')
@@ -184,26 +186,6 @@ const groupedEntries = computed<HistoryGroup[]>(() => {
   return grouped
 })
 
-function decrementHistoryStats(currentStats: HistoryStats | null, mediaType: WatchEntryMediaType): HistoryStats | null {
-  if (!currentStats) return currentStats
-
-  if (mediaType === MEDIA_TYPE.MOVIE) {
-    return {
-      ...currentStats,
-      movies_watched: Math.max(0, Number(currentStats.movies_watched || 0) - 1),
-    }
-  }
-
-  if (mediaType === WATCH_ENTRY_MEDIA_TYPE.EPISODE) {
-    return {
-      ...currentStats,
-      episodes_watched: Math.max(0, Number(currentStats.episodes_watched || 0) - 1),
-    }
-  }
-
-  return currentStats
-}
-
 const latestRequest = useLatestRequest()
 
 async function loadHistory() {
@@ -211,12 +193,8 @@ async function loadHistory() {
   loading.value = true
   loadError.value = false
   try {
-    const [historyRes, statsRes] = await Promise.all([
-      trackingAPI.getHistory(buildHistoryParams(), { signal }),
-      trackingAPI.getStats()
-    ])
+    const historyRes = await trackingAPI.getHistory(buildHistoryParams(), { signal })
     applyHistoryResponse(historyRes)
-    stats.value = statsRes
   } catch (e) {
     if (isAbortError(e)) return
     const recoveryPage = invalidPageRecovery(e, currentPage.value)
@@ -332,7 +310,7 @@ function toggleDayGrouping() {
 const { errorMsg: deleteError, showError: showDeleteError } = useFlashMessages()
 const { deletingEntryId, deleteEntry } = useHistoryDelete({
   onError: showDeleteError,
-  onDeleted: async (entry) => {
+  onDeleted: async () => {
     const nextPage = entries.value.length === 1 && currentPage.value > 1
       ? currentPage.value - 1
       : currentPage.value
@@ -342,8 +320,7 @@ const { deletingEntryId, deleteEntry } = useHistoryDelete({
       currentPage.value = nextPage
     }
 
-    await loadHistoryEntries(nextPage)
-    stats.value = decrementHistoryStats(stats.value, entry.media_type)
+    await Promise.all([loadHistoryEntries(nextPage), watchCount.load()])
   },
 })
 

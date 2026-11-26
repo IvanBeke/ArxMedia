@@ -9,6 +9,7 @@ from django.db.models.functions import Cast, Coalesce
 from django.utils import timezone
 
 from .choices import (
+    MOVIE_STATUSES,
     DataImportMode,
     DataTransferFormat,
     DataTransferJobType,
@@ -300,11 +301,7 @@ class UserMediaStatus(models.Model):
             models.UniqueConstraint(fields=['user', 'media_type', 'tmdb_id'], name='uniq_user_media_status_entry'),
             models.CheckConstraint(
                 condition=(
-                    models.Q(media_type=MediaType.MOVIE, status__in=[
-                        TvShowStatus.PLAN_TO_WATCH,
-                        TvShowStatus.WATCHED,
-                        TvShowStatus.DROPPED,
-                    ])
+                    models.Q(media_type=MediaType.MOVIE, status__in=list(MOVIE_STATUSES))
                     | models.Q(media_type=MediaType.TV, status__in=[
                         TvShowStatus.PLAN_TO_WATCH,
                         TvShowStatus.WATCHING,

@@ -46,6 +46,13 @@ msgstr "No tienes permiso para ver los seguidores de este perfil."
 msgid "You do not have permission to view following for this profile."
 msgstr "No tienes permiso para ver los seguidos de este perfil."
 
+msgid "You do not have permission to view stats for this profile."
+msgstr "No tienes permiso para ver las estadísticas de este perfil."
+
+#, python-format
+msgid "Year must be a whole number between %(min)s and %(max)s."
+msgstr "El año debe ser un número entero entre %(min)s y %(max)s."
+
 msgid "User not found."
 msgstr "Usuario no encontrado."
 

@@ -277,7 +277,7 @@ class SeasonTests:
         auth_client.post('/api/tracking/shows/unmark/', {'tmdb_id': 321})
         assert not UserMediaStatus.objects.shows().filter(user=user, tmdb_id=321, status='watched').exists()
 
-    def test_mark_season_watched_updates_user_stats(self, user, auth_client, user2, tmdb_noop):
+    def test_mark_season_watched_updates_library_stats(self, user, auth_client, user2, tmdb_noop):
         show = TVShow.objects.create(tmdb_id=322, name='Stats Show')
         season = Season.objects.create(show=show, tmdb_id=3221, season_number=1, name='Season 1')
         Episode.objects.create(season=season, tmdb_id=32211, episode_number=1, name='E1', air_date=date(2020, 1, 1))
@@ -285,8 +285,8 @@ class SeasonTests:
         response = auth_client.post('/api/tracking/seasons/mark/', {'tmdb_id': 322, 'season_number': 1})
 
         assert response.status_code == 200
-        stats = auth_client.get('/api/tracking/stats/')
-        assert stats.data['shows_watching'] == 1
+        stats = auth_client.get(f'/api/stats/{user.username}/library/')
+        assert stats.data['show_statuses']['watching'] == 1
 
     def test_unmark_show_watched_requires_tmdb_id(self, user, auth_client, user2, tmdb_noop):
         response = auth_client.post('/api/tracking/shows/unmark/', {})
